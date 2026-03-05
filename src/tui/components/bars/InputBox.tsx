@@ -1,8 +1,15 @@
-// InputBox — input area with status info inside the box
+// InputBox — controlled input area with status info inside the box
 //
 // Uses Ink's native borderStyle="round" for reliable rendering at any
 // terminal width. Status info (tokens, cost, model, skills) is shown
 // as the first line inside the box.
+//
+// This is a CONTROLLED component: App owns the value state and passes
+// value/onChange/onSubmit as props. This enables @ mention handling at
+// the App level.
+//
+// When `mentionActive` is true, Enter/Tab/arrows are forwarded to
+// onKeyPress only (for dropdown navigation) and NOT processed locally.
 //
 // Layout (5 rows):
 //   ╭──────────────────────────────────────────────────────────────────╮
@@ -11,12 +18,16 @@
 //   │                                                                 │
 //   ╰──────────────────────────────────────────────────────────────────╯
 
-import React, { useState } from "react"
+import React from "react"
 import { Box, Text, useInput, useStdin } from "ink"
 import { colors } from "../../theme"
 
-interface InputBoxProps {
+export interface InputBoxProps {
+  value: string
+  onChange: (value: string) => void
   onSubmit: (text: string) => void
+  onKeyPress?: (input: string, key: InputKey) => void
+  mentionActive?: boolean
   disabled?: boolean
   placeholder?: string
   // Status info (shown inside the box)
@@ -25,6 +36,18 @@ interface InputBoxProps {
   cost?: number
   modelName?: string
   skillCount?: number
+}
+
+export interface InputKey {
+  return: boolean
+  backspace: boolean
+  delete: boolean
+  escape: boolean
+  ctrl: boolean
+  meta: boolean
+  tab: boolean
+  upArrow: boolean
+  downArrow: boolean
 }
 
 function formatTokens(n: number): string {
@@ -38,7 +61,11 @@ function formatPercent(used: number, limit: number): string {
 }
 
 export function InputBox({
+  value,
+  onChange,
   onSubmit,
+  onKeyPress,
+  mentionActive,
   disabled,
   placeholder,
   tokensUsed = 0,
@@ -47,23 +74,34 @@ export function InputBox({
   modelName = "smart",
   skillCount = 0,
 }: InputBoxProps) {
-  const [value, setValue] = useState("")
   const { isRawModeSupported } = useStdin()
 
   useInput(
     (input, key) => {
       if (disabled) return
 
+      // Forward key press to parent for @ mention handling
+      if (onKeyPress) {
+        onKeyPress(input, key as InputKey)
+      }
+
+      // When mention dropdown is active, Enter/Tab/arrows are consumed
+      // by the parent's onKeyPress handler — don't process them here.
+      if (mentionActive) {
+        if (key.return || key.tab || key.upArrow || key.downArrow || key.escape) {
+          return
+        }
+      }
+
       if (key.return) {
         if (value.trim()) {
           onSubmit(value.trim())
-          setValue("")
         }
         return
       }
 
       if (key.backspace || key.delete) {
-        setValue((v) => v.slice(0, -1))
+        onChange(value.slice(0, -1))
         return
       }
 
@@ -74,7 +112,7 @@ export function InputBox({
       if (key.tab) return
 
       if (input) {
-        setValue((v) => v + input)
+        onChange(value + input)
       }
     },
     { isActive: isRawModeSupported && !disabled },
@@ -82,7 +120,6 @@ export function InputBox({
 
   const borderColor = disabled ? colors.muted : "green"
   const leftStatus = `${formatPercent(tokensUsed, tokenLimit)} of ${formatTokens(tokenLimit)} · $${cost.toFixed(2)} (free)`
-  const rightStatus = `${modelName}── ${skillCount} skill${skillCount !== 1 ? "s" : ""}`
 
   return (
     <Box

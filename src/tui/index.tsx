@@ -25,13 +25,20 @@ const session = createSession()
 const skills = discoverSkills()
 const modelName = defaultAgent.id // Use the agent id as the display name
 
-function handleSubmit(text: string, sessionId: string | null) {
+function handleSubmit(text: string, sessionId: string | null, context?: string) {
   const sid = sessionId ?? session.id
+
+  // Build parts: optional file context + user text
+  const parts: { type: "text"; text: string }[] = []
+  if (context) {
+    parts.push({ type: "text", text: context })
+  }
+  parts.push({ type: "text", text })
 
   // Run the agent loop in the background (don't await — TUI continues to be interactive)
   prompt({
     sessionId: sid,
-    parts: [{ type: "text", text }],
+    parts,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid, error: err })
   })

@@ -110,7 +110,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
   // Assistant message — render all parts
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width="100%">
       {message.parts.map((part, i) =>
         renderPart(part, i, !!message.streaming),
       )}

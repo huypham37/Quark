@@ -5,7 +5,7 @@
 // are rendered by the message components themselves.
 
 import React, { type ReactNode } from "react"
-import { Text } from "ink"
+import { Box, Text } from "ink"
 import { colors } from "../../theme"
 
 interface MarkdownProps {
@@ -64,7 +64,7 @@ export function Markdown({ children }: MarkdownProps) {
   const segments = parseInline(children)
 
   return (
-    <Text>
+    <Text wrap="wrap">
       {segments.map((seg, i) => {
         if (seg.bold) return <Text key={i} bold>{seg.text}</Text>
         if (seg.italic) return <Text key={i} italic>{seg.text}</Text>
@@ -87,24 +87,43 @@ export function MarkdownBlock({ text }: MarkdownBlockProps) {
   const lines = text.split("\n")
 
   return (
-    <>
+    <Box flexDirection="column" width="100%">
       {lines.map((line, i) => {
+        // Empty lines
+        if (!line.trim()) {
+          return <Text key={i}> </Text>
+        }
+
         // Bullet points: "- " or "* "
         const bulletMatch = line.match(/^(\s*)[*-]\s(.+)$/)
         if (bulletMatch) {
           const indent = bulletMatch[1] || ""
           const content = bulletMatch[2]!
           return (
-            <Text key={i}>
+            <Text key={i} wrap="wrap">
               {indent}<Text color={colors.muted}>• </Text>
               <Markdown>{content}</Markdown>
             </Text>
           )
         }
 
+        // Headers: "### text" — render bold
+        const headerMatch = line.match(/^(#{1,6})\s+(.+)$/)
+        if (headerMatch) {
+          const content = headerMatch[2]!
+          return (
+            <Text key={i} bold wrap="wrap">{content}</Text>
+          )
+        }
+
+        // Horizontal rules: "---" or "***"
+        if (/^[-*]{3,}\s*$/.test(line)) {
+          return <Text key={i} color={colors.muted}>───</Text>
+        }
+
         // Regular line
         return <Markdown key={i}>{line}</Markdown>
       })}
-    </>
+    </Box>
   )
 }

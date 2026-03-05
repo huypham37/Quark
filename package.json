@@ -6,7 +6,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
-    "drizzle-kit": "^0.31.9"
+    "drizzle-kit": "^0.31.9",
+    "ink-testing-library": "^4.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"

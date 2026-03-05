@@ -16,7 +16,7 @@ export function AssistantMessage({ text, streaming }: AssistantMessageProps) {
   if (!text) return null
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width="100%">
       <MarkdownBlock text={text} />
     </Box>
   )
