@@ -7,11 +7,13 @@ import { render } from "ink"
 import { App, type CommandResult } from "./App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
-import { createSession } from "../session/session"
+import { createSession, listSessions, getSession } from "../session/session"
+import { loadMessages } from "../session/message"
 import { compact } from "../session/compaction"
 import { bus } from "../session/events"
 import { defaultAgent } from "../agent"
 import { discoverSkills } from "../skill/skill"
+import { dbToTuiMessages } from "./state/state"
 
 // Initialize the backend (DB + tools)
 bootstrap()
@@ -68,6 +70,49 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       currentSession = createSession()
       // Emit a special event so the TUI can reset
       bus.emit("session-reset", { sessionId: currentSession.id })
+      return { handled: true }
+    }
+
+    case "sessions": {
+      if (!args) {
+        // List all sessions
+        const sessions = listSessions()
+        if (sessions.length === 0) {
+          bus.emit("error", { sessionId: sid, error: new Error("No sessions found") })
+          return { handled: true }
+        }
+
+        const lines = sessions.map((s) => {
+          const isCurrent = s.id === sid
+          const date = new Date(s.timeUpdated).toLocaleString()
+          const title = s.title ?? "(untitled)"
+          const marker = isCurrent ? " ← current" : ""
+          // Show short ID prefix for easy reference
+          return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
+        })
+        const header = `Sessions (${sessions.length}):\n`
+        // Emit as a user-message event so it shows in the message area
+        bus.emit("user-message", {
+          sessionId: sid,
+          messageId: `sessions-list-${Date.now()}`,
+          text: header + lines.join("\n") + "\n\nUse /sessions <id-prefix> to switch",
+        })
+        return { handled: true }
+      }
+
+      // Switch to a session by ID prefix
+      const sessions = listSessions()
+      const match = sessions.find((s) => s.id.startsWith(args))
+      if (!match) {
+        bus.emit("error", { sessionId: sid, error: new Error(`No session matching "${args}"`) })
+        return { handled: true }
+      }
+
+      // Load the session's messages and switch
+      currentSession = match
+      const { messages, parts } = loadMessages(match.id)
+      const tuiMessages = dbToTuiMessages(messages, parts)
+      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages })
       return { handled: true }
     }
 

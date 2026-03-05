@@ -6,6 +6,7 @@
 
 import { EventEmitter } from "events"
 import type { TextPartData, ToolPartData, StepFinishData, MessageRow } from "./message"
+import type { TuiMessage } from "../tui/state/state"
 
 // ---- Event types ----
 
@@ -45,6 +46,9 @@ export interface BusEvents {
 
   // Session was reset (e.g. /clear command — TUI should switch to new session)
   "session-reset": { sessionId: string }
+
+  // Session was switched (e.g. /sessions <id> — TUI loads existing session)
+  "session-switch": { sessionId: string; messages: TuiMessage[] }
 }
 
 export type BusEventName = keyof BusEvents

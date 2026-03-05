@@ -113,6 +113,14 @@ export function useEventBus(
     bus.on("session-reset", handleSessionReset)
     unsubs.push(() => bus.off("session-reset", handleSessionReset))
 
+    // session-switch carries a NEW sessionId + loaded messages
+    const handleSessionSwitch = (data: BusEvents["session-switch"]) => {
+      totalTokensRef.current = 0
+      dispatch({ type: "load-session", sessionId: data.sessionId, messages: data.messages })
+    }
+    bus.on("session-switch", handleSessionSwitch)
+    unsubs.push(() => bus.off("session-switch", handleSessionSwitch))
+
     return () => {
       for (const unsub of unsubs) unsub()
     }

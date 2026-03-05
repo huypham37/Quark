@@ -1,6 +1,6 @@
-// Session CRUD — create, get, touch
+// Session CRUD — create, get, list, touch
 
-import { eq } from "drizzle-orm"
+import { eq, desc } from "drizzle-orm"
 import { generateId } from "ai"
 import { getDB } from "../storage/db"
 import { session } from "./session.sql"
@@ -51,4 +51,10 @@ export function setSessionTitle(id: string, title: string): void {
     .set({ title, timeUpdated: Date.now() })
     .where(eq(session.id, id))
     .run()
+}
+
+/** List all sessions, most recently updated first */
+export function listSessions(): Session[] {
+  const db = getDB()
+  return db.select().from(session).orderBy(desc(session.timeUpdated)).all()
 }

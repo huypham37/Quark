@@ -1,5 +1,7 @@
 // TUI state types — the data model driving the UI
 
+import type { MessageRow, PartRow, TextPartData, ToolPartData } from "../../session/message"
+
 export interface TuiMessage {
   id: string
   role: "user" | "assistant"
@@ -55,6 +57,7 @@ export function initialState(): TuiState {
 export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string }
+  | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
   | { type: "add-user-message"; id: string; text: string }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
@@ -82,6 +85,14 @@ export function reduce(state: TuiState, action: TuiAction): TuiState {
       return {
         ...initialState(),
         sessionId: action.sessionId,
+        status: { ...state.status, tokensUsed: 0, cost: 0 },
+      }
+
+    case "load-session":
+      return {
+        ...initialState(),
+        sessionId: action.sessionId,
+        messages: action.messages,
         status: { ...state.status, tokensUsed: 0, cost: 0 },
       }
 
@@ -212,4 +223,57 @@ function updateMessage(
       m.id === messageId ? fn(m) : m,
     ),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Convert persisted DB rows to TuiMessage[] for display
+// ---------------------------------------------------------------------------
+
+export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMessage[] {
+  // Group parts by message ID
+  const partsByMsg = new Map<string, PartRow[]>()
+  for (const p of parts) {
+    const list = partsByMsg.get(p.messageId) ?? []
+    list.push(p)
+    partsByMsg.set(p.messageId, list)
+  }
+
+  const result: TuiMessage[] = []
+
+  for (const msg of messages) {
+    const msgParts = partsByMsg.get(msg.id) ?? []
+    const tuiParts: TuiPart[] = []
+
+    for (const p of msgParts) {
+      if (p.type === "text" || p.type === "summary") {
+        const d = JSON.parse(p.data) as TextPartData
+        if (d.text) {
+          tuiParts.push({ type: "text", text: d.text })
+        }
+      } else if (p.type === "tool") {
+        const d = JSON.parse(p.data) as ToolPartData
+        tuiParts.push({
+          type: "tool",
+          tool: d.tool,
+          callId: d.callId,
+          status: d.status,
+          input: d.input,
+          output: d.output,
+          error: d.error,
+        })
+      }
+      // skip step-start, step-finish — they're metadata
+    }
+
+    if (tuiParts.length > 0) {
+      result.push({
+        id: msg.id,
+        role: msg.role,
+        parts: tuiParts,
+        streaming: false,
+      })
+    }
+  }
+
+  return result
 }
