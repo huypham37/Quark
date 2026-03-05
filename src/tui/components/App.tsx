@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { Show, For, createSignal } from "solid-js"
+import { For, createSignal, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, InputRenderable } from "@opentui/core"
@@ -599,6 +599,9 @@ export const App: Component<AppProps> = (props) => {
         {(perm) => <PermissionPrompt request={perm()} />}
       </Show>
 
+      {/* Autocomplete dropdown — absolute overlay, does NOT shrink scrollbox */}
+      <Autocomplete mode={autocompleteMode()} />
+
       {/* Input area */}
       <Prompt
         onSubmit={handleSubmit}
@@ -612,11 +615,6 @@ export const App: Component<AppProps> = (props) => {
         modelName={state.store.status.modelName}
         skillCount={state.store.status.skillCount}
       />
-
-      {/* Autocomplete dropdown (renders below input) */}
-      <Show when={autocompleteMode()}>
-        {(mode) => <Autocomplete mode={mode()} />}
-      </Show>
 
       {/* Footer bar */}
       <FooterBar running={state.store.running} />
