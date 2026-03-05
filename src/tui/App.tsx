@@ -112,7 +112,7 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
   const messagesHeight = Math.max(1, rows - bottomHeight)
 
   return (
-    <Box flexDirection="column" height={rows}>
+    <Box flexDirection="column" height={rows} paddingX={2}>
       {/* Message area — fills remaining space, pinned to top */}
       <Box height={messagesHeight} flexDirection="column" overflow="hidden">
         <MessageList messages={state.messages} />
