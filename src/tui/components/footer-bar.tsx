@@ -1,13 +1,13 @@
 // @jsxImportSource @opentui/solid
-// FooterBar — bottom bar showing running status and working directory
+// FooterBar — bottom bar showing running status, git branch, and working directory
 //
 // Always renders 1 row to keep layout stable (no height jumps).
 // When running: "~ Streaming response...    Esc to cancel"
 // When idle: empty line
-// Right side always shows abbreviated cwd path.
+// Right side shows git branch (if in a repo) and abbreviated cwd path.
 
 import type { Component } from "solid-js"
-import { Show } from "solid-js"
+import { Show, createSignal } from "solid-js"
 import { colors } from "../theme"
 
 export interface FooterBarProps {
@@ -22,8 +22,24 @@ function abbreviatePath(fullPath: string): string {
   return fullPath
 }
 
+function getGitBranch(): string {
+  try {
+    const result = Bun.spawnSync(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    if (result.exitCode === 0) {
+      return result.stdout.toString().trim()
+    }
+  } catch {
+    // Not a git repo or git not available
+  }
+  return ""
+}
+
 export const FooterBar: Component<FooterBarProps> = (props) => {
   const cwd = abbreviatePath(process.cwd())
+  const [branch] = createSignal(getGitBranch())
 
   return (
     <box flexDirection="row" justifyContent="space-between" height={1}>
@@ -39,7 +55,13 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
           <text> to cancel</text>
         </box>
       </Show>
-      <text fg={colors.muted}>{cwd}</text>
+      <box flexDirection="row">
+        <Show when={branch()}>
+          <text fg={colors.success}> {branch()}</text>
+          <text fg={colors.muted}> · </text>
+        </Show>
+        <text fg={colors.muted}>{cwd}</text>
+      </box>
     </box>
   )
 }
