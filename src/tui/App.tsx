@@ -103,10 +103,10 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
 
   // Calculate bottom section height:
   // StatusBar = 1 row, InputBox = 3 rows (border top + content + border bottom),
-  // FooterBar = 1 row when running, Error = 1 row when present,
-  // Permission = ~4 rows when present
-  let bottomHeight = 1 + 3 // status + input
-  if (state.running) bottomHeight += 1
+  // FooterBar = 1 row (always rendered, empty when idle).
+  // Error and permission are transient — they shift the layout intentionally
+  // to draw attention.
+  let bottomHeight = 1 + 3 + 1 // status + input + footer (always)
   if (state.lastError) bottomHeight += 1
   if (state.permission) bottomHeight += 4
 

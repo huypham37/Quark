@@ -13,18 +13,24 @@ interface FooterBarProps {
 }
 
 export function FooterBar({ running }: FooterBarProps) {
-  if (!running) return null
-
+  // Always render 1 row to keep layout stable (no height jumps).
+  // When not running, render an empty line.
   return (
-    <Box justifyContent="space-between" width="100%">
-      <Box>
-        <Text color={colors.primary}>{icons.spinner} </Text>
-        <Text>Running tools...</Text>
-      </Box>
-      <Box>
-        <Text color={colors.footerKey} bold>Esc</Text>
-        <Text> to cancel</Text>
-      </Box>
+    <Box justifyContent="space-between" width="100%" height={1}>
+      {running ? (
+        <>
+          <Box>
+            <Text color={colors.primary}>{icons.spinner} </Text>
+            <Text>Running tools...</Text>
+          </Box>
+          <Box>
+            <Text color={colors.footerKey} bold>Esc</Text>
+            <Text> to cancel</Text>
+          </Box>
+        </>
+      ) : (
+        <Text> </Text>
+      )}
     </Box>
   )
 }
