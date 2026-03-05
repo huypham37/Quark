@@ -48,8 +48,8 @@ export function InputBox({ onSubmit, disabled, placeholder }: InputBoxProps) {
 
   return (
     <Box
-      borderStyle="single"
-      borderColor={disabled ? colors.muted : colors.border}
+      borderStyle="round"
+      borderColor={disabled ? colors.muted : "green"}
       paddingX={1}
       width="100%"
       height={3}
