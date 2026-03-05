@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react"
 import { render, Box, useStdout } from "ink"
 import { MessageList } from "../src/tui/components/messages/MessageList"
-import { StatusBar } from "../src/tui/components/bars/StatusBar"
+import { InputBox } from "../src/tui/components/bars/InputBox"
 import { FooterBar } from "../src/tui/components/bars/FooterBar"
 import type { TuiMessage } from "../src/tui/state/state"
 
@@ -77,8 +77,8 @@ function Demo() {
     return () => { stdout.off("resize", onResize) }
   }, [stdout])
 
-  // Bottom section: StatusBar(1) + InputBox placeholder(3) + FooterBar(1) = 5
-  const bottomHeight = 1 + 3 + 1
+  // Bottom section: InputBox(5) + FooterBar(1) = 6
+  const bottomHeight = 5 + 1
   const messagesHeight = Math.max(1, rows - bottomHeight)
 
   return (
@@ -88,24 +88,16 @@ function Demo() {
         <MessageList messages={mockMessages} />
       </Box>
 
-      {/* Status bar */}
-      <StatusBar
+      {/* Input box with status in top border */}
+      <InputBox
+        onSubmit={() => {}}
+        disabled={true}
         tokensUsed={16800}
         tokenLimit={168000}
         cost={0.56}
         modelName="smart"
         skillCount={1}
       />
-
-      {/* Input box placeholder */}
-      <Box
-        borderStyle="single"
-        borderColor="gray"
-        paddingX={1}
-        width="100%"
-      >
-        {/* Empty input box */}
-      </Box>
 
       {/* Footer bar */}
       <FooterBar running={true} />

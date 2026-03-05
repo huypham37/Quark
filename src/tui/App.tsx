@@ -7,7 +7,6 @@
 import React, { useReducer, useCallback, useState, useEffect } from "react"
 import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink"
 import { MessageList } from "./components/messages/MessageList"
-import { StatusBar } from "./components/bars/StatusBar"
 import { InputBox } from "./components/bars/InputBox"
 import { FooterBar } from "./components/bars/FooterBar"
 import { PermissionPrompt } from "./components/bars/PermissionPrompt"
@@ -102,11 +101,11 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
   )
 
   // Calculate bottom section height:
-  // StatusBar = 1 row, InputBox = 3 rows (border top + content + border bottom),
+  // InputBox = 5 rows (status-top-border + 3 content rows + bottom border),
   // FooterBar = 1 row (always rendered, empty when idle).
   // Error and permission are transient — they shift the layout intentionally
   // to draw attention.
-  let bottomHeight = 1 + 3 + 1 // status + input + footer (always)
+  let bottomHeight = 5 + 1 // input (with status in top border) + footer
   if (state.lastError) bottomHeight += 1
   if (state.permission) bottomHeight += 4
 
@@ -132,8 +131,10 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
         <PermissionPrompt request={state.permission} />
       )}
 
-      {/* Status bar */}
-      <StatusBar
+      {/* Input box with status in top border */}
+      <InputBox
+        onSubmit={handleSubmit}
+        disabled={state.running || !!state.permission}
         tokensUsed={state.status.tokensUsed}
         tokenLimit={state.status.tokenLimit}
         cost={state.status.cost}
@@ -141,13 +142,7 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
         skillCount={state.status.skillCount}
       />
 
-      {/* Input box — pinned at bottom */}
-      <InputBox
-        onSubmit={handleSubmit}
-        disabled={state.running || !!state.permission}
-      />
-
-      {/* Footer bar (only visible when running) */}
+      {/* Footer bar (always rendered, empty when idle) */}
       <FooterBar running={state.running} />
     </Box>
   )
