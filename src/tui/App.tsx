@@ -302,7 +302,7 @@ export function App({ onSubmit, onCancel, onCommand, getSessions, initialSession
             if (selected.id === "sessions" && key.return && getSessions) {
               const sessions = getSessions()
               const sid = state.sessionId
-              const pickerItems: PickerItem[] = sessions.map((s) => ({
+              const pickerItems: PickerItem[] = sessions.slice(0, 5).map((s) => ({
                 id: s.id,
                 label: s.title ?? "(untitled)",
                 detail: new Date(s.timeUpdated).toLocaleString(),
