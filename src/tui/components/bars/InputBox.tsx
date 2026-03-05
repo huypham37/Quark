@@ -52,6 +52,7 @@ export function InputBox({ onSubmit, disabled, placeholder }: InputBoxProps) {
       borderColor={disabled ? colors.muted : colors.border}
       paddingX={1}
       width="100%"
+      height={3}
     >
       <Text>
         {value || (
