@@ -1,10 +1,11 @@
 // App — root TUI component
 //
-// Composes: MessageList + StatusBar + InputBox + FooterBar
-// Manages state via useReducer, subscribes to event bus
+// Fullscreen layout: the app fills the entire terminal.
+// Input/status/footer are pinned at the bottom.
+// Message area fills the remaining space above.
 
-import React, { useReducer, useCallback, useEffect } from "react"
-import { Box, Text, useApp, useInput, useStdin } from "ink"
+import React, { useReducer, useCallback, useState, useEffect } from "react"
+import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink"
 import { MessageList } from "./components/messages/MessageList"
 import { StatusBar } from "./components/bars/StatusBar"
 import { InputBox } from "./components/bars/InputBox"
@@ -36,6 +37,16 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
   })
   const { exit } = useApp()
   const { isRawModeSupported } = useStdin()
+  const { stdout } = useStdout()
+  const [rows, setRows] = useState(stdout?.rows ?? 24)
+
+  // Re-render on terminal resize
+  useEffect(() => {
+    if (!stdout) return
+    const onResize = () => setRows(stdout.rows)
+    stdout.on("resize", onResize)
+    return () => { stdout.off("resize", onResize) }
+  }, [stdout])
 
   // Subscribe to backend events
   useEventBus(state.sessionId, dispatch)
@@ -90,10 +101,23 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
     { isActive: isRawModeSupported },
   )
 
+  // Calculate bottom section height:
+  // StatusBar = 1 row, InputBox = 3 rows (border top + content + border bottom),
+  // FooterBar = 1 row when running, Error = 1 row when present,
+  // Permission = ~4 rows when present
+  let bottomHeight = 1 + 3 // status + input
+  if (state.running) bottomHeight += 1
+  if (state.lastError) bottomHeight += 1
+  if (state.permission) bottomHeight += 4
+
+  const messagesHeight = Math.max(1, rows - bottomHeight)
+
   return (
-    <Box flexDirection="column" height="100%">
-      {/* Message area — takes up all available space */}
-      <MessageList messages={state.messages} />
+    <Box flexDirection="column" height={rows}>
+      {/* Message area — fills remaining space, pinned to top */}
+      <Box height={messagesHeight} flexDirection="column" overflow="hidden">
+        <MessageList messages={state.messages} />
+      </Box>
 
       {/* Error display */}
       {state.lastError && (
@@ -117,7 +141,7 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
         skillCount={state.status.skillCount}
       />
 
-      {/* Input box */}
+      {/* Input box — pinned at bottom */}
       <InputBox
         onSubmit={handleSubmit}
         disabled={state.running || !!state.permission}

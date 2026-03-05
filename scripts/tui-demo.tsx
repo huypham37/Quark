@@ -1,9 +1,10 @@
 // TUI visual demo — renders mock data to verify the layout looks like Amp
 //
+// Fullscreen layout: fills entire terminal, input pinned at bottom.
 // Usage: bun scripts/tui-demo.tsx
 
-import React from "react"
-import { render, Box } from "ink"
+import React, { useState, useEffect } from "react"
+import { render, Box, useStdout } from "ink"
 import { MessageList } from "../src/tui/components/messages/MessageList"
 import { StatusBar } from "../src/tui/components/bars/StatusBar"
 import { FooterBar } from "../src/tui/components/bars/FooterBar"
@@ -65,10 +66,29 @@ Which project would you like me to dive into?`,
 ]
 
 function Demo() {
-  return (
-    <Box flexDirection="column">
-      <MessageList messages={mockMessages} />
+  const { stdout } = useStdout()
+  const [rows, setRows] = useState(stdout?.rows ?? 24)
 
+  // Handle terminal resize
+  useEffect(() => {
+    if (!stdout) return
+    const onResize = () => setRows(stdout.rows)
+    stdout.on("resize", onResize)
+    return () => { stdout.off("resize", onResize) }
+  }, [stdout])
+
+  // Bottom section: StatusBar(1) + InputBox placeholder(3) + FooterBar(1) = 5
+  const bottomHeight = 1 + 3 + 1
+  const messagesHeight = Math.max(1, rows - bottomHeight)
+
+  return (
+    <Box flexDirection="column" height={rows}>
+      {/* Message area — fills remaining space */}
+      <Box height={messagesHeight} flexDirection="column" overflow="hidden">
+        <MessageList messages={mockMessages} />
+      </Box>
+
+      {/* Status bar */}
       <StatusBar
         tokensUsed={16800}
         tokenLimit={168000}
@@ -77,15 +97,17 @@ function Demo() {
         skillCount={1}
       />
 
+      {/* Input box placeholder */}
       <Box
         borderStyle="single"
         borderColor="gray"
         paddingX={1}
         width="100%"
       >
-        {/* Empty input box placeholder */}
+        {/* Empty input box */}
       </Box>
 
+      {/* Footer bar */}
       <FooterBar running={true} />
     </Box>
   )
@@ -95,4 +117,4 @@ const { unmount } = render(<Demo />)
 setTimeout(() => {
   unmount()
   process.exit(0)
-}, 150)
+}, 300)
