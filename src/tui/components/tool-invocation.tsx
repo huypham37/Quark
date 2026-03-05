@@ -1,14 +1,13 @@
+// @jsxImportSource @opentui/solid
 // ToolInvocationBlock — shows a tool being invoked with tree-line connector
 //
-// Matches Amp's style:
+// Matches the style:
 //   · Oracle
-//   └── Explore and analyze the codebase structure under /Users/mac/01-CodeSpace/
-//       to understand the overall architecture...
+//   └── Explore and analyze the codebase structure...
 
-import React from "react"
-import { Box, Text } from "ink"
-import { TreeLine } from "../primitives/TreeLine"
-import { colors } from "../../theme"
+import type { Component } from "solid-js"
+import { TreeLine } from "./tree-line"
+import { colors } from "../theme"
 
 interface ToolInvocationBlockProps {
   tool: string
@@ -28,12 +27,12 @@ function getToolDisplayName(tool: string): string {
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }
 
-export function ToolInvocationBlock({ tool, description }: ToolInvocationBlockProps) {
-  const displayName = getToolDisplayName(tool)
+export const ToolInvocationBlock: Component<ToolInvocationBlockProps> = (props) => {
+  const displayName = getToolDisplayName(props.tool)
 
   return (
     <TreeLine label={displayName} labelColor={colors.text}>
-      <Text dimColor wrap="wrap">{description}</Text>
+      <text dimColor>{props.description}</text>
     </TreeLine>
   )
 }

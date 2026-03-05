@@ -23,6 +23,7 @@ import { list as listTools, resolve as resolveTools } from "../tool/registry"
 import { getModel, createCopilotProvider } from "../provider/provider"
 import { loadToken } from "../provider/copilot-auth"
 import { defaultAgent, type AgentConfig } from "../agent"
+import { getModelId } from "../config/config"
 import type { ToolDef, ToolResult } from "../tool/tool"
 import {
   ask as askPermission,
@@ -73,9 +74,10 @@ export async function prompt(input: {
   bus.emit("loop-start", { sessionId })
   try {
     // Generate a title in the background if session is untitled
+    // Uses the small_model from config — cheap and fast
     const session = getSession(sessionId)
     if (!session.title) {
-      resolveModel(input.model).then((model) => {
+      resolveModel(input.model, "small").then((model) => {
         generateSessionTitle({ sessionId, message: text, model })
       }).catch(() => {
         // Title generation is best-effort — never fail the session
@@ -111,8 +113,8 @@ async function loop(
   agent: AgentConfig,
   modelOpt?: { provider: string; model: string },
 ) {
-  // Build the AI SDK model
-  const model = await resolveModel(modelOpt)
+  // Build the AI SDK model (uses main_model from config)
+  const model = await resolveModel(modelOpt, "main")
 
   let step = 0
   while (true) {
@@ -167,8 +169,16 @@ async function loop(
 
 // ---------------------------------------------------------------------------
 // resolveModel — get the AI SDK LanguageModel
+//
+// kind: "main" (default) uses main_model from config
+//        "small" uses small_model (for lightweight tasks like title generation)
+//
+// If opt.model is explicitly provided, it always wins over config.
 // ---------------------------------------------------------------------------
-export async function resolveModel(opt?: { provider: string; model: string }) {
+export async function resolveModel(
+  opt?: { provider: string; model: string },
+  kind: "main" | "small" = "main",
+) {
   // Validate that a token exists at startup
   const initial = loadToken()
   if (!initial) {
@@ -186,7 +196,9 @@ export async function resolveModel(opt?: { provider: string; model: string }) {
     },
   })
 
-  return getModel(provider, opt?.model)
+  // Explicit override wins, otherwise use config
+  const modelId = opt?.model ?? getModelId(kind)
+  return getModel(provider, modelId)
 }
 
 // ---------------------------------------------------------------------------

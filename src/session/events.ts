@@ -6,7 +6,7 @@
 
 import { EventEmitter } from "events"
 import type { TextPartData, ToolPartData, StepFinishData, MessageRow } from "./message"
-import type { TuiMessage } from "../tui/state/state"
+import type { TuiMessage } from "../tui/state"
 
 // ---- Event types ----
 

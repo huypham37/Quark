@@ -1,2 +1,6 @@
+preload = ["@opentui/solid/preload"]
+conditions = ["browser"]
+
 [test]
 root = "./test/"
+preload = ["./src/tui/preload-solid-browser.ts"]

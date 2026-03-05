@@ -1,0 +1,367 @@
+// Tests for SolidJS state layer — createAppState + dispatch
+//
+// SolidJS stores need a reactive owner (createRoot) to work properly.
+
+import { describe, test, expect } from "bun:test"
+import { createRoot } from "solid-js"
+import { createAppState, dispatch } from "../../src/tui/state"
+import type { TuiMessage, TuiPart } from "../../src/tui/state"
+
+// Helper: run a test inside a SolidJS reactive root
+function withRoot<T>(fn: () => T): T {
+  let result!: T
+  createRoot((dispose) => {
+    result = fn()
+    dispose()
+  })
+  return result
+}
+
+describe("createAppState", () => {
+  test("returns store with correct initial values", () => {
+    withRoot(() => {
+      const { store } = createAppState({
+        sessionId: "s1",
+        modelName: "smart",
+        skillCount: 3,
+      })
+      expect(store.sessionId).toBe("s1")
+      expect(store.messages).toEqual([])
+      expect(store.running).toBe(false)
+      expect(store.status.tokensUsed).toBe(0)
+      expect(store.status.tokenLimit).toBe(168_000)
+      expect(store.status.cost).toBe(0)
+      expect(store.status.modelName).toBe("smart")
+      expect(store.status.skillCount).toBe(3)
+      expect(store.error).toBeUndefined()
+      expect(store.permission).toBeUndefined()
+    })
+  })
+
+  test("accepts null sessionId", () => {
+    withRoot(() => {
+      const { store } = createAppState({
+        sessionId: null,
+        modelName: "smart",
+        skillCount: 0,
+      })
+      expect(store.sessionId).toBeNull()
+    })
+  })
+})
+
+describe("dispatch: session actions", () => {
+  test("set-session updates sessionId", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: null, modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-session", sessionId: "s2" })
+      expect(s.store.sessionId).toBe("s2")
+    })
+  })
+
+  test("reset-session resets state with new sessionId", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+      // Add some state first
+      dispatch(s, { type: "add-user-message", id: "m1", text: "hello" })
+      dispatch(s, { type: "set-running", running: true })
+      dispatch(s, { type: "update-status", partial: { tokensUsed: 500, cost: 0.01 } })
+
+      dispatch(s, { type: "reset-session", sessionId: "s2" })
+      expect(s.store.sessionId).toBe("s2")
+      expect(s.store.messages).toEqual([])
+      expect(s.store.running).toBe(false)
+      expect(s.store.status.tokensUsed).toBe(0)
+      expect(s.store.status.cost).toBe(0)
+      // model and skills preserved
+      expect(s.store.status.modelName).toBe("smart")
+      expect(s.store.status.skillCount).toBe(3)
+    })
+  })
+
+  test("load-session replaces messages and sessionId", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      const msgs: TuiMessage[] = [
+        { id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        { id: "m2", role: "assistant", parts: [{ type: "text", text: "hello" }] },
+      ]
+      dispatch(s, { type: "load-session", sessionId: "s3", messages: msgs })
+      expect(s.store.sessionId).toBe("s3")
+      expect(s.store.messages.length).toBe(2)
+      expect(s.store.messages[0]!.id).toBe("m1")
+      expect(s.store.messages[1]!.id).toBe("m2")
+    })
+  })
+})
+
+describe("dispatch: message lifecycle", () => {
+  test("add-user-message appends a user message", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-user-message", id: "m1", text: "hello world" })
+      expect(s.store.messages.length).toBe(1)
+      expect(s.store.messages[0]!.role).toBe("user")
+      expect(s.store.messages[0]!.parts.length).toBe(1)
+      expect(s.store.messages[0]!.parts[0]!.type).toBe("text")
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("hello world")
+    })
+  })
+
+  test("add-assistant-message appends a streaming assistant message", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      expect(s.store.messages.length).toBe(1)
+      expect(s.store.messages[0]!.role).toBe("assistant")
+      expect(s.store.messages[0]!.parts).toEqual([])
+      expect(s.store.messages[0]!.streaming).toBe(true)
+    })
+  })
+
+  test("assistant-done clears streaming flag", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "assistant-done", messageId: "m1" })
+      expect(s.store.messages[0]!.streaming).toBe(false)
+    })
+  })
+})
+
+describe("dispatch: text streaming", () => {
+  test("text-start adds a streaming text part", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "text-start", messageId: "m1" })
+      expect(s.store.messages[0]!.parts.length).toBe(1)
+      const part = s.store.messages[0]!.parts[0]!
+      expect(part.type).toBe("text")
+      expect((part as any).text).toBe("")
+      expect((part as any).streaming).toBe(true)
+    })
+  })
+
+  test("text-delta updates the last text part", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "text-start", messageId: "m1" })
+      dispatch(s, { type: "text-delta", messageId: "m1", delta: "Hello", text: "Hello" })
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("Hello")
+
+      dispatch(s, { type: "text-delta", messageId: "m1", delta: " world", text: "Hello world" })
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("Hello world")
+    })
+  })
+
+  test("text-delta only updates the matching message", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-user-message", id: "m1", text: "user msg" })
+      dispatch(s, { type: "add-assistant-message", id: "m2" })
+      dispatch(s, { type: "text-start", messageId: "m2" })
+      dispatch(s, { type: "text-delta", messageId: "m2", delta: "hi", text: "hi" })
+
+      // User message unchanged
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("user msg")
+      // Assistant updated
+      expect((s.store.messages[1]!.parts[0] as any).text).toBe("hi")
+    })
+  })
+
+  test("text-end finalizes text part", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "text-start", messageId: "m1" })
+      dispatch(s, { type: "text-delta", messageId: "m1", delta: "done", text: "done" })
+      dispatch(s, { type: "text-end", messageId: "m1", text: "done" })
+
+      const part = s.store.messages[0]!.parts[0] as any
+      expect(part.text).toBe("done")
+      expect(part.streaming).toBe(false)
+    })
+  })
+})
+
+describe("dispatch: tool lifecycle", () => {
+  test("tool-start adds a pending tool part", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "read", callId: "c1" })
+
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.type).toBe("tool")
+      expect(part.tool).toBe("read")
+      expect(part.callId).toBe("c1")
+      expect(part.status).toBe("pending")
+      expect(part.input).toEqual({})
+    })
+  })
+
+  test("tool-input updates tool to running with input", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "read", callId: "c1" })
+      dispatch(s, { type: "tool-input", messageId: "m1", callId: "c1", input: { path: "/foo.ts" } })
+
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("running")
+      expect(part.input).toEqual({ path: "/foo.ts" })
+    })
+  })
+
+  test("tool-end completes tool with output", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "read", callId: "c1" })
+      dispatch(s, { type: "tool-end", messageId: "m1", callId: "c1", status: "completed", output: "file contents" })
+
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("completed")
+      expect(part.output).toBe("file contents")
+    })
+  })
+
+  test("tool-end with error", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "read", callId: "c1" })
+      dispatch(s, { type: "tool-end", messageId: "m1", callId: "c1", status: "error", error: "not found" })
+
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("error")
+      expect(part.error).toBe("not found")
+    })
+  })
+
+  test("tool-input matches by callId across multiple tools", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-assistant-message", id: "m1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "read", callId: "c1" })
+      dispatch(s, { type: "tool-start", messageId: "m1", tool: "write", callId: "c2" })
+      dispatch(s, { type: "tool-input", messageId: "m1", callId: "c2", input: { path: "/bar.ts" } })
+
+      const p0 = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      const p1 = s.store.messages[0]!.parts[1]! as Extract<TuiPart, { type: "tool" }>
+      expect(p0.status).toBe("pending") // c1 unchanged
+      expect(p1.status).toBe("running") // c2 updated
+      expect(p1.input).toEqual({ path: "/bar.ts" })
+    })
+  })
+})
+
+describe("dispatch: running, status, error, permission", () => {
+  test("set-running toggles running flag", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-running", running: true })
+      expect(s.store.running).toBe(true)
+      dispatch(s, { type: "set-running", running: false })
+      expect(s.store.running).toBe(false)
+    })
+  })
+
+  test("update-status merges partial status", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "update-status", partial: { tokensUsed: 1000, cost: 0.05 } })
+      expect(s.store.status.tokensUsed).toBe(1000)
+      expect(s.store.status.cost).toBe(0.05)
+      expect(s.store.status.modelName).toBe("smart") // unchanged
+    })
+  })
+
+  test("set-error sets error and clears running", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-running", running: true })
+      dispatch(s, { type: "set-error", message: "boom" })
+      expect(s.store.error).toBe("boom")
+      expect(s.store.running).toBe(false)
+    })
+  })
+
+  test("clear-error clears error", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-error", message: "boom" })
+      dispatch(s, { type: "clear-error" })
+      expect(s.store.error).toBeUndefined()
+    })
+  })
+
+  test("set-permission stores request and clears running", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-running", running: true })
+      dispatch(s, {
+        type: "set-permission",
+        request: { requestId: "r1", tool: "bash", input: { cmd: "rm -rf" } },
+      })
+      expect(s.store.permission).toEqual({ requestId: "r1", tool: "bash", input: { cmd: "rm -rf" } })
+      expect(s.store.running).toBe(false)
+    })
+  })
+
+  test("clear-permission clears permission", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, {
+        type: "set-permission",
+        request: { requestId: "r1", tool: "bash", input: {} },
+      })
+      dispatch(s, { type: "clear-permission" })
+      expect(s.store.permission).toBeUndefined()
+    })
+  })
+})
+
+describe("dispatch: full streaming lifecycle", () => {
+  test("simulates a complete assistant response with text and tools", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+
+      // User sends message
+      dispatch(s, { type: "add-user-message", id: "u1", text: "fix the bug" })
+
+      // Assistant starts
+      dispatch(s, { type: "add-assistant-message", id: "a1" })
+      dispatch(s, { type: "text-start", messageId: "a1" })
+      dispatch(s, { type: "text-delta", messageId: "a1", delta: "Let me ", text: "Let me " })
+      dispatch(s, { type: "text-delta", messageId: "a1", delta: "check.", text: "Let me check." })
+      dispatch(s, { type: "text-end", messageId: "a1", text: "Let me check." })
+
+      // Tool call
+      dispatch(s, { type: "tool-start", messageId: "a1", tool: "read", callId: "c1" })
+      dispatch(s, { type: "tool-input", messageId: "a1", callId: "c1", input: { path: "src/bug.ts" } })
+      dispatch(s, { type: "tool-end", messageId: "a1", callId: "c1", status: "completed", output: "content" })
+
+      // More text
+      dispatch(s, { type: "text-start", messageId: "a1" })
+      dispatch(s, { type: "text-delta", messageId: "a1", delta: "Fixed!", text: "Fixed!" })
+      dispatch(s, { type: "text-end", messageId: "a1", text: "Fixed!" })
+
+      // Done
+      dispatch(s, { type: "assistant-done", messageId: "a1" })
+
+      expect(s.store.messages.length).toBe(2)
+      const assistant = s.store.messages[1]!
+      expect(assistant.streaming).toBe(false)
+      expect(assistant.parts.length).toBe(3)
+      expect(assistant.parts[0]!.type).toBe("text")
+      expect((assistant.parts[0] as any).text).toBe("Let me check.")
+      expect(assistant.parts[1]!.type).toBe("tool")
+      expect((assistant.parts[1] as any).status).toBe("completed")
+      expect(assistant.parts[2]!.type).toBe("text")
+      expect((assistant.parts[2] as any).text).toBe("Fixed!")
+    })
+  })
+})
