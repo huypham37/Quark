@@ -132,12 +132,17 @@ function handleCommand(command: string, args: string, sessionId: string | null):
   }
 }
 
+function handleGetSessions() {
+  return listSessions()
+}
+
 // Render the TUI with the pre-created session
 render(
   <App
     onSubmit={handleSubmit}
     onCancel={handleCancel}
     onCommand={handleCommand}
+    getSessions={handleGetSessions}
     initialSessionId={currentSession.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}

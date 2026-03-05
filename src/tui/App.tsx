@@ -13,7 +13,7 @@ import { InputBox, type InputKey } from "./components/bars/InputBox"
 import { FooterBar } from "./components/bars/FooterBar"
 import { PermissionPrompt } from "./components/bars/PermissionPrompt"
 import { FileDropdown } from "./components/bars/FileDropdown"
-import { CommandDropdown } from "./components/bars/CommandDropdown"
+import { CommandDropdown, type PickerItem } from "./components/bars/CommandDropdown"
 import { useEventBus } from "./hooks/useEventBus"
 import { useMouseScroll } from "./hooks/useMouseScroll"
 import { initialState, reduce } from "./state/state"
@@ -35,6 +35,8 @@ interface AppProps {
   onCancel: (sessionId: string) => void
   /** Handle slash commands that need backend access (compact, model, clear) */
   onCommand?: (command: string, args: string, sessionId: string | null) => CommandResult | void
+  /** Fetch sessions for the picker — returns list of {id, title, timeUpdated} */
+  getSessions?: () => { id: string; title: string | null; timeUpdated: number }[]
   initialSessionId?: string
   initialModelName?: string
   initialSkillCount?: number
@@ -58,24 +60,30 @@ const MENTION_INACTIVE: MentionState = {
 }
 
 // / slash command state machine
+// mode: "commands" — normal command dropdown
+// mode: "sessions" — session picker (after selecting /sessions)
 interface SlashState {
   active: boolean
+  mode: "commands" | "sessions"
   query: string
   items: SlashCommand[]
+  pickerItems: PickerItem[]
   selectedIndex: number
 }
 
 const SLASH_INACTIVE: SlashState = {
   active: false,
+  mode: "commands",
   query: "",
   items: [],
+  pickerItems: [],
   selectedIndex: 0,
 }
 
 const MAX_DROPDOWN_ITEMS = 15
 const SCROLL_STEP = 3
 
-export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialModelName, initialSkillCount }: AppProps) {
+export function App({ onSubmit, onCancel, onCommand, getSessions, initialSessionId, initialModelName, initialSkillCount }: AppProps) {
   const [state, dispatch] = useReducer(reduce, {
     ...initialState(),
     sessionId: initialSessionId ?? null,
@@ -216,14 +224,22 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
 
     setSlash({
       active: true,
+      mode: "commands",
       query,
       items: filtered,
+      pickerItems: [],
       selectedIndex: 0,
     })
   }, [])
 
   // Handle input value changes
   const handleInputChange = useCallback((newValue: string) => {
+    // When in picker mode (e.g. session picker), ignore input changes
+    // so the picker doesn't get dismissed by typing
+    if (slashRef.current.mode !== "commands" && slashRef.current.active) {
+      return
+    }
+
     setInputValue(newValue)
 
     // Slash and mention are mutually exclusive — slash takes precedence
@@ -238,7 +254,7 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
 
   // Handle key presses from InputBox (for mention/slash navigation)
   const handleKeyPress = useCallback((input: string, key: InputKey) => {
-    // --- Slash command dropdown navigation ---
+    // --- Slash/picker dropdown navigation ---
     const s = slashRef.current
     if (s.active) {
       if (key.upArrow) {
@@ -250,11 +266,12 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
       }
 
       if (key.downArrow) {
+        const totalItems = s.mode === "commands" ? s.items.length : s.pickerItems.length
         setSlash((prev) => {
-          if (prev.items.length === 0) return prev
+          if (totalItems === 0) return prev
           return {
             ...prev,
-            selectedIndex: Math.min(prev.items.length - 1, prev.selectedIndex + 1),
+            selectedIndex: Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
         })
         return
@@ -262,10 +279,48 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
 
       if (key.tab || key.return) {
         const currentSlash = slashRef.current
+
+        // --- Session picker mode: select a session ---
+        if (currentSlash.mode === "sessions") {
+          const selected = currentSlash.pickerItems[currentSlash.selectedIndex]
+          if (selected) {
+            setSlash(SLASH_INACTIVE)
+            setInputValue("")
+            // Switch session via existing command handler
+            if (onCommand) {
+              onCommand("sessions", selected.id, state.sessionId)
+            }
+          }
+          return
+        }
+
+        // --- Command mode: select a command ---
         if (currentSlash.items.length > 0) {
           const selected = currentSlash.items[currentSlash.selectedIndex]
           if (selected) {
-            // Insert the full command and a trailing space
+            // Special case: /sessions transitions to session picker
+            if (selected.id === "sessions" && key.return && getSessions) {
+              const sessions = getSessions()
+              const sid = state.sessionId
+              const pickerItems: PickerItem[] = sessions.map((s) => ({
+                id: s.id,
+                label: s.title ?? "(untitled)",
+                detail: new Date(s.timeUpdated).toLocaleString(),
+                isCurrent: s.id === sid,
+              }))
+              setSlash({
+                active: true,
+                mode: "sessions",
+                query: "",
+                items: [],
+                pickerItems,
+                selectedIndex: 0,
+              })
+              setInputValue("")
+              return
+            }
+
+            // Normal command: insert the full command + space
             const newValue = `/${selected.id} `
             setInputValue(newValue)
             setSlash(SLASH_INACTIVE)
@@ -276,6 +331,7 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
 
       if (key.escape) {
         setSlash(SLASH_INACTIVE)
+        setInputValue("")
         return
       }
       return
@@ -323,7 +379,7 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
       setMention(MENTION_INACTIVE)
       return
     }
-  }, [])
+  }, [onCommand, getSessions, state.sessionId])
 
   // Execute a slash command
   const executeCommand = useCallback((commandId: string, args: string) => {
@@ -463,7 +519,9 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
   const dropdownHeight = mention.active
     ? Math.max(1, mention.items.length)
     : slash.active
-      ? Math.max(1, slash.items.length)
+      ? slash.mode === "sessions"
+        ? Math.max(1, slash.pickerItems.length + 1) // +1 for header row
+        : Math.max(1, slash.items.length)
       : 0
   bottomHeight += dropdownHeight
 
@@ -500,10 +558,12 @@ export function App({ onSubmit, onCancel, onCommand, initialSessionId, initialMo
         />
       )}
 
-      {/* Slash command dropdown (renders above input) */}
+      {/* Slash command / picker dropdown (renders above input) */}
       {slash.active && (
         <CommandDropdown
+          mode={slash.mode}
           items={slash.items}
+          pickerItems={slash.pickerItems}
           selectedIndex={slash.selectedIndex}
           query={slash.query}
         />
