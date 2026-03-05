@@ -84,6 +84,7 @@ const SLASH_INACTIVE: SlashState = {
   selectedIndex: 0,
 }
 
+const MAX_FILE_ITEMS = 5
 const MAX_DROPDOWN_ITEMS = 15
 const SCROLL_STEP = 3
 
@@ -149,7 +150,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     const files = await ensureFilesLoaded()
-    const filtered = fuzzyFilter(files, query, MAX_DROPDOWN_ITEMS)
+    const filtered = fuzzyFilter(files, query, MAX_FILE_ITEMS)
 
     setMention({
       active: true,
