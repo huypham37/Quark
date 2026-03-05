@@ -60,6 +60,10 @@ function formatPercent(used: number, limit: number): string {
   return `${Math.round((used / limit) * 100)}%`
 }
 
+// SGR mouse sequences arrive with leading ESC stripped by Ink, e.g. "[<64;90;20M".
+// We must reject them so they don't get typed into the input field.
+const SGR_MOUSE_INPUT_RE = /\[<\d+;\d+;\d+[Mm]/
+
 export function InputBox({
   value,
   onChange,
@@ -79,6 +83,9 @@ export function InputBox({
   useInput(
     (input, key) => {
       if (disabled) return
+
+      // Drop SGR mouse escape sequences — they're handled by useMouseScroll
+      if (SGR_MOUSE_INPUT_RE.test(input)) return
 
       // Forward key press to parent for @ mention handling
       if (onKeyPress) {

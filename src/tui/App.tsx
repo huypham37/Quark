@@ -250,6 +250,9 @@ export function App({ onSubmit, onCancel, initialSessionId, initialModelName, in
   // Global key handler: Esc to cancel, Ctrl+C to exit, arrow keys to scroll, permission keys
   useInput(
     (input, key) => {
+      // Drop SGR mouse escape sequences — handled by useMouseScroll
+      if (/\[<\d+;\d+;\d+[Mm]/.test(input)) return
+
       // Permission mode: intercept a/o/r keys
       if (state.permission) {
         const lower = input.toLowerCase()
