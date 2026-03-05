@@ -54,6 +54,7 @@ export function initialState(): TuiState {
 
 export type TuiAction =
   | { type: "set-session"; sessionId: string }
+  | { type: "reset-session"; sessionId: string }
   | { type: "add-user-message"; id: string; text: string }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
@@ -76,6 +77,13 @@ export function reduce(state: TuiState, action: TuiAction): TuiState {
   switch (action.type) {
     case "set-session":
       return { ...state, sessionId: action.sessionId }
+
+    case "reset-session":
+      return {
+        ...initialState(),
+        sessionId: action.sessionId,
+        status: { ...state.status, tokensUsed: 0, cost: 0 },
+      }
 
     case "add-user-message":
       return {

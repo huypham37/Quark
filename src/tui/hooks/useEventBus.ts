@@ -104,6 +104,15 @@ export function useEventBus(
       }
     }))
 
+    // session-reset is special: it carries a NEW sessionId, so we can't
+    // use the sessionId filter. Listen unfiltered.
+    const handleSessionReset = (data: BusEvents["session-reset"]) => {
+      totalTokensRef.current = 0
+      dispatch({ type: "reset-session", sessionId: data.sessionId })
+    }
+    bus.on("session-reset", handleSessionReset)
+    unsubs.push(() => bus.off("session-reset", handleSessionReset))
+
     return () => {
       for (const unsub of unsubs) unsub()
     }

@@ -157,7 +157,7 @@ async function loop(
 // ---------------------------------------------------------------------------
 // resolveModel — get the AI SDK LanguageModel
 // ---------------------------------------------------------------------------
-async function resolveModel(opt?: { provider: string; model: string }) {
+export async function resolveModel(opt?: { provider: string; model: string }) {
   // Validate that a token exists at startup
   const initial = loadToken()
   if (!initial) {

@@ -42,6 +42,9 @@ export interface BusEvents {
 
   // Error
   "error": { sessionId: string; error: unknown }
+
+  // Session was reset (e.g. /clear command — TUI should switch to new session)
+  "session-reset": { sessionId: string }
 }
 
 export type BusEventName = keyof BusEvents

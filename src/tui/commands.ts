@@ -1,0 +1,33 @@
+// commands — slash command registry for the TUI
+//
+// Each command has an id (typed without /), a description, and
+// optional argument hints. Commands are filtered by fuzzy prefix
+// matching against the query (text after /).
+
+export interface SlashCommand {
+  id: string
+  description: string
+  /** Short usage hint shown after the command name, e.g. "<provider:model>" */
+  usage?: string
+}
+
+/** All available slash commands */
+export const commands: SlashCommand[] = [
+  { id: "help", description: "Show available commands" },
+  { id: "compact", description: "Compact conversation context" },
+  { id: "clear", description: "Clear messages and start new session" },
+  { id: "model", description: "Switch model", usage: "<model-name>" },
+  { id: "exit", description: "Exit Atom" },
+]
+
+/**
+ * Filter commands by prefix match against query.
+ * Returns up to `limit` matching commands.
+ */
+export function filterCommands(query: string, limit = 15): SlashCommand[] {
+  if (!query) return commands.slice(0, limit)
+  const lower = query.toLowerCase()
+  return commands
+    .filter((cmd) => cmd.id.toLowerCase().startsWith(lower))
+    .slice(0, limit)
+}
