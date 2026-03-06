@@ -62,6 +62,11 @@ export function wireEvents(state: AppState) {
 
     unsubs.push(on("assistant-message-end", (data) => {
       dispatch(state, { type: "assistant-done", messageId: data.messageId })
+      // Unlock input as soon as the final message ends (don't wait for loop-end
+      // which may be delayed by compaction / DB writes)
+      if (data.finish === "stop" || data.finish === "length") {
+        dispatch(state, { type: "set-running", running: false })
+      }
     }))
 
     unsubs.push(on("loop-start", () => {
