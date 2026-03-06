@@ -40,8 +40,8 @@ export const colors = {
   // Footer
   footerKey: RGBA.fromHex("#00d75f"),  // "Esc" highlighted
 
-  // Dropdown / autocomplete overlay
-  dropdownBg: RGBA.fromHex("#1a1a2e"),       // dark bg for dropdown menus
+  // Dropdown / autocomplete overlay — updated at runtime by setTerminalBg()
+  dropdownBg: RGBA.fromHex("#1a1a2e") as RGBA,
 
   // Scrollbar
   scrollbarTrack: RGBA.fromHex("#3a3a3a"),   // dark gray track
@@ -55,6 +55,11 @@ export type ColorName = keyof typeof colors
 
 // Re-export ColorInput for components that accept color props
 export type { ColorInput }
+
+/** Set the dropdown background to match the detected terminal background */
+export function setTerminalBg(bg: RGBA): void {
+  ;(colors as { dropdownBg: RGBA }).dropdownBg = bg
+}
 
 // Unicode icons used in the TUI
 export const icons = {

@@ -15,6 +15,12 @@ import { defaultAgent } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
 import { loadConfig } from "../config/config"
+import { queryTerminalBackground } from "./terminal-bg"
+import { setTerminalBg } from "./theme"
+
+// Detect terminal background BEFORE the TUI takes over stdin/stdout
+const termBg = await queryTerminalBackground()
+setTerminalBg(termBg)
 
 // Initialize the backend (DB + tools)
 bootstrap()

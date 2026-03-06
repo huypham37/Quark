@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { RGBA } from "@opentui/core"
-import { colors } from "../../src/tui/theme"
+import { colors, setTerminalBg } from "../../src/tui/theme"
 
 describe("autocomplete dropdown background", () => {
   test("theme has a dropdownBg color defined", () => {
@@ -13,19 +13,26 @@ describe("autocomplete dropdown background", () => {
   })
 
   test("dropdownBg is a fully opaque color", () => {
-    // The background must be fully opaque to prevent text bleed-through
     const bg = colors.dropdownBg
-    // RGBA uses 0–1 float range
     expect(bg.a).toBe(1)
   })
 
-  test("dropdownBg is a dark color suitable for a dark terminal theme", () => {
-    // The dropdown bg should be dark (close to the terminal background)
-    // but slightly distinct so it's visible as an overlay
+  test("default dropdownBg is a dark color", () => {
     const bg = colors.dropdownBg
-    // RGBA uses 0–1 float range; dark means values under ~0.3
     expect(bg.r).toBeLessThan(0.3)
     expect(bg.g).toBeLessThan(0.3)
     expect(bg.b).toBeLessThan(0.3)
+  })
+
+  test("setTerminalBg updates dropdownBg to match detected terminal color", () => {
+    const detected = RGBA.fromHex("#2b2b3c")
+    setTerminalBg(detected)
+    expect(colors.dropdownBg).toBe(detected)
+  })
+
+  test("setTerminalBg updated color is fully opaque", () => {
+    const detected = RGBA.fromHex("#1c1c1c")
+    setTerminalBg(detected)
+    expect(colors.dropdownBg.a).toBe(1)
   })
 })
