@@ -71,7 +71,7 @@ export const Prompt: Component<PromptProps> = (props) => {
   }
 
   return (
-    <box flexDirection="column">
+    <box flexDirection="column" flexShrink={0}>
       {/* Status line — single row, flex-based filler */}
       <box flexDirection="row" height={1} overflow="hidden">
         <text fg={borderColor()} flexShrink={0}>╭── </text>

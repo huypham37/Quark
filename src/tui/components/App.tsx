@@ -574,6 +574,9 @@ export const App: Component<AppProps> = (props) => {
         stickyScroll={true}
         stickyStart="bottom"
         flexGrow={1}
+        flexBasis={0}
+        minHeight={0}
+        overflow="hidden"
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{
           trackOptions: {
