@@ -77,10 +77,13 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "set-running", running: false })
     }))
 
+    let errorTimer: ReturnType<typeof setTimeout> | undefined
     unsubs.push(on("error", (data) => {
       const err = data.error
       const message = err instanceof Error ? err.message : String(err)
       dispatch(state, { type: "set-error", message })
+      if (errorTimer) clearTimeout(errorTimer)
+      errorTimer = setTimeout(() => dispatch(state, { type: "clear-error" }), 5_000)
     }))
 
     unsubs.push(on("permission-request", (data) => {

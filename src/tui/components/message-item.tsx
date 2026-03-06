@@ -73,7 +73,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
       </Match>
 
       <Match when={props.part.type === "tool"}>
-        <box>
+        <box marginBottom={1}>
           <ToolResultLine
             tool={(props.part as Extract<TuiPart, { type: "tool" }>).tool}
             input={(props.part as Extract<TuiPart, { type: "tool" }>).input}
