@@ -30,7 +30,7 @@ let currentSession = createSession()
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
-const modelName = defaultAgent.id
+const modelName = loadConfig().main_model
 
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null

@@ -306,6 +306,7 @@ export const App: Component<AppProps> = (props) => {
             if (props.onCommand) {
               props.onCommand("model", selected.id, state.store.sessionId)
             }
+            state.setStore("status", "modelName", selected.id)
           }
           return true
         }

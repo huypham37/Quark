@@ -10,6 +10,14 @@ import type { Component } from "solid-js"
 import { Show } from "solid-js"
 import type { InputRenderable } from "@opentui/core"
 import { colors } from "../theme"
+import { RGBA } from "@opentui/core"
+
+function modelColor(name: string): RGBA {
+  if (name.startsWith("claude")) return RGBA.fromHex("#d4a574") // warm orange for Anthropic
+  if (name.startsWith("gemini")) return RGBA.fromHex("#4285f4") // blue for Google
+  if (name.startsWith("o1") || name.startsWith("o3") || name.startsWith("o4")) return RGBA.fromHex("#10a37f") // green for OpenAI reasoning
+  return RGBA.fromHex("#10a37f") // green for OpenAI (gpt-*)
+}
 
 export interface PromptProps {
   /** Callback when user submits (Enter key) — receives trimmed text */
@@ -48,10 +56,10 @@ export const Prompt: Component<PromptProps> = (props) => {
     return `${formatPercent(used, limit)} of ${formatTokens(limit)} · $${cost.toFixed(2)} (free)`
   }
 
-  const rightStatus = () => {
-    const model = props.modelName ?? "smart"
+  const modelName = () => props.modelName ?? "smart"
+  const skillsText = () => {
     const skills = props.skillCount ?? 0
-    return `${model}─${skills} skill${skills !== 1 ? "s" : ""}`
+    return `${skills} skill${skills !== 1 ? "s" : ""}`
   }
 
   const borderColor = () => props.disabled ? colors.muted : colors.success
@@ -77,7 +85,8 @@ export const Prompt: Component<PromptProps> = (props) => {
         <text fg={borderColor()} flexShrink={0}>╭── </text>
         <text fg={colors.statusLine} flexShrink={0}>{leftStatus()}</text>
         <text fg={borderColor()} flexGrow={1} flexShrink={1} overflow="hidden" wrapMode="none">{" " + "─".repeat(300) + " "}</text>
-        <text fg={colors.statusLine} flexShrink={0}>{rightStatus()}</text>
+        <text fg={modelColor(modelName())} flexShrink={0}>{modelName()}</text>
+        <text fg={colors.statusLine} flexShrink={0}>─{skillsText()}</text>
         <text fg={borderColor()} flexShrink={0}> ──╮</text>
       </box>
 
