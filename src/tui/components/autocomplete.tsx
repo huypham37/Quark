@@ -28,9 +28,9 @@ export interface AutocompleteProps {
   mode: AutocompleteMode | null
 }
 
-// Height of Prompt (status line 1 + input box minHeight 3) + FooterBar (1)
+// Height of Prompt (status line 1 + input box minHeight 4) + FooterBar (1)
 // Used to anchor the absolutely-positioned dropdown above the prompt.
-const BOTTOM_OFFSET = 5
+const BOTTOM_OFFSET = 6
 
 export const Autocomplete: Component<AutocompleteProps> = (props) => {
   // Absolutely positioned overlay — does NOT participate in flex flow,

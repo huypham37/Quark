@@ -41,7 +41,7 @@ export const colors = {
   footerKey: RGBA.fromHex("#00d75f"),  // "Esc" highlighted
 
   // Dropdown / autocomplete overlay — updated at runtime by setTerminalBg()
-  dropdownBg: RGBA.fromHex("#1a1a2e") as RGBA,
+  dropdownBg: RGBA.fromHex("#61AFEF") as RGBA,
 
   // Scrollbar
   scrollbarTrack: RGBA.fromHex("#3a3a3a"),   // dark gray track

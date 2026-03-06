@@ -88,7 +88,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         borderColor={borderColor()}
         border={["left", "right", "bottom"]}
         paddingX={1}
-        minHeight={3}
+        minHeight={4}
       >
         <Show
           when={!props.disabled}

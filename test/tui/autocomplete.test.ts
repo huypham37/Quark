@@ -17,11 +17,12 @@ describe("autocomplete dropdown background", () => {
     expect(bg.a).toBe(1)
   })
 
-  test("default dropdownBg is a dark color", () => {
-    const bg = colors.dropdownBg
-    expect(bg.r).toBeLessThan(0.3)
-    expect(bg.g).toBeLessThan(0.3)
-    expect(bg.b).toBeLessThan(0.3)
+  test("default dropdownBg matches #61AFEF", () => {
+    const expected = RGBA.fromHex("#61AFEF")
+    // Compare before setTerminalBg overrides it
+    expect(colors.dropdownBg.r).toBeCloseTo(expected.r, 2)
+    expect(colors.dropdownBg.g).toBeCloseTo(expected.g, 2)
+    expect(colors.dropdownBg.b).toBeCloseTo(expected.b, 2)
   })
 
   test("setTerminalBg updates dropdownBg to match detected terminal color", () => {
