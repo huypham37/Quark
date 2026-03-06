@@ -6,6 +6,7 @@
 
 import type { Component } from "solid-js"
 import { For } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
@@ -56,6 +57,7 @@ interface DropdownRow {
  * (created by <Show>) which cause Yoga height miscalculation and row overlap.
  */
 const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props) => {
+  const dims = useTerminalDimensions()
   const m = () => props.mode
 
   const rows = (): DropdownRow[] => {
@@ -135,13 +137,22 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       bottom={BOTTOM_OFFSET}
       left={0}
       right={0}
+      bg={rows().length > 0 ? colors.dropdownBg : undefined}
     >
       <For each={rows()}>
-        {(row) => (
-          <box height={1}>
-            <text fg={row.fg} bold={row.bold}>{row.label}</text>
-          </box>
-        )}
+        {(row) => {
+          // Pad label with spaces to fill the full row width so bg covers all cells.
+          // Outer box has paddingX={2} (App) + paddingX={1} (this box) = 6 cols used.
+          const padded = () => {
+            const w = dims().width - 6
+            return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
+          }
+          return (
+            <box height={1} bg={colors.dropdownBg}>
+              <text fg={row.fg} bg={colors.dropdownBg} bold={row.bold}>{padded()}</text>
+            </box>
+          )
+        }}
       </For>
     </box>
   )
