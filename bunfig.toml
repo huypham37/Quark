@@ -1,4 +1,3 @@
-preload = ["@opentui/solid/preload"]
 conditions = ["browser"]
 
 [test]
