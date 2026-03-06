@@ -9,6 +9,7 @@
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
 import { colors } from "../theme"
+import { RGBA } from "@opentui/core"
 
 interface ToolResultLineProps {
   tool: string
@@ -51,28 +52,28 @@ function getToolDisplayName(tool: string): string {
 
 export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
   const displayName = getToolDisplayName(props.tool)
-  const label = getToolLabel(props.tool, props.input)
-  const isPending = props.status === "pending" || props.status === "running"
-  const isError = props.status === "error"
+  const label = () => getToolLabel(props.tool, props.input)
+  const isPending = () => props.status === "pending" || props.status === "running"
+  const isError = () => props.status === "error"
 
   return (
     <box flexDirection="row">
       <Show
-        when={!isPending}
+        when={!isPending()}
         fallback={<text fg={colors.muted}>… </text>}
       >
         <Show
-          when={!isError}
+          when={!isError()}
           fallback={<text fg={colors.error}>✗</text>}
         >
-          <text fg={colors.success}>✓</text>
+          <text fg={RGBA.fromHex("#98C379")}>✓</text>
         </Show>
         <text> </text>
       </Show>
       <text bold>{displayName}</text>
-      <Show when={label}>
+      <Show when={label()}>
         <text> </text>
-        <text fg={colors.toolPath} underline>{label}</text>
+        <text fg={RGBA.fromHex("#365A61")} underline>{label()}</text>
       </Show>
       <Show when={props.error}>
         <text> </text>
