@@ -2,13 +2,14 @@
 // FooterBar — bottom bar showing running status, git branch, and working directory
 //
 // Always renders 1 row to keep layout stable (no height jumps).
-// When running: "~ Streaming response...    Esc to cancel"
+// When running: "⠋ Streaming      Esc to cancel"  (animated braille spinner)
 // When idle: empty line
 // Right side shows git branch (if in a repo) and abbreviated cwd path.
 
 import type { Component } from "solid-js"
-import { Show, createSignal } from "solid-js"
+import { Show, createSignal, createEffect, onCleanup } from "solid-js"
 import { colors } from "../theme"
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../spinner"
 
 export interface FooterBarProps {
   running: boolean
@@ -40,6 +41,21 @@ function getGitBranch(): string {
 export const FooterBar: Component<FooterBarProps> = (props) => {
   const cwd = abbreviatePath(process.cwd())
   const [branch] = createSignal(getGitBranch())
+  const [frameIndex, setFrameIndex] = createSignal(0)
+
+  // Animate spinner when running
+  createEffect(() => {
+    if (!props.running) {
+      setFrameIndex(0)
+      return
+    }
+    const id = setInterval(() => {
+      setFrameIndex((i) => (i + 1) % SPINNER_FRAMES.length)
+    }, SPINNER_INTERVAL_MS)
+    onCleanup(() => clearInterval(id))
+  })
+
+  const spinnerChar = () => SPINNER_FRAMES[frameIndex()]
 
   return (
     <box flexDirection="row" justifyContent="space-between" height={1}>
@@ -48,11 +64,11 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
         fallback={<text> </text>}
       >
         <box flexDirection="row">
-          <text fg={colors.muted}>~ </text>
-          <text>Streaming response...</text>
-          <text>    </text>
+          <text fg={colors.primary} bold>{spinnerChar()} </text>
+          <text>Streaming</text>
+          <text>      </text>
           <text fg={colors.footerKey} bold>Esc</text>
-          <text> to cancel</text>
+          <text fg={colors.muted}> to cancel</text>
         </box>
       </Show>
       <box flexDirection="row">
