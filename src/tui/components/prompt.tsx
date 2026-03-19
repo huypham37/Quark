@@ -53,7 +53,7 @@ export const Prompt: Component<PromptProps> = (props) => {
     const used = props.tokensUsed ?? 0
     const limit = props.tokenLimit ?? 168000
     const cost = props.cost ?? 0
-    return `${formatPercent(used, limit)} of ${formatTokens(limit)} · $${cost.toFixed(2)} (free)`
+    return `${formatPercent(used, limit)} of ${formatTokens(limit)}`
   }
 
   const modelName = () => props.modelName ?? "smart"
@@ -86,7 +86,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         <text fg={colors.statusLine} flexShrink={0}>{leftStatus()}</text>
         <text fg={borderColor()} flexGrow={1} flexShrink={1} overflow="hidden" wrapMode="none">{" " + "─".repeat(300) + " "}</text>
         <text fg={modelColor(modelName())} flexShrink={0}>{modelName()}</text>
-        <text fg={colors.statusLine} flexShrink={0}>─{skillsText()}</text>
+        <text fg={borderColor()} flexShrink={0}>─</text>
         <text fg={borderColor()} flexShrink={0}> ──╮</text>
       </box>
 
