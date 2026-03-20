@@ -20,3 +20,12 @@ export {
   type Action,
   type Reply,
 } from "./permission/permission"
+export { defaultAgent, agentFromProfile, type AgentConfig } from "./agent"
+export {
+  resolveProfile,
+  readPromptFile,
+  listProfiles,
+  resetProfileCache,
+  type ProfileDef,
+  type ProfileConfig,
+} from "./profile/profile"
