@@ -1,20 +1,19 @@
-// Config loader — reads ~/.config/atom/config.json
+// Config loader — reads ~/.config/atom/config.yaml
 //
-// Schema:
-//   {
-//     "models":      ["gpt-4o", "claude-sonnet-4", ...], // user's curated favorite models (shown in /model picker)
-//     "small_model": "gpt-4o-mini",                        // lightweight tasks (title generation, etc.)
-//     "main_model":  "gpt-4o"                              // main agent loop
-//   }
+// Model-related keys live alongside profile config in the same YAML file:
+//   models:      [claude-sonnet-4.5, gpt-4o, ...]  # user's curated favorites (shown in /model picker)
+//   small_model: gpt-4o-mini                         # lightweight tasks (title generation, etc.)
+//   main_model:  claude-sonnet-4.5                   # main agent loop
 //
 // Missing file or fields fall back to sensible defaults.
 
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 
 const CONFIG_DIR = path.join(os.homedir(), ".config", "atom")
-const CONFIG_FILE = path.join(CONFIG_DIR, "config.json")
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
 
 const DEFAULTS = {
   models: [
@@ -27,16 +26,30 @@ const DEFAULTS = {
   ] as readonly string[],
   small_model: "gpt-4o-mini",
   main_model: "gpt-4o",
+  max_steps: 100,
+  context_limit_tokens: 100_000,
 } as const
 
 export interface AtomConfig {
   models: string[]
   small_model: string
   main_model: string
+  max_steps: number
+  context_limit_tokens: number
 }
 
 // Cached config — loaded once, reused thereafter
 let cached: AtomConfig | null = null
+
+function readRawConfig(): Record<string, unknown> {
+  try {
+    const content = fs.readFileSync(CONFIG_FILE, "utf-8")
+    const raw = parseYAML(content) as Record<string, unknown>
+    return raw && typeof raw === "object" ? raw : {}
+  } catch {
+    return {}
+  }
+}
 
 /**
  * Load config from disk. Returns defaults for any missing or invalid fields.
@@ -45,13 +58,7 @@ let cached: AtomConfig | null = null
 export function loadConfig(): AtomConfig {
   if (cached) return cached
 
-  let raw: Record<string, unknown> = {}
-  try {
-    const content = fs.readFileSync(CONFIG_FILE, "utf-8")
-    raw = JSON.parse(content) as Record<string, unknown>
-  } catch {
-    // File missing or invalid JSON — use all defaults
-  }
+  const raw = readRawConfig()
 
   cached = {
     models:
@@ -66,6 +73,10 @@ export function loadConfig(): AtomConfig {
       typeof raw.main_model === "string" && raw.main_model
         ? raw.main_model
         : DEFAULTS.main_model,
+    max_steps:
+      typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
+    context_limit_tokens:
+      typeof raw.context_limit_tokens === "number" ? raw.context_limit_tokens : DEFAULTS.context_limit_tokens,
   }
 
   return cached
@@ -87,18 +98,11 @@ export function setConfigField<K extends keyof AtomConfig>(
   key: K,
   value: AtomConfig[K],
 ): void {
-  // Read existing file (may have extra fields we don't know about)
-  let raw: Record<string, unknown> = {}
-  try {
-    const content = fs.readFileSync(CONFIG_FILE, "utf-8")
-    raw = JSON.parse(content) as Record<string, unknown>
-  } catch {
-    // Start fresh
-  }
+  const raw = readRawConfig()
 
   raw[key] = value
   fs.mkdirSync(CONFIG_DIR, { recursive: true })
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(raw, null, 2), "utf-8")
+  fs.writeFileSync(CONFIG_FILE, stringifyYAML(raw), "utf-8")
 
   // Invalidate cache so next read picks up the change
   cached = null

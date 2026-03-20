@@ -32,7 +32,6 @@ describe("resolveProfile", () => {
     expect(profile.tools).toContain("bash")
     expect(profile.tools).toContain("skill")
     expect(profile.skills).toEqual([])
-    expect(profile.maxSteps).toBe(100)
   })
 
   test("falls back to coder when unknown profile requested", () => {
@@ -115,7 +114,6 @@ describe("agentFromProfile", () => {
     expect(agent.prompt).toContain("coding assistant")
     expect(agent.tools).toEqual(profile.tools)
     expect(agent.skills).toEqual(profile.skills)
-    expect(agent.maxSteps).toBe(profile.maxSteps)
   })
 
   test("preserves custom skills and tools from profile", () => {
@@ -134,13 +132,13 @@ describe("agentFromProfile", () => {
     expect(agent.skills).toEqual(["academic-research"])
   })
 
-  test("preserves contextLimitTokens from profile", () => {
+  test("copies all profile fields to agent", () => {
     const profile = {
       ...BUILTIN_CODER,
-      contextLimitTokens: 200_000,
+      skills: ["test-skill"],
     }
     const agent = agentFromProfile(profile, "test")
-    expect(agent.contextLimitTokens).toBe(200_000)
+    expect(agent.skills).toEqual(["test-skill"])
   })
 })
 
@@ -187,8 +185,6 @@ describe("parseProfilesFromYAML", () => {
           prompt_file: "profiles/researcher.md",
           tools: ["websearch", "webfetch", "write"],
           skills: ["academic-research", "competitive-intel"],
-          max_steps: 50,
-          context_limit_tokens: 200_000,
         },
       },
     }
@@ -200,8 +196,6 @@ describe("parseProfilesFromYAML", () => {
     expect(profiles.researcher.promptFile).toBe("/home/user/.atom/profiles/researcher.md")
     expect(profiles.researcher.tools).toEqual(["websearch", "webfetch", "write"])
     expect(profiles.researcher.skills).toEqual(["academic-research", "competitive-intel"])
-    expect(profiles.researcher.maxSteps).toBe(50)
-    expect(profiles.researcher.contextLimitTokens).toBe(200_000)
   })
 
   test("parses multiple profiles", () => {
@@ -264,7 +258,7 @@ describe("parseProfilesFromYAML", () => {
     expect(profiles.noskills.skills).toEqual([])
   })
 
-  test("defaults maxSteps and contextLimitTokens when not specified", () => {
+  test("profile has no maxSteps or contextLimitTokens fields", () => {
     const raw = {
       profiles: {
         basic: {
@@ -274,8 +268,8 @@ describe("parseProfilesFromYAML", () => {
     }
 
     const profiles = parseProfilesFromYAML(raw, "/tmp")
-    expect(profiles.basic.maxSteps).toBe(BUILTIN_CODER.maxSteps)
-    expect(profiles.basic.contextLimitTokens).toBe(BUILTIN_CODER.contextLimitTokens)
+    expect(profiles.basic).not.toHaveProperty("maxSteps")
+    expect(profiles.basic).not.toHaveProperty("contextLimitTokens")
   })
 
   test("resolves relative prompt_file paths against configDir", () => {
@@ -439,5 +433,283 @@ describe("parseProjectOverrides", () => {
     const result = parseProjectOverrides(raw as any, "coder")
     expect(result.skillsAdd).toEqual([])
     expect(result.toolsAdd).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// profileSkills — filtering skills by profile binding
+// ---------------------------------------------------------------------------
+
+describe("profileSkills", () => {
+  const { profileSkills, discoverSkills, clearCache } = require("../../src/skill/skill")
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "atom-profileskills-test-"))
+    clearCache()
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    clearCache()
+  })
+
+  function writeSkill(dir: string, name: string, description: string, content: string) {
+    const skillDir = path.join(dir, name)
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      `---\nname: ${name}\ndescription: ${description}\n---\n${content}`,
+    )
+  }
+
+  test("returns empty array when no skill names given", () => {
+    writeSkill(tmpDir, "alpha", "Alpha", "alpha content")
+    discoverSkills([tmpDir])
+    const result = profileSkills([])
+    expect(result).toEqual([])
+  })
+
+  test("filters to only profile-bound skill names", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    writeSkill(tmpDir, "beta", "Beta skill", "beta content")
+    writeSkill(tmpDir, "gamma", "Gamma skill", "gamma content")
+    discoverSkills([tmpDir])
+
+    const result = profileSkills(["alpha", "gamma"])
+    expect(result).toHaveLength(2)
+    const names = result.map((s: any) => s.name).sort()
+    expect(names).toEqual(["alpha", "gamma"])
+  })
+
+  test("ignores skill names that don't exist", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    discoverSkills([tmpDir])
+
+    const result = profileSkills(["alpha", "nonexistent"])
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe("alpha")
+  })
+
+  test("returns empty when no matching skills found", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    discoverSkills([tmpDir])
+
+    const result = profileSkills(["nonexistent"])
+    expect(result).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildSkillTool — profile-filtered skill tool
+// ---------------------------------------------------------------------------
+
+describe("buildSkillTool", () => {
+  const { clearCache, discoverSkills } = require("../../src/skill/skill")
+  const { buildSkillTool } = require("../../src/tool/skill")
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "atom-skilltool-test-"))
+    clearCache()
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    clearCache()
+  })
+
+  function writeSkill(dir: string, name: string, description: string, content: string) {
+    const skillDir = path.join(dir, name)
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      `---\nname: ${name}\ndescription: ${description}\n---\n${content}`,
+    )
+  }
+
+  test("no boundSkills — description lists all discovered skills", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    writeSkill(tmpDir, "beta", "Beta skill", "beta content")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool()
+    expect(tool.description).toContain("alpha")
+    expect(tool.description).toContain("beta")
+  })
+
+  test("boundSkills filters description to only bound skills", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    writeSkill(tmpDir, "beta", "Beta skill", "beta content")
+    writeSkill(tmpDir, "gamma", "Gamma skill", "gamma content")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool(["alpha", "gamma"])
+    expect(tool.description).toContain("alpha")
+    expect(tool.description).toContain("gamma")
+    expect(tool.description).not.toContain("beta")
+  })
+
+  test("empty boundSkills array shows all skills", () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool([])
+    // Empty array means no profile binding — falls through to discoverSkills
+    expect(tool.description).toContain("alpha")
+  })
+
+  test("description shows 'no skills available' when none match", () => {
+    discoverSkills([tmpDir]) // empty dir
+
+    const tool = buildSkillTool(["nonexistent"])
+    expect(tool.description).toContain("No skills are currently available")
+  })
+
+  test("execute loads a skill by name", async () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "Do alpha things.")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool()
+    const ctx = { sessionId: "s1", messageId: "m1", abort: new AbortController().signal, messages: [], ask: async () => {} }
+    const result = await tool.execute({ name: "alpha" }, ctx)
+    expect(result.title).toBe("Loaded skill: alpha")
+    expect(result.output).toContain("Do alpha things.")
+    expect(result.output).toContain('<skill_content name="alpha">')
+    expect(result.metadata.name).toBe("alpha")
+  })
+
+  test("execute throws for non-existent skill", async () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "content")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool(["alpha"])
+    const ctx = { sessionId: "s1", messageId: "m1", abort: new AbortController().signal, messages: [], ask: async () => {} }
+
+    await expect(tool.execute({ name: "nonexistent" }, ctx)).rejects.toThrow("not found")
+  })
+
+  test("execute error message lists available skills when bound", async () => {
+    writeSkill(tmpDir, "alpha", "Alpha skill", "content")
+    writeSkill(tmpDir, "beta", "Beta skill", "content")
+    discoverSkills([tmpDir])
+
+    const tool = buildSkillTool(["alpha"])
+    const ctx = { sessionId: "s1", messageId: "m1", abort: new AbortController().signal, messages: [], ask: async () => {} }
+
+    try {
+      await tool.execute({ name: "missing" }, ctx)
+      expect(true).toBe(false) // should not reach
+    } catch (e: any) {
+      expect(e.message).toContain("alpha")
+      // beta should NOT be listed since it's not bound
+      expect(e.message).not.toContain("beta")
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildSystem — L1 skill metadata in system prompt
+// ---------------------------------------------------------------------------
+
+describe("buildSystem with skills", () => {
+  const { clearCache, discoverSkills } = require("../../src/skill/skill")
+  const { buildSystem } = require("../../src/session/system")
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "atom-system-test-"))
+    clearCache()
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    clearCache()
+  })
+
+  function writeSkill(dir: string, name: string, description: string, content: string) {
+    const skillDir = path.join(dir, name)
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      `---\nname: ${name}\ndescription: ${description}\n---\n${content}`,
+    )
+  }
+
+  test("no skills — system prompt has no skill block", () => {
+    const agent = { id: "test", name: "Test", prompt: "You are a test agent.", tools: [], skills: [] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+    expect(joined).not.toContain("Available Skills")
+    expect(joined).toContain("You are a test agent.")
+    expect(joined).toContain("Working directory:")
+  })
+
+  test("with bound skills — system prompt includes L1 metadata", () => {
+    writeSkill(tmpDir, "code-review", "Review code for quality", "Full review instructions...")
+    writeSkill(tmpDir, "git-release", "Manage git releases", "Full release instructions...")
+    discoverSkills([tmpDir])
+
+    const agent = { id: "test", name: "Test", prompt: "You are a coder.", tools: [], skills: ["code-review", "git-release"] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+
+    expect(joined).toContain("# Available Skills")
+    expect(joined).toContain("code-review")
+    expect(joined).toContain("Review code for quality")
+    expect(joined).toContain("git-release")
+    expect(joined).toContain("Manage git releases")
+    // L2 content (SKILL.md body) should NOT be in the system prompt
+    expect(joined).not.toContain("Full review instructions")
+    expect(joined).not.toContain("Full release instructions")
+  })
+
+  test("skills not in profile are not included", () => {
+    writeSkill(tmpDir, "bound-skill", "I am bound", "bound content")
+    writeSkill(tmpDir, "unbound-skill", "I am unbound", "unbound content")
+    discoverSkills([tmpDir])
+
+    const agent = { id: "test", name: "Test", prompt: "Test.", tools: [], skills: ["bound-skill"] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+
+    expect(joined).toContain("bound-skill")
+    expect(joined).not.toContain("unbound-skill")
+  })
+
+  test("system prompt always includes environment block", () => {
+    const agent = { id: "test", name: "Test", prompt: "Test.", tools: [], skills: [] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+    expect(joined).toContain("Working directory:")
+    expect(joined).toContain("OS:")
+    expect(joined).toContain("Today's date:")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// /profile command in commands registry
+// ---------------------------------------------------------------------------
+
+describe("/profile command", () => {
+  const { filterCommands, commands } = require("../../src/tui/commands")
+
+  test("profile command exists in commands list", () => {
+    const profileCmd = commands.find((c: any) => c.id === "profile")
+    expect(profileCmd).toBeDefined()
+    expect(profileCmd.description).toContain("profile")
+    expect(profileCmd.usage).toBe("<profile-name>")
+  })
+
+  test("filterCommands matches /profile", () => {
+    const result = filterCommands("profile")
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe("profile")
+  })
+
+  test("filterCommands 'p' prefix matches profile", () => {
+    const result = filterCommands("p")
+    const ids = result.map((c: any) => c.id)
+    expect(ids).toContain("profile")
   })
 })

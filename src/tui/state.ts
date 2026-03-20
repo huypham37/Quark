@@ -5,6 +5,8 @@
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData } from "../session/message"
+import { getModelLimit } from "../provider/models"
+import { getModelId, loadConfig } from "../config/config"
 
 // ---------------------------------------------------------------------------
 // TUI data model types
@@ -142,7 +144,7 @@ export function createAppState(initial: {
     running: false,
     status: {
       tokensUsed: 0,
-      tokenLimit: 168_000,
+      tokenLimit: getModelLimit(getModelId("main"))?.context ?? loadConfig().context_limit_tokens,
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,

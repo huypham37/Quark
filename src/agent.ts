@@ -14,9 +14,6 @@ export interface AgentConfig {
   tools: string[]
   /** Skill names bound to this agent (L1 metadata loaded into system prompt) */
   skills: string[]
-  maxSteps: number
-  /** Token threshold for automatic compaction (default: 100_000) */
-  contextLimitTokens: number
 }
 
 export const defaultAgent: AgentConfig = {
@@ -26,8 +23,6 @@ export const defaultAgent: AgentConfig = {
     "You are a coding assistant. Help the user with software engineering tasks.",
   tools: ["read", "write", "edit", "bash", "skill", "todo"],
   skills: [],
-  maxSteps: 100,
-  contextLimitTokens: 100_000,
 }
 
 /**
@@ -40,7 +35,5 @@ export function agentFromProfile(profile: ProfileDef, promptContent: string): Ag
     prompt: promptContent,
     tools: profile.tools,
     skills: profile.skills,
-    maxSteps: profile.maxSteps,
-    contextLimitTokens: profile.contextLimitTokens,
   }
 }

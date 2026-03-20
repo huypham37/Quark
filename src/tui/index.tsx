@@ -2,6 +2,7 @@
 // TUI entry point — renders the OpenTUI/SolidJS app and wires it to the backend
 //
 // Usage: bun src/tui/index.tsx
+// Usage: bun src/tui/index.tsx --profile researcher
 
 import { render } from "@opentui/solid"
 import { App, type CommandResult } from "./components/App"
@@ -11,19 +12,41 @@ import { createSession, listSessions } from "../session/session"
 import { loadMessages } from "../session/message"
 import { compact } from "../session/compaction"
 import { bus } from "../session/events"
-import { defaultAgent } from "../agent"
+import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
 import { loadConfig } from "../config/config"
+import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
+import { clearCache as clearSkillCache } from "../skill/skill"
+import { register } from "../tool/registry"
+import { buildSkillTool } from "../tool/skill"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
 const termBg = await queryTerminalBackground()
 setTerminalBg(termBg)
 
-// Initialize the backend (DB + tools)
-bootstrap()
+// ---------------------------------------------------------------------------
+// Parse --profile flag from CLI args
+// ---------------------------------------------------------------------------
+function parseProfileArg(): string | undefined {
+  const args = process.argv.slice(2)
+  const idx = args.indexOf("--profile")
+  if (idx !== -1 && args[idx + 1]) return args[idx + 1]
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Profile-aware agent setup
+// ---------------------------------------------------------------------------
+const profileArg = parseProfileArg()
+const profile = resolveProfile(profileArg)
+const promptContent = readPromptFile(profile)
+let activeAgent: AgentConfig = agentFromProfile(profile, promptContent)
+
+// Initialize the backend (DB + tools) with profile-bound skills
+bootstrap({ boundSkills: profile.skills })
 
 // Create a session upfront so the TUI can subscribe to events immediately.
 let currentSession = createSession()
@@ -48,6 +71,7 @@ function handleSubmit(text: string, sessionId: string | null, context?: string) 
     sessionId: sid,
     parts,
     model: modelOverride ? { provider: "copilot", model: modelOverride } : undefined,
+    agent: activeAgent,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid, error: err })
   })
@@ -124,6 +148,52 @@ function handleCommand(command: string, args: string, sessionId: string | null):
         sessionId: sid,
         messageId: `model-switch-${Date.now()}`,
         text: `Model switched to: ${modelOverride} (session only)`,
+      })
+      return { handled: true }
+    }
+
+    case "profile": {
+      if (!args) {
+        const available = listProfiles()
+        const current = activeAgent.id
+        const lines = available.map((p) => {
+          const marker = p === current ? " ← active" : ""
+          return `  ${p}${marker}`
+        })
+        bus.emit("user-message", {
+          sessionId: sid,
+          messageId: `profile-list-${Date.now()}`,
+          text: `Profiles:\n${lines.join("\n")}\n\nUse /profile <name> to switch`,
+        })
+        return { handled: true }
+      }
+
+      const targetId = args.trim()
+      const available = listProfiles()
+      if (!available.includes(targetId)) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: new Error(`Profile "${targetId}" not found. Available: ${available.join(", ")}`),
+        })
+        return { handled: true }
+      }
+
+      // Switch profile: resolve, rebuild agent, re-register skill tool, new session
+      resetProfileCache()
+      clearSkillCache()
+      const newProfile = resolveProfile(targetId)
+      const newPrompt = readPromptFile(newProfile)
+      activeAgent = agentFromProfile(newProfile, newPrompt)
+
+      // Re-register skill tool with new profile binding
+      register(buildSkillTool(newProfile.skills))
+
+      currentSession = createSession()
+      bus.emit("session-reset", { sessionId: currentSession.id })
+      bus.emit("user-message", {
+        sessionId: currentSession.id,
+        messageId: `profile-switch-${Date.now()}`,
+        text: `Profile switched to: ${newProfile.name} (${newProfile.id})`,
       })
       return { handled: true }
     }

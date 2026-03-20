@@ -7,11 +7,13 @@
 
 import type { Component } from "solid-js"
 import { For, createSignal, Show } from "solid-js"
-import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
+import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, InputRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
+import { ready as modelsReady, getModelLimit } from "../../provider/models"
+import { getModelId, loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -90,6 +92,12 @@ const SCROLL_STEP = 3
 
 export const App: Component<AppProps> = (props) => {
   const dims = useTerminalDimensions()
+  const renderer = useRenderer()
+
+  function exitApp() {
+    renderer.destroy()
+    process.exit(0)
+  }
 
   // --- App-level state store (messages, session, running, status, etc.) ---
   const state = createAppState({
@@ -100,6 +108,12 @@ export const App: Component<AppProps> = (props) => {
 
   // Wire event bus to state store
   wireEvents(state)
+
+  // Update tokenLimit once models.dev data is available
+  modelsReady.then(() => {
+    const limit = getModelLimit(getModelId("main"))?.context
+    if (limit) state.setStore("status", "tokenLimit", limit)
+  })
 
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
@@ -244,7 +258,7 @@ export const App: Component<AppProps> = (props) => {
       if (state.store.running && state.store.sessionId) {
         props.onCancel(state.store.sessionId)
       }
-      process.exit(0)
+      exitApp()
       return
     }
 
@@ -558,7 +572,7 @@ export const App: Component<AppProps> = (props) => {
       if (state.store.running && state.store.sessionId) {
         props.onCancel(state.store.sessionId)
       } else {
-        process.exit(0)
+        exitApp()
       }
     }
   })

@@ -1,8 +1,8 @@
 // Skill discovery and parsing — find and parse SKILL.md files
 //
 // Searches two locations:
-// 1. .agent/skills/*/SKILL.md  (project-level)
-// 2. ~/.agent/skills/*/SKILL.md (global)
+// 1. .atom/skills/*/SKILL.md  (project-level)
+// 2. ~/.atom/skills/*/SKILL.md (global)
 //
 // SKILL.md format:
 // ---
@@ -92,8 +92,8 @@ export function discoverSkills(dirs?: string[]): Skill[] {
   if (cache) return cache
 
   const searchDirs = dirs ?? [
-    path.resolve(process.cwd(), ".agent", "skills"),
-    path.join(os.homedir(), ".agent", "skills"),
+    path.resolve(process.cwd(), ".atom", "skills"),
+    path.join(os.homedir(), ".config", "atom", "skills"),
   ]
 
   const seen = new Map<string, Skill>()
@@ -106,6 +106,17 @@ export function discoverSkills(dirs?: string[]): Skill[] {
 
   cache = Array.from(seen.values())
   return cache
+}
+
+/**
+ * Get only the skills bound to the given profile skill names.
+ * Returns L1 metadata (name + description) for system prompt injection.
+ */
+export function profileSkills(skillNames: string[]): Skill[] {
+  if (skillNames.length === 0) return []
+  const all = discoverSkills()
+  const nameSet = new Set(skillNames)
+  return all.filter((s) => nameSet.has(s.name))
 }
 
 export function loadSkill(name: string): Skill | undefined {

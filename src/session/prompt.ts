@@ -22,8 +22,9 @@ import { generateSessionTitle } from "./title"
 import { list as listTools, resolve as resolveTools } from "../tool/registry"
 import { getModel, createCopilotProvider } from "../provider/provider"
 import { loadToken } from "../provider/copilot-auth"
+import { getModelLimit } from "../provider/models"
 import { defaultAgent, type AgentConfig } from "../agent"
-import { getModelId } from "../config/config"
+import { getModelId, loadConfig } from "../config/config"
 import type { ToolDef, ToolResult } from "../tool/tool"
 import {
   ask as askPermission,
@@ -115,6 +116,8 @@ async function loop(
 ) {
   // Build the AI SDK model (uses main_model from config)
   const model = await resolveModel(modelOpt, "main")
+  const modelId = modelOpt?.model ?? getModelId("main")
+  const modelLimit = getModelLimit(modelId)
 
   let step = 0
   while (true) {
@@ -122,7 +125,7 @@ async function loop(
     step++
 
     // Safety: prevent runaway loops
-    if (step > agent.maxSteps) break
+    if (step > loadConfig().max_steps) break
 
     // 1. Load conversation history
     const { messages, parts } = loadMessages(sessionId)
@@ -156,7 +159,7 @@ async function loop(
     // 6. Check if compaction is needed (before deciding next action)
     if (result === "continue" || result === "stop") {
       const latest = loadMessages(sessionId)
-      if (shouldCompact(latest.parts, agent.contextLimitTokens)) {
+      if (shouldCompact(latest.parts, modelLimit, loadConfig().context_limit_tokens)) {
         await compact({ sessionId, model, abort })
       }
     }

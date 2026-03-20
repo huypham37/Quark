@@ -34,10 +34,6 @@ export interface ProfileDef {
   tools: string[]
   /** Skill names this profile has access to (L1 metadata loaded at activation) */
   skills: string[]
-  /** Max loop iterations */
-  maxSteps: number
-  /** Token threshold for compaction */
-  contextLimitTokens: number
 }
 
 export interface ProfileConfig {
@@ -57,8 +53,6 @@ const BUILTIN_CODER: ProfileDef = {
   promptFile: "",
   tools: ["read", "write", "edit", "bash", "skill", "todo"],
   skills: [],
-  maxSteps: 100,
-  contextLimitTokens: 100_000,
 }
 
 const BUILTIN_PROMPT =
@@ -73,7 +67,7 @@ function projectConfigDir(): string {
 }
 
 function globalConfigDir(): string {
-  return path.join(os.homedir(), ".atom")
+  return path.join(os.homedir(), ".config", "atom")
 }
 
 function configPaths(): string[] {
@@ -103,8 +97,6 @@ function parseProfilesFromYAML(raw: Record<string, unknown>, configDir: string):
       promptFile: typeof p.prompt_file === "string" ? resolvePromptPath(p.prompt_file, configDir) : "",
       tools: Array.isArray(p.tools) ? (p.tools as string[]) : BUILTIN_CODER.tools,
       skills: Array.isArray(p.skills) ? (p.skills as string[]) : [],
-      maxSteps: typeof p.max_steps === "number" ? p.max_steps : BUILTIN_CODER.maxSteps,
-      contextLimitTokens: typeof p.context_limit_tokens === "number" ? p.context_limit_tokens : BUILTIN_CODER.contextLimitTokens,
     }
   }
 

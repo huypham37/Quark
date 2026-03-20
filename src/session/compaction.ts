@@ -48,14 +48,24 @@ When constructing the summary, try to stick to this template:
 ---`
 
 // ---------------------------------------------------------------------------
-// shouldCompact — check if token usage exceeds threshold
+// shouldCompact — check if token usage exceeds model's context limit
+//
+// Uses per-model limits from models.dev when available.
+// Falls back to config.context_limit_tokens.
 // ---------------------------------------------------------------------------
 export function shouldCompact(
   parts: PartRow[],
-  threshold: number,
+  modelLimit: { context: number; output: number } | null,
+  fallbackThreshold: number,
 ): boolean {
   const usage = getTotalTokens(parts)
-  return usage.total > threshold * 0.8
+
+  if (modelLimit && modelLimit.context > 0) {
+    const usable = modelLimit.context - modelLimit.output
+    return usage.total >= usable
+  }
+
+  return usage.total > fallbackThreshold * 0.8
 }
 
 // ---------------------------------------------------------------------------
