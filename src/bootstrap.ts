@@ -1,37 +1,46 @@
-// Bootstrap — register all tools and initialize the agent
+// Bootstrap — initialize the agent with profile-declared tools
+//
+// Built-in tools: read, skill (always available)
+// Profile tools: loaded from ~/.config/atom/tools/{id}.ts
 //
 // Call this once at startup before using the agent loop.
-// Optionally pass profile-bound skill names to filter the skill tool.
 
 import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
-import { writeTool } from "./tool/write"
-import { editTool } from "./tool/edit"
-import { bashTool } from "./tool/bash"
 import { buildSkillTool } from "./tool/skill"
-import { todoTool } from "./tool/todo"
-import { grepTool } from "./tool/grep"
-import { globTool } from "./tool/glob"
-import { websearchTool } from "./tool/websearch"
 import { getDB } from "./storage/db"
+import { loadProfileTools } from "./tool/loader"
 
 let initialized = false
 
-export function bootstrap(opts?: { boundSkills?: string[] }) {
+export interface BootstrapOptions {
+  /** Tools declared in the active profile's tools[] array */
+  profileTools?: string[]
+  /** Skills bound to the active profile */
+  boundSkills?: string[]
+}
+
+export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   if (initialized) return
   initialized = true
 
   // Initialize SQLite database (lazy — creates tables on first access)
   getDB()
 
-  // Register all tools
+  // Register built-in tools (always available)
   register(readTool)
-  register(writeTool)
-  register(editTool)
-  register(bashTool)
   register(buildSkillTool(opts?.boundSkills))
-  register(todoTool)
-  register(grepTool)
-  register(globTool)
-  register(websearchTool)
+
+  // Load profile-declared tools from ~/.config/atom/tools/
+  // Missing or invalid tools are shown as notifications (non-blocking)
+  if (opts?.profileTools && opts.profileTools.length > 0) {
+    await loadProfileTools(opts.profileTools)
+  }
+}
+
+/**
+ * Reset for testing
+ */
+export function resetBootstrap(): void {
+  initialized = false
 }

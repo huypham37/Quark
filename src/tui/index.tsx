@@ -46,7 +46,7 @@ const promptContent = readPromptFile(profile)
 let activeAgent: AgentConfig = agentFromProfile(profile, promptContent)
 
 // Initialize the backend (DB + tools) with profile-bound skills
-bootstrap({ boundSkills: profile.skills })
+await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
 
 // Create a session upfront so the TUI can subscribe to events immediately.
 let currentSession = createSession()

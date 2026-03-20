@@ -19,6 +19,7 @@ import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { PermissionPrompt } from "./permission-prompt"
 import { FooterBar } from "./footer-bar"
+import { Notifications } from "./notifications"
 import { colors } from "../theme"
 import { respond as respondPermission } from "../../permission/permission"
 import { getFiles, fuzzyFilter } from "../filelist"
@@ -634,6 +635,9 @@ export const App: Component<AppProps> = (props) => {
         modelName={state.store.status.modelName}
         skillCount={state.store.status.skillCount}
       />
+
+      {/* Notifications overlay */}
+      <Notifications />
 
       {/* Footer bar */}
       <FooterBar running={state.store.running} />
