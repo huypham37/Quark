@@ -10,6 +10,9 @@ import { editTool } from "./tool/edit"
 import { bashTool } from "./tool/bash"
 import { buildSkillTool } from "./tool/skill"
 import { todoTool } from "./tool/todo"
+import { grepTool } from "./tool/grep"
+import { globTool } from "./tool/glob"
+import { websearchTool } from "./tool/websearch"
 import { getDB } from "./storage/db"
 
 let initialized = false
@@ -28,4 +31,7 @@ export function bootstrap(opts?: { boundSkills?: string[] }) {
   register(bashTool)
   register(buildSkillTool(opts?.boundSkills))
   register(todoTool)
+  register(grepTool)
+  register(globTool)
+  register(websearchTool)
 }
