@@ -22,6 +22,7 @@ import { setTerminalBg } from "./theme"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
+import { info as notifyInfo } from "../notification/notification"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
 const termBg = await queryTerminalBackground()
@@ -144,11 +145,8 @@ function handleCommand(command: string, args: string, sessionId: string | null):
         return { handled: true }
       }
       modelOverride = args.trim()
-      bus.emit("user-message", {
-        sessionId: sid,
-        messageId: `model-switch-${Date.now()}`,
-        text: `Model switched to: ${modelOverride} (session only)`,
-      })
+      // Show toast notification for model switch (no message in conversation)
+      notifyInfo("Model", `Switched to: ${modelOverride}`, 3000)
       return { handled: true }
     }
 
@@ -178,7 +176,8 @@ function handleCommand(command: string, args: string, sessionId: string | null):
         return { handled: true }
       }
 
-      // Switch profile: resolve, rebuild agent, re-register skill tool, new session
+      // Switch profile: resolve, rebuild agent, re-register skill tool
+      // NOTE: We do NOT create a new session - messages are preserved
       resetProfileCache()
       clearSkillCache()
       const newProfile = resolveProfile(targetId)
@@ -188,13 +187,9 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       // Re-register skill tool with new profile binding
       register(buildSkillTool(newProfile.skills))
 
-      currentSession = createSession()
-      bus.emit("session-reset", { sessionId: currentSession.id })
-      bus.emit("user-message", {
-        sessionId: currentSession.id,
-        messageId: `profile-switch-${Date.now()}`,
-        text: `Profile switched to: ${newProfile.name} (${newProfile.id})`,
-      })
+      // Show toast notification for profile switch (no message in conversation)
+      notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)
+
       return { handled: true }
     }
 
