@@ -23,8 +23,9 @@ import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from 
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
 import { clearCache as clearSkillCache } from "../skill/skill"
-import { register } from "../tool/registry"
+import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
+import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
@@ -85,7 +86,7 @@ function handleCancel(sessionId: string) {
   cancel(sessionId)
 }
 
-function handleCommand(command: string, args: string, sessionId: string | null): CommandResult {
+async function handleCommand(command: string, args: string, sessionId: string | null): Promise<CommandResult> {
   const sid = sessionId ?? currentSession.id
 
   switch (command) {
@@ -222,13 +223,9 @@ function handleCommand(command: string, args: string, sessionId: string | null):
         const current = activeAgent.id
         const lines = available.map((p) => {
           const marker = p === current ? " ← active" : ""
-          return `  ${p}${marker}`
+          return `${p}${marker}`
         })
-        bus.emit("user-message", {
-          sessionId: sid,
-          messageId: `profile-list-${Date.now()}`,
-          text: `Profiles:\n${lines.join("\n")}\n\nUse /profile <name> to switch`,
-        })
+        notifyInfo("Profiles", lines.join("\n"), 6000)
         return { handled: true }
       }
 
@@ -250,8 +247,10 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       const newPrompt = readPromptFile(newProfile)
       activeAgent = agentFromProfile(newProfile, newPrompt)
 
-      // Re-register skill tool with new profile binding
-      register(buildSkillTool(newProfile.skills))
+      // Tear down and re-bootstrap with the new profile's tools and skills
+      clearRegistry()
+      resetBootstrap()
+      await bootstrap({ profileTools: newProfile.tools, boundSkills: newProfile.skills })
 
       // Show toast notification for profile switch (no message in conversation)
       notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)

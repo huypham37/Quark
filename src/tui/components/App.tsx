@@ -36,7 +36,7 @@ export type CommandResult =
 interface AppProps {
   onSubmit: (text: string, sessionId: string | null, context?: string) => void
   onCancel: (sessionId: string) => void
-  onCommand?: (command: string, args: string, sessionId: string | null) => CommandResult | void
+  onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   getSessions?: () => { id: string; title: string | null; timeUpdated: number }[]
   getModels?: () => { id: string; name: string }[]
   getCurrentModel?: () => string
