@@ -20,10 +20,21 @@ const sessionTokens = new Map<string, number>()
 /**
  * Categorize a provider error into a human-readable title and message
  * for display in the notification system.
+ * Returns null for abort errors (user-initiated cancellation — not an error).
  */
-function categorizeError(err: unknown): { title: string; message: string } {
+function categorizeError(err: unknown): { title: string; message: string } | null {
+  // Abort errors are user-initiated — don't show notification
+  if (err instanceof DOMException && err.name === "AbortError") return null
+  if (err instanceof Error && err.name === "AbortError") return null
+  
   const message = err instanceof Error ? err.message : String(err)
   const lower = message.toLowerCase()
+  
+  // Also catch abort-like messages
+  if (lower.includes("aborted") || lower.includes("cancelled") || lower.includes("canceled")) {
+    return null
+  }
+  
   const e = err as any
   const status: number | undefined =
     typeof e?.status === "number" ? e.status
@@ -130,8 +141,10 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("error", (data) => {
-      const { title, message } = categorizeError(data.error)
-      notifyError(title, message, 0)
+      const result = categorizeError(data.error)
+      if (result) {
+        notifyError(result.title, result.message, 8000) // 8s for errors, then auto-dismiss
+      }
     }))
 
     unsubs.push(on("permission-request", (data) => {

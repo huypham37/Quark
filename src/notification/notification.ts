@@ -37,6 +37,16 @@ export function notify(opts: {
   message: string
   duration?: number // default 3000ms
 }): string {
+  // Deduplicate identical notifications (same title + message). If an
+  // identical notification is already active, return its id instead of
+  // creating a new one. This prevents duplicate error toasts when the same
+  // underlying error is emitted multiple times.
+  for (const [existingId, n] of active.entries()) {
+    if (n.title === opts.title && n.message === opts.message) {
+      return existingId
+    }
+  }
+
   const id = genId()
   const notification: Notification = {
     id,
