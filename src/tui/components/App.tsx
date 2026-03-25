@@ -452,10 +452,6 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   const handleSubmit = (text: string) => {
-    if (state.store.error) {
-      dispatch(state, { type: "clear-error" })
-    }
-
     setMention(MENTION_INACTIVE)
     setSlash(SLASH_INACTIVE)
 
@@ -614,14 +610,6 @@ export const App: Component<AppProps> = (props) => {
           {(msg) => <MessageItem message={msg} />}
         </For>
       </scrollbox>
-
-      {/* Error display */}
-      <Show when={state.store.error}>
-        <box>
-          <text fg={colors.error} bold>Error: </text>
-          <text fg={colors.error}>{state.store.error}</text>
-        </box>
-      </Show>
 
       {/* Permission prompt */}
       <Show when={state.store.permission}>
