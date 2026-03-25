@@ -3,8 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "atom": "./src/cli.ts"
+  },
   "scripts": {
-    "dev": "bun --preload ./preload.ts src/tui/index.tsx"
+    "dev": "bun --preload ./preload.ts src/tui/index.tsx",
+    "cli": "bun --preload ./preload.ts src/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
