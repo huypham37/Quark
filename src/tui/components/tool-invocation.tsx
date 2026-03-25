@@ -23,6 +23,9 @@ function getToolDisplayName(tool: string): string {
     bash: "Bash",
     skill: "Skill",
     todo: "Todo",
+    grep: "Grep",
+    glob: "Glob",
+    websearch: "WebSearch",
   }
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }

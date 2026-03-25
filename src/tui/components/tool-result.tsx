@@ -31,8 +31,30 @@ function getToolLabel(tool: string, input: Record<string, unknown>): string {
     return cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd
   }
 
+  const pattern = input.pattern
+  if (typeof pattern === "string") {
+    return pattern.length > 60 ? pattern.slice(0, 57) + "..." : pattern
+  }
+
+  const query = input.query
+  if (typeof query === "string") {
+    return query.length > 60 ? query.slice(0, 57) + "..." : query
+  }
+
+  const url = input.url
+  if (typeof url === "string") {
+    return url.length > 60 ? url.slice(0, 57) + "..." : url
+  }
+
   const name = input.name ?? input.skill
   if (typeof name === "string") return name
+
+  // Generic fallback — first string value in the input object
+  for (const val of Object.values(input)) {
+    if (typeof val === "string" && val.length > 0) {
+      return val.length > 60 ? val.slice(0, 57) + "..." : val
+    }
+  }
 
   return ""
 }
@@ -46,6 +68,9 @@ function getToolDisplayName(tool: string): string {
     bash: "Bash",
     skill: "Skill",
     todo: "Todo",
+    grep: "Grep",
+    glob: "Glob",
+    websearch: "WebSearch",
   }
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }
