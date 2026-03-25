@@ -15,6 +15,36 @@ import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 const CONFIG_DIR = path.join(os.homedir(), ".config", "atom")
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
 
+// ---------------------------------------------------------------------------
+// Compact config — nested under AtomConfig
+// ---------------------------------------------------------------------------
+
+export interface CompactConfig {
+  /** Which compaction method to use. Default: "general" */
+  method: string
+  /** Number of recent user/assistant turn pairs to keep verbatim. Default: 5 */
+  retain_turns: number
+  /**
+   * Fraction of the model's context window at which auto-compaction triggers.
+   * e.g. 0.95 means compact when estimated tokens >= 95% of context_window.
+   * Default: 0.95
+   */
+  threshold: number
+  /** Enable auto-compaction. Default: true */
+  auto: boolean
+}
+
+const COMPACT_DEFAULTS: CompactConfig = {
+  method: "general",
+  retain_turns: 5,
+  threshold: 0.95,
+  auto: true,
+}
+
+// ---------------------------------------------------------------------------
+// AtomConfig — top-level config
+// ---------------------------------------------------------------------------
+
 const DEFAULTS = {
   models: [
     "gpt-4o",
@@ -27,7 +57,8 @@ const DEFAULTS = {
   small_model: "gpt-4o-mini",
   main_model: "gpt-4o",
   max_steps: 100,
-  context_limit_tokens: 100_000,
+  context_window: 100_000,
+  compact: COMPACT_DEFAULTS,
 } as const
 
 export interface AtomConfig {
@@ -35,7 +66,9 @@ export interface AtomConfig {
   small_model: string
   main_model: string
   max_steps: number
-  context_limit_tokens: number
+  /** Fallback context window (tokens) when models.dev doesn't have the model. */
+  context_window: number
+  compact: CompactConfig
 }
 
 // Cached config — loaded once, reused thereafter
@@ -48,6 +81,23 @@ function readRawConfig(): Record<string, unknown> {
     return raw && typeof raw === "object" ? raw : {}
   } catch {
     return {}
+  }
+}
+
+function parseCompactConfig(raw: unknown): CompactConfig {
+  if (!raw || typeof raw !== "object") return { ...COMPACT_DEFAULTS }
+  const r = raw as Record<string, unknown>
+  return {
+    method: typeof r.method === "string" && r.method ? r.method : COMPACT_DEFAULTS.method,
+    retain_turns:
+      typeof r.retain_turns === "number" && r.retain_turns > 0
+        ? r.retain_turns
+        : COMPACT_DEFAULTS.retain_turns,
+    threshold:
+      typeof r.threshold === "number" && r.threshold > 0 && r.threshold <= 1
+        ? r.threshold
+        : COMPACT_DEFAULTS.threshold,
+    auto: typeof r.auto === "boolean" ? r.auto : COMPACT_DEFAULTS.auto,
   }
 }
 
@@ -75,8 +125,9 @@ export function loadConfig(): AtomConfig {
         : DEFAULTS.main_model,
     max_steps:
       typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
-    context_limit_tokens:
-      typeof raw.context_limit_tokens === "number" ? raw.context_limit_tokens : DEFAULTS.context_limit_tokens,
+    context_window:
+      typeof raw.context_window === "number" ? raw.context_window : DEFAULTS.context_window,
+    compact: parseCompactConfig(raw.compact),
   }
 
   return cached

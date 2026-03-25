@@ -7,9 +7,14 @@
 
 import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
+import { compactTool } from "./tool/compact"
 import { buildSkillTool } from "./tool/skill"
 import { getDB } from "./storage/db"
 import { loadProfileTools } from "./tool/loader"
+import { registerMethod, setDefaultMethod } from "./session/compact-resolver"
+import { anchored } from "./session/methods/anchored"
+import { general } from "./session/methods/general"
+import { loadConfig } from "./config/config"
 
 let initialized = false
 
@@ -29,7 +34,13 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 
   // Register built-in tools (always available)
   register(readTool)
+  register(compactTool)
   register(buildSkillTool(opts?.boundSkills))
+
+  // Register compaction methods and set default from config
+  registerMethod(anchored)
+  registerMethod(general)
+  setDefaultMethod(loadConfig().compact.method)
 
   // Load profile-declared tools from ~/.config/atom/tools/
   // Missing or invalid tools are shown as notifications (non-blocking)

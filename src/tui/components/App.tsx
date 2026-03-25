@@ -112,7 +112,8 @@ export const App: Component<AppProps> = (props) => {
 
   // Update tokenLimit once models.dev data is available
   modelsReady.then(() => {
-    const limit = getModelLimit(getModelId("main"))?.context
+    const lim = getModelLimit(getModelId("main"))
+    const limit = lim?.input ?? lim?.context
     if (limit) state.setStore("status", "tokenLimit", limit)
   })
 
@@ -375,10 +376,18 @@ export const App: Component<AppProps> = (props) => {
               return true
             }
 
-            // Normal command: insert the full command + space
-            const newValue = `/${selected.id} `
-            setInputText(newValue)
-            setSlash(SLASH_INACTIVE)
+            // Tab → fill in command + space for arg typing
+            // Enter → execute the command directly (no second Enter required)
+            if (isTab) {
+              const newValue = `/${selected.id} `
+              setInputText(newValue)
+              setSlash(SLASH_INACTIVE)
+            } else {
+              // isReturn: execute immediately
+              setSlash(SLASH_INACTIVE)
+              setInputText("")
+              executeCommand(selected.id, "")
+            }
           }
         }
         return true
@@ -640,7 +649,7 @@ export const App: Component<AppProps> = (props) => {
       <Notifications />
 
       {/* Footer bar */}
-      <FooterBar running={state.store.running} />
+      <FooterBar running={state.store.running} compacting={state.store.compacting} />
     </box>
   )
 }

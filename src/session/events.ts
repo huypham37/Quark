@@ -41,6 +41,10 @@ export interface BusEvents {
   // Permission request (TUI needs to prompt user)
   "permission-request": { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }
 
+  // Compaction lifecycle
+  "compaction-start": { sessionId: string }
+  "compaction-end": { sessionId: string; result: import("./compact-resolver").CompactResult | null }
+
   // Error
   "error": { sessionId: string; error: unknown }
 
@@ -48,7 +52,9 @@ export interface BusEvents {
   "session-reset": { sessionId: string }
 
   // Session was switched (e.g. /sessions <id> — TUI loads existing session)
-  "session-switch": { sessionId: string; messages: TuiMessage[] }
+  // estimatedTokens: if provided (e.g. post-compaction), the status bar is
+  // updated immediately instead of showing 0 until the next step-finish.
+  "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
 }
 
 export type BusEventName = keyof BusEvents

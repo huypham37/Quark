@@ -32,6 +32,10 @@ export function wireEvents(state: AppState) {
 
     const unsubs: (() => void)[] = []
 
+    unsubs.push(on("user-message", (data) => {
+      dispatch(state, { type: "add-user-message", id: data.messageId, text: data.text })
+    }))
+
     unsubs.push(on("assistant-message-start", (data) => {
       dispatch(state, { type: "add-assistant-message", id: data.messageId })
     }))
@@ -93,6 +97,14 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("compaction-start", () => {
+      dispatch(state, { type: "set-compacting", compacting: true })
+    }))
+
+    unsubs.push(on("compaction-end", () => {
+      dispatch(state, { type: "set-compacting", compacting: false })
+    }))
+
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
       if (tokens) {
@@ -111,8 +123,11 @@ export function wireEvents(state: AppState) {
 
     // session-switch: unfiltered (carries NEW sessionId + messages)
     const handleSwitch = (data: BusEvents["session-switch"]) => {
-      totalTokens = 0
+      totalTokens = data.estimatedTokens ?? 0
       dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
+      if (data.estimatedTokens !== undefined) {
+        dispatch(state, { type: "update-status", partial: { tokensUsed: data.estimatedTokens } })
+      }
     }
     bus.on("session-switch", handleSwitch)
     unsubs.push(() => bus.off("session-switch", handleSwitch))

@@ -13,6 +13,7 @@ import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../spinner"
 
 export interface FooterBarProps {
   running: boolean
+  compacting?: boolean
 }
 
 function abbreviatePath(fullPath: string): string {
@@ -43,9 +44,9 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   const [branch] = createSignal(getGitBranch())
   const [frameIndex, setFrameIndex] = createSignal(0)
 
-  // Animate spinner when running
+  // Animate spinner when running or compacting
   createEffect(() => {
-    if (!props.running) {
+    if (!props.running && !props.compacting) {
       setFrameIndex(0)
       return
     }
@@ -60,15 +61,25 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   return (
     <box flexDirection="row" justifyContent="space-between" height={1}>
       <Show
-        when={props.running}
-        fallback={<text> </text>}
+        when={props.compacting}
+        fallback={
+          <Show
+            when={props.running}
+            fallback={<text> </text>}
+          >
+            <box flexDirection="row">
+              <text fg={colors.primary} bold>{spinnerChar()} </text>
+              <text>Streaming</text>
+              <text>      </text>
+              <text fg={colors.footerKey} bold>Esc</text>
+              <text fg={colors.muted}> to cancel</text>
+            </box>
+          </Show>
+        }
       >
         <box flexDirection="row">
-          <text fg={colors.primary} bold>{spinnerChar()} </text>
-          <text>Streaming</text>
-          <text>      </text>
-          <text fg={colors.footerKey} bold>Esc</text>
-          <text fg={colors.muted}> to cancel</text>
+          <text fg={colors.warning} bold>{spinnerChar()} </text>
+          <text>Compacting context…</text>
         </box>
       </Show>
       <box flexDirection="row">
