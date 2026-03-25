@@ -359,7 +359,7 @@ export const App: Component<AppProps> = (props) => {
             if (selected.id === "sessions" && isReturn && props.getSessions) {
               const sessions = props.getSessions()
               const sid = state.store.sessionId
-              const pickerItems: PickerItem[] = sessions.slice(0, 5).map((sess) => ({
+              const pickerItems: PickerItem[] = sessions.map((sess) => ({
                 id: sess.id,
                 label: sess.title ?? "(untitled)",
                 detail: new Date(sess.timeUpdated).toLocaleString(),
@@ -393,7 +393,7 @@ export const App: Component<AppProps> = (props) => {
                 mode: "models",
                 query: "",
                 items: [],
-                pickerItems: pickerItems.slice(0, 10),
+                pickerItems,
                 selectedIndex: 0,
               })
               setInputText("")
