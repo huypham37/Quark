@@ -11,10 +11,52 @@
 import { createComputed, onCleanup } from "solid-js"
 import { bus, type BusEventName, type BusEvents } from "../session/events"
 import { dispatch, type AppState } from "./state"
+import { error as notifyError } from "../notification/notification"
 
 // Per-session last-known input token count — survives session switches so
 // returning to a session restores the correct context-window %.
 const sessionTokens = new Map<string, number>()
+
+/**
+ * Categorize a provider error into a human-readable title and message
+ * for display in the notification system.
+ */
+function categorizeError(err: unknown): { title: string; message: string } {
+  const message = err instanceof Error ? err.message : String(err)
+  const lower = message.toLowerCase()
+  const e = err as any
+  const status: number | undefined =
+    typeof e?.status === "number" ? e.status
+    : typeof e?.statusCode === "number" ? e.statusCode
+    : typeof e?.response?.status === "number" ? e.response.status
+    : undefined
+
+  if (status === 429 || lower.includes("rate limit") || lower.includes("too many requests")) {
+    return { title: "Rate Limited", message }
+  }
+  if (lower.includes("quota") || lower.includes("exceeded your") || lower.includes("billing")) {
+    return { title: "Quota Exceeded", message }
+  }
+  if (
+    lower.includes("context length") ||
+    lower.includes("context window") ||
+    lower.includes("maximum context") ||
+    lower.includes("too many tokens") ||
+    lower.includes("reduce the length")
+  ) {
+    return { title: "Context Too Large", message }
+  }
+  if (status === 401 || lower.includes("unauthorized") || lower.includes("api key") || lower.includes("authentication")) {
+    return { title: "Authentication Failed", message }
+  }
+  if (status === 403 || lower.includes("forbidden") || lower.includes("access denied")) {
+    return { title: "Access Denied", message }
+  }
+  if (status === 404 || lower.includes("model not found") || lower.includes("no such model")) {
+    return { title: "Model Not Found", message }
+  }
+  return { title: "Provider Error", message }
+}
 
 export function wireEvents(state: AppState) {
   // Last input tokens for the current session — this is the real context
@@ -87,13 +129,9 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "set-running", running: false })
     }))
 
-    let errorTimer: ReturnType<typeof setTimeout> | undefined
     unsubs.push(on("error", (data) => {
-      const err = data.error
-      const message = err instanceof Error ? err.message : String(err)
-      dispatch(state, { type: "set-error", message })
-      if (errorTimer) clearTimeout(errorTimer)
-      errorTimer = setTimeout(() => dispatch(state, { type: "clear-error" }), 5_000)
+      const { title, message } = categorizeError(data.error)
+      notifyError(title, message, 0)
     }))
 
     unsubs.push(on("permission-request", (data) => {

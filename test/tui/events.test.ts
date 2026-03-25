@@ -8,6 +8,7 @@ import { createRoot } from "solid-js"
 import { createAppState } from "../../src/tui/state"
 import { wireEvents } from "../../src/tui/events"
 import { bus } from "../../src/session/events"
+import { getActive, dismiss } from "../../src/notification/notification"
 
 // Run each test in a reactive root that we dispose after
 let dispose: (() => void) | null = null
@@ -138,18 +139,42 @@ describe("wireEvents: loop lifecycle", () => {
 })
 
 describe("wireEvents: error", () => {
-  test("error event sets error and clears running", () => {
+  afterEach(() => {
+    // clean up any active notifications between tests
+    for (const n of getActive()) dismiss(n.id)
+  })
+
+  test("error event triggers notification and does not set store.error", () => {
     const s = setup("s1")
     bus.emit("loop-start", { sessionId: "s1" })
     bus.emit("error", { sessionId: "s1", error: new Error("oops") })
-    expect(s.store.error).toBe("oops")
-    expect(s.store.running).toBe(false)
+    expect(s.store.error).toBeUndefined()
+    const notifs = getActive()
+    expect(notifs.length).toBeGreaterThan(0)
+    expect(notifs[0]!.type).toBe("error")
+    expect(notifs[0]!.message).toBe("oops")
   })
 
-  test("error from string", () => {
+  test("error categorized as Rate Limited for 429-like message", () => {
     const s = setup("s1")
-    bus.emit("error", { sessionId: "s1", error: "string error" })
-    expect(s.store.error).toBe("string error")
+    bus.emit("error", { sessionId: "s1", error: new Error("rate limit exceeded, try again") })
+    const notifs = getActive()
+    expect(notifs[0]!.title).toBe("Rate Limited")
+  })
+
+  test("error categorized as Context Too Large", () => {
+    const s = setup("s1")
+    bus.emit("error", { sessionId: "s1", error: new Error("This model's maximum context length is 128000 tokens") })
+    const notifs = getActive()
+    expect(notifs[0]!.title).toBe("Context Too Large")
+  })
+
+  test("error from string value shows as Provider Error", () => {
+    const s = setup("s1")
+    bus.emit("error", { sessionId: "s1", error: "something went wrong" })
+    const notifs = getActive()
+    expect(notifs[0]!.title).toBe("Provider Error")
+    expect(notifs[0]!.message).toBe("something went wrong")
   })
 })
 
