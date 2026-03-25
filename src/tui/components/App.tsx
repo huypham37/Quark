@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { For, createSignal, Show } from "solid-js"
+import { For, createSignal, createEffect, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, InputRenderable } from "@opentui/core"
@@ -133,6 +133,13 @@ export const App: Component<AppProps> = (props) => {
 
   // Pending image attachments — cleared on submit
   const [pendingImages, setPendingImages] = createSignal<{ mime: string; data: string; label: string }[]>([])
+  // Index of the chip currently selected for deletion (null = none)
+  const [selectedImageIndex, setSelectedImageIndex] = createSignal<number | null>(null)
+
+  // Auto-clear selection when all pending images are gone
+  createEffect(() => {
+    if (pendingImages().length === 0) setSelectedImageIndex(null)
+  })
 
   const ensureFilesLoaded = async (): Promise<string[]> => {
     if (allFiles) return allFiles
@@ -143,6 +150,19 @@ export const App: Component<AppProps> = (props) => {
 
   // Whether any dropdown is active
   const dropdownActive = () => mention().active || slash().active
+
+  // ---------------------------------------------------------------------------
+  // Pending image removal
+  // ---------------------------------------------------------------------------
+
+  const removeImage = (index: number) => {
+    setPendingImages((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      // Renumber labels to keep them sequential (Image 1, Image 2, …)
+      return next.map((img, i) => ({ ...img, label: `Image ${i + 1}` }))
+    })
+    setSelectedImageIndex(null)
+  }
 
   // ---------------------------------------------------------------------------
   // Mention updater — called when input value changes
@@ -551,6 +571,39 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Image chip navigation — only when there are pending images and no dropdown/agent
+    if (pendingImages().length > 0 && !dropdownActive() && !state.store.running) {
+      const images = pendingImages()
+      const current = selectedImageIndex()
+
+      // Tab cycles through chips: null → 0 → 1 → … → n-1 → null
+      if (evt.name === "tab") {
+        if (current === null) {
+          setSelectedImageIndex(0)
+        } else if (current < images.length - 1) {
+          setSelectedImageIndex(current + 1)
+        } else {
+          setSelectedImageIndex(null)
+        }
+        evt.preventDefault()
+        return
+      }
+
+      // Backspace or Delete removes the selected chip
+      if ((evt.name === "backspace" || evt.name === "delete") && current !== null) {
+        removeImage(current)
+        evt.preventDefault()
+        return
+      }
+
+      // Escape clears selection (takes priority over agent-cancel when a chip is selected)
+      if (evt.name === "escape" && current !== null) {
+        setSelectedImageIndex(null)
+        evt.preventDefault()
+        return
+      }
+    }
+
     // Permission mode: intercept a/o/r keys
     if (state.store.permission) {
       const lower = evt.name.toLowerCase()
@@ -661,6 +714,8 @@ export const App: Component<AppProps> = (props) => {
         modelName={state.store.status.modelName}
         skillCount={state.store.status.skillCount}
         images={pendingImages()}
+        selectedImageIndex={selectedImageIndex()}
+        onRemoveImage={removeImage}
       />
 
       {/* Notifications overlay */}

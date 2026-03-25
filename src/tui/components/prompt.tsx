@@ -38,6 +38,10 @@ export interface PromptProps {
   skillCount?: number
   /** Pending image attachments to display as [Image N] chips */
   images?: { label: string }[]
+  /** Index of the currently selected image chip (null = none selected) */
+  selectedImageIndex?: number | null
+  /** Called when user removes the image at the given index */
+  onRemoveImage?: (index: number) => void
 }
 
 function formatTokens(n: number): string {
@@ -101,13 +105,18 @@ export const Prompt: Component<PromptProps> = (props) => {
         paddingX={1}
         minHeight={4}
       >
-        {/* Image attachment chips */}
+        {/* Image attachment chips — Tab to select, Backspace/Delete to remove */}
         <Show when={(props.images?.length ?? 0) > 0}>
           <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
             <For each={props.images}>
-              {(img) => (
-                <text fg={colors.success}>[{img.label}] </text>
-              )}
+              {(img, i) => {
+                const selected = () => props.selectedImageIndex === i()
+                return (
+                  <text fg={selected() ? colors.error : colors.success}>
+                    [{img.label}{selected() ? " ×" : ""}]{" "}
+                  </text>
+                )
+              }}
             </For>
           </box>
         </Show>
