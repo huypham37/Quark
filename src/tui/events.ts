@@ -165,14 +165,11 @@ export function wireEvents(state: AppState) {
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
       if (tokens) {
-        // Sum all token categories that occupy context window space.
-        // Cache read/write are undefined for providers that don't support
-        // prompt caching — ?? 0 safely collapses them.
-        const total =
-          (tokens.input     ?? 0) +
-          (tokens.output    ?? 0) +
-          (tokens.cacheRead ?? 0) +
-          (tokens.cacheWrite ?? 0)
+        // Context window usage = inputTokens only.
+        // cacheRead and cacheWrite are breakdowns *within* inputTokens, not
+        // additive — summing them causes 2-3x inflation (seen as >100%).
+        // outputTokens are generated tokens, not context window consumption.
+        const total = tokens.input ?? 0
         if (total > 0) {
           lastInputTokens = total
           sessionTokens.set(sid, lastInputTokens)
