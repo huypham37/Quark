@@ -12,6 +12,7 @@
 // Special case: trailing " *" is optional (e.g. "ls *" matches "ls" and "ls -la")
 
 import os from "os"
+import { bus } from "../session/events"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -218,6 +219,13 @@ export async function ask(input: {
       metadata: input.metadata ?? {},
       resolve,
       reject,
+    })
+    // Notify the TUI so it can show the permission prompt
+    bus.emit("permission-request", {
+      sessionId: input.sessionId,
+      requestId: id,
+      tool: input.permission,
+      input: { pattern: input.pattern, ...input.metadata },
     })
   })
 }

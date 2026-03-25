@@ -134,6 +134,7 @@ export interface AppStore {
   status: TuiStatus
   error?: string
   permission?: PermissionRequest
+  permissionQueue: PermissionRequest[]
 }
 
 export interface AppState {
@@ -160,6 +161,7 @@ export function createAppState(initial: {
     },
     error: undefined,
     permission: undefined,
+    permissionQueue: [],
   })
   return { store, setStore }
 }
@@ -348,14 +350,29 @@ export function dispatch(state: AppState, action: TuiAction): void {
     case "set-permission":
       setStore(
         produce((s) => {
-          s.permission = action.request
-          s.running = false
+          if (s.permission) {
+            // Another prompt is already visible — queue this one
+            s.permissionQueue.push(action.request)
+          } else {
+            s.permission = action.request
+            s.running = false
+          }
         }),
       )
       break
 
     case "clear-permission":
-      setStore("permission", undefined)
+      setStore(
+        produce((s) => {
+          const next = s.permissionQueue.shift()
+          if (next) {
+            // Promote next queued request without resuming running state
+            s.permission = next
+          } else {
+            s.permission = undefined
+          }
+        }),
+      )
       break
 
     case "set-compacting":
