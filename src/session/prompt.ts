@@ -72,7 +72,6 @@ export async function prompt(input: {
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n")
   saveUserMessage({ sessionId, text })
-  bus.emit("user-message", { sessionId, messageId: "", text })
 
   // Enter the loop
   const controller = new AbortController()
