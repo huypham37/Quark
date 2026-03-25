@@ -27,6 +27,7 @@ import { filterCommands, type SlashCommand } from "../commands"
 import { generateId } from "ai"
 import * as fs from "fs"
 import * as path from "path"
+import { readClipboard } from "../clipboard"
 
 /** Command handler result */
 export type CommandResult =
@@ -34,7 +35,7 @@ export type CommandResult =
   | { handled: false }
 
 interface AppProps {
-  onSubmit: (text: string, sessionId: string | null, context?: string) => void
+  onSubmit: (text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) => void
   onCancel: (sessionId: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   getSessions?: () => { id: string; title: string | null; timeUpdated: number }[]
@@ -129,6 +130,9 @@ export const App: Component<AppProps> = (props) => {
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
+
+  // Pending image attachments — cleared on submit
+  const [pendingImages, setPendingImages] = createSignal<{ mime: string; data: string; label: string }[]>([])
 
   const ensureFilesLoaded = async (): Promise<string[]> => {
     if (allFiles) return allFiles
@@ -482,15 +486,27 @@ export const App: Component<AppProps> = (props) => {
       }
     }
 
+    const imgs = pendingImages()
     const msgId = generateId()
-    dispatch(state, { type: "add-user-message", id: msgId, text })
+    dispatch(state, {
+      type: "add-user-message",
+      id: msgId,
+      text,
+      images: imgs.map((img) => ({ mime: img.mime, label: img.label })),
+    })
 
     setInputText("")
+    setPendingImages([])
 
     // Auto-scroll to bottom
     scroll?.scrollBy({ x: 0, y: Infinity })
 
-    props.onSubmit(text, state.store.sessionId, context || undefined)
+    props.onSubmit(
+      text,
+      state.store.sessionId,
+      imgs.length > 0 ? imgs.map((img) => ({ mime: img.mime, data: img.data })) : undefined,
+      context || undefined,
+    )
   }
 
   // ---------------------------------------------------------------------------
@@ -522,6 +538,19 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   useKeyboard((evt) => {
+    // Ctrl+V — check clipboard for image before terminal handles paste
+    if (evt.ctrl && evt.name === "v") {
+      readClipboard().then((content) => {
+        if (!content) return
+        setPendingImages((prev) => {
+          const label = `Image ${prev.length + 1}`
+          return [...prev, { mime: content.mime, data: content.data, label }]
+        })
+        evt.preventDefault()
+      })
+      return
+    }
+
     // Permission mode: intercept a/o/r keys
     if (state.store.permission) {
       const lower = evt.name.toLowerCase()
@@ -631,6 +660,7 @@ export const App: Component<AppProps> = (props) => {
         cost={state.store.status.cost}
         modelName={state.store.status.modelName}
         skillCount={state.store.status.skillCount}
+        images={pendingImages()}
       />
 
       {/* Notifications overlay */}

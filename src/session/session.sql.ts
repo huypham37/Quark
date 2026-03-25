@@ -35,7 +35,7 @@ export const part = sqliteTable("part", {
     .notNull()
     .references(() => session.id),
   type: text("type", {
-    enum: ["text", "tool", "step-start", "step-finish", "summary"],
+    enum: ["text", "tool", "step-start", "step-finish", "summary", "image"],
   }).notNull(),
   data: text("data").notNull(), // JSON blob
 })

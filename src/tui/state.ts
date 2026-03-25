@@ -4,7 +4,7 @@
 // the SolidJS store + dispatch implementation.
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
-import type { MessageRow, PartRow, TextPartData, ToolPartData } from "../session/message"
+import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData } from "../session/message"
 import { getModelLimit } from "../provider/models"
 import { getModelId, loadConfig } from "../config/config"
 
@@ -23,6 +23,7 @@ export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string }
   | { type: "thinking"; done: boolean }
+  | { type: "image"; mime: string; label: string }
 
 export interface TuiStatus {
   tokensUsed: number
@@ -46,7 +47,7 @@ export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
-  | { type: "add-user-message"; id: string; text: string }
+  | { type: "add-user-message"; id: string; text: string; images?: { mime: string; label: string }[] }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
   | { type: "text-delta"; messageId: string; delta: string; text: string }
@@ -99,6 +100,11 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
           output: d.output,
           error: d.error,
         })
+      } else if (p.type === "image") {
+        const d = JSON.parse(p.data) as ImagePartData
+        // Count existing image parts to derive label number
+        const idx = tuiParts.filter((x) => x.type === "image").length + 1
+        tuiParts.push({ type: "image", mime: d.mime, label: `Image ${idx}` })
       }
       // skip step-start, step-finish — they're metadata
     }
@@ -201,7 +207,14 @@ export function dispatch(state: AppState, action: TuiAction): void {
         {
           id: action.id,
           role: "user",
-          parts: [{ type: "text", text: action.text }],
+          parts: [
+            { type: "text", text: action.text },
+            ...(action.images ?? []).map((img, i) => ({
+              type: "image" as const,
+              mime: img.mime,
+              label: img.label ?? `Image ${i + 1}`,
+            })),
+          ],
         },
       )
       break

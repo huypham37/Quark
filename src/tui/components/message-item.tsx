@@ -98,13 +98,18 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
     <Show
       when={props.message.role === "assistant"}
       fallback={
-        // User messages have a single text part
+        // User messages: text + optional image parts
         <Show when={props.message.parts.find((p) => p.type === "text") as Extract<TuiPart, { type: "text" }> | undefined}>
-          {(textPart) => (
-            <box marginBottom={1}>
-              <UserMessage text={textPart().text} />
-            </box>
-          )}
+          {(textPart) => {
+            const images = () => props.message.parts
+              .filter((p): p is Extract<TuiPart, { type: "image" }> => p.type === "image")
+              .map((p) => ({ label: p.label }))
+            return (
+              <box marginBottom={1}>
+                <UserMessage text={textPart().text} images={images()} />
+              </box>
+            )
+          }}
         </Show>
       }
     >

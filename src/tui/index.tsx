@@ -63,7 +63,7 @@ const modelName = loadConfig().main_model
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null
 
-function handleSubmit(text: string, sessionId: string | null, context?: string) {
+function handleSubmit(text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) {
   const sid = sessionId ?? currentSession.id
 
   const parts: { type: "text"; text: string }[] = []
@@ -75,6 +75,7 @@ function handleSubmit(text: string, sessionId: string | null, context?: string) 
   prompt({
     sessionId: sid,
     parts,
+    images,
     model: modelOverride ? { provider: "copilot", model: modelOverride } : undefined,
     agent: activeAgent,
   }).catch((err) => {

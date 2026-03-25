@@ -35,10 +35,37 @@ CREATE TABLE IF NOT EXISTS part (
   id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL REFERENCES message(id),
   session_id TEXT NOT NULL REFERENCES session(id),
-  type TEXT NOT NULL CHECK(type IN ('text', 'tool', 'step-start', 'step-finish', 'summary')),
+  type TEXT NOT NULL CHECK(type IN ('text', 'tool', 'step-start', 'step-finish', 'summary', 'image')),
   data TEXT NOT NULL
 );
 `
+
+// ---------------------------------------------------------------------------
+// Migrations — run after CREATE TABLE IF NOT EXISTS (which won't alter
+// an existing table). Each migration is idempotent.
+// ---------------------------------------------------------------------------
+
+function migratePartTypeConstraint(sqlite: Database) {
+  // Check if the current part table already allows 'image'
+  // by inspecting the CREATE TABLE SQL stored in sqlite_master
+  const row = sqlite.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='part'").get() as { sql: string } | null
+  if (!row) return
+  if (row.sql.includes("'image'")) return // already migrated
+
+  // SQLite doesn't support ALTER CHECK — recreate the table
+  sqlite.exec(`
+    CREATE TABLE _part_new (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL REFERENCES message(id),
+      session_id TEXT NOT NULL REFERENCES session(id),
+      type TEXT NOT NULL CHECK(type IN ('text', 'tool', 'step-start', 'step-finish', 'summary', 'image')),
+      data TEXT NOT NULL
+    );
+    INSERT INTO _part_new SELECT * FROM part;
+    DROP TABLE part;
+    ALTER TABLE _part_new RENAME TO part;
+  `)
+}
 
 export function getDB(dbPath?: string) {
   if (_db) return _db
@@ -48,6 +75,10 @@ export function getDB(dbPath?: string) {
   sqlite.run("PRAGMA busy_timeout = 5000")
   sqlite.run("PRAGMA foreign_keys = ON")
   sqlite.exec(CREATE_TABLES)
+
+  // Run idempotent migrations for existing databases
+  migratePartTypeConstraint(sqlite)
+
   _db = drizzle({ client: sqlite, schema })
   return _db
 }

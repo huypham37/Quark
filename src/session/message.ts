@@ -34,6 +34,11 @@ export interface SummaryData {
   text: string
 }
 
+export interface ImagePartData {
+  mime: string
+  data: string // base64
+}
+
 // ---- DB row types ----
 
 export interface MessageRow {
@@ -54,7 +59,7 @@ export interface PartRow {
   id: string
   messageId: string
   sessionId: string
-  type: "text" | "tool" | "step-start" | "step-finish" | "summary"
+  type: "text" | "tool" | "step-start" | "step-finish" | "summary" | "image"
   data: string // JSON
 }
 
@@ -63,6 +68,7 @@ export interface PartRow {
 export function saveUserMessage(input: {
   sessionId: string
   text: string
+  images?: { mime: string; data: string }[]
 }): MessageRow {
   const db = getDB()
   const now = Date.now()
@@ -87,6 +93,17 @@ export function saveUserMessage(input: {
 
   db.insert(message).values(msgRow).run()
   db.insert(part).values(partRow).run()
+
+  // Persist image parts if any
+  for (const img of input.images ?? []) {
+    db.insert(part).values({
+      id: generateId(),
+      messageId: msgId,
+      sessionId: input.sessionId,
+      type: "image",
+      data: JSON.stringify({ mime: img.mime, data: img.data } satisfies ImagePartData),
+    }).run()
+  }
 
   return {
     id: msgId,
@@ -288,19 +305,24 @@ export function toModelMessages(
     const msgParts = partsByMsg.get(msg.id) ?? []
 
     if (msg.role === "user") {
-      // Collect text from all text/summary parts
-      const texts: string[] = []
+      // Collect text and image parts
+      const content: Array<{ type: "text"; text: string } | { type: "image"; image: string; mimeType: string }> = []
       for (const p of msgParts) {
         if (p.type === "text") {
           const d = JSON.parse(p.data) as TextPartData
-          texts.push(d.text)
+          if (d.text) content.push({ type: "text", text: d.text })
         } else if (p.type === "summary") {
           const d = JSON.parse(p.data) as SummaryData
-          texts.push(d.text)
+          if (d.text) content.push({ type: "text", text: d.text })
+        } else if (p.type === "image") {
+          const d = JSON.parse(p.data) as ImagePartData
+          content.push({ type: "image", image: d.data, mimeType: d.mime })
         }
       }
-      if (texts.length > 0) {
-        result.push({ role: "user", content: texts.join("\n") })
+      if (content.length === 1 && content[0]?.type === "text") {
+        result.push({ role: "user", content: content[0].text })
+      } else if (content.length > 0) {
+        result.push({ role: "user", content })
       }
       continue
     }

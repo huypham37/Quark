@@ -52,6 +52,7 @@ const active = new Map<string, AbortController>()
 export async function prompt(input: {
   sessionId?: string
   parts: { type: "text"; text: string }[]
+  images?: { mime: string; data: string }[]
   model?: { provider: string; model: string }
   agent?: AgentConfig
 }) {
@@ -71,7 +72,7 @@ export async function prompt(input: {
 
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n")
-  saveUserMessage({ sessionId, text })
+  saveUserMessage({ sessionId, text, images: input.images })
 
   // Enter the loop
   const controller = new AbortController()

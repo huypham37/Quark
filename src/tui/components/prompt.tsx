@@ -7,7 +7,7 @@
 // and forwards events upward.
 
 import type { Component } from "solid-js"
-import { Show } from "solid-js"
+import { Show, For } from "solid-js"
 import type { InputRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
@@ -36,6 +36,8 @@ export interface PromptProps {
   cost?: number
   modelName?: string
   skillCount?: number
+  /** Pending image attachments to display as [Image N] chips */
+  images?: { label: string }[]
 }
 
 function formatTokens(n: number): string {
@@ -99,6 +101,16 @@ export const Prompt: Component<PromptProps> = (props) => {
         paddingX={1}
         minHeight={4}
       >
+        {/* Image attachment chips */}
+        <Show when={(props.images?.length ?? 0) > 0}>
+          <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
+            <For each={props.images}>
+              {(img) => (
+                <text fg={colors.success}>[{img.label}] </text>
+              )}
+            </For>
+          </box>
+        </Show>
         <Show
           when={!props.disabled}
           fallback={<text fg={colors.muted}>Agent is running... (Esc to cancel)</text>}
