@@ -12,15 +12,21 @@ import { createComputed, onCleanup } from "solid-js"
 import { bus, type BusEventName, type BusEvents } from "../session/events"
 import { dispatch, type AppState } from "./state"
 
+// Per-session last-known input token count — survives session switches so
+// returning to a session restores the correct context-window %.
+const sessionTokens = new Map<string, number>()
+
 export function wireEvents(state: AppState) {
-  // Track cumulative tokens — reset on session change
-  let totalTokens = 0
+  // Last input tokens for the current session — this is the real context
+  // window usage reported by the API, NOT a cumulative sum.
+  let lastInputTokens = 0
 
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return
 
-    totalTokens = 0
+    // Restore from the per-session cache, or start at 0
+    lastInputTokens = sessionTokens.get(sid) ?? 0
 
     function on<K extends BusEventName>(event: K, handler: (data: BusEvents[K]) => void) {
       const wrapped = (data: BusEvents[K]) => {
@@ -107,15 +113,23 @@ export function wireEvents(state: AppState) {
 
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
-      if (tokens) {
-        totalTokens += (tokens.input ?? 0) + (tokens.output ?? 0)
-        dispatch(state, { type: "update-status", partial: { tokensUsed: totalTokens } })
+      if (tokens && tokens.input !== undefined) {
+        // Use the last input token count — this IS the current context window
+        // usage, not a cumulative total. Each API call reports how many input
+        // tokens the full prompt consumed.
+        lastInputTokens = tokens.input
+        sessionTokens.set(sid, lastInputTokens)
+        dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
       }
     }))
 
     // session-reset: unfiltered (carries NEW sessionId)
     const handleReset = (data: BusEvents["session-reset"]) => {
-      totalTokens = 0
+      // Save current session's tokens before switching away
+      if (sid && lastInputTokens > 0) {
+        sessionTokens.set(sid, lastInputTokens)
+      }
+      lastInputTokens = 0
       dispatch(state, { type: "reset-session", sessionId: data.sessionId })
     }
     bus.on("session-reset", handleReset)
@@ -123,11 +137,23 @@ export function wireEvents(state: AppState) {
 
     // session-switch: unfiltered (carries NEW sessionId + messages)
     const handleSwitch = (data: BusEvents["session-switch"]) => {
-      totalTokens = data.estimatedTokens ?? 0
-      dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
-      if (data.estimatedTokens !== undefined) {
-        dispatch(state, { type: "update-status", partial: { tokensUsed: data.estimatedTokens } })
+      // Save current session's tokens before switching away
+      if (sid && lastInputTokens > 0) {
+        sessionTokens.set(sid, lastInputTokens)
       }
+      // Resolve the incoming token count from cache or estimatedTokens
+      const restored = sessionTokens.get(data.sessionId)
+      const incoming = restored ?? data.estimatedTokens ?? 0
+      // CRITICAL: seed the map BEFORE dispatching load-session.
+      // load-session mutates sessionId, which causes createComputed to re-run
+      // synchronously and reset lastInputTokens from sessionTokens.
+      // Seeding first ensures createComputed picks up the correct value.
+      if (incoming > 0) {
+        sessionTokens.set(data.sessionId, incoming)
+      }
+      dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
+      // After createComputed re-ran, lastInputTokens is now correctly seeded
+      dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
     }
     bus.on("session-switch", handleSwitch)
     unsubs.push(() => bus.off("session-switch", handleSwitch))

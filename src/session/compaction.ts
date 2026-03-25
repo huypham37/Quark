@@ -144,6 +144,29 @@ export function getTotalTokens(parts: PartRow[]): {
 }
 
 // ---------------------------------------------------------------------------
+// getLastInputTokens — read the last step-finish's input token count
+//
+// This is the actual context-window usage at the end of the session's last
+// API call.  Used to restore the token-% bar when switching to / resuming
+// an existing session.
+// ---------------------------------------------------------------------------
+export function getLastInputTokens(parts: PartRow[]): number {
+  let last = 0
+  for (const p of parts) {
+    if (p.type !== "step-finish") continue
+    try {
+      const data = JSON.parse(p.data) as StepFinishData
+      if (data.tokens?.input !== undefined) {
+        last = data.tokens.input
+      }
+    } catch {
+      // skip malformed parts
+    }
+  }
+  return last
+}
+
+// ---------------------------------------------------------------------------
 // compact — summarize the conversation and save as a summary message
 // ---------------------------------------------------------------------------
 export async function compact(input: {

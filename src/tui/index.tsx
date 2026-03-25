@@ -13,7 +13,7 @@ import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishM
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
 import { getModelLimit } from "../provider/models"
-import { estimateTokens } from "../session/compaction"
+import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
@@ -190,7 +190,18 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       currentSession = match
       const { messages, parts } = loadMessages(match.id)
       const tuiMessages = dbToTuiMessages(messages, parts)
-      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages })
+      // Prefer real API token count from DB; fall back to chars/4 heuristic
+      const lastReal = getLastInputTokens(parts)
+      let switchEstimatedTokens: number
+      if (lastReal > 0) {
+        switchEstimatedTokens = lastReal
+      } else {
+        const switchModelMessages = toModelMessages(messages, parts)
+        const switchSystem = buildSystem(activeAgent)
+        const switchSystemStr = Array.isArray(switchSystem) ? switchSystem.join("\n") : switchSystem
+        switchEstimatedTokens = estimateTokens(switchSystemStr, switchModelMessages)
+      }
+      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages, estimatedTokens: switchEstimatedTokens })
       return { handled: true }
     }
 
