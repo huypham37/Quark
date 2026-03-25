@@ -14,10 +14,15 @@
 import { tool, jsonSchema, type ToolSet, type ToolExecutionOptions } from "ai"
 import { z } from "zod"
 import { createSession, getSession, touchSession } from "./session"
-import { saveUserMessage, createAssistantMessage, loadMessages, toModelMessages } from "./message"
+import { saveUserMessage, createAssistantMessage, addPart, finishMessage, loadMessages, toModelMessages } from "./message"
 import { buildSystem } from "./system"
 import { processStream } from "./processor"
-import { shouldCompact, compact } from "./compaction"
+import { shouldCompact, estimateTokens } from "./compaction"
+import {
+  resolve as resolveCompaction,
+  takePending,
+  type CompactMethodContext,
+} from "./compact-resolver"
 import { generateSessionTitle } from "./title"
 import { list as listTools, resolve as resolveTools } from "../tool/registry"
 import { getModel, createCopilotProvider } from "../provider/provider"
@@ -67,7 +72,6 @@ export async function prompt(input: {
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n")
   saveUserMessage({ sessionId, text })
-  bus.emit("user-message", { sessionId, messageId: "", text })
 
   // Enter the loop
   const controller = new AbortController()
@@ -119,6 +123,9 @@ async function loop(
   const modelId = modelOpt?.model ?? getModelId("main")
   const modelLimit = getModelLimit(modelId)
 
+  // mutable — may change when compaction creates a new session
+  let currentSessionId = sessionId
+
   let step = 0
   while (true) {
     if (abort.aborted) break
@@ -127,25 +134,98 @@ async function loop(
     // Safety: prevent runaway loops
     if (step > loadConfig().max_steps) break
 
+    // 0. Run pending compaction (queued from previous iteration or tool call)
+    const pendingReq = takePending(currentSessionId)
+    if (pendingReq) {
+      bus.emit("compaction-start", { sessionId: currentSessionId })
+      try {
+        const result = await resolveCompaction({
+          trigger: pendingReq.trigger,
+          ctx: pendingReq.ctx,
+          methodId: pendingReq.methodId,
+        })
+        bus.emit("compaction-end", { sessionId: currentSessionId, result })
+        if (result.type === "new-session") {
+          currentSessionId = result.newSessionId
+          const { messages: newMsgs, parts: newParts } = loadMessages(currentSessionId)
+          const { dbToTuiMessages } = await import("../tui/state")
+          const sys = buildSystem(agent)
+          const newModelMsgs = toModelMessages(newMsgs, newParts)
+          const sysStr = Array.isArray(sys) ? sys.join("\n") : sys
+          bus.emit("session-switch", {
+            sessionId: currentSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens: estimateTokens(sysStr, newModelMsgs),
+          })
+        }
+      } catch (err) {
+        bus.emit("compaction-end", { sessionId: currentSessionId, result: null })
+        bus.emit("error", { sessionId: currentSessionId, error: err })
+      }
+    }
+
     // 1. Load conversation history
-    const { messages, parts } = loadMessages(sessionId)
+    const { messages, parts } = loadMessages(currentSessionId)
     const modelMessages = toModelMessages(messages, parts)
 
     // 2. Build system prompt
     const system = buildSystem(agent)
 
-    // 3. Create assistant message row
+    // 3. Check if compaction is needed BEFORE the model call
+    const cfg = loadConfig()
+    if (cfg.compact.auto && shouldCompact(system, modelMessages, modelLimit, cfg.context_window, cfg.compact.threshold)) {
+      bus.emit("compaction-start", { sessionId: currentSessionId })
+      try {
+        const compactCtx: CompactMethodContext = {
+          sessionId: currentSessionId,
+          messages,
+          parts,
+          modelMessages,
+          model,
+          agentPrompt: system,
+          budget: modelLimit,
+          persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
+          session: { create: createSession },
+        }
+        const compactResult = await resolveCompaction({ trigger: "auto", ctx: compactCtx })
+        bus.emit("compaction-end", { sessionId: currentSessionId, result: compactResult })
+
+        if (compactResult.type === "new-session") {
+          currentSessionId = compactResult.newSessionId
+          // Load the new session's messages for the TUI
+          const { messages: newMsgs, parts: newParts } = loadMessages(currentSessionId)
+          const { dbToTuiMessages } = await import("../tui/state")
+          const systemStr = Array.isArray(system) ? system.join("\n") : system
+          const newModelMessages = toModelMessages(newMsgs, newParts)
+          const estimatedTokens = estimateTokens(systemStr, newModelMessages)
+          bus.emit("session-switch", {
+            sessionId: currentSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens,
+          })
+        }
+
+        // Re-load after compaction so the model sees the compacted context
+        continue
+      } catch (err) {
+        bus.emit("compaction-end", { sessionId: currentSessionId, result: null })
+        bus.emit("error", { sessionId: currentSessionId, error: err })
+        // Continue with full context if compaction fails
+      }
+    }
+
+    // 4. Create assistant message row
     const assistantMsg = createAssistantMessage({
-      sessionId,
+      sessionId: currentSessionId,
       modelId: modelOpt?.model,
       providerId: modelOpt?.provider ?? "copilot",
     })
-    bus.emit("assistant-message-start", { sessionId, messageId: assistantMsg.id })
+    bus.emit("assistant-message-start", { sessionId: currentSessionId, messageId: assistantMsg.id })
 
-    // 4. Resolve tools with correct context for this iteration
-    const tools = resolveToolSet(agent, sessionId, assistantMsg.id, abort, modelMessages)
+    // 5. Resolve tools with correct context for this iteration
+    const tools = resolveToolSet(agent, currentSessionId, assistantMsg.id, abort, modelMessages)
 
-    // 5. Stream + process
+    // 6. Stream + process
     const result = await processStream({
       model,
       system,
@@ -153,16 +233,8 @@ async function loop(
       tools,
       abort,
       msg: assistantMsg,
-      sessionId,
+      sessionId: currentSessionId,
     })
-
-    // 6. Check if compaction is needed (before deciding next action)
-    if (result === "continue" || result === "stop") {
-      const latest = loadMessages(sessionId)
-      if (shouldCompact(latest.parts, modelLimit, loadConfig().context_limit_tokens)) {
-        await compact({ sessionId, model, abort })
-      }
-    }
 
     // 7. Decide next action
     if (result === "continue") continue

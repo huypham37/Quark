@@ -61,6 +61,7 @@ export type TuiAction =
   | { type: "clear-error" }
   | { type: "set-permission"; request: PermissionRequest }
   | { type: "clear-permission" }
+  | { type: "set-compacting"; compacting: boolean }
 
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
@@ -123,6 +124,7 @@ export interface AppStore {
   sessionId: string | null
   messages: TuiMessage[]
   running: boolean
+  compacting: boolean
   status: TuiStatus
   error?: string
   permission?: PermissionRequest
@@ -142,9 +144,10 @@ export function createAppState(initial: {
     sessionId: initial.sessionId,
     messages: [],
     running: false,
+    compacting: false,
     status: {
       tokensUsed: 0,
-      tokenLimit: getModelLimit(getModelId("main"))?.context ?? loadConfig().context_limit_tokens,
+      tokenLimit: (() => { const lim = getModelLimit(getModelId("main")); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,
@@ -340,6 +343,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     case "clear-permission":
       setStore("permission", undefined)
+      break
+
+    case "set-compacting":
+      setStore("compacting", action.compacting)
       break
   }
 }

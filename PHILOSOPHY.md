@@ -32,14 +32,50 @@ while not done:
 ```
 
 A chatbot responds in a single pass. An agent persists, adapts, and acts
-across multiple steps. The four components that transform an LLM into an agent:
+across multiple steps.
 
-1. **Tool use** — the ability to act on the world
-2. **The loop** — observe → reason → act → observe
-3. **Memory** — persistence across iterations
-4. **Planning** — the model decides what to do next and when to stop
+### Base Agent Kernel
 
-Everything else is infrastructure around the loop.
+The irreducible core of any agent — before it becomes a coder, researcher,
+or anything specialized — is three components:
+
+1. **Agent Loop** — the control flow that iterates until the task is done
+2. **Provider Connection** — the LLM API call that produces reasoning
+3. **Message State** — the accumulating array of messages that gives
+   the loop continuity between iterations
+
+This is the skeleton. Without the loop, there is no iteration. Without the
+provider, there is no intelligence. Without message state, every call is
+stateless and there is no agent behavior — just a chatbot.
+
+### Capability Packaging
+
+Specialized agents are grown from the kernel by plugging in capabilities:
+
+| Capability | What It Adds |
+|---|---|
+| **Tools** | The ability to act on the world (read, write, execute) |
+| **Permissions** | Safety constraints on tool execution |
+| **Context Management** | Survival across long sessions (compaction or handoff) |
+| **Skills** | On-demand behaviors loaded into context |
+| **RAG / Memory** | Recall beyond the context window |
+| **Planning** | Explicit task decomposition and sequencing |
+
+Different combinations produce different agents. A coder agent gets tools +
+permissions + context management. A researcher agent gets search tools +
+RAG. The **profile** is the declaration of which capabilities to plug into
+the kernel.
+
+```
+Base Kernel: loop + provider + message state
+         │
+         ├── + tools           → can act on the world
+         ├── + permissions     → can be trusted to act safely
+         ├── + context mgmt   → can survive long sessions
+         ├── + skills          → can learn new behaviors on-demand
+         ├── + RAG / memory    → can recall beyond the context window
+         └── = Coder Agent, Researcher Agent, etc.
+```
 
 ---
 

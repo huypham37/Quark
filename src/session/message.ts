@@ -231,34 +231,60 @@ export function toModelMessages(
     partsByMsg.set(p.messageId, list)
   }
 
-  // Find the last summary message — everything before it is replaced
-  // by the summary text as a single user message
-  let summaryStartIdx = -1
-  let summaryText: string | undefined
+  // Find the latest anchor (compaction summary with compactedUntilMessageId).
+  // Messages up to and including compactedUntilMessageId are replaced by the
+  // anchor summary. The anchor message itself is also skipped.
+  let anchorSummaryText: string | undefined
+  let cutoffMessageId: string | undefined
+  let anchorMessageId: string | undefined
+
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]!
+    if (msg.providerId !== "compaction") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const summaryPart = msgParts.find((p) => p.type === "summary")
-    if (summaryPart && msg.providerId === "compaction") {
-      summaryStartIdx = i
-      const d = JSON.parse(summaryPart.data) as SummaryData
-      summaryText = d.text
+    if (!summaryPart) continue
+    const d = JSON.parse(summaryPart.data) as { text: string; compactedUntilMessageId?: string }
+    if (d.text) {
+      anchorSummaryText = d.text
+      cutoffMessageId = d.compactedUntilMessageId
+      anchorMessageId = msg.id
       break
     }
   }
 
   const result: ModelMessage[] = []
 
-  // If there's a summary, inject it as the first user message
-  if (summaryText && summaryStartIdx >= 0) {
-    result.push({ role: "user", content: summaryText })
+  // If there's an anchor, inject its summary as the first user message
+  if (anchorSummaryText) {
+    result.push({ role: "user", content: anchorSummaryText })
   }
 
-  // Start from after the summary message (or from the beginning)
-  const startIdx = summaryStartIdx >= 0 ? summaryStartIdx + 1 : 0
+  // Determine start index: skip all messages up to and including the cutoff,
+  // and also skip the anchor message itself
+  let startIdx = 0
+  if (cutoffMessageId) {
+    // Find the cutoff message and start after it
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i]!.id === cutoffMessageId) {
+        startIdx = i + 1
+        break
+      }
+    }
+  } else if (anchorMessageId) {
+    // Legacy: no compactedUntilMessageId, skip up to anchor message
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i]!.id === anchorMessageId) {
+        startIdx = i + 1
+        break
+      }
+    }
+  }
 
   for (let i = startIdx; i < messages.length; i++) {
     const msg = messages[i]!
+    // Skip anchor messages — their content is already injected above
+    if (msg.providerId === "compaction") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
 
     if (msg.role === "user") {

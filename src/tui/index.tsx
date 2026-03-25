@@ -9,19 +9,23 @@ import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
 import { createSession, listSessions } from "../session/session"
-import { loadMessages } from "../session/message"
-import { compact } from "../session/compaction"
+import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage } from "../session/message"
+import { resolve as resolveCompaction } from "../session/compact-resolver"
+import { buildSystem } from "../session/system"
+import { getModelLimit } from "../provider/models"
+import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig } from "../config/config"
+import { loadConfig, getModelId } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
 import { clearCache as clearSkillCache } from "../skill/skill"
-import { register } from "../tool/registry"
+import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
+import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
@@ -82,14 +86,66 @@ function handleCancel(sessionId: string) {
   cancel(sessionId)
 }
 
-function handleCommand(command: string, args: string, sessionId: string | null): CommandResult {
+async function handleCommand(command: string, args: string, sessionId: string | null): Promise<CommandResult> {
   const sid = sessionId ?? currentSession.id
 
   switch (command) {
     case "compact": {
-      resolveModel().then((model) => {
-        return compact({ sessionId: sid, model, abort: new AbortController().signal })
+      bus.emit("compaction-start", { sessionId: sid })
+      resolveModel().then(async (model) => {
+        const { messages, parts } = loadMessages(sid)
+        const modelMessages = toModelMessages(messages, parts)
+        const modelId = modelOverride ?? getModelId("main")
+        const budget = getModelLimit(modelId)
+        const system = buildSystem(activeAgent)
+
+        const result = await resolveCompaction({
+          trigger: "command",
+          ctx: {
+            sessionId: sid,
+            messages,
+            parts,
+            modelMessages,
+            model,
+            agentPrompt: system,
+            budget,
+            persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
+            session: { create: createSession },
+          },
+        })
+
+        bus.emit("compaction-end", { sessionId: sid, result })
+
+        if (result.type === "new-session" && result.newSessionId !== sid) {
+          // Switch the TUI to the new compacted session
+          currentSession = { ...currentSession, id: result.newSessionId }
+          const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
+          const tuiMessages = dbToTuiMessages(newMsgs, newParts)
+          const newModelMessages = toModelMessages(newMsgs, newParts)
+          const systemStr = Array.isArray(system) ? system.join("\n") : system
+          const estimatedTokens = estimateTokens(systemStr, newModelMessages)
+          bus.emit("session-switch", { sessionId: result.newSessionId, messages: tuiMessages, estimatedTokens })
+
+          const feedbackText =
+            result.evictedCount > 0
+              ? `[compact] Done — evicted ${result.evictedCount} message${result.evictedCount !== 1 ? "s" : ""}, new session created.`
+              : `[compact] Nothing to compact — fewer than ${loadConfig().compact.retain_turns} turns available to evict.`
+          bus.emit("user-message", {
+            sessionId: result.newSessionId,
+            messageId: `compact-result-${Date.now()}`,
+            text: feedbackText,
+          })
+        } else {
+          // No new session (evictedCount === 0 — nothing to compact)
+          const feedbackText = `[compact] Nothing to compact — fewer than ${loadConfig().compact.retain_turns} turns available to evict.`
+          bus.emit("user-message", {
+            sessionId: sid,
+            messageId: `compact-result-${Date.now()}`,
+            text: feedbackText,
+          })
+        }
       }).catch((err) => {
+        bus.emit("compaction-end", { sessionId: sid, result: null })
         bus.emit("error", { sessionId: sid, error: err })
       })
       return { handled: true }
@@ -135,7 +191,18 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       currentSession = match
       const { messages, parts } = loadMessages(match.id)
       const tuiMessages = dbToTuiMessages(messages, parts)
-      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages })
+      // Prefer real API token count from DB; fall back to chars/4 heuristic
+      const lastReal = getLastInputTokens(parts)
+      let switchEstimatedTokens: number
+      if (lastReal > 0) {
+        switchEstimatedTokens = lastReal
+      } else {
+        const switchModelMessages = toModelMessages(messages, parts)
+        const switchSystem = buildSystem(activeAgent)
+        const switchSystemStr = Array.isArray(switchSystem) ? switchSystem.join("\n") : switchSystem
+        switchEstimatedTokens = estimateTokens(switchSystemStr, switchModelMessages)
+      }
+      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages, estimatedTokens: switchEstimatedTokens })
       return { handled: true }
     }
 
@@ -156,13 +223,9 @@ function handleCommand(command: string, args: string, sessionId: string | null):
         const current = activeAgent.id
         const lines = available.map((p) => {
           const marker = p === current ? " ← active" : ""
-          return `  ${p}${marker}`
+          return `${p}${marker}`
         })
-        bus.emit("user-message", {
-          sessionId: sid,
-          messageId: `profile-list-${Date.now()}`,
-          text: `Profiles:\n${lines.join("\n")}\n\nUse /profile <name> to switch`,
-        })
+        notifyInfo("Profiles", lines.join("\n"), 6000)
         return { handled: true }
       }
 
@@ -184,8 +247,10 @@ function handleCommand(command: string, args: string, sessionId: string | null):
       const newPrompt = readPromptFile(newProfile)
       activeAgent = agentFromProfile(newProfile, newPrompt)
 
-      // Re-register skill tool with new profile binding
-      register(buildSkillTool(newProfile.skills))
+      // Tear down and re-bootstrap with the new profile's tools and skills
+      clearRegistry()
+      resetBootstrap()
+      await bootstrap({ profileTools: newProfile.tools, boundSkills: newProfile.skills })
 
       // Show toast notification for profile switch (no message in conversation)
       notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)

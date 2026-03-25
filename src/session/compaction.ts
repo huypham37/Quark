@@ -48,28 +48,78 @@ When constructing the summary, try to stick to this template:
 ---`
 
 // ---------------------------------------------------------------------------
-// shouldCompact — check if token usage exceeds model's context limit
+// shouldCompact — estimate current prompt size, compare against model limit
 //
-// Uses per-model limits from models.dev when available.
-// Falls back to config.context_limit_tokens.
+// Uses chars/4 heuristic on system prompt + current modelMessages.
+// Triggers when estimated tokens >= threshold * context_window.
+//
+// threshold comes from config.compact.threshold (default 0.95).
+// context_window is resolved from models.dev (modelLimit) or
+// config.context_window as fallback.
 // ---------------------------------------------------------------------------
 export function shouldCompact(
-  parts: PartRow[],
-  modelLimit: { context: number; output: number } | null,
-  fallbackThreshold: number,
+  system: string | string[],
+  modelMessages: import("ai").ModelMessage[],
+  modelLimit: { context: number; input?: number; output: number } | null,
+  contextWindow: number,
+  threshold: number,
 ): boolean {
-  const usage = getTotalTokens(parts)
-
-  if (modelLimit && modelLimit.context > 0) {
-    const usable = modelLimit.context - modelLimit.output
-    return usage.total >= usable
-  }
-
-  return usage.total > fallbackThreshold * 0.8
+  const systemStr = Array.isArray(system) ? system.join("\n") : system
+  const estimated = estimateTokens(systemStr, modelMessages)
+  const limit = getContextWindow(modelLimit, contextWindow)
+  return estimated >= limit * threshold
 }
 
 // ---------------------------------------------------------------------------
-// getTotalTokens — sum up token usage from step-finish parts
+// estimateTokens — chars/4 heuristic on the content that will be sent
+// ---------------------------------------------------------------------------
+export function estimateTokens(
+  system: string,
+  modelMessages: import("ai").ModelMessage[],
+): number {
+  let chars = system.length
+
+  for (const msg of modelMessages) {
+    if (typeof msg.content === "string") {
+      chars += msg.content.length
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if ("text" in part && typeof part.text === "string") {
+          chars += part.text.length
+        } else if ("input" in part) {
+          chars += JSON.stringify(part.input).length
+        }
+        if ("output" in part && part.output && typeof part.output === "object") {
+          const out = part.output as Record<string, unknown>
+          if (typeof out.value === "string") chars += out.value.length
+        }
+      }
+    }
+  }
+
+  return Math.ceil(chars / 4)
+}
+
+// ---------------------------------------------------------------------------
+// getContextWindow — resolve the context window size (tokens)
+//
+// Prefers the per-model limit from models.dev. Falls back to the
+// user-configured context_window from config.yaml.
+// ---------------------------------------------------------------------------
+function getContextWindow(
+  modelLimit: { context: number; input?: number; output: number } | null,
+  fallback: number,
+): number {
+  if (modelLimit) {
+    // Prefer `input` (max prompt tokens) over `context` (total window incl. output)
+    if (modelLimit.input && modelLimit.input > 0) return modelLimit.input
+    if (modelLimit.context > 0) return modelLimit.context
+  }
+  return fallback
+}
+
+// ---------------------------------------------------------------------------
+// getTotalTokens — sum up token usage from step-finish parts (kept for stats)
 // ---------------------------------------------------------------------------
 export function getTotalTokens(parts: PartRow[]): {
   input: number
@@ -91,6 +141,29 @@ export function getTotalTokens(parts: PartRow[]): {
   }
 
   return { input, output, total: input + output }
+}
+
+// ---------------------------------------------------------------------------
+// getLastInputTokens — read the last step-finish's input token count
+//
+// This is the actual context-window usage at the end of the session's last
+// API call.  Used to restore the token-% bar when switching to / resuming
+// an existing session.
+// ---------------------------------------------------------------------------
+export function getLastInputTokens(parts: PartRow[]): number {
+  let last = 0
+  for (const p of parts) {
+    if (p.type !== "step-finish") continue
+    try {
+      const data = JSON.parse(p.data) as StepFinishData
+      if (data.tokens?.input !== undefined) {
+        last = data.tokens.input
+      }
+    } catch {
+      // skip malformed parts
+    }
+  }
+  return last
 }
 
 // ---------------------------------------------------------------------------
