@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-ATOM_DIR="/Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Atom"
+export ATOM_DIR="/Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Atom"
 exec bun --preload "$ATOM_DIR/preload.ts" "$ATOM_DIR/src/tui/index.tsx" "$@"

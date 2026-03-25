@@ -14,7 +14,7 @@ import type { ToolDef } from "./tool"
 const TOOLS_DIR = path.join(os.homedir(), ".config", "atom", "tools")
 
 // Built-in tools (registered by bootstrap, not loaded from disk)
-const BUILTIN_TOOLS = new Set(["read", "skill"])
+const BUILTIN_TOOLS = new Set(["read", "skill", "compact"])
 
 export interface LoadResult {
   loaded: string[]
