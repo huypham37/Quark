@@ -164,13 +164,20 @@ export function wireEvents(state: AppState) {
 
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
-      if (tokens && tokens.input !== undefined) {
-        // Use the last input token count — this IS the current context window
-        // usage, not a cumulative total. Each API call reports how many input
-        // tokens the full prompt consumed.
-        lastInputTokens = tokens.input
-        sessionTokens.set(sid, lastInputTokens)
-        dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
+      if (tokens) {
+        // Sum all token categories that occupy context window space.
+        // Cache read/write are undefined for providers that don't support
+        // prompt caching — ?? 0 safely collapses them.
+        const total =
+          (tokens.input     ?? 0) +
+          (tokens.output    ?? 0) +
+          (tokens.cacheRead ?? 0) +
+          (tokens.cacheWrite ?? 0)
+        if (total > 0) {
+          lastInputTokens = total
+          sessionTokens.set(sid, lastInputTokens)
+          dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
+        }
       }
     }))
 

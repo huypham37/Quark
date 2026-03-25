@@ -26,7 +26,7 @@ export interface ToolPartData {
 
 export interface StepFinishData {
   reason: string
-  tokens?: { input?: number; output?: number }
+  tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   cost?: number
 }
 

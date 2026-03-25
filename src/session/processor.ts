@@ -222,8 +222,10 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             const stepData: StepFinishData = {
               reason: event.finishReason,
               tokens: {
-                input: usage?.inputTokens,
-                output: usage?.outputTokens,
+                input:      usage?.inputTokens,
+                output:     usage?.outputTokens,
+                cacheRead:  usage?.inputTokenDetails?.cacheReadTokens,
+                cacheWrite: usage?.inputTokenDetails?.cacheWriteTokens,
               },
             }
             addPart({
