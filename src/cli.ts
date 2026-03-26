@@ -143,8 +143,8 @@ async function main() {
   })
 
   // Wire up basic event output for CLI
-  bus.on("text-delta", ({ text }) => {
-    process.stdout.write(text)
+  bus.on("text-delta", ({ delta }) => {
+    process.stdout.write(delta)
   })
 
   bus.on("tool-start", ({ toolId }) => {
