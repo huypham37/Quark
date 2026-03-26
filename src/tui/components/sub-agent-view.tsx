@@ -122,7 +122,9 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
   return (
     <box flexDirection="row">
       <text fg={colors.muted}>{connector()} </text>
-      <StatusIndicator status={props.tool.status} />
+      <box flexShrink={0}>
+        <StatusIndicator status={props.tool.status} />
+      </box>
       <text>{displayName}</text>
       <Show when={label()}>
         <text> </text>
@@ -157,7 +159,9 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     <box flexDirection="column">
       {/* Header: spinner/check + profile name + token usage */}
       <box flexDirection="row">
-        <StatusIndicator status={isDone() ? "completed" : "running"} />
+        <box flexShrink={0}>
+          <StatusIndicator status={isDone() ? "completed" : "running"} />
+        </box>
         <text fg={colors.text}>{profileName()}</text>
         <Show when={hasTokens()}>
           <text fg={colors.muted}>  {formatTokens(tokensUsed())} tokens{tokenPct()}</text>

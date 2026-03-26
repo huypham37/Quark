@@ -86,22 +86,23 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
 
   return (
     <box flexDirection="row">
-      <Show when={isRunning()}>
-        <InlineSpinner />
-        <text> </text>
-      </Show>
-      <Show
-        when={!isPending() && !isRunning()}
-        fallback={<Show when={isPending()}><text fg={colors.muted}>… </text></Show>}
-      >
-        <Show
-          when={!isError()}
-          fallback={<text fg={colors.error}>✗</text>}
-        >
-          <text fg={RGBA.fromHex("#98C379")}>✓</text>
+      <box flexShrink={0}>
+        <Show when={isRunning()}>
+          <InlineSpinner />
+          <text> </text>
         </Show>
-        <text> </text>
-      </Show>
+        <Show
+          when={!isPending() && !isRunning()}
+          fallback={<Show when={isPending()}><text fg={colors.muted}>… </text></Show>}
+        >
+          <Show
+            when={!isError()}
+            fallback={<text fg={colors.error}>✗ </text>}
+          >
+            <text fg={RGBA.fromHex("#98C379")}>✓ </text>
+          </Show>
+        </Show>
+      </box>
       <text bold>{displayName}</text>
       <Show when={label()}>
         <text> </text>

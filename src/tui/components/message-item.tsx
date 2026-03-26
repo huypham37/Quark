@@ -69,20 +69,22 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
         <box marginBottom={1} flexDirection="column">
           {/* Show the Bash tool as parent wrapper */}
           <box flexDirection="row">
-            <Show
-              when={asTool().status === "running"}
-              fallback={
-                <Show
-                  when={asTool().status === "error"}
-                  fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
-                >
-                  <text fg={RGBA.fromHex("#E06C75")}>✗ </text>
-                </Show>
-              }
-            >
-              <InlineSpinner />
-              <text> </text>
-            </Show>
+            <box flexShrink={0}>
+              <Show
+                when={asTool().status === "running"}
+                fallback={
+                  <Show
+                    when={asTool().status === "error"}
+                    fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
+                  >
+                    <text fg={RGBA.fromHex("#E06C75")}>✗ </text>
+                  </Show>
+                }
+              >
+                <InlineSpinner />
+                <text> </text>
+              </Show>
+            </box>
             <text>Bash</text>
             <text fg={colors.muted}> </text>
             <text fg={colors.muted}>{getToolDescription(asTool().tool, asTool().input).slice(0, 60)}{getToolDescription(asTool().tool, asTool().input).length > 60 ? "..." : ""}</text>
