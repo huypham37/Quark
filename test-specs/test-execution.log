@@ -1,0 +1,55 @@
+bun test v1.3.10 (30e609e0)
+
+test-sdk/sdk.test.ts:
+
+╔════════════════════════════════════════════════════════════════╗
+║                  Atom SDK Test Suite Summary                  ║
+╠════════════════════════════════════════════════════════════════╣
+║ ✅ All exports accessible (functions, types, classes)         ║
+║ ✅ Type definitions correct and complete                      ║
+║ ✅ ESM bundle works correctly                                 ║
+║ ✅ CJS bundle works correctly (Bun compatible)                ║
+║ ✅ SDK public API functionality validated                     ║
+║ ✅ SDK usage matches SDK_USAGE.md documentation               ║
+╚════════════════════════════════════════════════════════════════╝
+
+(pass) SDK Type Definitions > ToolDef type is correct
+(pass) SDK Type Definitions > ToolContext type has correct shape [0.06ms]
+(pass) SDK Type Definitions > ToolResult type has correct shape [0.06ms]
+(pass) SDK Type Definitions > Session type has correct shape [0.02ms]
+(pass) SDK Type Definitions > SessionKind type accepts valid values
+(pass) SDK Type Definitions > AgentConfig type has correct shape [0.05ms]
+(pass) SDK Type Definitions > Permission types have correct shape [0.01ms]
+(pass) SDK Type Definitions > ProfileDef type has correct shape
+(pass) ESM Bundle > All documented exports are available [0.05ms]
+(pass) ESM Bundle > Function exports are callable [0.02ms]
+(pass) ESM Bundle > Object exports have correct types [0.02ms]
+(pass) CJS Bundle > CJS bundle can be required (Bun compatibility) [134.69ms]
+(pass) CJS Bundle > CJS exports match ESM exports (excluding default) [0.10ms]
+(pass) CJS Bundle > CJS has default export pointing to module [0.01ms]
+(pass) SDK Core API - Sessions > bootstrap() initializes SDK without errors [13.10ms]
+(pass) SDK Core API - Sessions > createSession() creates a session with default options [1.87ms]
+(pass) SDK Core API - Sessions > createSession() accepts custom options [0.32ms]
+(pass) SDK Core API - Sessions > createSession() creates subagent session with parent [0.34ms]
+(pass) SDK Core API - Sessions > getSession() retrieves existing session [1.47ms]
+(pass) SDK Core API - Sessions > getSession() throws for non-existent session [0.20ms]
+(pass) SDK Core API - Tools > defineTool() creates a valid tool definition
+(pass) SDK Core API - Tools > defineTool() validates parameters with Zod schema [0.27ms]
+(pass) SDK Core API - Tools > register() adds a tool to registry [0.12ms]
+(pass) SDK Core API - Tools > listTools() returns registered tools [0.06ms]
+(pass) SDK Core API - Event Bus > bus.on() registers event listener [0.17ms]
+(pass) SDK Core API - Event Bus > bus.off() removes event listener [0.05ms]
+(pass) SDK Core API - Event Bus > bus.once() fires handler only once [0.03ms]
+(pass) SDK Core API - Event Bus > bus supports multiple event types [0.06ms]
+(pass) SDK Core API - Agent Configuration > defaultAgent has correct structure [0.08ms]
+(pass) SDK Core API - Agent Configuration > agentFromProfile() builds AgentConfig from ProfileDef [0.03ms]
+(pass) SDK Usage Example > Complete SDK_USAGE.md example workflow [0.14ms]
+(pass) SDK Type Safety & Edge Cases > ToolDef with complex Zod schema
+(pass) SDK Type Safety & Edge Cases > Session with all optional fields [0.20ms]
+(pass) SDK Type Safety & Edge Cases > Permission system types [0.07ms]
+(pass) SDK Type Safety & Edge Cases > BusEvents type safety [0.01ms]
+
+ 35 pass
+ 0 fail
+ 125 expect() calls
+Ran 35 tests across 1 file. [368.00ms]
