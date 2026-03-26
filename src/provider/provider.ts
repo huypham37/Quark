@@ -6,7 +6,6 @@ import type { FetchFunction } from "@ai-sdk/provider-utils"
 import { createCopilotFetch } from "./copilot-fetch"
 
 const COPILOT_BASE_URL = "https://api.githubcopilot.com"
-const DEFAULT_MODEL = "gpt-4o"
 
 // ---------------------------------------------------------------------------
 // shouldUseResponsesApi — GPT-5+ (except gpt-5-mini) uses Responses API
@@ -50,7 +49,7 @@ export function createCopilotProvider(options: {
 // ---------------------------------------------------------------------------
 export function getModel(
   provider: OpenAIProvider,
-  modelId: string = DEFAULT_MODEL,
+  modelId: string,
 ) {
   if (shouldUseResponsesApi(modelId)) {
     return provider.responses(modelId)

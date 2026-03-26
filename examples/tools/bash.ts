@@ -29,7 +29,11 @@ export default {
 
       const proc = spawn("sh", ["-c", args.command], {
         cwd: process.cwd(),
-        env: { ...process.env },
+        env: {
+          ...process.env,
+          // Ensure child processes can discover their parent session
+          ...(ctx.sessionId ? { ATOM_SESSION_ID: ctx.sessionId } : {}),
+        },
         stdio: ["ignore", "pipe", "pipe"],
       })
 

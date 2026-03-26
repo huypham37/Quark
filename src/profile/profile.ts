@@ -18,6 +18,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 import { parse as parseYAML } from "yaml"
+import { warn as notifyWarn } from "../notification/notification"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +35,10 @@ export interface ProfileDef {
   tools: string[]
   /** Skill names this profile has access to (L1 metadata loaded at activation) */
   skills: string[]
+  /** Profile IDs of sub-agents this profile can spawn */
+  subAgents?: string[]
+  /** Model to use for this profile (optional, falls back to config main_model) */
+  model?: string
 }
 
 export interface ProfileConfig {
@@ -97,6 +102,8 @@ function parseProfilesFromYAML(raw: Record<string, unknown>, configDir: string):
       promptFile: typeof p.prompt_file === "string" ? resolvePromptPath(p.prompt_file, configDir) : "",
       tools: Array.isArray(p.tools) ? (p.tools as string[]) : BUILTIN_CODER.tools,
       skills: Array.isArray(p.skills) ? (p.skills as string[]) : [],
+      subAgents: Array.isArray(p.sub_agents) ? (p.sub_agents as string[]) : undefined,
+      model: typeof p.model === "string" ? p.model : undefined,
     }
   }
 
@@ -184,6 +191,20 @@ export function loadProfileConfig(): ProfileConfig {
 // ---------------------------------------------------------------------------
 
 /**
+ * Validate a list of sub-agent IDs against the set of known profile IDs.
+ * Returns the valid IDs and the unknown/invalid IDs separately.
+ * Pure function — no side effects, safe to call from tests directly.
+ */
+export function validateSubAgents(
+  subAgents: string[],
+  knownProfileIds: string[],
+): { valid: string[]; invalid: string[] } {
+  const valid = subAgents.filter((id) => knownProfileIds.includes(id))
+  const invalid = subAgents.filter((id) => !knownProfileIds.includes(id))
+  return { valid, invalid }
+}
+
+/**
  * Resolve a profile by id. If not found, falls back to default profile,
  * then to built-in coder. Applies project-level overrides (skills_add, tools_add).
  */
@@ -215,6 +236,20 @@ export function resolveProfile(profileId?: string): ProfileDef {
       }
     } catch {
       // Skip invalid overrides
+    }
+  }
+
+  // Validate sub_agents — warn about IDs that don't match any known profile
+  if (profile.subAgents && profile.subAgents.length > 0) {
+    const knownIds = Object.keys(config.profiles)
+    const { valid, invalid } = validateSubAgents(profile.subAgents, knownIds)
+    if (invalid.length > 0) {
+      notifyWarn(
+        "Profile",
+        `Unknown sub-agent${invalid.length > 1 ? "s" : ""}: ${invalid.join(", ")}. Available profiles: ${knownIds.join(", ")}`,
+        8000,
+      )
+      profile = { ...profile, subAgents: valid }
     }
   }
 
@@ -256,5 +291,7 @@ export function resetProfileCache(): void {
 export const _internal = {
   parseProfilesFromYAML,
   parseProjectOverrides,
+  validateSubAgents,
   BUILTIN_CODER,
+  BUILTIN_PROMPT,
 }

@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS session (
   id TEXT PRIMARY KEY,
   title TEXT,
   directory TEXT,
+  parent_session_id TEXT REFERENCES session(id),
+  kind TEXT NOT NULL DEFAULT 'main' CHECK(kind IN ('main', 'subagent')),
   time_created INTEGER NOT NULL,
   time_updated INTEGER NOT NULL
 );
@@ -44,6 +46,16 @@ CREATE TABLE IF NOT EXISTS part (
 // Migrations — run after CREATE TABLE IF NOT EXISTS (which won't alter
 // an existing table). Each migration is idempotent.
 // ---------------------------------------------------------------------------
+
+function migrateSessionSubagentColumns(sqlite: Database) {
+  // Add parent_session_id and kind columns for sub-agent support
+  const row = sqlite.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='session'").get() as { sql: string } | null
+  if (!row) return
+  if (row.sql.includes("parent_session_id")) return // already migrated
+
+  sqlite.exec(`ALTER TABLE session ADD COLUMN parent_session_id TEXT REFERENCES session(id)`)
+  sqlite.exec(`ALTER TABLE session ADD COLUMN kind TEXT NOT NULL DEFAULT 'main' CHECK(kind IN ('main', 'subagent'))`)
+}
 
 function migratePartTypeConstraint(sqlite: Database) {
   // Check if the current part table already allows 'image'
@@ -77,6 +89,7 @@ export function getDB(dbPath?: string) {
   sqlite.exec(CREATE_TABLES)
 
   // Run idempotent migrations for existing databases
+  migrateSessionSubagentColumns(sqlite)
   migratePartTypeConstraint(sqlite)
 
   _db = drizzle({ client: sqlite, schema })

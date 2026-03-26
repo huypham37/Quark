@@ -48,8 +48,11 @@ export interface BusEvents {
   // Error
   "error": { sessionId: string; error: unknown }
 
+  // Session was lazily created (first message in a new conversation)
+  "session-created": { sessionId: string }
+
   // Session was reset (e.g. /clear command — TUI should switch to new session)
-  "session-reset": { sessionId: string }
+  "session-reset": { sessionId: string | null }
 
   // Session was switched (e.g. /sessions <id> — TUI loads existing session)
   // estimatedTokens: if provided (e.g. post-compaction), the status bar is

@@ -113,6 +113,109 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
+  // /model and /profile work even without an active session
+  if (command === "model") {
+    if (!args) {
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Use /model to open the model picker") })
+      return { handled: true }
+    }
+    modelOverride = args.trim()
+    notifyInfo("Model", `Switched to: ${modelOverride}`, 3000)
+    return { handled: true }
+  }
+
+  if (command === "profile") {
+    if (!args) {
+      const available = listProfiles()
+      const current = activeAgent.id
+      const lines = available.map((p) => {
+        const marker = p === current ? " ← active" : ""
+        return `${p}${marker}`
+      })
+      notifyInfo("Profiles", lines.join("\n"), 6000)
+      return { handled: true }
+    }
+
+    const targetId = args.trim()
+    const available = listProfiles()
+    if (!available.includes(targetId)) {
+      bus.emit("error", {
+        sessionId: sid ?? "unknown",
+        error: new Error(`Profile "${targetId}" not found. Available: ${available.join(", ")}`),
+      })
+      return { handled: true }
+    }
+
+    // Switch profile: resolve, rebuild agent, re-register skill tool
+    // NOTE: We do NOT create a new session - messages are preserved
+    resetProfileCache()
+    clearSkillCache()
+    const newProfile = resolveProfile(targetId)
+    const newPrompt = readPromptFile(newProfile)
+    activeAgent = agentFromProfile(newProfile, newPrompt)
+
+    // Tear down and re-bootstrap with the new profile's tools and skills
+    clearRegistry()
+    resetBootstrap()
+    await bootstrap({ profileTools: newProfile.tools, boundSkills: newProfile.skills })
+
+    // Show toast notification for profile switch (no message in conversation)
+    notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)
+
+    return { handled: true }
+  }
+
+  // /sessions works even without an active session (picker can be opened any time)
+  if (command === "sessions") {
+    if (!args) {
+      const sessions = listSessions()
+      if (sessions.length === 0) {
+        bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
+        return { handled: true }
+      }
+
+      const lines = sessions.map((s) => {
+        const isCurrent = s.id === sid
+        const date = new Date(s.timeUpdated).toLocaleString()
+        const title = s.title ?? "(untitled)"
+        const marker = isCurrent ? " ← current" : ""
+        return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
+      })
+      const header = `Sessions (${sessions.length}):\n`
+      bus.emit("user-message", {
+        sessionId: sid ?? "unknown",
+        messageId: `sessions-list-${Date.now()}`,
+        text: header + lines.join("\n") + "\n\nUse /sessions <id-prefix> to switch",
+      })
+      return { handled: true }
+    }
+
+    const sessions = listSessions()
+    const match = sessions.find((s) => s.id.startsWith(args))
+    if (!match) {
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
+      return { handled: true }
+    }
+
+    currentSession = match
+    process.env.ATOM_SESSION_ID = match.id
+    const { messages, parts } = loadMessages(match.id)
+    const tuiMessages = dbToTuiMessages(messages, parts)
+    // Prefer real API token count from DB; fall back to chars/4 heuristic
+    const lastReal = getLastInputTokens(parts)
+    let switchEstimatedTokens: number
+    if (lastReal > 0) {
+      switchEstimatedTokens = lastReal
+    } else {
+      const switchModelMessages = toModelMessages(messages, parts)
+      const switchSystem = buildSystem(activeAgent)
+      const switchSystemStr = Array.isArray(switchSystem) ? switchSystem.join("\n") : switchSystem
+      switchEstimatedTokens = estimateTokens(switchSystemStr, switchModelMessages)
+    }
+    bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages, estimatedTokens: switchEstimatedTokens })
+    return { handled: true }
+  }
+
   // All other commands require an active session
   if (!sid) {
     bus.emit("error", { sessionId: "unknown", error: new Error("No active session — send a message first") })
@@ -178,108 +281,6 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         bus.emit("compaction-end", { sessionId: sid, result: null })
         bus.emit("error", { sessionId: sid, error: err })
       })
-      return { handled: true }
-    }
-
-    case "sessions": {
-      if (!args) {
-        const sessions = listSessions()
-        if (sessions.length === 0) {
-          bus.emit("error", { sessionId: sid, error: new Error("No sessions found") })
-          return { handled: true }
-        }
-
-        const lines = sessions.map((s) => {
-          const isCurrent = s.id === sid
-          const date = new Date(s.timeUpdated).toLocaleString()
-          const title = s.title ?? "(untitled)"
-          const marker = isCurrent ? " ← current" : ""
-          return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
-        })
-        const header = `Sessions (${sessions.length}):\n`
-        bus.emit("user-message", {
-          sessionId: sid,
-          messageId: `sessions-list-${Date.now()}`,
-          text: header + lines.join("\n") + "\n\nUse /sessions <id-prefix> to switch",
-        })
-        return { handled: true }
-      }
-
-      const sessions = listSessions()
-      const match = sessions.find((s) => s.id.startsWith(args))
-      if (!match) {
-        bus.emit("error", { sessionId: sid, error: new Error(`No session matching "${args}"`) })
-        return { handled: true }
-      }
-
-      currentSession = match
-      process.env.ATOM_SESSION_ID = match.id
-      const { messages, parts } = loadMessages(match.id)
-      const tuiMessages = dbToTuiMessages(messages, parts)
-      // Prefer real API token count from DB; fall back to chars/4 heuristic
-      const lastReal = getLastInputTokens(parts)
-      let switchEstimatedTokens: number
-      if (lastReal > 0) {
-        switchEstimatedTokens = lastReal
-      } else {
-        const switchModelMessages = toModelMessages(messages, parts)
-        const switchSystem = buildSystem(activeAgent)
-        const switchSystemStr = Array.isArray(switchSystem) ? switchSystem.join("\n") : switchSystem
-        switchEstimatedTokens = estimateTokens(switchSystemStr, switchModelMessages)
-      }
-      bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages, estimatedTokens: switchEstimatedTokens })
-      return { handled: true }
-    }
-
-    case "model": {
-      if (!args) {
-        bus.emit("error", { sessionId: sid, error: new Error("Use /model to open the model picker") })
-        return { handled: true }
-      }
-      modelOverride = args.trim()
-      // Show toast notification for model switch (no message in conversation)
-      notifyInfo("Model", `Switched to: ${modelOverride}`, 3000)
-      return { handled: true }
-    }
-
-    case "profile": {
-      if (!args) {
-        const available = listProfiles()
-        const current = activeAgent.id
-        const lines = available.map((p) => {
-          const marker = p === current ? " ← active" : ""
-          return `${p}${marker}`
-        })
-        notifyInfo("Profiles", lines.join("\n"), 6000)
-        return { handled: true }
-      }
-
-      const targetId = args.trim()
-      const available = listProfiles()
-      if (!available.includes(targetId)) {
-        bus.emit("error", {
-          sessionId: sid,
-          error: new Error(`Profile "${targetId}" not found. Available: ${available.join(", ")}`),
-        })
-        return { handled: true }
-      }
-
-      // Switch profile: resolve, rebuild agent, re-register skill tool
-      // NOTE: We do NOT create a new session - messages are preserved
-      resetProfileCache()
-      clearSkillCache()
-      const newProfile = resolveProfile(targetId)
-      const newPrompt = readPromptFile(newProfile)
-      activeAgent = agentFromProfile(newProfile, newPrompt)
-
-      // Tear down and re-bootstrap with the new profile's tools and skills
-      clearRegistry()
-      resetBootstrap()
-      await bootstrap({ profileTools: newProfile.tools, boundSkills: newProfile.skills })
-
-      // Show toast notification for profile switch (no message in conversation)
-      notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)
-
       return { handled: true }
     }
 

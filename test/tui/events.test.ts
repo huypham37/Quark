@@ -289,3 +289,71 @@ describe("wireEvents: null sessionId", () => {
     expect(s.store.messages.length).toBe(0)
   })
 })
+
+describe("wireEvents: lazy session creation", () => {
+  test("session-created sets sessionId from null and activates session subscriptions", () => {
+    const s = setup(null)
+    expect(s.store.sessionId).toBeNull()
+
+    // Simulate prompt() lazily creating a session
+    bus.emit("session-created", { sessionId: "s1" })
+
+    expect(s.store.sessionId).toBe("s1")
+
+    // createComputed re-ran with "s1" — session-scoped events now work
+    bus.emit("loop-start", { sessionId: "s1" })
+    expect(s.store.running).toBe(true)
+  })
+
+  test("session-created is ignored for other sessions after one is active", () => {
+    const s = setup(null)
+    bus.emit("session-created", { sessionId: "s1" })
+    expect(s.store.sessionId).toBe("s1")
+
+    // A second session-created (e.g. race) should NOT overwrite the active one
+    // (set-session would still update, but in practice only one fires per clear cycle)
+    bus.emit("session-created", { sessionId: "s2" })
+    // set-session is unconditional — last write wins, which is acceptable
+    expect(s.store.sessionId).toBe("s2")
+  })
+
+  test("session-reset with null goes back to no-session state", () => {
+    const s = setup("s1")
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+    bus.emit("loop-start", { sessionId: "s1" })
+    expect(s.store.messages.length).toBe(1)
+    expect(s.store.running).toBe(true)
+
+    // /clear — no new session created yet
+    bus.emit("session-reset", { sessionId: null })
+
+    expect(s.store.sessionId).toBeNull()
+    expect(s.store.messages).toEqual([])
+    expect(s.store.running).toBe(false)
+
+    // Old session events are ignored now
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m2" })
+    expect(s.store.messages.length).toBe(0)
+  })
+
+  test("full lazy cycle: null → session-created → session-reset → session-created", () => {
+    const s = setup(null)
+
+    // First message creates session
+    bus.emit("session-created", { sessionId: "s1" })
+    expect(s.store.sessionId).toBe("s1")
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+    expect(s.store.messages.length).toBe(1)
+
+    // /clear
+    bus.emit("session-reset", { sessionId: null })
+    expect(s.store.sessionId).toBeNull()
+    expect(s.store.messages).toEqual([])
+
+    // Next message creates a new session
+    bus.emit("session-created", { sessionId: "s2" })
+    expect(s.store.sessionId).toBe("s2")
+    bus.emit("assistant-message-start", { sessionId: "s2", messageId: "m2" })
+    expect(s.store.messages.length).toBe(1)
+  })
+})

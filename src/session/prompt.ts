@@ -51,6 +51,7 @@ const active = new Map<string, AbortController>()
 // ---------------------------------------------------------------------------
 export async function prompt(input: {
   sessionId?: string
+  parentSessionId?: string
   parts: { type: "text"; text: string }[]
   images?: { mime: string; data: string }[]
   model?: { provider: string; model: string }
@@ -58,15 +59,23 @@ export async function prompt(input: {
 }) {
   const agent = input.agent ?? defaultAgent
 
-  // Resolve or create session
+  // Resolve or create session (lazy — only created on first message)
   let sessionId: string
   if (input.sessionId) {
     getSession(input.sessionId) // throws if missing
     sessionId = input.sessionId
   } else {
-    const sess = createSession()
+    const sess = createSession(
+      input.parentSessionId
+        ? { parentSessionId: input.parentSessionId, kind: "subagent" }
+        : undefined,
+    )
     sessionId = sess.id
+    bus.emit("session-created", { sessionId })
   }
+
+  // Set ATOM_SESSION_ID so child processes (bash tool) can inherit it
+  process.env.ATOM_SESSION_ID = sessionId
 
   touchSession(sessionId)
 
@@ -119,10 +128,14 @@ async function loop(
   agent: AgentConfig,
   modelOpt?: { provider: string; model: string },
 ) {
-  // Build the AI SDK model (uses main_model from config)
-  const model = await resolveModel(modelOpt, "main")
-  const modelId = modelOpt?.model ?? getModelId("main")
-  const modelLimit = getModelLimit(modelId)
+  // Build the AI SDK model
+  // Priority: explicit modelOpt > agent.model > config main_model
+  const effectiveModel = modelOpt?.model ?? agent.model ?? getModelId("main")
+  const model = await resolveModel(
+    modelOpt ?? (agent.model ? { provider: "copilot", model: agent.model } : undefined),
+    "main"
+  )
+  const modelLimit = getModelLimit(effectiveModel)
 
   // mutable — may change when compaction creates a new session
   let currentSessionId = sessionId

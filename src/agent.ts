@@ -14,6 +14,10 @@ export interface AgentConfig {
   tools: string[]
   /** Skill names bound to this agent (L1 metadata loaded into system prompt) */
   skills: string[]
+  /** Profile IDs of sub-agents this agent can spawn */
+  subAgents?: string[]
+  /** Model to use for this agent (optional) */
+  model?: string
 }
 
 export const defaultAgent: AgentConfig = {
@@ -35,5 +39,7 @@ export function agentFromProfile(profile: ProfileDef, promptContent: string): Ag
     prompt: promptContent,
     tools: profile.tools,
     skills: profile.skills,
+    subAgents: profile.subAgents,
+    model: profile.model,
   }
 }

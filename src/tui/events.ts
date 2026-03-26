@@ -74,6 +74,47 @@ export function wireEvents(state: AppState) {
   // window usage reported by the API, NOT a cumulative sum.
   let lastInputTokens = 0
 
+  // session-created: registered outside createComputed so it fires even when
+  // sessionId is null (before the first message creates a session).
+  const handleCreated = (data: BusEvents["session-created"]) => {
+    dispatch(state, { type: "set-session", sessionId: data.sessionId })
+  }
+  bus.on("session-created", handleCreated)
+
+  // session-reset: registered outside createComputed so it fires even when
+  // sessionId is null (e.g. /new or /clear before first message).
+  const handleReset = (data: BusEvents["session-reset"]) => {
+    const sid = state.store.sessionId
+    if (sid && lastInputTokens > 0) {
+      sessionTokens.set(sid, lastInputTokens)
+    }
+    lastInputTokens = 0
+    dispatch(state, { type: "reset-session", sessionId: data.sessionId })
+  }
+  bus.on("session-reset", handleReset)
+
+  // session-switch: registered outside createComputed so it fires even when
+  // sessionId is null (e.g. /sessions picker before first message).
+  const handleSwitch = (data: BusEvents["session-switch"]) => {
+    const sid = state.store.sessionId
+    if (sid && lastInputTokens > 0) {
+      sessionTokens.set(sid, lastInputTokens)
+    }
+    const restored = sessionTokens.get(data.sessionId)
+    const incoming = restored ?? data.estimatedTokens ?? 0
+    // CRITICAL: seed the map BEFORE dispatching load-session.
+    // load-session mutates sessionId, which causes createComputed to re-run
+    // synchronously and reset lastInputTokens from sessionTokens.
+    // Seeding first ensures createComputed picks up the correct value.
+    if (incoming > 0) {
+      sessionTokens.set(data.sessionId, incoming)
+    }
+    dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
+    // After createComputed re-ran, lastInputTokens is now correctly seeded
+    dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
+  }
+  bus.on("session-switch", handleSwitch)
+
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return
@@ -177,41 +218,6 @@ export function wireEvents(state: AppState) {
         }
       }
     }))
-
-    // session-reset: unfiltered (carries NEW sessionId)
-    const handleReset = (data: BusEvents["session-reset"]) => {
-      // Save current session's tokens before switching away
-      if (sid && lastInputTokens > 0) {
-        sessionTokens.set(sid, lastInputTokens)
-      }
-      lastInputTokens = 0
-      dispatch(state, { type: "reset-session", sessionId: data.sessionId })
-    }
-    bus.on("session-reset", handleReset)
-    unsubs.push(() => bus.off("session-reset", handleReset))
-
-    // session-switch: unfiltered (carries NEW sessionId + messages)
-    const handleSwitch = (data: BusEvents["session-switch"]) => {
-      // Save current session's tokens before switching away
-      if (sid && lastInputTokens > 0) {
-        sessionTokens.set(sid, lastInputTokens)
-      }
-      // Resolve the incoming token count from cache or estimatedTokens
-      const restored = sessionTokens.get(data.sessionId)
-      const incoming = restored ?? data.estimatedTokens ?? 0
-      // CRITICAL: seed the map BEFORE dispatching load-session.
-      // load-session mutates sessionId, which causes createComputed to re-run
-      // synchronously and reset lastInputTokens from sessionTokens.
-      // Seeding first ensures createComputed picks up the correct value.
-      if (incoming > 0) {
-        sessionTokens.set(data.sessionId, incoming)
-      }
-      dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
-      // After createComputed re-ran, lastInputTokens is now correctly seeded
-      dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
-    }
-    bus.on("session-switch", handleSwitch)
-    unsubs.push(() => bus.off("session-switch", handleSwitch))
 
     onCleanup(() => {
       for (const unsub of unsubs) unsub()

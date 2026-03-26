@@ -107,6 +107,7 @@ profiles:
     prompt_file: profiles/researcher.md
     tools: [websearch, webfetch, write]
     skills: [academic-research, competitive-intel]
+    model: claude-sonnet-4.5  # optional, falls back to config main_model
   coder:
     prompt_file: profiles/coder.md
     tools: [read, write, edit, bash, todo]

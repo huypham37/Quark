@@ -79,6 +79,19 @@ describe("dispatch: session actions", () => {
     })
   })
 
+  test("reset-session with null sets sessionId to null and clears state", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-user-message", id: "m1", text: "hello" })
+      dispatch(s, { type: "set-running", running: true })
+
+      dispatch(s, { type: "reset-session", sessionId: null })
+      expect(s.store.sessionId).toBeNull()
+      expect(s.store.messages).toEqual([])
+      expect(s.store.running).toBe(false)
+    })
+  })
+
   test("load-session replaces messages and sessionId", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })

@@ -6,6 +6,8 @@ export const session = sqliteTable("session", {
   id: text("id").primaryKey(),
   title: text("title"),
   directory: text("directory"),
+  parentSessionId: text("parent_session_id"),
+  kind: text("kind", { enum: ["main", "subagent"] }).notNull().default("main"),
   timeCreated: integer("time_created").notNull(),
   timeUpdated: integer("time_updated").notNull(),
 })

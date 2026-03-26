@@ -7,6 +7,7 @@ import * as os from "os"
 
 import {
   resolveProfile,
+  validateSubAgents,
   readPromptFile,
   listProfiles,
   resetProfileCache,
@@ -14,8 +15,10 @@ import {
   _internal,
 } from "../../src/profile/profile"
 import { agentFromProfile } from "../../src/agent"
+import { getActive, dismiss } from "../../src/notification/notification"
 
-const { parseProfilesFromYAML, parseProjectOverrides, BUILTIN_CODER } = _internal
+const { parseProfilesFromYAML, parseProjectOverrides, BUILTIN_CODER, BUILTIN_PROMPT } = _internal
+
 
 // ---------------------------------------------------------------------------
 // resolveProfile — fallback behavior
@@ -335,6 +338,33 @@ describe("parseProfilesFromYAML", () => {
     const profiles = parseProfilesFromYAML(raw as any, "/tmp")
     expect(Object.keys(profiles)).toHaveLength(1)
     expect(profiles.valid).toBeDefined()
+  })
+
+  test("parses model field when specified", () => {
+    const raw = {
+      profiles: {
+        researcher: {
+          tools: ["websearch"],
+          model: "claude-sonnet-4.5",
+        },
+      },
+    }
+
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.researcher.model).toBe("claude-sonnet-4.5")
+  })
+
+  test("model field is undefined when not specified", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+        },
+      },
+    }
+
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder.model).toBeUndefined()
   })
 })
 
@@ -711,5 +741,322 @@ describe("/profile command", () => {
     const result = filterCommands("p")
     const ids = result.map((c: any) => c.id)
     expect(ids).toContain("profile")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseProfilesFromYAML — sub_agents parsing
+// ---------------------------------------------------------------------------
+
+describe("parseProfilesFromYAML: sub_agents", () => {
+  test("parses sub_agents list from profile", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read", "bash"],
+          sub_agents: ["researcher", "worker"],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.subAgents).toEqual(["researcher", "worker"])
+  })
+
+  test("subAgents is undefined when sub_agents not specified", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.subAgents).toBeUndefined()
+  })
+
+  test("subAgents is undefined when sub_agents is not an array", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+          sub_agents: "researcher",
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw as any, "/tmp")
+    expect(profiles.coder!.subAgents).toBeUndefined()
+  })
+
+  test("empty sub_agents array results in empty array", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+          sub_agents: [],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.subAgents).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateSubAgents — pure validation function
+// ---------------------------------------------------------------------------
+
+describe("validateSubAgents", () => {
+  const known = ["coder", "researcher", "worker"]
+
+  test("all valid — valid list equals input, invalid is empty", () => {
+    const { valid, invalid } = validateSubAgents(["researcher", "worker"], known)
+    expect(valid).toEqual(["researcher", "worker"])
+    expect(invalid).toEqual([])
+  })
+
+  test("all invalid — valid is empty, invalid list equals input", () => {
+    const { valid, invalid } = validateSubAgents(["badname", "research"], known)
+    expect(valid).toEqual([])
+    expect(invalid).toEqual(["badname", "research"])
+  })
+
+  test("mixed valid + invalid — valid and invalid are split correctly", () => {
+    const { valid, invalid } = validateSubAgents(["researcher", "badname", "worker", "typo"], known)
+    expect(valid).toEqual(["researcher", "worker"])
+    expect(invalid).toEqual(["badname", "typo"])
+  })
+
+  test("empty input — both lists are empty", () => {
+    const { valid, invalid } = validateSubAgents([], known)
+    expect(valid).toEqual([])
+    expect(invalid).toEqual([])
+  })
+
+  test("empty knownProfileIds — everything is invalid", () => {
+    const { valid, invalid } = validateSubAgents(["researcher", "worker"], [])
+    expect(valid).toEqual([])
+    expect(invalid).toEqual(["researcher", "worker"])
+  })
+
+  test("preserves order of valid entries", () => {
+    const { valid } = validateSubAgents(["worker", "coder", "researcher"], known)
+    expect(valid).toEqual(["worker", "coder", "researcher"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveProfile — sub_agents validation (integration: temp config + notifications)
+// ---------------------------------------------------------------------------
+
+describe("resolveProfile: sub_agents validation", () => {
+  let atomDir: string
+  let atomConfigPath: string
+
+  beforeEach(() => {
+    resetProfileCache()
+    // Dismiss any lingering notifications before each test
+    for (const n of getActive()) dismiss(n.id)
+    // Write a temp .atom/config.yaml in the project root so resolveProfile picks it up
+    atomDir = path.resolve(process.cwd(), ".atom")
+    atomConfigPath = path.join(atomDir, "config.yaml")
+    fs.mkdirSync(atomDir, { recursive: true })
+  })
+
+  afterEach(() => {
+    resetProfileCache()
+    // Remove the temp .atom dir we created
+    fs.rmSync(atomDir, { recursive: true, force: true })
+    // Dismiss all notifications left over
+    for (const n of getActive()) dismiss(n.id)
+  })
+
+  function writeConfig(content: string) {
+    fs.writeFileSync(atomConfigPath, content, "utf-8")
+  }
+
+  test("valid sub-agents — preserved in resolved profile, no notification", () => {
+    writeConfig(`
+profiles:
+  orchestrator:
+    tools: [bash]
+    sub_agents: [researcher, worker]
+  researcher:
+    tools: [read]
+  worker:
+    tools: [bash]
+`)
+    const profile = resolveProfile("orchestrator")
+    expect(profile.subAgents).toEqual(["researcher", "worker"])
+    expect(getActive()).toHaveLength(0)
+  })
+
+  test("invalid sub-agent ID — stripped from result, warn notification fires", () => {
+    writeConfig(`
+profiles:
+  orchestrator:
+    tools: [bash]
+    sub_agents: [research]
+  researcher:
+    tools: [read]
+`)
+    const profile = resolveProfile("orchestrator")
+    // "research" is not a profile ID — only "researcher" is
+    expect(profile.subAgents).toEqual([])
+
+    const active = getActive()
+    expect(active).toHaveLength(1)
+    expect(active[0]!.type).toBe("warn")
+    expect(active[0]!.title).toBe("Profile")
+    expect(active[0]!.message).toContain("research")
+    expect(active[0]!.message).toContain("researcher")
+  })
+
+  test("multiple invalid IDs — all stripped, single notification with plural wording", () => {
+    writeConfig(`
+profiles:
+  orchestrator:
+    tools: [bash]
+    sub_agents: [badname1, badname2]
+  researcher:
+    tools: [read]
+`)
+    const profile = resolveProfile("orchestrator")
+    expect(profile.subAgents).toEqual([])
+
+    const active = getActive()
+    expect(active).toHaveLength(1)
+    expect(active[0]!.message).toContain("sub-agents:")
+    expect(active[0]!.message).toContain("badname1")
+    expect(active[0]!.message).toContain("badname2")
+  })
+
+  test("mixed valid + invalid — invalid stripped, valid kept, notification fires", () => {
+    writeConfig(`
+profiles:
+  orchestrator:
+    tools: [bash]
+    sub_agents: [researcher, typo, worker]
+  researcher:
+    tools: [read]
+  worker:
+    tools: [bash]
+`)
+    const profile = resolveProfile("orchestrator")
+    expect(profile.subAgents).toEqual(["researcher", "worker"])
+
+    const active = getActive()
+    expect(active).toHaveLength(1)
+    // Notification names only the invalid IDs, not the valid ones
+    expect(active[0]!.message).toContain("typo")
+    // "researcher" and "worker" appear only in "Available profiles:" list, not as unknown
+    expect(active[0]!.message).toMatch(/Unknown sub-agent.*typo/)
+  })
+
+  test("coder profile has no subAgents by default", () => {
+    // No config written — resolveProfile falls back to BUILTIN_CODER
+    const profile = resolveProfile("coder")
+    expect(profile.subAgents).toBeUndefined()
+    expect(getActive()).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// agentFromProfile — subAgents passthrough
+// ---------------------------------------------------------------------------
+
+describe("agentFromProfile: subAgents", () => {
+  test("copies subAgents from profile to agent config", () => {
+    const profile = {
+      ...BUILTIN_CODER,
+      subAgents: ["researcher", "worker"],
+    }
+    const agent = agentFromProfile(profile, "test prompt")
+    expect(agent.subAgents).toEqual(["researcher", "worker"])
+  })
+
+  test("subAgents is undefined when profile has no subAgents", () => {
+    const profile = { ...BUILTIN_CODER }
+    const agent = agentFromProfile(profile, "test prompt")
+    expect(agent.subAgents).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildSubAgentBlock — system prompt sub-agent section
+// ---------------------------------------------------------------------------
+
+describe("buildSubAgentBlock", () => {
+  const { buildSubAgentBlock } = require("../../src/session/system")
+
+  beforeEach(() => resetProfileCache())
+  afterEach(() => resetProfileCache())
+
+  test("returns null when subAgents is undefined", () => {
+    expect(buildSubAgentBlock(undefined)).toBeNull()
+  })
+
+  test("returns null when subAgents is empty", () => {
+    expect(buildSubAgentBlock([])).toBeNull()
+  })
+
+  test("returns null when all sub-agent IDs are unknown", () => {
+    // Only builtin coder exists in default config
+    expect(buildSubAgentBlock(["nonexistent1", "nonexistent2"])).toBeNull()
+  })
+
+  test("includes known sub-agent profiles with name and id", () => {
+    // "coder" is always available as a builtin profile
+    const block = buildSubAgentBlock(["coder"])
+    expect(block).not.toBeNull()
+    expect(block).toContain("# Available Sub-Agents")
+    expect(block).toContain("Coder")
+    expect(block).toContain("`coder`")
+  })
+
+  test("filters out unknown sub-agent IDs silently", () => {
+    const block = buildSubAgentBlock(["coder", "nonexistent"])
+    expect(block).not.toBeNull()
+    expect(block).toContain("Coder")
+    expect(block).not.toContain("nonexistent")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildSystem — sub-agent block integration
+// ---------------------------------------------------------------------------
+
+describe("buildSystem with subAgents", () => {
+  const { buildSystem } = require("../../src/session/system")
+
+  beforeEach(() => resetProfileCache())
+  afterEach(() => resetProfileCache())
+
+  test("no subAgents — system prompt has no sub-agent block", () => {
+    const agent = { id: "test", name: "Test", prompt: "You are a test.", tools: [], skills: [] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+    expect(joined).not.toContain("Available Sub-Agents")
+  })
+
+  test("with subAgents — system prompt includes sub-agent block", () => {
+    const agent = { id: "test", name: "Test", prompt: "You are a test.", tools: [], skills: [], subAgents: ["coder"] }
+    const parts = buildSystem(agent)
+    const joined = parts.join("\n")
+    expect(joined).toContain("# Available Sub-Agents")
+    expect(joined).toContain("Coder")
+    expect(joined).toContain("`coder`")
+    expect(joined).toContain("--sub-agent --profile")
+  })
+
+  test("sub-agent block appears after skill block and before environment", () => {
+    const agent = { id: "test", name: "Test", prompt: "Agent prompt.", tools: [], skills: [], subAgents: ["coder"] }
+    const parts = buildSystem(agent)
+    // parts[0] = agent prompt, last = environment block
+    // sub-agent block should be in between
+    const joined = parts.join("\n")
+    const subIdx = joined.indexOf("Available Sub-Agents")
+    const envIdx = joined.indexOf("Working directory:")
+    expect(subIdx).toBeGreaterThan(-1)
+    expect(envIdx).toBeGreaterThan(subIdx)
   })
 })

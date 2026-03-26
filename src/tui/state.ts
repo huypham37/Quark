@@ -45,7 +45,7 @@ export interface PermissionRequest {
 
 export type TuiAction =
   | { type: "set-session"; sessionId: string }
-  | { type: "reset-session"; sessionId: string }
+  | { type: "reset-session"; sessionId: string | null }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
   | { type: "add-user-message"; id: string; text: string; images?: { mime: string; label: string }[] }
   | { type: "add-assistant-message"; id: string }

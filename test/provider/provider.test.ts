@@ -147,11 +147,4 @@ describe("getModel", () => {
     expect(model.provider).toContain("chat")
   })
 
-  test("defaults to gpt-4o when no model ID specified", () => {
-    const provider = createCopilotProvider({
-      getToken: async () => "test-token",
-    })
-    const model = getModel(provider)
-    expect(model.modelId).toBe("gpt-4o")
-  })
 })

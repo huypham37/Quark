@@ -4,6 +4,8 @@
 //   atom --profile coder --prompt "help me fix this bug"
 //   atom -p coder -m "help me fix this bug"
 //   atom "quick prompt without flags"
+//   atom --sub-agent --profile researcher --prompt "research this topic"
+//   atom --parent-session <id> --profile researcher --prompt "research this topic"
 
 import { parseArgs } from "util"
 import { bootstrap } from "./bootstrap"
@@ -21,16 +23,20 @@ function printHelp() {
 Usage: atom [options] [prompt]
 
 Options:
-  -p, --profile <name>   Profile to use (default: from config)
-  -m, --prompt <text>    Prompt text (alternative to positional)
-  -s, --session <id>     Resume an existing session
-  -l, --list-profiles    List available profiles
-  -h, --help             Show this help message
+  -p, --profile <name>          Profile to use (default: from config)
+  -m, --prompt <text>           Prompt text (alternative to positional)
+  -s, --session <id>            Resume an existing session
+      --parent-session <id>     Create a child session under this parent
+      --sub-agent               Create a child session (reads ATOM_SESSION_ID from env)
+  -l, --list-profiles           List available profiles
+  -h, --help                    Show this help message
 
 Examples:
   atom --profile coder --prompt "fix the bug in main.ts"
   atom -p coder "fix the bug in main.ts"
   atom "quick question"
+  atom --sub-agent --profile researcher --prompt "research auth flow"
+  atom --parent-session sess_abc --profile researcher --prompt "research auth flow"
 `)
 }
 
@@ -38,6 +44,8 @@ interface ParsedArgs {
   profile?: string
   prompt?: string
   sessionId?: string
+  parentSessionId?: string
+  subAgent?: boolean
   listProfiles?: boolean
   help?: boolean
 }
@@ -49,6 +57,8 @@ function parseArguments(): ParsedArgs {
         profile: { type: "string", short: "p" },
         prompt: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
+        "parent-session": { type: "string" },
+        "sub-agent": { type: "boolean" },
         "list-profiles": { type: "boolean", short: "l" },
         help: { type: "boolean", short: "h" },
       },
@@ -59,10 +69,32 @@ function parseArguments(): ParsedArgs {
     const positionalPrompt = positionals.join(" ")
     const promptText = values.prompt ?? (positionalPrompt || undefined)
 
+    // Resolve parent session ID
+    let parentSessionId: string | undefined = values["parent-session"]
+    if (values["sub-agent"]) {
+      if (parentSessionId) {
+        console.error("Error: --sub-agent and --parent-session are mutually exclusive")
+        process.exit(1)
+      }
+      parentSessionId = process.env.ATOM_SESSION_ID
+      if (!parentSessionId) {
+        console.error("Error: --sub-agent requires ATOM_SESSION_ID environment variable")
+        process.exit(1)
+      }
+    }
+
+    // --session and --parent-session are mutually exclusive
+    if (values.session && parentSessionId) {
+      console.error("Error: --session and --parent-session/--sub-agent are mutually exclusive")
+      process.exit(1)
+    }
+
     return {
       profile: values.profile,
       prompt: promptText,
       sessionId: values.session,
+      parentSessionId,
+      subAgent: values["sub-agent"],
       listProfiles: values["list-profiles"],
       help: values.help,
     }
@@ -141,6 +173,7 @@ async function main() {
   try {
     const result = await prompt({
       sessionId: args.sessionId,
+      parentSessionId: args.parentSessionId,
       parts: [{ type: "text", text: args.prompt }],
       agent,
     })
