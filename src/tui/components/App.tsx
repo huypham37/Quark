@@ -107,6 +107,16 @@ export const App: Component<AppProps> = (props) => {
     renderer.clearSelection()
   }
 
+  // Copy selection to clipboard helper — used by onMouseUp on the root box
+  const copySelection = () => {
+    const text = renderer.getSelection()?.getSelectedText()
+    if (!text) return
+    writeClipboard(text)
+      .then(() => notifyInfo("Clipboard", "Copied to clipboard", 2000))
+      .catch((err) => console.error(`Failed to copy: ${err}`))
+    renderer.clearSelection()
+  }
+
   function exitApp() {
     renderer.destroy()
     process.exit(0)
@@ -674,19 +684,10 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Ctrl+C — copy selection if active, otherwise cancel/exit
+    // Ctrl+C — cancel agent or exit
     if (evt.ctrl && evt.name === "c") {
-      const sel = renderer.getSelection()
-      if (sel) {
-        const text = sel.getSelectedText()
-        if (text) {
-          writeClipboard(text)
-            .then(() => notifyInfo("Clipboard", "Copied to clipboard", 2000))
-            .catch(console.error)
-        }
+      if (renderer.getSelection()) {
         renderer.clearSelection()
-        evt.preventDefault()
-        evt.stopPropagation()
         return
       }
       if (state.store.running && state.store.sessionId) {
@@ -702,7 +703,9 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   return (
-    <box flexDirection="column" width={dims().width} height={dims().height} paddingX={2}>
+    <box flexDirection="column" width={dims().width} height={dims().height} paddingX={2}
+      onMouseUp={() => copySelection()}
+    >
       {/* Message area — native scrollbox */}
       <scrollbox
         ref={(r: ScrollBoxRenderable) => { scroll = r }}
