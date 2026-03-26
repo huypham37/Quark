@@ -58,6 +58,50 @@ export interface BusEvents {
   // estimatedTokens: if provided (e.g. post-compaction), the status bar is
   // updated immediately instead of showing 0 until the next step-finish.
   "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
+
+  // ---------------------------------------------------------------------------
+  // Sub-agent observability — events forwarded from child `atom --sub-agent`
+  // processes via stderr NDJSON. The parent Bash tool parses these and re-emits
+  // them on the parent bus so the TUI can render nested tool activity.
+  // ---------------------------------------------------------------------------
+
+  // A tool started in the sub-agent
+  "subagent-tool-start": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; tool: string; callId: string
+  }
+
+  // Tool input resolved in the sub-agent
+  "subagent-tool-input": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; tool: string; callId: string; input: Record<string, unknown>
+  }
+
+  // Tool completed/errored in the sub-agent
+  "subagent-tool-end": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; tool: string; callId: string
+    status: "completed" | "error"; error?: string
+  }
+
+  // Sub-agent step finished — carries token usage
+  "subagent-step-finish": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+    tokenLimit?: number
+  }
+
+  // Streaming text from the sub-agent
+  "subagent-text-delta": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; text: string
+  }
+
+  // Sub-agent loop finished
+  "subagent-done": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string
+  }
 }
 
 export type BusEventName = keyof BusEvents

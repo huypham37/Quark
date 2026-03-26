@@ -219,6 +219,74 @@ export function wireEvents(state: AppState) {
       }
     }))
 
+    // ----- Sub-agent observability events -----
+
+    unsubs.push(on("subagent-tool-start", (data) => {
+      dispatch(state, {
+        type: "subagent-tool-start",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        tool: data.tool,
+        callId: data.callId,
+      })
+    }))
+
+    unsubs.push(on("subagent-tool-input", (data) => {
+      dispatch(state, {
+        type: "subagent-tool-input",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        tool: data.tool,
+        callId: data.callId,
+        input: data.input,
+      })
+    }))
+
+    unsubs.push(on("subagent-tool-end", (data) => {
+      dispatch(state, {
+        type: "subagent-tool-end",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        tool: data.tool,
+        callId: data.callId,
+        status: data.status,
+        error: data.error,
+      })
+    }))
+
+    unsubs.push(on("subagent-step-finish", (data) => {
+      dispatch(state, {
+        type: "subagent-step-finish",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        tokens: data.tokens,
+        tokenLimit: data.tokenLimit,
+      })
+    }))
+
+    unsubs.push(on("subagent-text-delta", (data) => {
+      dispatch(state, {
+        type: "subagent-text-delta",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        text: data.text,
+      })
+    }))
+
+    unsubs.push(on("subagent-done", (data) => {
+      dispatch(state, {
+        type: "subagent-done",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+      })
+    }))
+
     onCleanup(() => {
       for (const unsub of unsubs) unsub()
     })

@@ -8,11 +8,15 @@
 
 import type { Component } from "solid-js"
 import { Show, Switch, Match, For } from "solid-js"
+import { RGBA } from "@opentui/core"
 import { UserMessage } from "./user-message"
 import { AssistantMessage } from "./assistant-message"
 import { ToolResultLine } from "./tool-result"
 import { ToolInvocationBlock } from "./tool-invocation"
 import { ThinkingIndicator } from "./thinking"
+import { SubAgentView } from "./sub-agent-view"
+import { InlineSpinner } from "./inline-spinner"
+import { colors } from "../theme"
 import type { TuiMessage, TuiPart } from "../state"
 
 interface MessageItemProps {
@@ -35,6 +39,9 @@ function getToolDescription(tool: string, input: Record<string, unknown>): strin
 }
 
 const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => {
+  // Helper to cast tool parts
+  const asTool = () => props.part as Extract<TuiPart, { type: "tool" }>
+
   return (
     <Switch>
       <Match when={props.part.type === "text" && props.part}>
@@ -51,23 +58,51 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
       <Match when={props.part.type === "tool" && (props.part as Extract<TuiPart, { type: "tool" }>).status === "running" && (props.part as Extract<TuiPart, { type: "tool" }>).tool === "skill"}>
         <box marginBottom={1}>
           <ToolInvocationBlock
-            tool={(props.part as Extract<TuiPart, { type: "tool" }>).tool}
-            description={getToolDescription(
-              (props.part as Extract<TuiPart, { type: "tool" }>).tool,
-              (props.part as Extract<TuiPart, { type: "tool" }>).input,
-            )}
+            tool={asTool().tool}
+            description={getToolDescription(asTool().tool, asTool().input)}
           />
         </box>
       </Match>
 
-      <Match when={props.part.type === "tool" && (props.part as Extract<TuiPart, { type: "tool" }>).status === "running" && (props.part as Extract<TuiPart, { type: "tool" }>).tool === "bash"}>
+      {/* Sub-agent: bash tool with subAgent state (running or completed) */}
+      <Match when={props.part.type === "tool" && asTool().subAgent}>
+        <box marginBottom={1} flexDirection="column">
+          {/* Show the Bash tool as parent wrapper */}
+          <box flexDirection="row">
+            <Show
+              when={asTool().status === "running"}
+              fallback={
+                <Show
+                  when={asTool().status === "error"}
+                  fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
+                >
+                  <text fg={RGBA.fromHex("#E06C75")}>✗ </text>
+                </Show>
+              }
+            >
+              <InlineSpinner />
+              <text> </text>
+            </Show>
+            <text>Bash</text>
+            <text fg={colors.muted}> </text>
+            <text fg={colors.muted}>{getToolDescription(asTool().tool, asTool().input).slice(0, 60)}{getToolDescription(asTool().tool, asTool().input).length > 60 ? "..." : ""}</text>
+          </box>
+          {/* Nested sub-agent view with tree connector */}
+          <box flexDirection="row">
+            <text fg={colors.muted}>└─ </text>
+            <box flexDirection="column" flexGrow={1}>
+              <SubAgentView subAgent={asTool().subAgent!} />
+            </box>
+          </box>
+        </box>
+      </Match>
+
+      {/* Regular bash tool (running, no sub-agent) */}
+      <Match when={props.part.type === "tool" && asTool().status === "running" && asTool().tool === "bash"}>
         <box marginBottom={1}>
           <ToolInvocationBlock
-            tool={(props.part as Extract<TuiPart, { type: "tool" }>).tool}
-            description={getToolDescription(
-              (props.part as Extract<TuiPart, { type: "tool" }>).tool,
-              (props.part as Extract<TuiPart, { type: "tool" }>).input,
-            )}
+            tool={asTool().tool}
+            description={getToolDescription(asTool().tool, asTool().input)}
           />
         </box>
       </Match>
@@ -75,11 +110,11 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
       <Match when={props.part.type === "tool"}>
         <box marginBottom={1}>
           <ToolResultLine
-            tool={(props.part as Extract<TuiPart, { type: "tool" }>).tool}
-            input={(props.part as Extract<TuiPart, { type: "tool" }>).input}
-            status={(props.part as Extract<TuiPart, { type: "tool" }>).status}
-            output={(props.part as Extract<TuiPart, { type: "tool" }>).output}
-            error={(props.part as Extract<TuiPart, { type: "tool" }>).error}
+            tool={asTool().tool}
+            input={asTool().input}
+            status={asTool().status}
+            output={asTool().output}
+            error={asTool().error}
           />
         </box>
       </Match>

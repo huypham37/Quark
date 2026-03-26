@@ -7,6 +7,12 @@ import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData } from "../session/message"
 import { getModelLimit } from "../provider/models"
 import { getModelId, loadConfig } from "../config/config"
+import * as fs from "fs"
+
+// Debug log helper - writes to file since console.error is captured by TUI
+function debugLog(msg: string) {
+  fs.appendFileSync("/tmp/atom-state-debug.log", `${new Date().toISOString()} ${msg}\n`)
+}
 
 // ---------------------------------------------------------------------------
 // TUI data model types
@@ -21,9 +27,29 @@ export interface TuiMessage {
 
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean }
   | { type: "image"; mime: string; label: string }
+
+// Sub-agent observability state — attached to tool parts that spawn sub-agents
+export interface SubAgentToolPart {
+  tool: string
+  callId: string
+  status: "pending" | "running" | "completed" | "error"
+  input: Record<string, unknown>
+  error?: string
+}
+
+export interface SubAgentState {
+  profile: string
+  tools: SubAgentToolPart[]
+  // Token tracking for the sub-agent's context window
+  tokensUsed: number
+  tokenLimit: number
+  // Streaming text preview from the sub-agent
+  textPreview?: string
+  done: boolean
+}
 
 export interface TuiStatus {
   tokensUsed: number
@@ -63,6 +89,13 @@ export type TuiAction =
   | { type: "set-permission"; request: PermissionRequest }
   | { type: "clear-permission" }
   | { type: "set-compacting"; compacting: boolean }
+  // Sub-agent observability actions
+  | { type: "subagent-tool-start"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string }
+  | { type: "subagent-tool-input"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; input: Record<string, unknown> }
+  | { type: "subagent-tool-end"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; status: "completed" | "error"; error?: string }
+  | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number }
+  | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
+  | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
 
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
@@ -377,6 +410,154 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     case "set-compacting":
       setStore("compacting", action.compacting)
+      break
+
+    // ------------------------------------------------------------------
+    // Sub-agent observability — mutate the parent tool part's subAgent state
+    // ------------------------------------------------------------------
+
+    case "subagent-tool-start":
+      // DEBUG
+      debugLog(`subagent-tool-start: parentCallId=${action.parentCallId}, tool=${action.tool}, messageId=${action.messageId}`)
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          // DEBUG: log all tool parts to see what callIds exist
+          const toolParts = parts.filter((p) => p.type === "tool")
+          debugLog(`Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool") {
+            debugLog(`Found parent! Attaching subAgent state`)
+            if (!parent.subAgent) {
+              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
+            }
+            parent.subAgent.tools.push({
+              tool: action.tool,
+              callId: action.callId,
+              status: "pending",
+              input: {},
+            })
+          } else {
+            debugLog(`Parent NOT found!`)
+          }
+        }),
+      )
+      break
+
+    case "subagent-tool-input":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool" && parent.subAgent) {
+            const child = parent.subAgent.tools.find((t) => t.callId === action.callId)
+            if (child) {
+              child.status = "running"
+              child.input = action.input
+            }
+          }
+        }),
+      )
+      break
+
+    case "subagent-tool-end":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool" && parent.subAgent) {
+            const child = parent.subAgent.tools.find((t) => t.callId === action.callId)
+            if (child) {
+              child.status = action.status
+              child.error = action.error
+            }
+          }
+        }),
+      )
+      break
+
+    case "subagent-step-finish":
+      // DEBUG
+      debugLog(`subagent-step-finish: parentCallId=${action.parentCallId}, tokens=${JSON.stringify(action.tokens)}, messageId=${action.messageId}`)
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const toolParts = parts.filter((p) => p.type === "tool")
+          debugLog(`step-finish: Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool") {
+            // Initialize subAgent if it doesn't exist
+            if (!parent.subAgent) {
+              debugLog(`step-finish: Creating subAgent for parent`)
+              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
+            }
+            if (action.tokens?.input) {
+              parent.subAgent.tokensUsed = action.tokens.input
+            }
+            if (action.tokenLimit && action.tokenLimit > 0) {
+              parent.subAgent.tokenLimit = action.tokenLimit
+            }
+          } else {
+            debugLog(`step-finish: Parent NOT found for parentCallId=${action.parentCallId}`)
+          }
+        }),
+      )
+      break
+
+    case "subagent-text-delta":
+      // DEBUG
+      debugLog(`subagent-text-delta: parentCallId=${action.parentCallId}, text=${action.text?.slice(0, 30)}..., messageId=${action.messageId}`)
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const toolParts = parts.filter((p) => p.type === "tool")
+          debugLog(`text-delta: Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool") {
+            // Initialize subAgent if it doesn't exist (text-delta can arrive before tool-start)
+            if (!parent.subAgent) {
+              debugLog(`text-delta: Creating subAgent for parent`)
+              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
+            }
+            // Keep only last ~120 chars as a preview
+            const text = action.text
+            parent.subAgent.textPreview = text.length > 120 ? "…" + text.slice(-119) : text
+          } else {
+            debugLog(`text-delta: Parent NOT found for parentCallId=${action.parentCallId}`)
+          }
+        }),
+      )
+      break
+
+    case "subagent-done":
+      // DEBUG
+      debugLog(`subagent-done: parentCallId=${action.parentCallId}, messageId=${action.messageId}`)
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
+          if (parent && parent.type === "tool") {
+            // Initialize subAgent if it doesn't exist
+            if (!parent.subAgent) {
+              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
+            }
+            parent.subAgent.done = true
+            parent.subAgent.textPreview = undefined
+          }
+        }),
+      )
       break
   }
 }

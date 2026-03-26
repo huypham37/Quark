@@ -329,6 +329,7 @@ function toAITool(
       const ctx = {
         sessionId,
         messageId,
+        callId: options.toolCallId,
         abort: options.abortSignal ?? abort,
         messages,
         async ask(permission: string, pattern: string) {

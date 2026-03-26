@@ -13,6 +13,7 @@ import { prompt } from "./session/prompt"
 import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
+import { startEventWriter } from "./session/event-writer"
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -142,18 +143,25 @@ async function main() {
     boundSkills: profile.skills,
   })
 
+  // When running as a sub-agent, stream structured events to stderr
+  // so the parent's Bash tool can render sub-agent activity in the TUI.
+  let cleanupEventWriter: (() => void) | undefined
+  if (args.subAgent) {
+    cleanupEventWriter = startEventWriter()
+  }
+
   // Wire up basic event output for CLI
   bus.on("text-delta", ({ delta }) => {
     process.stdout.write(delta)
   })
 
-  bus.on("tool-start", ({ toolId }) => {
-    process.stdout.write(`\n[tool: ${toolId}]\n`)
+  bus.on("tool-start", ({ tool }) => {
+    process.stdout.write(`\n[tool: ${tool}]\n`)
   })
 
-  bus.on("tool-end", ({ result }) => {
-    if (result?.output) {
-      const output = typeof result.output === "string" ? result.output : JSON.stringify(result.output)
+  bus.on("tool-end", (data) => {
+    if (data.output) {
+      const output = typeof data.output === "string" ? data.output : JSON.stringify(data.output)
       // Truncate long outputs
       const maxLen = 500
       const display = output.length > maxLen ? output.slice(0, maxLen) + "..." : output
@@ -182,6 +190,8 @@ async function main() {
   } catch (err: any) {
     console.error("Error:", err.message)
     process.exit(1)
+  } finally {
+    cleanupEventWriter?.()
   }
 }
 
