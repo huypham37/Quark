@@ -8,7 +8,7 @@ import { render } from "@opentui/solid"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
-import { createSession, listSessions } from "../session/session"
+import { createSession, listSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage } from "../session/message"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
@@ -54,8 +54,14 @@ let activeAgent: AgentConfig = agentFromProfile(profile, promptContent)
 // Initialize the backend (DB + tools) with profile-bound skills
 await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
 
-// Create a session upfront so the TUI can subscribe to events immediately.
-let currentSession = createSession()
+// Session starts null — created lazily on first message by prompt()
+let currentSession: { id: string } | null = null
+
+// Listen for lazy session creation from prompt()
+bus.on("session-created", ({ sessionId }) => {
+  currentSession = { id: sessionId }
+  process.env.ATOM_SESSION_ID = sessionId
+})
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
@@ -65,7 +71,7 @@ const modelName = loadConfig().main_model
 let modelOverride: string | null = null
 
 function handleSubmit(text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) {
-  const sid = sessionId ?? currentSession.id
+  const sid = sessionId ?? currentSession?.id
 
   const parts: { type: "text"; text: string }[] = []
   if (context) {
@@ -80,7 +86,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     model: modelOverride ? { provider: "copilot", model: modelOverride } : undefined,
     agent: activeAgent,
   }).catch((err) => {
-    bus.emit("error", { sessionId: sid, error: err })
+    bus.emit("error", { sessionId: sid ?? "unknown", error: err })
   })
 }
 
@@ -89,7 +95,29 @@ function handleCancel(sessionId: string) {
 }
 
 async function handleCommand(command: string, args: string, sessionId: string | null): Promise<CommandResult> {
-  const sid = sessionId ?? currentSession.id
+  const sid = sessionId ?? currentSession?.id ?? null
+
+  // /new and /clear work even without an active session
+  if (command === "new") {
+    const newSession = createSession()
+    currentSession = { id: newSession.id }
+    process.env.ATOM_SESSION_ID = newSession.id
+    bus.emit("session-reset", { sessionId: newSession.id })
+    notifyInfo("Session", `New session started`, 2000)
+    return { handled: true }
+  }
+
+  if (command === "clear") {
+    currentSession = null
+    bus.emit("session-reset", { sessionId: null })
+    return { handled: true }
+  }
+
+  // All other commands require an active session
+  if (!sid) {
+    bus.emit("error", { sessionId: "unknown", error: new Error("No active session — send a message first") })
+    return { handled: true }
+  }
 
   switch (command) {
     case "compact": {
@@ -153,12 +181,6 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    case "clear": {
-      currentSession = createSession()
-      bus.emit("session-reset", { sessionId: currentSession.id })
-      return { handled: true }
-    }
-
     case "sessions": {
       if (!args) {
         const sessions = listSessions()
@@ -191,6 +213,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       }
 
       currentSession = match
+      process.env.ATOM_SESSION_ID = match.id
       const { messages, parts } = loadMessages(match.id)
       const tuiMessages = dbToTuiMessages(messages, parts)
       // Prefer real API token count from DB; fall back to chars/4 heuristic
@@ -287,7 +310,7 @@ render(() => (
     getSessions={handleGetSessions}
     getModels={handleGetModels}
     getCurrentModel={handleGetCurrentModel}
-    initialSessionId={currentSession.id}
+    initialSessionId={currentSession?.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}
   />

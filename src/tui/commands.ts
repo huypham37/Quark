@@ -14,6 +14,7 @@ export interface SlashCommand {
 /** All available slash commands */
 export const commands: SlashCommand[] = [
   { id: "help", description: "Show available commands" },
+  { id: "new", description: "Create a new session" },
   { id: "sessions", description: "List or switch sessions", usage: "[session-id]" },
   { id: "compact", description: "Compact conversation context" },
   { id: "clear", description: "Clear messages and start new session" },
