@@ -28,6 +28,8 @@ import { generateId } from "ai"
 import * as fs from "fs"
 import * as path from "path"
 import { readClipboard } from "../clipboard"
+import { writeClipboard } from "../clipboard"
+import { info as notifyInfo } from "../../notification/notification"
 
 /** Command handler result */
 export type CommandResult =
@@ -95,6 +97,15 @@ const SCROLL_STEP = 3
 export const App: Component<AppProps> = (props) => {
   const dims = useTerminalDimensions()
   const renderer = useRenderer()
+
+  // Wire up console copy-to-clipboard — also shows a toast on success
+  renderer.console.onCopySelection = async (text: string) => {
+    if (!text) return
+    await writeClipboard(text)
+      .then(() => notifyInfo("Clipboard", "Copied to clipboard", 2000))
+      .catch((err) => console.error(`Failed to copy: ${err}`))
+    renderer.clearSelection()
+  }
 
   function exitApp() {
     renderer.destroy()
@@ -649,14 +660,35 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Esc clears any active selection (takes priority over agent cancel)
+    if (evt.name === "escape" && renderer.getSelection()) {
+      renderer.clearSelection()
+      evt.preventDefault()
+      evt.stopPropagation()
+      return
+    }
+
     // Esc cancels running agent (only when no dropdown)
     if (evt.name === "escape" && state.store.running && state.store.sessionId) {
       props.onCancel(state.store.sessionId)
       return
     }
 
-    // Ctrl+C to cancel or exit
+    // Ctrl+C — copy selection if active, otherwise cancel/exit
     if (evt.ctrl && evt.name === "c") {
+      const sel = renderer.getSelection()
+      if (sel) {
+        const text = sel.getSelectedText()
+        if (text) {
+          writeClipboard(text)
+            .then(() => notifyInfo("Clipboard", "Copied to clipboard", 2000))
+            .catch(console.error)
+        }
+        renderer.clearSelection()
+        evt.preventDefault()
+        evt.stopPropagation()
+        return
+      }
       if (state.store.running && state.store.sessionId) {
         props.onCancel(state.store.sessionId)
       } else {

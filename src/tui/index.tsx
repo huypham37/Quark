@@ -22,6 +22,7 @@ import { loadConfig, getModelId } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
+import { writeClipboard } from "./clipboard"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
@@ -290,4 +291,15 @@ render(() => (
     initialModelName={modelName}
     initialSkillCount={skills.length}
   />
-), { targetFps: 60, exitOnCtrlC: false })
+), {
+  targetFps: 60,
+  exitOnCtrlC: false,
+  consoleOptions: {
+    keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
+    onCopySelection: (text) => {
+      writeClipboard(text).catch((err) => {
+        console.error(`Failed to copy console selection: ${err}`)
+      })
+    },
+  },
+})

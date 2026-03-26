@@ -1,5 +1,5 @@
-// Clipboard utility — reads image (or text) from the system clipboard.
-// Mirrors the strategy from opencode: use native OS tools to extract PNG bytes.
+// Clipboard utility — reads image (or text) from the system clipboard,
+// and writes text to the clipboard via OSC 52 + native OS tools.
 
 import { platform, release } from "os"
 import { tmpdir } from "os"
@@ -16,6 +16,63 @@ async function run(cmd: string[]): Promise<{ stdout: Buffer }> {
   await proc.exited
   const out = await new Response(proc.stdout).arrayBuffer()
   return { stdout: Buffer.from(out) }
+}
+
+// ---------------------------------------------------------------------------
+// Write clipboard (text) — OSC 52 + native fallback
+// ---------------------------------------------------------------------------
+
+function writeOsc52(text: string): void {
+  if (!process.stdout.isTTY) return
+  const b64 = Buffer.from(text).toString("base64")
+  const osc52 = `\x1b]52;c;${b64}\x07`
+  // Wrap in a DCS passthrough when inside tmux or GNU screen
+  const seq = process.env["TMUX"] || process.env["STY"]
+    ? `\x1bPtmux;\x1b${osc52}\x1b\\`
+    : osc52
+  process.stdout.write(seq)
+}
+
+async function trySpawn(cmd: string[], input: string): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(cmd, { stdin: "pipe", stdout: "ignore", stderr: "ignore" })
+    proc.stdin.write(input)
+    proc.stdin.end()
+    return (await proc.exited) === 0
+  } catch {
+    return false
+  }
+}
+
+/** Write text to the system clipboard via OSC 52 + native OS tools. */
+export async function writeClipboard(text: string): Promise<void> {
+  writeOsc52(text)
+  const os = platform()
+
+  if (os === "darwin") {
+    const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    await run(["osascript", "-e", `set the clipboard to "${escaped}"`]).catch(() => {})
+    return
+  }
+
+  if (os === "linux") {
+    if (await trySpawn(["wl-copy"], text)) return
+    if (await trySpawn(["xclip", "-selection", "clipboard"], text)) return
+    await trySpawn(["xsel", "--clipboard", "--input"], text)
+    return
+  }
+
+  if (os === "win32") {
+    const script =
+      "[Console]::InputEncoding = [System.Text.Encoding]::UTF8; Set-Clipboard -Value ([Console]::In.ReadToEnd())"
+    const proc = Bun.spawn(
+      ["powershell.exe", "-NonInteractive", "-NoProfile", "-command", script],
+      { stdin: "pipe", stdout: "ignore", stderr: "ignore" },
+    )
+    proc.stdin.write(text)
+    proc.stdin.end()
+    await proc.exited
+  }
 }
 
 export async function readClipboard(): Promise<ClipboardContent | undefined> {
