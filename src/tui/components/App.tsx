@@ -285,7 +285,11 @@ export const App: Component<AppProps> = (props) => {
 
   const setInputText = (text: string) => {
     if (inputRef) {
-      inputRef.value = text
+      if (text === "") {
+        inputRef.clear()
+      } else {
+        inputRef.setText(text)
+      }
     }
     setInputValue(text)
   }
