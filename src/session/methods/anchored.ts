@@ -175,13 +175,28 @@ export const anchored: CompactMethodDef = {
           providerId: msg.providerId ?? undefined,
         })
         for (const p of msgParts) {
-          if (p.type === "text" || p.type === "tool" || p.type === "summary") {
+          if (p.type === "text" || p.type === "summary") {
             const data = JSON.parse(p.data)
             ctx.persist.addPart({
               messageId: newMsg.id,
               sessionId: newSid,
-              type: p.type as "text" | "tool" | "summary",
+              type: p.type as "text" | "summary",
               data,
+            })
+          } else if (p.type === "tool") {
+            // Prune tool output to reduce token count in retained messages
+            const toolData = JSON.parse(p.data) as ToolPartData
+            const prunedData: ToolPartData = {
+              ...toolData,
+              output: toolData.status === "completed" || toolData.status === "error"
+                ? "[output pruned for compaction]"
+                : toolData.output,
+            }
+            ctx.persist.addPart({
+              messageId: newMsg.id,
+              sessionId: newSid,
+              type: "tool",
+              data: prunedData,
             })
           }
         }
