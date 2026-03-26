@@ -1,0 +1,101 @@
+# Feature Plan: Tool Running Spinner + Live Output Streaming
+
+## Overview
+Two sub-features:
+1. **Spinner** — show an animated white spinner when a tool is `running` (replacing the static muted `…`)
+2. **Live output streaming** — stream partial tool output to the UI while `running`
+
+---
+
+## Current State
+
+Tool has 4 states: `pending | running | completed | error`
+
+Current rendering in `tool-result.tsx:81-89`:
+- `pending` | `running` → muted `…`
+- `error` → red `✗`
+- `completed` → green `✓`
+
+The footer bar already implements an animated spinner using:
+- `src/tui/spinner.ts` — `SPINNER_FRAMES`, `SPINNER_INTERVAL_MS`
+- `src/tui/components/footer-bar.tsx:42-57` — `createSignal` + `setInterval` + `onCleanup`
+
+`ToolInvocationBlock` is used for `running` bash/skill tools specifically (via `message-item.tsx:51-73`).
+All other tool states fall through to `ToolResultLine`.
+
+---
+
+## Phase 1: Spinner (implemented first)
+
+### New file: `src/tui/components/inline-spinner.tsx`
+Reusable animated spinner component for tool rows.
+- Uses `SPINNER_FRAMES` + `SPINNER_INTERVAL_MS` from `src/tui/spinner.ts`
+- Color: `colors.textBold` (bright white `#ffffff`) — not blue/cyan
+- Pattern: same `createSignal` + `setInterval` + `onCleanup` as `footer-bar.tsx`
+- Renders a single braille character cell
+
+### Update: `src/tui/components/tool-result.tsx`
+Change `ToolResultLine` status rendering:
+- `pending` → keep muted `…` (unchanged)
+- `running` → `<InlineSpinner />` (white animated)
+- `error` → red `✗` (unchanged)
+- `completed` → green `✓` (unchanged)
+
+Split `isPending` into two separate signals: `isPending` (only pending) and `isRunning`.
+
+### Update: `src/tui/components/tool-invocation.tsx`
+`ToolInvocationBlock` is shown for running bash/skill tools.
+Add an animated white spinner before the tool label to indicate active execution.
+- Import `InlineSpinner`
+- Render spinner inline with label
+
+No changes needed to `message-item.tsx` — routing logic is already correct.
+
+---
+
+## Phase 2: Live Output Streaming (future)
+
+### New bus events: `src/session/events.ts`
+- `"tool-stream"` — internal: tool execution → processor
+  - fields: `sessionId`, `messageId`, `tool`, `callId`, `chunk`, `stream?: "stdout" | "stderr" | "text"`
+- `"tool-output"` — public: processor → TUI
+  - fields: `sessionId`, `messageId`, `partId`, `tool`, `callId`, `output` (accumulated)
+
+### Extend ToolContext: `src/tool/tool.ts`
+Add `appendOutput(chunk: string, meta?: { stream?: "stdout" | "stderr" | "text" }): void`
+
+### Wire in toAITool(): `src/session/prompt.ts:325-350`
+Build `ctx.appendOutput` that emits internal `"tool-stream"` event using `toolCallId` from AI SDK execution options.
+
+### Handle in processStream(): `src/session/processor.ts`
+- Register listener for `"tool-stream"` before streaming loop
+- On each chunk: accumulate in-memory, throttle DB writes (100-250ms), emit `"tool-output"` immediately
+- On tool-result/tool-error: flush buffer, then finalize
+- Always remove listener in cleanup (success/retry/abort/throw)
+
+### TUI state + events: `src/tui/state.ts` + `src/tui/events.ts`
+Add `"tool-output"` action:
+- Find part by `callId`
+- Set `part.output = action.output`
+- Leave `status` unchanged
+
+### Update ToolResultLine: `src/tui/components/tool-result.tsx`
+When `status === "running"` and `output` non-empty:
+- Render output tail (last N lines) below the spinner row
+- Plain text only (not markdown)
+
+### Update ToolInvocationBlock: `src/tui/components/tool-invocation.tsx`
+Accept `output?: string` prop, render tail below description when running.
+
+### Update bash tool: `examples/tools/bash.ts`
+Emit `ctx.appendOutput(chunk)` on stdout/stderr data events.
+
+---
+
+## Risk / Edge Cases
+
+- **Noisy tools (bash):** Throttle DB writes. Render only last N lines in component.
+- **Abort cleanup:** Remove `tool-stream` listener on every exit path.
+- **AI SDK limitation:** Do NOT rely on `fullStream` for partial tool output (vercel/ai#6822). Use `ctx.appendOutput()` instead.
+- **pending vs running:** Spinner only for `running`. Keep `pending` as muted `…`.
+- **Session reload:** `ToolPartData.output` already persisted — partial output survives reload.

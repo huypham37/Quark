@@ -4,12 +4,14 @@
 // Matches the style:
 //   ✓ Read package.json
 //   ✗ Write failed.txt
-//   … Bash running...
+//   ⠋ Bash running...   (animated white spinner when running)
+//   … Bash             (muted ellipsis when pending/input streaming)
 
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
+import { InlineSpinner } from "./inline-spinner"
 
 interface ToolResultLineProps {
   tool: string
@@ -78,14 +80,19 @@ function getToolDisplayName(tool: string): string {
 export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
   const displayName = getToolDisplayName(props.tool)
   const label = () => getToolLabel(props.tool, props.input)
-  const isPending = () => props.status === "pending" || props.status === "running"
+  const isPending = () => props.status === "pending"
+  const isRunning = () => props.status === "running"
   const isError = () => props.status === "error"
 
   return (
     <box flexDirection="row">
+      <Show when={isRunning()}>
+        <InlineSpinner />
+        <text> </text>
+      </Show>
       <Show
-        when={!isPending()}
-        fallback={<text fg={colors.muted}>… </text>}
+        when={!isPending() && !isRunning()}
+        fallback={<Show when={isPending()}><text fg={colors.muted}>… </text></Show>}
       >
         <Show
           when={!isError()}

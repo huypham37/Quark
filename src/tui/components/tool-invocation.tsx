@@ -2,11 +2,12 @@
 // ToolInvocationBlock — shows a tool being invoked with tree-line connector
 //
 // Matches the style:
-//   · Oracle
+//   ⠋ Oracle           (animated white spinner while running)
 //   └── Explore and analyze the codebase structure...
 
 import type { Component } from "solid-js"
 import { TreeLine } from "./tree-line"
+import { InlineSpinner } from "./inline-spinner"
 import { colors } from "../theme"
 
 interface ToolInvocationBlockProps {
@@ -34,7 +35,7 @@ export const ToolInvocationBlock: Component<ToolInvocationBlockProps> = (props) 
   const displayName = getToolDisplayName(props.tool)
 
   return (
-    <TreeLine label={displayName} labelColor={colors.text}>
+    <TreeLine label={displayName} labelColor={colors.text} spinning>
       <text dimColor>{props.description}</text>
     </TreeLine>
   )
