@@ -9,7 +9,7 @@ import type { Component } from "solid-js"
 import { For, createSignal, createEffect, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
-import type { ScrollBoxRenderable, InputRenderable } from "@opentui/core"
+import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
@@ -141,7 +141,7 @@ export const App: Component<AppProps> = (props) => {
 
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
-  let inputRef: InputRenderable | undefined
+  let inputRef: TextareaRenderable | undefined
 
   // --- Local UI signals (not in the global store — ephemeral) ---
   const [mention, setMention] = createSignal<MentionState>(MENTION_INACTIVE)
@@ -256,7 +256,11 @@ export const App: Component<AppProps> = (props) => {
   // Input change handler
   // ---------------------------------------------------------------------------
 
-  const handleInputChange = (newValue: string) => {
+  const handleInputChange = () => {
+    // Get the actual text from the textarea ref
+    if (!inputRef) return
+    const newValue = inputRef.plainText
+    
     // When in picker mode (sessions/models), ignore input changes
     const s = slash()
     if (s.mode !== "commands" && s.active) {
@@ -579,6 +583,26 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   useKeyboard((evt) => {
+    // Ctrl+Z / Cmd+Z — undo and move cursor to end
+    if ((evt.ctrl || evt.meta || evt.super) && evt.name === "z" && !evt.shift) {
+      if (inputRef && !state.store.running) {
+        inputRef.undo()
+        inputRef.gotoBufferEnd()
+        evt.preventDefault()
+      }
+      return
+    }
+
+    // Ctrl+Shift+Z / Cmd+Shift+Z — redo and move cursor to end
+    if ((evt.ctrl || evt.meta || evt.super) && (evt.name === "z" || evt.name === "Z") && evt.shift) {
+      if (inputRef && !state.store.running) {
+        inputRef.redo()
+        inputRef.gotoBufferEnd()
+        evt.preventDefault()
+      }
+      return
+    }
+
     // Ctrl+V — check clipboard for image before terminal handles paste
     if (evt.ctrl && evt.name === "v") {
       readClipboard().then((content) => {
@@ -739,8 +763,8 @@ export const App: Component<AppProps> = (props) => {
       {/* Input area */}
       <Prompt
         onSubmit={handleSubmit}
-        onInput={handleInputChange}
-        onRef={(r: InputRenderable) => { inputRef = r }}
+        onContentChange={handleInputChange}
+        onRef={(r: TextareaRenderable) => { inputRef = r }}
         disabled={state.store.running || !!state.store.permission}
         placeholder=""
         tokensUsed={state.store.status.tokensUsed}

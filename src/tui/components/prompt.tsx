@@ -1,14 +1,14 @@
 // @jsxImportSource @opentui/solid
 // Prompt — input area with status line
 //
-// Uses OpenTUI's <input> renderable for single-line text input.
+// Uses OpenTUI's <textarea> renderable for multiline text input.
 // Status line (tokens, cost, model, skills) is rendered above the input.
 // App.tsx owns autocomplete state; this component just renders the input
 // and forwards events upward.
 
 import type { Component } from "solid-js"
 import { Show, For } from "solid-js"
-import type { InputRenderable } from "@opentui/core"
+import type { TextareaRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
 
@@ -20,16 +20,16 @@ function modelColor(name: string): RGBA {
 }
 
 export interface PromptProps {
-  /** Callback when user submits (Enter key) — receives trimmed text */
+  /** Callback when user submits (Cmd+Enter / Ctrl+Enter) — receives trimmed text */
   onSubmit: (text: string) => void
-  /** Callback on every keystroke with current input value */
-  onInput: (text: string) => void
+  /** Callback on every content change with current input value */
+  onContentChange: () => void
   /** Whether the input is disabled (agent running, permission prompt) */
   disabled?: boolean
   /** Placeholder text */
   placeholder?: string
-  /** Expose the InputRenderable ref to parent (for imperative .value set) */
-  onRef?: (ref: InputRenderable) => void
+  /** Expose the TextareaRenderable ref to parent (for imperative .value set) */
+  onRef?: (ref: TextareaRenderable) => void
   // Status info
   tokensUsed?: number
   tokenLimit?: number
@@ -55,6 +55,8 @@ function formatPercent(used: number, limit: number): string {
 }
 
 export const Prompt: Component<PromptProps> = (props) => {
+  let textareaRef: TextareaRenderable | undefined
+
   const leftStatus = () => {
     const used = props.tokensUsed ?? 0
     const limit = props.tokenLimit ?? 168000
@@ -70,17 +72,19 @@ export const Prompt: Component<PromptProps> = (props) => {
 
   const borderColor = () => props.disabled ? colors.muted : colors.success
 
-  const handleSubmit = (value: string) => {
-    const text = value.trim()
+  const handleSubmit = () => {
+    if (!textareaRef) return
+    const text = textareaRef.plainText.trim()
     if (!text) return
     props.onSubmit(text)
   }
 
-  const handleInput = (value: string) => {
-    props.onInput(value)
+  const handleContentChange = () => {
+    props.onContentChange()
   }
 
-  const handleRef = (r: InputRenderable) => {
+  const handleRef = (r: TextareaRenderable) => {
+    textareaRef = r
     props.onRef?.(r)
   }
 
@@ -124,14 +128,30 @@ export const Prompt: Component<PromptProps> = (props) => {
           when={!props.disabled}
           fallback={<text fg={colors.muted}>Agent is running... (Esc to cancel)</text>}
         >
-          <input
+          <textarea
             ref={handleRef}
             focused={!props.disabled}
-            placeholder={props.placeholder ?? "Type a message..."}
+            placeholder={props.placeholder ?? "Type a message... (Enter to send)"}
             cursorColor={colors.cursorColor}
             cursorStyle={{ style: "line", blinking: true }}
             onSubmit={handleSubmit}
-            onInput={handleInput}
+            onContentChange={handleContentChange}
+            keyBindings={[
+              { name: "return", action: "submit" },
+              { name: "return", shift: true, action: "newline" },
+              // Undo/redo: Ctrl+Z (Linux/Windows), Meta+Z and Super+Z (Mac Command key)
+              { name: "z", ctrl: true, action: "undo" },
+              { name: "z", ctrl: true, shift: true, action: "redo" },
+              { name: "z", meta: true, action: "undo" },
+              { name: "z", meta: true, shift: true, action: "redo" },
+              { name: "z", super: true, action: "undo" },
+              { name: "z", super: true, shift: true, action: "redo" },
+              { name: "Z", meta: true, action: "redo" },
+              { name: "Z", super: true, action: "redo" },
+              // Fallback: Option+Z for undo on Mac (if terminal captures Command+Z)
+              { name: "ω", action: "undo" },  // Option+Z produces ω on Mac
+              { name: "Ω", action: "redo" },  // Option+Shift+Z produces Ω on Mac
+            ]}
           />
         </Show>
       </box>
