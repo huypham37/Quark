@@ -14,10 +14,10 @@
 //   └── ✓ WebSearch "AI techniques"
 
 import type { Component } from "solid-js"
-import { Show, For } from "solid-js"
+import { Show, For, createSignal, createEffect, onCleanup } from "solid-js"
 import { colors, icons } from "../theme"
 import { RGBA } from "@opentui/core"
-import { InlineSpinner } from "./inline-spinner"
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../spinner"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 
 interface SubAgentViewProps {
@@ -80,36 +80,53 @@ function formatTokens(n: number): string {
   return (n / 1000).toFixed(1) + "k"
 }
 
+// StatusIndicator - always renders a single text element to avoid DOM insertion issues
+const StatusIndicator: Component<{ status: "pending" | "running" | "completed" | "error" }> = (props) => {
+  const [frameIndex, setFrameIndex] = createSignal(0)
+
+  createEffect(() => {
+    if (props.status === "running") {
+      const id = setInterval(() => {
+        setFrameIndex((i) => (i + 1) % SPINNER_FRAMES.length)
+      }, SPINNER_INTERVAL_MS)
+      onCleanup(() => clearInterval(id))
+    }
+  })
+
+  const content = () => {
+    switch (props.status) {
+      case "running": return SPINNER_FRAMES[frameIndex()] + " "
+      case "pending": return "… "
+      case "error": return icons.cross + " "
+      default: return icons.checkmark + " "
+    }
+  }
+
+  const color = () => {
+    switch (props.status) {
+      case "running": return colors.textBold
+      case "pending": return colors.muted
+      case "error": return colors.error
+      default: return RGBA.fromHex("#98C379")
+    }
+  }
+
+  return <text fg={color()}>{content()}</text>
+}
+
 const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (props) => {
   const displayName = getToolDisplayName(props.tool.tool)
   const label = () => getToolLabel(props.tool.tool, props.tool.input)
   const connector = () => props.isLast ? icons.treeCorner : icons.treeTee
-  const isRunning = () => props.tool.status === "running"
-  const isPending = () => props.tool.status === "pending"
-  const isError = () => props.tool.status === "error"
 
   return (
     <box flexDirection="row">
       <text fg={colors.muted}>{connector()} </text>
-      <Show when={isRunning()}>
-        <InlineSpinner />
-        <text> </text>
-      </Show>
-      <Show when={isPending()}>
-        <text fg={colors.muted}>… </text>
-      </Show>
-      <Show when={!isRunning() && !isPending()}>
-        <Show
-          when={!isError()}
-          fallback={<text fg={colors.error}>{icons.cross} </text>}
-        >
-          <text fg={RGBA.fromHex("#98C379")}>{icons.checkmark} </text>
-        </Show>
-      </Show>
-      <text bold>{displayName}</text>
+      <StatusIndicator status={props.tool.status} />
+      <text>{displayName}</text>
       <Show when={label()}>
         <text> </text>
-        <text fg={RGBA.fromHex("#365A61")} underline>{label()}</text>
+        <text fg={RGBA.fromHex("#365A61")}>{label()}</text>
       </Show>
       <Show when={props.tool.error}>
         <text> </text>
@@ -140,14 +157,8 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     <box flexDirection="column">
       {/* Header: spinner/check + profile name + token usage */}
       <box flexDirection="row">
-        <Show
-          when={!isDone()}
-          fallback={<text fg={RGBA.fromHex("#98C379")}>{icons.checkmark} </text>}
-        >
-          <InlineSpinner />
-          <text> </text>
-        </Show>
-        <text bold fg={colors.text}>{profileName()}</text>
+        <StatusIndicator status={isDone() ? "completed" : "running"} />
+        <text fg={colors.text}>{profileName()}</text>
         <Show when={hasTokens()}>
           <text fg={colors.muted}>  {formatTokens(tokensUsed())} tokens{tokenPct()}</text>
         </Show>
