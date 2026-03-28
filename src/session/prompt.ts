@@ -40,6 +40,7 @@ import {
   CorrectedError,
 } from "../permission/permission"
 import { bus } from "./events"
+import { fireHook } from "../plugin/registry"
 
 // ---------------------------------------------------------------------------
 // Active sessions — track abort controllers so we can cancel
@@ -72,6 +73,7 @@ export async function prompt(input: {
     )
     sessionId = sess.id
     bus.emit("session-created", { sessionId })
+    fireHook("session.created", { sessionId }).catch(() => {})
   }
 
   // Set ATOM_SESSION_ID so child processes (bash tool) can inherit it
@@ -103,6 +105,7 @@ export async function prompt(input: {
   } finally {
     active.delete(sessionId)
     bus.emit("loop-end", { sessionId })
+    fireHook("session.idle", { sessionId }).catch(() => {})
   }
 
   return { sessionId }
@@ -147,6 +150,9 @@ async function loop(
     // Safety: prevent runaway loops
     if (step > loadConfig().max_steps) break
 
+    // Plugin hook: loop step beginning
+    await fireHook("loop.step.before", { sessionId: currentSessionId, step })
+
     // 0. Run pending compaction (queued from previous iteration or tool call)
     const pendingReq = takePending(currentSessionId)
     if (pendingReq) {
@@ -174,6 +180,7 @@ async function loop(
       } catch (err) {
         bus.emit("compaction-end", { sessionId: currentSessionId, result: null })
         bus.emit("error", { sessionId: currentSessionId, error: err })
+        fireHook("session.error", { sessionId: currentSessionId, error: err }).catch(() => {})
       }
     }
 
@@ -189,6 +196,8 @@ async function loop(
     if (cfg.compact.auto && shouldCompact(system, modelMessages, modelLimit, cfg.context_window, cfg.compact.threshold)) {
       bus.emit("compaction-start", { sessionId: currentSessionId })
       try {
+        // Fire session.compacting hook — plugins can inject extra context
+        const compactingOutput = await fireHook("session.compacting", { sessionId: currentSessionId })
         const compactCtx: CompactMethodContext = {
           sessionId: currentSessionId,
           messages,
@@ -199,6 +208,7 @@ async function loop(
           budget: modelLimit,
           persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
           session: { create: createSession },
+          extraContext: compactingOutput.context,
         }
         const compactResult = await resolveCompaction({ trigger: "auto", ctx: compactCtx })
         bus.emit("compaction-end", { sessionId: currentSessionId, result: compactResult })
@@ -223,6 +233,7 @@ async function loop(
       } catch (err) {
         bus.emit("compaction-end", { sessionId: currentSessionId, result: null })
         bus.emit("error", { sessionId: currentSessionId, error: err })
+        fireHook("session.error", { sessionId: currentSessionId, error: err }).catch(() => {})
         // Continue with full context if compaction fails
       }
     }
@@ -248,6 +259,9 @@ async function loop(
       msg: assistantMsg,
       sessionId: currentSessionId,
     })
+
+    // Plugin hook: loop step ending
+    await fireHook("loop.step.after", { sessionId: currentSessionId, step, result })
 
     // 7. Decide next action
     if (result === "continue") continue
@@ -282,6 +296,15 @@ export async function resolveModel(
   }
 
   let provider
+  // Plugin hook: allow plugins to intercept/modify provider+model before creating the AI SDK object
+  const beforeOutput = await fireHook("provider.request.before", {
+    provider: providerId,
+    model: modelId,
+    messages: [],
+  }, { provider: providerId, model: modelId })
+  providerId = beforeOutput.provider
+  modelId = beforeOutput.model
+
   if (providerId === "copilot") {
     provider = createCopilotProvider({
       getToken: async () => {
@@ -362,7 +385,11 @@ function toAITool(
           })
         },
       }
-      return def.execute(args, ctx)
+      // Plugin hooks: before/after tool execution
+      const beforeArgs = await fireHook("tool.execute.before", { tool: def.id, args }, { args })
+      const toolResult = await def.execute(beforeArgs.args as typeof args, ctx)
+      await fireHook("tool.execute.after", { tool: def.id, args: beforeArgs.args, result: (toolResult as any).output ?? "" })
+      return toolResult
     },
     toModelOutput(result: any) {
       return {

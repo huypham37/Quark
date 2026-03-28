@@ -23,6 +23,7 @@ import {
 } from "./message"
 import { isRetryable, retryDelay, sleep } from "./retry"
 import { bus } from "./events"
+import { fireHook } from "../plugin/registry"
 
 export interface ProcessInput {
   model: LanguageModel
@@ -33,6 +34,15 @@ export interface ProcessInput {
   msg: MessageRow
   sessionId: string
   maxOutputTokens?: number
+  /** Provider ID for plugin hooks (e.g. "copilot", "ollama") */
+  providerId?: string
+  /** Model ID for plugin hooks (e.g. "claude-sonnet-4.6") */
+  modelId?: string
+  /**
+   * Optional callback so provider.request.error plugins can switch provider/model
+   * without creating a circular import between processor and prompt.
+   */
+  rebuildModel?: (provider: string, model: string) => Promise<LanguageModel>
 }
 
 export async function processStream(input: ProcessInput): Promise<"stop" | "continue"> {
@@ -273,6 +283,27 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       }
 
       if (isRetryable(e)) {
+        attempt++
+        const delay = retryDelay(attempt)
+        await sleep(delay, input.abort).catch(() => {})
+        if (input.abort.aborted) break
+        continue
+      }
+
+      // Plugin hook: provider request error — plugins can request a retry with a new provider/model
+      const hookOutput = await fireHook("provider.request.error", {
+        provider: input.providerId ?? "unknown",
+        model: input.modelId ?? "unknown",
+        error: e,
+        statusCode: (e as any)?.status,
+      })
+      if (hookOutput.retry) {
+        // If the plugin wants to switch provider/model, rebuild the model
+        if ((hookOutput.provider || hookOutput.model) && input.rebuildModel) {
+          const newProvider = hookOutput.provider ?? input.providerId ?? "unknown"
+          const newModel = hookOutput.model ?? input.modelId ?? "unknown"
+          input.model = await input.rebuildModel(newProvider, newModel)
+        }
         attempt++
         const delay = retryDelay(attempt)
         await sleep(delay, input.abort).catch(() => {})

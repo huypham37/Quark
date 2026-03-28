@@ -55,6 +55,8 @@ export interface CompactMethodContext {
     /** Create a brand-new empty session and return it */
     create: typeof import("./session").createSession
   }
+  /** Extra context strings injected by plugins via session.compacting hook */
+  extraContext?: string[]
 }
 
 // ---------------------------------------------------------------------------

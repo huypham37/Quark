@@ -91,6 +91,9 @@ export interface AtomConfig {
 // Cached config — loaded once, reused thereafter
 let cached: AtomConfig | null = null
 
+// Runtime-registered providers — added by plugins, not from config.yaml
+const runtimeProviders: Record<string, ProviderConfig> = {}
+
 function readRawConfig(): Record<string, unknown> {
   try {
     const content = fs.readFileSync(CONFIG_FILE, "utf-8")
@@ -216,11 +219,23 @@ export function getProviderId(kind: "main" | "small"): string {
 }
 
 /**
- * Look up a provider's config by ID. Returns null if not defined.
+ * Look up a provider's config by ID.
+ * Checks runtime-registered providers first (added by plugins), then config.yaml.
+ * Returns null if not defined in either.
  */
 export function getProviderConfig(id: string): ProviderConfig | null {
+  if (runtimeProviders[id]) return runtimeProviders[id]!
   const config = loadConfig()
   return config.providers[id] ?? null
+}
+
+/**
+ * Register a provider at runtime (e.g. from a plugin).
+ * Takes precedence over config.yaml providers for the same ID.
+ * Does NOT persist to disk.
+ */
+export function registerProvider(id: string, config: ProviderConfig): void {
+  runtimeProviders[id] = config
 }
 
 /**

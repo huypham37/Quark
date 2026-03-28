@@ -7,13 +7,26 @@
 import { bootstrap } from "../src/bootstrap"
 import { prompt } from "../src/session/prompt"
 import { loadMessages } from "../src/session/message"
+import { parseModelSpec } from "../src/config/config"
+import type { AgentConfig } from "../src/agent"
+
+// Minimal agent — only built-in tools, no profile tools needed
+const testAgent: AgentConfig = {
+  id: "test",
+  name: "Test",
+  prompt: "You are a helpful assistant.",
+  tools: ["read", "skill"],
+  skills: [],
+}
 
 async function main() {
   const args = process.argv.slice(2)
   const modelIdx = args.indexOf("--model")
   const modelId = modelIdx !== -1 ? args[modelIdx + 1] : undefined
-  // Remove --model and its value from args to get the prompt text
-  const filteredArgs = args.filter((_, i) => i !== modelIdx && i !== modelIdx + 1)
+  // Remove --model and its value from args only when the flag is present
+  const filteredArgs = modelIdx !== -1
+    ? args.filter((_, i) => i !== modelIdx && i !== modelIdx + 1)
+    : args
   const input = filteredArgs[0] ?? "What is 2 + 2? Reply with just the number."
 
   console.log("=== Atom E2E Test ===")
@@ -22,7 +35,7 @@ async function main() {
   console.log()
 
   // Bootstrap tools + DB
-  bootstrap()
+  await bootstrap()
 
   // Run the agent loop
   console.log("Starting agent loop...")
@@ -30,7 +43,10 @@ async function main() {
 
   const result = await prompt({
     parts: [{ type: "text", text: input }],
-    model: modelId ? { provider: "copilot", model: modelId } : undefined,
+    agent: testAgent,
+    model: modelId
+      ? (() => { const p = parseModelSpec(modelId); return { provider: p.provider ?? "copilot", model: p.model } })()
+      : undefined,
   })
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1)

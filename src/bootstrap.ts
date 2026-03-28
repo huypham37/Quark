@@ -11,6 +11,7 @@ import { compactTool } from "./tool/compact"
 import { buildSkillTool } from "./tool/skill"
 import { getDB } from "./storage/db"
 import { loadProfileTools } from "./tool/loader"
+import { loadPlugins } from "./plugin/loader"
 import { registerMethod, setDefaultMethod } from "./session/compact-resolver"
 import { anchored } from "./session/methods/anchored"
 import { general } from "./session/methods/general"
@@ -47,6 +48,9 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   if (opts?.profileTools && opts.profileTools.length > 0) {
     await loadProfileTools(opts.profileTools)
   }
+
+  // Load plugins from ~/.config/atom/plugins/*.ts (non-blocking, errors notified)
+  await loadPlugins()
 }
 
 /**
