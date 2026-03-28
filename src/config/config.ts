@@ -2,8 +2,11 @@
 //
 // Model-related keys live alongside profile config in the same YAML file:
 //   models:      [claude-sonnet-4.5, gpt-4o, ...]  # user's curated favorites (shown in /model picker)
-//   small_model: gpt-4o-mini                         # lightweight tasks (title generation, etc.)
-//   main_model:  claude-sonnet-4.5                   # main agent loop
+//   main_model:  claude-sonnet-4.5                  # main agent loop
+//   small_model: gpt-4o-mini                        # lightweight tasks (title generation, etc.)
+//
+// Provider is always embedded in the model string as "provider/model".
+// If no provider prefix is given, defaults to "copilot".
 //
 // Missing file or fields fall back to sensible defaults.
 
@@ -42,6 +45,17 @@ const COMPACT_DEFAULTS: CompactConfig = {
 }
 
 // ---------------------------------------------------------------------------
+// Provider config — user-defined OpenAI-compatible providers
+// ---------------------------------------------------------------------------
+
+export interface ProviderConfig {
+  /** Base URL for the OpenAI-compatible API (e.g. "http://localhost:11434/v1") */
+  baseURL: string
+  /** API key — literal string or "env:VAR_NAME" to read from environment */
+  apiKey: string
+}
+
+// ---------------------------------------------------------------------------
 // AtomConfig — top-level config
 // ---------------------------------------------------------------------------
 
@@ -59,6 +73,7 @@ const DEFAULTS = {
   max_steps: 100,
   context_window: 100_000,
   compact: COMPACT_DEFAULTS,
+  providers: {} as Record<string, ProviderConfig>,
 } as const
 
 export interface AtomConfig {
@@ -69,6 +84,8 @@ export interface AtomConfig {
   /** Fallback context window (tokens) when models.dev doesn't have the model. */
   context_window: number
   compact: CompactConfig
+  /** User-defined OpenAI-compatible providers (keyed by provider ID) */
+  providers: Record<string, ProviderConfig>
 }
 
 // Cached config — loaded once, reused thereafter
@@ -101,6 +118,32 @@ function parseCompactConfig(raw: unknown): CompactConfig {
   }
 }
 
+function parseProviders(raw: unknown): Record<string, ProviderConfig> {
+  if (!raw || typeof raw !== "object") return {}
+  const result: Record<string, ProviderConfig> = {}
+  for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!val || typeof val !== "object") continue
+    const v = val as Record<string, unknown>
+    if (typeof v.baseURL !== "string" || !v.baseURL) continue
+    result[id] = {
+      baseURL: v.baseURL,
+      apiKey: typeof v.apiKey === "string" ? v.apiKey : "",
+    }
+  }
+  return result
+}
+
+/**
+ * Resolve an apiKey value. If it starts with "env:", read from the environment.
+ * Otherwise return the literal string.
+ */
+export function resolveApiKey(raw: string): string {
+  if (raw.startsWith("env:")) {
+    return process.env[raw.slice(4)] ?? ""
+  }
+  return raw
+}
+
 /**
  * Load config from disk. Returns defaults for any missing or invalid fields.
  * Never throws — config is best-effort.
@@ -128,17 +171,56 @@ export function loadConfig(): AtomConfig {
     context_window:
       typeof raw.context_window === "number" ? raw.context_window : DEFAULTS.context_window,
     compact: parseCompactConfig(raw.compact),
+    providers: parseProviders(raw.providers),
   }
 
   return cached
 }
 
 /**
- * Get the model ID for a given purpose.
+ * Parse a possibly-namespaced model spec like "copilot/claude-sonnet-4.6"
+ * into { provider, model }. If no "/" is present, provider is undefined.
+ */
+export function parseModelSpec(spec: string): { provider?: string; model: string } {
+  const idx = spec.indexOf("/")
+  if (idx === -1) return { model: spec }
+  return { provider: spec.slice(0, idx), model: spec.slice(idx + 1) }
+}
+
+/**
+ * Get the model ID for a given purpose (strips provider prefix if present).
  */
 export function getModelId(kind: "main" | "small"): string {
   const config = loadConfig()
-  return kind === "small" ? config.small_model : config.main_model
+  const raw = kind === "small" ? config.small_model : config.main_model
+  return parseModelSpec(raw).model
+}
+
+/**
+ * Get both provider and model for a given purpose.
+ * Provider is embedded in the model string as "provider/model".
+ * If no provider prefix, defaults to "copilot".
+ */
+export function getModelSpec(kind: "main" | "small"): { provider: string; model: string } {
+  const config = loadConfig()
+  const raw = kind === "small" ? config.small_model : config.main_model
+  const parsed = parseModelSpec(raw)
+  return {
+    provider: parsed.provider ?? "copilot",
+    model: parsed.model,
+  }
+}
+
+export function getProviderId(kind: "main" | "small"): string {
+  return getModelSpec(kind).provider
+}
+
+/**
+ * Look up a provider's config by ID. Returns null if not defined.
+ */
+export function getProviderConfig(id: string): ProviderConfig | null {
+  const config = loadConfig()
+  return config.providers[id] ?? null
 }
 
 /**

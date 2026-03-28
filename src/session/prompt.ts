@@ -25,11 +25,11 @@ import {
 } from "./compact-resolver"
 import { generateSessionTitle } from "./title"
 import { list as listTools, resolve as resolveTools } from "../tool/registry"
-import { getModel, createCopilotProvider } from "../provider/provider"
+import { getModel, createCopilotProvider, createOpenAICompatibleProvider } from "../provider/provider"
 import { loadToken } from "../provider/copilot-auth"
 import { getModelLimit } from "../provider/models"
 import { defaultAgent, type AgentConfig } from "../agent"
-import { getModelId, loadConfig } from "../config/config"
+import { getModelId, getProviderId, getProviderConfig, resolveApiKey, loadConfig, parseModelSpec } from "../config/config"
 import type { ToolDef, ToolResult } from "../tool/tool"
 import {
   ask as askPermission,
@@ -130,10 +130,9 @@ async function loop(
 ) {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent.model > config main_model
-  const effectiveModel = modelOpt?.model ?? agent.model ?? getModelId("main")
+  const effectiveModel = parseModelSpec(modelOpt?.model ?? agent.model ?? getModelId("main")).model
   const model = await resolveModel(
-    modelOpt ?? (agent.model ? { provider: "copilot", model: agent.model } : undefined),
-    "main"
+    modelOpt ?? (agent.model ? { provider: getProviderId("main"), model: agent.model } : undefined),
   )
   const modelLimit = getModelLimit(effectiveModel)
 
@@ -268,25 +267,47 @@ export async function resolveModel(
   opt?: { provider: string; model: string },
   kind: "main" | "small" = "main",
 ) {
-  // Validate that a token exists at startup
-  const initial = loadToken()
-  if (!initial) {
-    throw new Error(
-      "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
-    )
+  // Parse namespaced model spec (e.g. "copilot/claude-sonnet-4.6")
+  // Provider embedded in model spec wins over opt.provider and config default
+  let providerId: string
+  let modelId: string
+
+  if (opt?.model) {
+    const parsed = parseModelSpec(opt.model)
+    modelId = parsed.model
+    providerId = parsed.provider ?? opt.provider ?? getProviderId(kind)
+  } else {
+    modelId = getModelId(kind)
+    providerId = opt?.provider ?? getProviderId(kind)
   }
 
-  // Pass a callback that re-reads token on each request (avoids stale closures)
-  const provider = createCopilotProvider({
-    getToken: async () => {
-      const token = loadToken()
-      if (!token) throw new Error("Copilot token expired or removed.")
-      return token
-    },
-  })
+  let provider
+  if (providerId === "copilot") {
+    provider = createCopilotProvider({
+      getToken: async () => {
+        const token = loadToken()
+        if (!token) {
+          throw new Error(
+            "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
+          )
+        }
+        return token
+      },
+    })
+  } else {
+    const pc = getProviderConfig(providerId)
+    if (!pc) {
+      throw new Error(
+        `Unknown provider "${providerId}". Define it in ~/.config/atom/config.yaml under "providers:".`,
+      )
+    }
+    provider = createOpenAICompatibleProvider({
+      name: providerId,
+      baseURL: pc.baseURL,
+      apiKey: resolveApiKey(pc.apiKey),
+    })
+  }
 
-  // Explicit override wins, otherwise use config
-  const modelId = opt?.model ?? getModelId(kind)
   return getModel(provider, modelId)
 }
 
