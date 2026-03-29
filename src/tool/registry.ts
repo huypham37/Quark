@@ -8,16 +8,23 @@ import type { ToolDef } from "./tool"
 
 const registry = new Map<string, ToolDef>()
 
-// Schema validation errors
+/**
+ * Describes a validation failure on a tool definition.
+ */
 export interface ToolValidationError {
+  /** The ID of the tool that failed validation (or `"unknown"` if the id field is missing) */
   toolId: string
+  /** The field that failed validation (e.g. `"id"`, `"description"`, `"parameters"`) */
   field: string
+  /** Human-readable description of the validation failure */
   message: string
 }
 
 /**
- * Validate a tool definition
- * Returns null if valid, or an error object if invalid
+ * Validate a tool definition without registering it.
+ *
+ * @param tool - The value to validate (accepts `unknown` for use in loaders)
+ * @returns `null` if valid, or a {@link ToolValidationError} describing the failure
  */
 export function validateTool(tool: unknown): ToolValidationError | null {
   // Check it's an object
@@ -59,8 +66,18 @@ export function validateTool(tool: unknown): ToolValidationError | null {
 }
 
 /**
- * Register a tool with validation
- * Returns true if registered successfully, false if validation failed
+ * Register a tool in the global tool registry.
+ *
+ * Validates the tool definition before registration. Rejects duplicates.
+ *
+ * @param tool - A valid {@link ToolDef}
+ * @returns `{ ok: true }` on success, or `{ ok: false, error }` on validation failure or duplicate
+ *
+ * @example
+ * ```ts
+ * const result = register(myTool)
+ * if (!result.ok) console.error(result.error.message)
+ * ```
  */
 export function register(tool: ToolDef): { ok: true } | { ok: false; error: ToolValidationError } {
   const error = validateTool(tool)
@@ -81,7 +98,9 @@ export function register(tool: ToolDef): { ok: true } | { ok: false; error: Tool
 }
 
 /**
- * Register a tool, throwing on validation error (legacy behavior)
+ * Register a tool, throwing on validation failure.
+ * @throws {Error} If the tool fails validation
+ * @deprecated Prefer {@link register} which returns a result instead of throwing
  */
 export function registerOrThrow(tool: ToolDef): void {
   const result = register(tool)
@@ -94,10 +113,19 @@ export function get(id: string): ToolDef | undefined {
   return registry.get(id)
 }
 
+/**
+ * Return all registered tools.
+ */
 export function list(): ToolDef[] {
   return Array.from(registry.values())
 }
 
+/**
+ * Resolve an ordered list of tool IDs to their {@link ToolDef} objects.
+ *
+ * @param ids - Array of tool IDs to resolve (order preserved)
+ * @throws {Error} If any ID is not registered
+ */
 export function resolve(ids: string[]): ToolDef[] {
   return ids.map((id) => {
     const tool = registry.get(id)

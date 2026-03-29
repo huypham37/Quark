@@ -2,7 +2,7 @@
 // Entry point, exports public API
 
 // Initialization
-export { bootstrap } from "./bootstrap"
+export { bootstrap, type BootstrapOptions } from "./bootstrap"
 
 // Session management
 export { createSession, getSession } from "./session/session"
@@ -13,7 +13,7 @@ export { prompt, cancel } from "./session/prompt"
 export { compact } from "./session/compaction"
 
 // Tool system
-export { register, list as listTools } from "./tool/registry"
+export { register, list as listTools, type ToolValidationError } from "./tool/registry"
 export { defineTool } from "./tool/tool"
 export type { ToolDef, ToolContext, ToolResult } from "./tool/tool"
 
@@ -33,6 +33,10 @@ export {
   type Ruleset,
   type Action,
   type Reply,
+  type PendingRequest,
+  DeniedError,
+  RejectedError,
+  CorrectedError,
 } from "./permission/permission"
 
 // Agent configuration
@@ -46,4 +50,8 @@ export {
   resetProfileCache,
   type ProfileDef,
   type ProfileConfig,
+  type PromptFileResult,
 } from "./profile/profile"
+
+// Plugin types (for authoring plugins)
+export type { PluginFn, PluginContext, PluginHooks } from "./plugin/plugin"

@@ -1,0 +1,22 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "plugin": ["typedoc-plugin-markdown"],
+  "name": "@quark/sdk",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "skipErrorChecking": true,
+  "hideGenerator": true,
+  "outputFileStrategy": "modules",
+  "flattenOutputFiles": false,
+  "entryFileName": "index",
+  "indexFormat": "table",
+  "parametersFormat": "table",
+  "propertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  "useCodeBlocks": true,
+  "expandObjects": false
+}

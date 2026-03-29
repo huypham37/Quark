@@ -158,9 +158,42 @@ export const App: Component<AppProps> = (props) => {
   // Index of the chip currently selected for deletion (null = none)
   const [selectedImageIndex, setSelectedImageIndex] = createSignal<number | null>(null)
 
+  // ---------------------------------------------------------------------------
+  // Message history navigation (↑/↓ like a terminal shell)
+  // historyIndex: -1 = not navigating (showing draft or current input)
+  //               0  = most recent sent message
+  //               n  = n-th message back in history
+  // ---------------------------------------------------------------------------
+  const [historyIndex, setHistoryIndex] = createSignal(-1)
+  // Saved draft text — restored when the user presses ↓ past the most recent entry
+  const [historyDraft, setHistoryDraft] = createSignal("")
+
+  // Derive the ordered list of unique user message texts from the store
+  // (oldest → newest, so index 0 in reversed view = most recent)
+  const userHistory = (): string[] => {
+    const texts: string[] = []
+    for (const msg of state.store.messages) {
+      if (msg.role !== "user") continue
+      const textPart = msg.parts.find((p) => p.type === "text")
+      if (textPart && textPart.type === "text" && textPart.text.trim()) {
+        texts.push(textPart.text)
+      }
+    }
+    // Return reversed so index 0 = most recent
+    return texts.reverse()
+  }
+
   // Auto-clear selection when all pending images are gone
   createEffect(() => {
     if (pendingImages().length === 0) setSelectedImageIndex(null)
+  })
+
+  // Reset history navigation when the session changes
+  createEffect(() => {
+    // Track sessionId — reset index and draft whenever it changes
+    state.store.sessionId
+    setHistoryIndex(-1)
+    setHistoryDraft("")
   })
 
   const ensureFilesLoaded = async (): Promise<string[]> => {
@@ -290,6 +323,7 @@ export const App: Component<AppProps> = (props) => {
         inputRef.clear()
       } else {
         inputRef.setText(text)
+        inputRef.gotoBufferEnd()
       }
     }
     setInputValue(text)
@@ -508,6 +542,9 @@ export const App: Component<AppProps> = (props) => {
   const handleSubmit = (text: string) => {
     setMention(MENTION_INACTIVE)
     setSlash(SLASH_INACTIVE)
+    // Reset history navigation on submit
+    setHistoryIndex(-1)
+    setHistoryDraft("")
 
     // Intercept slash commands: /command args
     if (text.startsWith("/")) {
@@ -689,11 +726,49 @@ export const App: Component<AppProps> = (props) => {
 
     // Arrow key scrolling (only when no dropdown is active)
     if (evt.name === "up") {
+      // History navigation: intercept ↑ when not running, cursor is on line 1
+      if (!state.store.running && !dropdownActive() && inputRef) {
+        const text = inputRef.plainText
+        const offset = inputRef.cursorOffset
+        const cursorLine = text.slice(0, offset).split("\n").length - 1
+        if (cursorLine === 0) {
+          const history = userHistory()
+          if (history.length > 0) {
+            const next = historyIndex() + 1
+            if (next < history.length) {
+              if (historyIndex() === -1) setHistoryDraft(text)
+              setHistoryIndex(next)
+              setInputText(history[next])
+            }
+            evt.preventDefault()
+            return
+          }
+        }
+      }
       scroll?.scrollBy(-SCROLL_STEP)
       evt.preventDefault()
       return
     }
     if (evt.name === "down") {
+      // History navigation: intercept ↓ when navigating history and cursor is on last line
+      if (!state.store.running && !dropdownActive() && historyIndex() >= 0 && inputRef) {
+        const text = inputRef.plainText
+        const offset = inputRef.cursorOffset
+        const lines = text.split("\n")
+        const cursorLine = text.slice(0, offset).split("\n").length - 1
+        if (cursorLine === lines.length - 1) {
+          const prev = historyIndex() - 1
+          if (prev < 0) {
+            setHistoryIndex(-1)
+            setInputText(historyDraft())
+          } else {
+            setHistoryIndex(prev)
+            setInputText(userHistory()[prev])
+          }
+          evt.preventDefault()
+          return
+        }
+      }
       scroll?.scrollBy(SCROLL_STEP)
       evt.preventDefault()
       return

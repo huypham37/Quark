@@ -51,6 +51,27 @@ const active = new Map<string, AbortController>()
 // ---------------------------------------------------------------------------
 // prompt() — public entry point
 // ---------------------------------------------------------------------------
+/**
+ * Run the agent loop for a given user input.
+ *
+ * Creates a new session if `sessionId` is not provided, saves the user message,
+ * then iterates the agent loop until the model returns `stop` or `max_steps` is reached.
+ *
+ * @param input.sessionId - Resume an existing session (optional)
+ * @param input.parentSessionId - Link this session as a sub-agent child (optional)
+ * @param input.parts - User message parts (text content)
+ * @param input.images - Optional image attachments (`mime` + base64 `data`)
+ * @param input.model - Override the provider and model for this call
+ * @param input.agent - Override the agent config (defaults to {@link defaultAgent})
+ * @returns The session ID that was used (new or resumed)
+ *
+ * @example
+ * ```ts
+ * const { sessionId } = await prompt({
+ *   parts: [{ type: 'text', text: 'Refactor src/index.ts to use async/await' }],
+ * })
+ * ```
+ */
 export async function prompt(input: {
   sessionId?: string
   parentSessionId?: string
@@ -112,9 +133,15 @@ export async function prompt(input: {
   return { sessionId }
 }
 
-// ---------------------------------------------------------------------------
-// cancel() — abort a running session
-// ---------------------------------------------------------------------------
+/**
+ * Cancel a running agent loop for the given session.
+ *
+ * Triggers the `AbortController` associated with the session, which propagates
+ * through the LLM stream and all active tool calls. Safe to call on sessions
+ * that are not currently running (no-op).
+ *
+ * @param sessionId - The session to cancel
+ */
 export function cancel(sessionId: string) {
   const controller = active.get(sessionId)
   if (controller) {

@@ -19,13 +19,39 @@ import { loadConfig } from "./config/config"
 
 let initialized = false
 
+/**
+ * Options for {@link bootstrap}.
+ */
 export interface BootstrapOptions {
-  /** Tools declared in the active profile's tools[] array */
+  /** Tool IDs declared in the active profile's `tools[]` array. Only these tools are loaded from `~/.config/quark/tools/`. */
   profileTools?: string[]
-  /** Skills bound to the active profile */
+  /** Skill names bound to the active profile. Used to filter L1 skill metadata injected into the system prompt. */
   boundSkills?: string[]
 }
 
+/**
+ * Initialize the Quark agent runtime.
+ *
+ * Must be called **once** before using {@link prompt} or any session APIs.
+ * Subsequent calls are no-ops (idempotent).
+ *
+ * Responsibilities:
+ * - Opens the SQLite database (`quark.db`)
+ * - Registers built-in tools: `read`, `compact`, `skill`
+ * - Registers and sets the default compaction method from config
+ * - Loads profile-declared external tools from `~/.config/quark/tools/{id}.ts`
+ * - Loads plugins from `~/.config/quark/plugins/*.ts`
+ *
+ * @param opts - Optional bootstrap configuration
+ *
+ * @example
+ * ```ts
+ * import { bootstrap, prompt } from '@quark/sdk'
+ *
+ * await bootstrap({ profileTools: ['bash', 'write'] })
+ * await prompt({ parts: [{ type: 'text', text: 'Hello!' }] })
+ * ```
+ */
 export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   if (initialized) return
   initialized = true
@@ -54,7 +80,8 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 }
 
 /**
- * Reset for testing
+ * Reset bootstrap state.
+ * @internal Use in tests only — allows re-running bootstrap in a fresh state.
  */
 export function resetBootstrap(): void {
   initialized = false

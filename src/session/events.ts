@@ -10,6 +10,12 @@ import type { TuiMessage } from "../tui/state"
 
 // ---- Event types ----
 
+/**
+ * All events emitted on the {@link bus}.
+ *
+ * Subscribe with `bus.on(eventName, handler)`.
+ * Each key is an event name; the value is the event payload type.
+ */
 export interface BusEvents {
   // A user message was saved
   "user-message": { sessionId: string; messageId: string; text: string }
@@ -109,6 +115,7 @@ export interface BusEvents {
   }
 }
 
+/** Union of all bus event names */
 export type BusEventName = keyof BusEvents
 
 // ---- Singleton bus ----
@@ -146,5 +153,20 @@ class TypedBus {
   }
 }
 
+/**
+ * Typed event bus singleton.
+ *
+ * Used by the agent core, TUI, CLI, and plugins to communicate asynchronously.
+ * Backed by a Node.js `EventEmitter` with a 100-listener cap.
+ *
+ * @example
+ * ```ts
+ * import { bus } from '@quark/sdk'
+ *
+ * bus.on('text-delta', ({ delta }) => process.stdout.write(delta))
+ * bus.on('tool-start', ({ tool }) => console.log(`→ ${tool}`))
+ * bus.on('loop-end', ({ sessionId }) => console.log('Done', sessionId))
+ * ```
+ */
 // Singleton instance
 export const bus = new TypedBus()

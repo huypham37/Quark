@@ -18,23 +18,50 @@ import { bus } from "../session/events"
 // Types
 // ---------------------------------------------------------------------------
 
+/** Permission action: allow silently, deny immediately, or pause and ask the user. */
 export type Action = "allow" | "deny" | "ask"
 
+/**
+ * A single permission rule.
+ * Rules are evaluated in order; the **last matching rule wins**.
+ */
 export interface Rule {
-  permission: string // tool id or category (supports wildcards)
-  pattern: string // glob pattern for the argument (e.g. file path)
+  /** Tool ID or category to match (supports `*` and `?` wildcards) */
+  permission: string
+  /** Glob pattern for the argument (e.g. a file path). Use `"*"` to match anything. */
+  pattern: string
+  /** The action to take when this rule matches */
   action: Action
 }
 
+/**
+ * An ordered list of {@link Rule}s.
+ * Later rules override earlier ones (last-matching-rule-wins).
+ */
 export type Ruleset = Rule[]
 
+/**
+ * The response to a pending permission request.
+ * - `"once"` — allow this single tool call only
+ * - `"always"` — add a session-scope allow rule covering this permission+pattern
+ * - `"reject"` — deny with optional feedback message
+ */
 export type Reply = "once" | "always" | "reject"
 
+/**
+ * An in-flight permission request waiting for a user response.
+ * Emitted as a `permission-request` bus event so the TUI can display a prompt.
+ */
 export interface PendingRequest {
+  /** Unique request ID */
   id: string
+  /** Session this request belongs to */
   sessionId: string
+  /** Permission category being requested (typically the tool ID) */
   permission: string
+  /** The specific resource pattern (e.g. file path) */
   pattern: string
+  /** Additional metadata for the TUI to display */
   metadata: Record<string, any>
   resolve: () => void
   reject: (e: Error) => void
@@ -44,7 +71,7 @@ export interface PendingRequest {
 // Errors
 // ---------------------------------------------------------------------------
 
-/** User rejected without feedback — halts tool execution */
+/** Thrown when the user rejects a permission request without feedback — halts tool execution. */
 export class RejectedError extends Error {
   constructor() {
     super(
@@ -53,7 +80,7 @@ export class RejectedError extends Error {
   }
 }
 
-/** User rejected with feedback — continues with guidance */
+/** Thrown when the user rejects a permission request with feedback text — the message is forwarded to the LLM. */
 export class CorrectedError extends Error {
   constructor(message: string) {
     super(
@@ -62,7 +89,7 @@ export class CorrectedError extends Error {
   }
 }
 
-/** Auto-rejected by a config/project rule — halts tool execution */
+/** Thrown when a hard `deny` rule matches — halts tool execution immediately. */
 export class DeniedError extends Error {
   constructor(public readonly rules: Ruleset) {
     super(
@@ -77,9 +104,14 @@ export class DeniedError extends Error {
 
 /**
  * Match a string against a wildcard pattern.
- * Supports `*` (any sequence) and `?` (single char).
- * Normalizes path separators to `/`.
- * Trailing " *" (space+wildcard) is optional — "ls *" matches "ls".
+ *
+ * - `*` matches any sequence of characters
+ * - `?` matches exactly one character
+ * - Path separators are normalized to `/`
+ * - Trailing `" *"` is optional: `"ls *"` matches both `"ls"` and `"ls -la"`
+ *
+ * @param str - The string to test
+ * @param pattern - The wildcard pattern
  */
 export function wildcardMatch(str: string, pattern: string): boolean {
   if (!str && !pattern) return true
@@ -116,7 +148,14 @@ export function expandPath(pattern: string): string {
 
 /**
  * Evaluate permission rules for a given tool + pattern.
- * Last matching rule wins (later rules override). Default: "ask".
+ *
+ * Merges all provided rulesets and applies **last-matching-rule-wins** semantics.
+ * If no rule matches, defaults to `{ action: "ask" }`.
+ *
+ * @param tool - The tool ID being evaluated
+ * @param pattern - The argument pattern (e.g. file path)
+ * @param rulesets - One or more rulesets to merge and evaluate (later sets take priority)
+ * @returns The matching rule (or a synthetic default `ask` rule)
  */
 export function evaluate(
   tool: string,
@@ -133,8 +172,11 @@ export function evaluate(
 }
 
 /**
- * Returns a Set of tool ids that are disabled by deny rules with pattern "*".
- * Useful for the TUI to grey out tools that can never run.
+ * Returns the set of tool IDs that are unconditionally disabled by a `deny *` rule.
+ * Useful for the TUI to grey out tools that can never run in this session.
+ *
+ * @param tools - The list of tool IDs to check
+ * @param ruleset - The active ruleset to evaluate against
  */
 export function disabled(tools: string[], ruleset: Ruleset): Set<string> {
   const result = new Set<string>()
@@ -178,12 +220,22 @@ export function listPendingForSession(sessionId: string): PendingRequest[] {
 /**
  * Ask for permission before executing a tool.
  *
- * - Evaluates rules (including any per-session "always" approvals)
- * - "allow" → returns immediately
- * - "deny" → throws DeniedError
- * - "ask" → returns a Promise that resolves when respond() is called
+ * Evaluates the provided rulesets (plus any session-scope "always" approvals).
  *
- * The TUI should subscribe to pending requests and call respond().
+ * - `"allow"` → returns immediately
+ * - `"deny"` → throws {@link DeniedError}
+ * - `"ask"` → emits a `permission-request` bus event and returns a Promise that
+ *   resolves/rejects when {@link respond} is called by the TUI
+ *
+ * @param input.sessionId - The current session
+ * @param input.permission - The permission category (typically the tool ID)
+ * @param input.pattern - The resource pattern (e.g. file path)
+ * @param input.ruleset - Ruleset to evaluate
+ * @param input.metadata - Extra data for the TUI prompt
+ *
+ * @throws {@link DeniedError} If a `deny` rule matches
+ * @throws {@link RejectedError} If the user rejects without feedback
+ * @throws {@link CorrectedError} If the user rejects with feedback
  */
 export async function ask(input: {
   sessionId: string
@@ -231,11 +283,15 @@ export async function ask(input: {
 }
 
 /**
- * Respond to a pending permission request.
+ * Respond to a pending permission request from the TUI.
  *
- * - "once" → allow this call only
- * - "always" → allow this permission+pattern for the rest of the session
- * - "reject" → reject with optional feedback message
+ * - `"once"` — allow this single tool call, remove the pending request
+ * - `"always"` — add a session-scope allow rule; auto-resolve any other pending requests now covered by it
+ * - `"reject"` — reject with optional feedback message; also rejects all other pending requests for the session
+ *
+ * @param input.requestId - The ID of the {@link PendingRequest} to respond to
+ * @param input.reply - The user's response
+ * @param input.message - Optional feedback message (only meaningful when `reply` is `"reject"`)
  */
 export function respond(input: {
   requestId: string
@@ -297,7 +353,10 @@ export function respond(input: {
 }
 
 /**
- * Clear all permission state for a session (call on session end).
+ * Clear all permission state for a session.
+ * Call this when a session ends to release in-memory state and reject any dangling pending requests.
+ *
+ * @param sessionId - The session to clear
  */
 export function clearSession(sessionId: string): void {
   sessionApproved.delete(sessionId)

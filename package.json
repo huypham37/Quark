@@ -26,13 +26,16 @@
     "typecheck": "tsc --project tsconfig.build.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "docs": "typedoc"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^25.5.0",
     "drizzle-kit": "^0.31.9",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typedoc": "^0.28.18",
+    "typedoc-plugin-markdown": "^4.11.0"
   },
   "peerDependencies": {
     "typescript": "^6.0.2"

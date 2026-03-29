@@ -7,16 +7,34 @@ import { session } from "./session.sql"
 
 export type SessionKind = "main" | "subagent"
 
+/**
+ * A persisted conversation session.
+ */
 export interface Session {
+  /** Unique session identifier (nanoid) */
   id: string
+  /** Auto-generated title (set asynchronously after the first message) */
   title: string | null
+  /** Working directory when the session was created */
   directory: string | null
+  /** Parent session ID — set for sub-agent sessions */
   parentSessionId: string | null
+  /** Session kind: `"main"` for top-level sessions, `"subagent"` for spawned children */
   kind: SessionKind
+  /** Unix timestamp (ms) when the session was created */
   timeCreated: number
+  /** Unix timestamp (ms) of the last activity */
   timeUpdated: number
 }
 
+/**
+ * Create a new session and persist it to the database.
+ *
+ * @param opts.directory - Working directory (defaults to `process.cwd()`)
+ * @param opts.parentSessionId - Parent session ID for sub-agent sessions
+ * @param opts.kind - Explicit session kind; inferred from `parentSessionId` if omitted
+ * @returns The newly created {@link Session}
+ */
 export function createSession(opts?: {
   directory?: string
   parentSessionId?: string
@@ -40,6 +58,12 @@ export function createSession(opts?: {
   return row
 }
 
+/**
+ * Retrieve a session by ID.
+ *
+ * @param id - Session identifier
+ * @throws {Error} If no session with the given ID exists
+ */
 export function getSession(id: string): Session {
   const db = getDB()
   const row = db.select().from(session).where(eq(session.id, id)).get()
@@ -47,6 +71,10 @@ export function getSession(id: string): Session {
   return row
 }
 
+/**
+ * Update the `timeUpdated` timestamp of a session (touch).
+ * Called at the start of each `prompt()` invocation.
+ */
 export function touchSession(id: string): void {
   const db = getDB()
   db.update(session)

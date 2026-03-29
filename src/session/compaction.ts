@@ -57,6 +57,19 @@ When constructing the summary, try to stick to this template:
 // context_window is resolved from models.dev (modelLimit) or
 // config.context_window as fallback.
 // ---------------------------------------------------------------------------
+/**
+ * Determine whether compaction should be triggered for the current session.
+ *
+ * Uses a `chars / 4` heuristic to estimate the token count of the system prompt
+ * and all model messages. Triggers when `estimated >= threshold × contextWindow`.
+ *
+ * @param system - The current system prompt (string or array of strings)
+ * @param modelMessages - The current model message array
+ * @param modelLimit - Per-model limits from `models.dev` (or `null` if unavailable)
+ * @param contextWindow - Fallback context window size from config (tokens)
+ * @param threshold - Trigger threshold fraction (default `0.95`)
+ * @returns `true` if compaction should be triggered
+ */
 export function shouldCompact(
   system: string | string[],
   modelMessages: import("ai").ModelMessage[],
@@ -73,6 +86,13 @@ export function shouldCompact(
 // ---------------------------------------------------------------------------
 // estimateTokens — chars/4 heuristic on the content that will be sent
 // ---------------------------------------------------------------------------
+/**
+ * Estimate the token count for a system prompt + model messages using the `chars / 4` heuristic.
+ *
+ * @param system - System prompt string
+ * @param modelMessages - Current model message array
+ * @returns Estimated token count
+ */
 export function estimateTokens(
   system: string,
   modelMessages: import("ai").ModelMessage[],
@@ -169,6 +189,16 @@ export function getLastInputTokens(parts: PartRow[]): number {
 // ---------------------------------------------------------------------------
 // compact — summarize the conversation and save as a summary message
 // ---------------------------------------------------------------------------
+/**
+ * Summarize the conversation and persist the summary as a special `"summary"` message part.
+ *
+ * Sends all current messages plus a compaction prompt to the LLM using `generateText`,
+ * then saves the resulting summary. Used by the anchored compaction method.
+ *
+ * @param input.sessionId - The session to compact
+ * @param input.model - The language model to use for summarization
+ * @param input.abort - AbortSignal to cancel the operation
+ */
 export async function compact(input: {
   sessionId: string
   model: LanguageModel

@@ -24,14 +24,17 @@ import { warn as notifyWarn } from "../notification/notification"
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * A resolved profile definition with all paths expanded and overrides applied.
+ */
 export interface ProfileDef {
-  /** Unique profile id (e.g. "coder", "researcher") */
+  /** Unique profile id (e.g. `"coder"`, `"researcher"`) */
   id: string
-  /** Human-readable name */
+  /** Human-readable display name */
   name: string
   /** Description of what this profile does (from prompt file frontmatter) */
   description?: string
-  /** Path to system prompt .md file (relative to config dir or absolute) */
+  /** Absolute path to the system prompt `.md` file */
   promptFile: string
   /** Tool IDs this profile can use */
   tools: string[]
@@ -39,14 +42,17 @@ export interface ProfileDef {
   skills: string[]
   /** Profile IDs of sub-agents this profile can spawn */
   subAgents?: string[]
-  /** Model to use for this profile (optional, falls back to config main_model) */
+  /** Model string for this profile (e.g. `"copilot/gpt-4o"`). Falls back to config `main_model` if omitted. */
   model?: string
 }
 
+/**
+ * Merged profile configuration from global and project config files.
+ */
 export interface ProfileConfig {
   /** Default profile to activate when none specified */
   defaultProfile: string
-  /** Profile definitions keyed by id */
+  /** All available profile definitions keyed by ID */
   profiles: Record<string, ProfileDef>
 }
 
@@ -207,8 +213,18 @@ export function validateSubAgents(
 }
 
 /**
- * Resolve a profile by id. If not found, falls back to default profile,
- * then to built-in coder. Applies project-level overrides (skills_add, tools_add).
+ * Resolve a profile by ID.
+ *
+ * Resolution order:
+ * 1. The profile matching `profileId` in merged config
+ * 2. The configured `default_profile`
+ * 3. The built-in `coder` fallback
+ *
+ * Applies project-level `profile_overrides` (`skills_add`, `tools_add`) after resolution.
+ * Warns and strips unknown `sub_agents` IDs.
+ *
+ * @param profileId - Optional explicit profile ID. If omitted, the default profile is used.
+ * @returns The fully resolved and override-applied {@link ProfileDef}
  */
 export function resolveProfile(profileId?: string): ProfileDef {
   const config = loadProfileConfig()
@@ -283,16 +299,27 @@ function parseFrontmatter(raw: string): { data: Record<string, string>; content:
   return { data, content }
 }
 
+/**
+ * The result of reading a profile's prompt file.
+ */
 export interface PromptFileResult {
+  /** The system prompt text (body of the `.md` file, after frontmatter) */
   content: string
+  /** `name` field from YAML frontmatter, if present */
   name?: string
+  /** `description` field from YAML frontmatter, if present */
   description?: string
 }
 
 /**
  * Read the system prompt content from a profile's prompt file.
- * Parses YAML frontmatter for name and description if present.
- * Returns the built-in default prompt if no file is configured or file is unreadable.
+ *
+ * Parses YAML frontmatter (`---`) for `name` and `description` metadata.
+ * Returns the built-in default prompt if:
+ * - `profile.promptFile` is empty
+ * - The file does not exist or cannot be read
+ *
+ * @param profile - The resolved profile whose `promptFile` to read
  */
 export function readPromptFile(profile: ProfileDef): PromptFileResult {
   if (!profile.promptFile) return { content: BUILTIN_PROMPT }
@@ -311,7 +338,8 @@ export function readPromptFile(profile: ProfileDef): PromptFileResult {
 }
 
 /**
- * List all available profile IDs.
+ * List all available profile IDs from the merged config.
+ * Always includes the built-in `"coder"` profile.
  */
 export function listProfiles(): string[] {
   const config = loadProfileConfig()
@@ -319,7 +347,8 @@ export function listProfiles(): string[] {
 }
 
 /**
- * Clear cached config — call when config files change at runtime.
+ * Clear the cached profile config.
+ * Call after the `/profile` switch command or when config files change at runtime.
  */
 export function resetProfileCache(): void {
   configCache = null
