@@ -14,7 +14,7 @@
 //   └── ✓ WebSearch "AI techniques"
 
 import type { Component } from "solid-js"
-import { Show, For, createSignal, createEffect, onCleanup } from "solid-js"
+import { Show, For, createSignal, createEffect, onCleanup, onMount } from "solid-js"
 import { colors, icons } from "../theme"
 import { RGBA } from "@opentui/core"
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../spinner"
@@ -114,6 +114,22 @@ const StatusIndicator: Component<{ status: "pending" | "running" | "completed" |
   return <text fg={color()}>{content()}</text>
 }
 
+const DOTS = [".", "..", "..."]
+const DOTS_INTERVAL_MS = 400
+
+const StreamingLabel: Component = () => {
+  const [dotIdx, setDotIdx] = createSignal(0)
+
+  onMount(() => {
+    const id = setInterval(() => {
+      setDotIdx((i) => (i + 1) % DOTS.length)
+    }, DOTS_INTERVAL_MS)
+    onCleanup(() => clearInterval(id))
+  })
+
+  return <text fg={colors.muted}>Streaming {DOTS[dotIdx()] ?? "."}</text>
+}
+
 const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (props) => {
   const displayName = getToolDisplayName(props.tool.tool)
   const label = () => getToolLabel(props.tool.tool, props.tool.input)
@@ -183,7 +199,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
           <Show when={hasTextPreview()}>
             <box flexDirection="row">
               <text fg={colors.muted}>{icons.treeCorner} </text>
-              <text fg={colors.muted} dimColor>{props.subAgent.textPreview}</text>
+              <StreamingLabel />
             </box>
           </Show>
         </box>

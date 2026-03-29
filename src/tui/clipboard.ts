@@ -80,7 +80,7 @@ export async function readClipboard(): Promise<ClipboardContent | undefined> {
 
   // macOS — use osascript to export clipboard as PNG to a temp file
   if (os === "darwin") {
-    const tmp = path.join(tmpdir(), "atom-clipboard.png")
+    const tmp = path.join(tmpdir(), "quark-clipboard.png")
     try {
       await run([
         "osascript",

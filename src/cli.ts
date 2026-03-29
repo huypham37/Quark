@@ -1,11 +1,11 @@
-// CLI entry point for Atom
+// CLI entry point for Quark
 //
 // Usage:
-//   atom --profile coder --prompt "help me fix this bug"
-//   atom -p coder -m "help me fix this bug"
-//   atom "quick prompt without flags"
-//   atom --sub-agent --profile researcher --prompt "research this topic"
-//   atom --parent-session <id> --profile researcher --prompt "research this topic"
+//   quark --profile coder --prompt "help me fix this bug"
+//   quark -p coder -m "help me fix this bug"
+//   quark "quick prompt without flags"
+//   quark --sub-agent --profile researcher --prompt "research this topic"
+//   quark --parent-session <id> --profile researcher --prompt "research this topic"
 
 import { parseArgs } from "util"
 import { bootstrap } from "./bootstrap"
@@ -21,23 +21,23 @@ import { startEventWriter } from "./session/event-writer"
 
 function printHelp() {
   console.log(`
-Usage: atom [options] [prompt]
+Usage: quark [options] [prompt]
 
 Options:
   -p, --profile <name>          Profile to use (default: from config)
   -m, --prompt <text>           Prompt text (alternative to positional)
   -s, --session <id>            Resume an existing session
       --parent-session <id>     Create a child session under this parent
-      --sub-agent               Create a child session (reads ATOM_SESSION_ID from env)
+      --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
   -l, --list-profiles           List available profiles
   -h, --help                    Show this help message
 
 Examples:
-  atom --profile coder --prompt "fix the bug in main.ts"
-  atom -p coder "fix the bug in main.ts"
-  atom "quick question"
-  atom --sub-agent --profile researcher --prompt "research auth flow"
-  atom --parent-session sess_abc --profile researcher --prompt "research auth flow"
+  quark --profile coder --prompt "fix the bug in main.ts"
+  quark -p coder "fix the bug in main.ts"
+  quark "quick question"
+  quark --sub-agent --profile researcher --prompt "research auth flow"
+  quark --parent-session sess_abc --profile researcher --prompt "research auth flow"
 `)
 }
 
@@ -77,9 +77,9 @@ function parseArguments(): ParsedArgs {
         console.error("Error: --sub-agent and --parent-session are mutually exclusive")
         process.exit(1)
       }
-      parentSessionId = process.env.ATOM_SESSION_ID
+      parentSessionId = process.env.QUARK_SESSION_ID
       if (!parentSessionId) {
-        console.error("Error: --sub-agent requires ATOM_SESSION_ID environment variable")
+        console.error("Error: --sub-agent requires QUARK_SESSION_ID environment variable")
         process.exit(1)
       }
     }
@@ -126,16 +126,21 @@ async function main() {
     process.exit(0)
   }
 
+  // No prompt provided → launch interactive TUI
   if (!args.prompt) {
-    console.error("Error: No prompt provided")
-    printHelp()
-    process.exit(1)
+    const { execSync } = await import("child_process")
+    const quarkDir = process.env.QUARK_DIR ?? import.meta.dir + "/.."
+    execSync(`bun --preload "${quarkDir}/preload.ts" "${quarkDir}/src/tui/index.tsx"`, {
+      stdio: "inherit",
+      env: { ...process.env, QUARK_DIR: quarkDir },
+    })
+    process.exit(0)
   }
 
   // Resolve profile
   const profile = resolveProfile(args.profile)
-  const systemPrompt = readPromptFile(profile)
-  const agent = agentFromProfile(profile, systemPrompt)
+  const promptResult = readPromptFile(profile)
+  const agent = agentFromProfile(profile, promptResult.content)
 
   // Bootstrap with profile tools and skills
   await bootstrap({

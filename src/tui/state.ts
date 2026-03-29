@@ -27,7 +27,7 @@ export interface TuiMessage {
 
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; subAgent?: SubAgentState }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; label: string }
 
@@ -80,7 +80,7 @@ export type TuiAction =
   | { type: "text-end"; messageId: string; text: string }
   | { type: "tool-start"; messageId: string; tool: string; callId: string }
   | { type: "tool-input"; messageId: string; callId: string; input: Record<string, unknown> }
-  | { type: "tool-end"; messageId: string; callId: string; status: "completed" | "error"; output?: string; error?: string }
+  | { type: "tool-end"; messageId: string; callId: string; status: "completed" | "error"; output?: string; error?: string; diff?: string }
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
   | { type: "update-status"; partial: Partial<TuiStatus> }
@@ -361,6 +361,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.status = action.status
             part.output = action.output
             part.error = action.error
+            part.diff = action.diff
           }
         }),
       )

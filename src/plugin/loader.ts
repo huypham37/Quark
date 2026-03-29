@@ -1,4 +1,4 @@
-// Plugin loader — scan ~/.config/atom/plugins/*.ts, import, collect hooks
+// Plugin loader — scan ~/.config/quark/plugins/*.ts, import, collect hooks
 //
 // Same pattern as src/tool/loader.ts:
 //   1. Scan the plugins directory for *.ts files
@@ -15,7 +15,7 @@ import { registerProvider } from "../config/config"
 import { error as notifyError } from "../notification/notification"
 import type { PluginFn, HookName } from "./plugin"
 
-const PLUGINS_DIR = path.join(os.homedir(), ".config", "atom", "plugins")
+const PLUGINS_DIR = path.join(os.homedir(), ".config", "quark", "plugins")
 
 export interface PluginLoadResult {
   loaded: string[]
@@ -23,7 +23,7 @@ export interface PluginLoadResult {
 }
 
 /**
- * Scan ~/.config/atom/plugins/*.ts, import each file, call the exported
+ * Scan ~/.config/quark/plugins/*.ts, import each file, call the exported
  * PluginFn with a PluginContext, and register all returned hooks.
  *
  * Errors are surfaced as notifications (non-blocking).
@@ -49,13 +49,13 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
     .filter((e) => e.isFile() && e.name.endsWith(".ts"))
     .map((e) => e.name)
 
-  // Derive atomRoot: this file lives at src/plugin/loader.ts, so go up two levels
-  const atomRoot = path.resolve(import.meta.dir, "../..")
+  // Derive quarkRoot: this file lives at src/plugin/loader.ts, so go up two levels
+  const quarkRoot = path.resolve(import.meta.dir, "../..")
 
   const ctx = {
     directory: process.cwd(),
-    sessionId: process.env.ATOM_SESSION_ID,
-    atomRoot,
+    sessionId: process.env.QUARK_SESSION_ID,
+    quarkRoot,
     registerProvider,
   }
 

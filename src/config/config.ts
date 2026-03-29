@@ -1,4 +1,4 @@
-// Config loader — reads ~/.config/atom/config.yaml
+// Config loader — reads ~/.config/quark/config.yaml
 //
 // Model-related keys live alongside profile config in the same YAML file:
 //   models:      [claude-sonnet-4.5, gpt-4o, ...]  # user's curated favorites (shown in /model picker)
@@ -15,11 +15,11 @@ import * as path from "path"
 import * as os from "os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "atom")
+const CONFIG_DIR = path.join(os.homedir(), ".config", "quark")
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
 
 // ---------------------------------------------------------------------------
-// Compact config — nested under AtomConfig
+// Compact config — nested under QuarkConfig
 // ---------------------------------------------------------------------------
 
 export interface CompactConfig {
@@ -56,7 +56,7 @@ export interface ProviderConfig {
 }
 
 // ---------------------------------------------------------------------------
-// AtomConfig — top-level config
+// QuarkConfig — top-level config
 // ---------------------------------------------------------------------------
 
 const DEFAULTS = {
@@ -76,7 +76,7 @@ const DEFAULTS = {
   providers: {} as Record<string, ProviderConfig>,
 } as const
 
-export interface AtomConfig {
+export interface QuarkConfig {
   models: string[]
   small_model: string
   main_model: string
@@ -89,7 +89,7 @@ export interface AtomConfig {
 }
 
 // Cached config — loaded once, reused thereafter
-let cached: AtomConfig | null = null
+let cached: QuarkConfig | null = null
 
 // Runtime-registered providers — added by plugins, not from config.yaml
 const runtimeProviders: Record<string, ProviderConfig> = {}
@@ -151,7 +151,7 @@ export function resolveApiKey(raw: string): string {
  * Load config from disk. Returns defaults for any missing or invalid fields.
  * Never throws — config is best-effort.
  */
-export function loadConfig(): AtomConfig {
+export function loadConfig(): QuarkConfig {
   if (cached) return cached
 
   const raw = readRawConfig()
@@ -242,9 +242,9 @@ export function registerProvider(id: string, config: ProviderConfig): void {
  * Update a config field and persist to disk.
  * Merges with existing config — only overwrites the specified field.
  */
-export function setConfigField<K extends keyof AtomConfig>(
+export function setConfigField<K extends keyof QuarkConfig>(
   key: K,
-  value: AtomConfig[K],
+  value: QuarkConfig[K],
 ): void {
   const raw = readRawConfig()
 

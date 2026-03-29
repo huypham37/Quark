@@ -2,7 +2,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 
-const TOKEN_DIR = path.join(os.homedir(), ".config", "atom")
+const TOKEN_DIR = path.join(os.homedir(), ".config", "quark")
 const TOKEN_FILE = path.join(TOKEN_DIR, "claude-web-proxy-token.json")
 
 export function saveClaudeWebProxyApiKey(apiKey: string): void {

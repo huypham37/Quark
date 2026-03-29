@@ -161,7 +161,7 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("tool-end", (data) => {
-      dispatch(state, { type: "tool-end", messageId: data.messageId, callId: data.callId, status: data.status, output: data.output, error: data.error })
+      dispatch(state, { type: "tool-end", messageId: data.messageId, callId: data.callId, status: data.status, output: data.output, error: data.error, diff: data.diff })
     }))
 
     unsubs.push(on("assistant-message-end", (data) => {

@@ -1,7 +1,7 @@
 // Bootstrap — initialize the agent with profile-declared tools
 //
 // Built-in tools: read, skill (always available)
-// Profile tools: loaded from ~/.config/atom/tools/{id}.ts
+// Profile tools: loaded from ~/.config/quark/tools/{id}.ts
 //
 // Call this once at startup before using the agent loop.
 
@@ -43,13 +43,13 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   registerMethod(general)
   setDefaultMethod(loadConfig().compact.method)
 
-  // Load profile-declared tools from ~/.config/atom/tools/
+  // Load profile-declared tools from ~/.config/quark/tools/
   // Missing or invalid tools are shown as notifications (non-blocking)
   if (opts?.profileTools && opts.profileTools.length > 0) {
     await loadProfileTools(opts.profileTools)
   }
 
-  // Load plugins from ~/.config/atom/plugins/*.ts (non-blocking, errors notified)
+  // Load plugins from ~/.config/quark/plugins/*.ts (non-blocking, errors notified)
   await loadPlugins()
 }
 

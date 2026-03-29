@@ -2,10 +2,10 @@
 //
 // When a sub-agent runs, the parent has no visibility into its internal tool
 // execution. This module subscribes to the in-process event bus and writes
-// NDJSON lines to stderr with an `ATOM_EVENT:` prefix so the parent's Bash
+// NDJSON lines to stderr with a `QUARK_EVENT:` prefix so the parent's Bash
 // tool can parse them out and render sub-agent activity in the TUI.
 //
-// Activated when ATOM_EMIT_EVENTS=1 (set automatically for --sub-agent).
+// Activated when QUARK_EMIT_EVENTS=1 (set automatically for --sub-agent).
 
 import { bus } from "./events"
 import { getModelLimit } from "../provider/models"
@@ -20,7 +20,7 @@ export type SubAgentEvent =
   | { e: "text-delta"; d: string }
   | { e: "loop-end" }
 
-const PREFIX = "ATOM_EVENT:"
+const PREFIX = "QUARK_EVENT:"
 
 function emit(event: SubAgentEvent): void {
   try {

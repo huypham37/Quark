@@ -5,6 +5,7 @@ import { describe, test, expect } from "bun:test"
 import {
   shouldUseResponsesApi,
   createCopilotProvider,
+  createOpenAICompatibleProvider,
   getModel,
 } from "../../src/provider/provider"
 
@@ -96,6 +97,94 @@ describe("createCopilotProvider", () => {
       baseURL: "https://copilot-api.enterprise.example.com",
     })
     expect(provider).toBeDefined()
+  })
+})
+
+describe("createOpenAICompatibleProvider", () => {
+  test("returns a provider object", () => {
+    const provider = createOpenAICompatibleProvider({
+      name: "test-proxy",
+      baseURL: "http://127.0.0.1:4318/v1",
+      apiKey: "test-key",
+    })
+    expect(provider).toBeDefined()
+  })
+
+  test("provider has chat and responses methods", () => {
+    const provider = createOpenAICompatibleProvider({
+      name: "test-proxy",
+      baseURL: "http://127.0.0.1:4318/v1",
+      apiKey: "test-key",
+    })
+    expect(typeof provider.chat).toBe("function")
+    expect(typeof provider.responses).toBe("function")
+  })
+
+  test("sends stable OpenAI-style request with auth to endpoint", async () => {
+    const { generateText } = await import("ai")
+
+    const seen: {
+      path?: string
+      authorization?: string
+      body?: unknown
+    } = {}
+
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url)
+        seen.path = url.pathname
+        seen.authorization = req.headers.get("authorization") ?? undefined
+
+        if (url.pathname === "/v1/chat/completions") {
+          return req.json().then((body) => {
+            seen.body = body
+            return Response.json({
+              id: "chatcmpl_test",
+              object: "chat.completion",
+              created: Math.floor(Date.now() / 1000),
+              model: "gpt-4o",
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: "stop",
+                  message: { role: "assistant", content: "proxy-ok" },
+                },
+              ],
+              usage: {
+                prompt_tokens: 5,
+                completion_tokens: 2,
+                total_tokens: 7,
+              },
+            })
+          })
+        }
+
+        return new Response("not found", { status: 404 })
+      },
+    })
+
+    try {
+      const provider = createOpenAICompatibleProvider({
+        name: "test-proxy",
+        baseURL: `http://127.0.0.1:${server.port}/v1`,
+        apiKey: "proxy-test-key",
+      })
+
+      const model = getModel(provider, "gpt-4o")
+      const result = await generateText({
+        model,
+        prompt: "Reply with proxy-ok",
+        maxOutputTokens: 16,
+      })
+
+      expect(result.text).toContain("proxy-ok")
+      expect(seen.path).toBe("/v1/chat/completions")
+      expect(seen.authorization).toBe("Bearer proxy-test-key")
+      expect(typeof seen.body).toBe("object")
+    } finally {
+      server.stop(true)
+    }
   })
 })
 

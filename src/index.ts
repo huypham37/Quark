@@ -1,4 +1,4 @@
-// Atom — Minimal Coding Agent
+// Quark — Minimal Coding Agent
 // Entry point, exports public API
 
 // Initialization

@@ -12,6 +12,7 @@ import { Show } from "solid-js"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
 import { InlineSpinner } from "./inline-spinner"
+import { DiffView } from "./diff-view"
 
 interface ToolResultLineProps {
   tool: string
@@ -19,6 +20,7 @@ interface ToolResultLineProps {
   status: "completed" | "error" | "running" | "pending"
   output?: string
   error?: string
+  diff?: string
 }
 
 // Extract a short label from tool input (e.g., file path for read/write/edit)
@@ -85,32 +87,39 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
   const isError = () => props.status === "error"
 
   return (
-    <box flexDirection="row">
-      <box flexShrink={0}>
-        <Show when={isRunning()}>
-          <InlineSpinner />
-          <text> </text>
-        </Show>
-        <Show
-          when={!isPending() && !isRunning()}
-          fallback={<Show when={isPending()}><text fg={colors.muted}>… </text></Show>}
-        >
-          <Show
-            when={!isError()}
-            fallback={<text fg={colors.error}>✗ </text>}
-          >
-            <text fg={RGBA.fromHex("#98C379")}>✓ </text>
+    <box flexDirection="column">
+      <box flexDirection="row">
+        <box flexShrink={0}>
+          <Show when={isRunning() || isPending()}>
+            <InlineSpinner />
           </Show>
+          <Show
+            when={!isPending() && !isRunning()}
+            fallback={null}
+          >
+            <Show
+              when={!isError()}
+              fallback={<text fg={colors.error}>✗ </text>}
+            >
+              <text fg={RGBA.fromHex("#98C379")}>✓ </text>
+            </Show>
+          </Show>
+        </box>
+        <text bold>{displayName}</text>
+        <Show when={label()}>
+          <text> </text>
+          <text fg={RGBA.fromHex("#365A61")} underline>{label()}</text>
+        </Show>
+        <Show when={props.error}>
+          <text> </text>
+          <text fg={colors.error}>({props.error})</text>
         </Show>
       </box>
-      <text bold>{displayName}</text>
-      <Show when={label()}>
-        <text> </text>
-        <text fg={RGBA.fromHex("#365A61")} underline>{label()}</text>
-      </Show>
-      <Show when={props.error}>
-        <text> </text>
-        <text fg={colors.error}>({props.error})</text>
+      <Show when={props.diff && props.status === "completed"}>
+        <DiffView
+          diff={props.diff!}
+          filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
+        />
       </Show>
     </box>
   )

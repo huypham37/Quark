@@ -7,7 +7,7 @@ import * as os from "os"
 
 const CLIENT_ID = "Ov23li8tweQw6odWQebz"
 const POLL_SAFETY_MARGIN_MS = 3000
-const TOKEN_DIR = path.join(os.homedir(), ".config", "atom")
+const TOKEN_DIR = path.join(os.homedir(), ".config", "quark")
 const TOKEN_FILE = path.join(TOKEN_DIR, "copilot-token.json")
 
 // Simple fetch function type — avoids Bun's typeof fetch which includes .preconnect
@@ -145,7 +145,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Token persistence — save/load OAuth token to ~/.config/atom/
+// Token persistence — save/load OAuth token to ~/.config/quark/
 // ---------------------------------------------------------------------------
 
 export function saveToken(token: string, domain: string = "github.com"): void {

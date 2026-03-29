@@ -28,7 +28,6 @@ export const TreeLine: Component<TreeLineProps> = (props) => {
           fallback={<text fg={colors.muted}>{icons.dot} </text>}
         >
           <InlineSpinner />
-          <text> </text>
         </Show>
         <text bold fg={props.labelColor}>{props.label}</text>
       </box>

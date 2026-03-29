@@ -1,7 +1,7 @@
-// Tool loader — load profile-declared tools from ~/.config/atom/tools/
+// Tool loader — load profile-declared tools from ~/.config/quark/tools/
 //
 // Tools are loaded by ID from the profile's tools[] array.
-// Each tool lives at ~/.config/atom/tools/{id}.ts
+// Each tool lives at ~/.config/quark/tools/{id}.ts
 // Notifications surface any load failures.
 
 import * as fs from "fs"
@@ -11,7 +11,7 @@ import { register, validateTool, type ToolValidationError } from "./registry"
 import { error as notifyError, warn as notifyWarn } from "../notification/notification"
 import type { ToolDef } from "./tool"
 
-const TOOLS_DIR = path.join(os.homedir(), ".config", "atom", "tools")
+const TOOLS_DIR = path.join(os.homedir(), ".config", "quark", "tools")
 
 // Built-in tools (registered by bootstrap, not loaded from disk)
 const BUILTIN_TOOLS = new Set(["read", "skill", "compact"])
@@ -24,7 +24,7 @@ export interface LoadResult {
 
 /**
  * Load tools declared in a profile's tools[] array.
- * Each tool is loaded from ~/.config/atom/tools/{id}.ts
+ * Each tool is loaded from ~/.config/quark/tools/{id}.ts
  * Built-in tools (read, skill) are skipped.
  */
 export async function loadProfileTools(toolIds: string[]): Promise<LoadResult> {
@@ -46,7 +46,7 @@ export async function loadProfileTools(toolIds: string[]): Promise<LoadResult> {
     // All tools are missing
     for (const id of toLoad) {
       result.missing.push(id)
-      notifyError("Tool Not Found", `'${id}' — ~/.config/atom/tools/ does not exist`)
+      notifyError("Tool Not Found", `'${id}' — ~/.config/quark/tools/ does not exist`)
     }
     return result
   }
@@ -58,7 +58,7 @@ export async function loadProfileTools(toolIds: string[]): Promise<LoadResult> {
     // Check file exists
     if (!fs.existsSync(filePath)) {
       result.missing.push(id)
-      notifyWarn("Tool Not Found", `'${id}' — create ~/.config/atom/tools/${id}.ts`)
+      notifyWarn("Tool Not Found", `'${id}' — create ~/.config/quark/tools/${id}.ts`)
       continue
     }
 

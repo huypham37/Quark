@@ -1,4 +1,4 @@
-// Theme colors and style tokens for the Atom TUI
+// Theme colors and style tokens for the Quark TUI
 // Derived from Amp's dark-theme CLI aesthetic
 //
 // Uses RGBA.fromHex() for optimal performance — avoids re-parsing color
@@ -42,6 +42,9 @@ export const colors = {
 
   // Dropdown / autocomplete overlay — updated at runtime by setTerminalBg()
   dropdownBg: RGBA.fromHex("#61AFEF") as RGBA,
+
+  // Notification panel background — solid dark to prevent text bleed-through
+  notificationBg: RGBA.fromHex("#1c1c1c"),
 
   // Scrollbar
   scrollbarTrack: RGBA.fromHex("#3a3a3a"),   // dark gray track

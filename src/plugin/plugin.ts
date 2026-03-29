@@ -1,6 +1,6 @@
 // Plugin type definitions
 //
-// A plugin is an async function dropped in ~/.config/atom/plugins/*.ts.
+// A plugin is an async function dropped in ~/.config/quark/plugins/*.ts.
 // It receives a PluginContext and returns a partial map of hook handlers.
 // Each hook handler receives (input, output) and may mutate output in-place.
 
@@ -12,8 +12,8 @@ export interface PluginContext {
   directory: string
   /** Active session ID (if any) */
   sessionId?: string
-  /** Absolute path to the Atom installation root (useful for finding scripts/) */
-  atomRoot: string
+  /** Absolute path to the Quark installation root (useful for finding scripts/) */
+  quarkRoot: string
   /**
    * Register an OpenAI-compatible provider at runtime.
    * Equivalent to adding it under `providers:` in config.yaml, but in-memory only.

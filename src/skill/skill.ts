@@ -1,8 +1,8 @@
 // Skill discovery and parsing — find and parse SKILL.md files
 //
 // Searches two locations:
-// 1. .atom/skills/*/SKILL.md  (project-level)
-// 2. ~/.atom/skills/*/SKILL.md (global)
+// 1. .quark/skills/*/SKILL.md  (project-level)
+// 2. ~/.quark/skills/*/SKILL.md (global)
 //
 // SKILL.md format:
 // ---
@@ -92,8 +92,8 @@ export function discoverSkills(dirs?: string[]): Skill[] {
   if (cache) return cache
 
   const searchDirs = dirs ?? [
-    path.resolve(process.cwd(), ".atom", "skills"),
-    path.join(os.homedir(), ".config", "atom", "skills"),
+    path.resolve(process.cwd(), ".quark", "skills"),
+    path.join(os.homedir(), ".config", "quark", "skills"),
   ]
 
   const seen = new Map<string, Skill>()

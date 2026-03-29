@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+export QUARK_DIR="/Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Quark"
+exec bun --preload "$QUARK_DIR/preload.ts" "$QUARK_DIR/src/cli.ts" "$@"

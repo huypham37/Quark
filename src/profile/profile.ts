@@ -6,8 +6,8 @@
 //   - A strict set of skills
 //
 // Profiles are configured in YAML config files:
-//   - .atom/config.yaml  (project-level, overrides global)
-//   - ~/.atom/config.yaml (global)
+//   - .quark/config.yaml  (project-level, overrides global)
+//   - ~/.quark/config.yaml (global)
 //
 // Profile resolution order:
 //   1. Explicit --profile flag / SDK parameter (deterministic)
@@ -29,6 +29,8 @@ export interface ProfileDef {
   id: string
   /** Human-readable name */
   name: string
+  /** Description of what this profile does (from prompt file frontmatter) */
+  description?: string
   /** Path to system prompt .md file (relative to config dir or absolute) */
   promptFile: string
   /** Tool IDs this profile can use */
@@ -68,11 +70,11 @@ const BUILTIN_PROMPT =
 // ---------------------------------------------------------------------------
 
 function projectConfigDir(): string {
-  return path.resolve(process.cwd(), ".atom")
+  return path.resolve(process.cwd(), ".quark")
 }
 
 function globalConfigDir(): string {
-  return path.join(os.homedir(), ".config", "atom")
+  return path.join(os.homedir(), ".config", "quark")
 }
 
 function configPaths(): string[] {
@@ -256,17 +258,55 @@ export function resolveProfile(profileId?: string): ProfileDef {
   return profile
 }
 
+// ---------------------------------------------------------------------------
+// Frontmatter parsing (minimal YAML — just `key: value` lines)
+// ---------------------------------------------------------------------------
+
+function parseFrontmatter(raw: string): { data: Record<string, string>; content: string } {
+  const data: Record<string, string> = {}
+  if (!raw.startsWith("---")) return { data, content: raw }
+
+  const end = raw.indexOf("\n---", 3)
+  if (end === -1) return { data, content: raw }
+
+  const front = raw.substring(4, end) // skip "---\n"
+  const content = raw.substring(end + 4).trim() // skip "\n---\n"
+
+  for (const line of front.split("\n")) {
+    const colon = line.indexOf(":")
+    if (colon === -1) continue
+    const key = line.substring(0, colon).trim()
+    const val = line.substring(colon + 1).trim()
+    data[key] = val
+  }
+
+  return { data, content }
+}
+
+export interface PromptFileResult {
+  content: string
+  name?: string
+  description?: string
+}
+
 /**
  * Read the system prompt content from a profile's prompt file.
+ * Parses YAML frontmatter for name and description if present.
  * Returns the built-in default prompt if no file is configured or file is unreadable.
  */
-export function readPromptFile(profile: ProfileDef): string {
-  if (!profile.promptFile) return BUILTIN_PROMPT
+export function readPromptFile(profile: ProfileDef): PromptFileResult {
+  if (!profile.promptFile) return { content: BUILTIN_PROMPT }
 
   try {
-    return fs.readFileSync(profile.promptFile, "utf-8").trim()
+    const raw = fs.readFileSync(profile.promptFile, "utf-8")
+    const { data, content } = parseFrontmatter(raw)
+    return {
+      content: content.trim() || BUILTIN_PROMPT,
+      name: data.name,
+      description: data.description,
+    }
   } catch {
-    return BUILTIN_PROMPT
+    return { content: BUILTIN_PROMPT }
   }
 }
 

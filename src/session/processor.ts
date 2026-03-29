@@ -185,6 +185,8 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               // Extract output text from the tool result
               const out = event.output as any
               match.data.output = extractOutput(out)
+              // Extract diff from metadata if present
+              const diff = extractDiff(out)
               updatePart(match.partId, match.data)
               bus.emit("tool-end", {
                 sessionId: sid,
@@ -194,6 +196,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
                 callId: event.toolCallId,
                 status: "completed",
                 output: match.data.output,
+                diff,
               })
               toolParts.delete(event.toolCallId)
             }
@@ -374,6 +377,17 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   // Should not reach here, but if abort breaks the retry loop
   finishMessage(mid, "stop")
   return "stop"
+}
+
+// Extract diff string from tool result metadata
+function extractDiff(out: unknown): string | undefined {
+  if (out && typeof out === "object") {
+    const o = out as any
+    if (typeof o.metadata?.diff === "string" && o.metadata.diff.length > 0) {
+      return o.metadata.diff
+    }
+  }
+  return undefined
 }
 
 // Extract string output from tool result (which may be various formats)

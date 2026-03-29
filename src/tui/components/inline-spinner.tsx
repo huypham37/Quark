@@ -19,5 +19,5 @@ export const InlineSpinner: Component = () => {
     onCleanup(() => clearInterval(id))
   })
 
-  return <text fg={colors.textBold}>{SPINNER_FRAMES[frameIndex()]}</text>
+  return <text fg={colors.textBold}>{SPINNER_FRAMES[frameIndex()]} </text>
 }

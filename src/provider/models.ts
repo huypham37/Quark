@@ -7,7 +7,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 
-const CACHE_DIR = path.join(os.homedir(), ".config", "atom")
+const CACHE_DIR = path.join(os.homedir(), ".config", "quark")
 const CACHE_FILE = path.join(CACHE_DIR, "models.json")
 const MODELS_URL = "https://models.dev/api.json"
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // 1 hour

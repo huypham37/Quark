@@ -14,6 +14,28 @@ tool execution, memory, context management, state persistence, and guardrails.
 
 The model is a pluggable component. The harness is the product.
 
+### Adaptive by Design
+
+**The agent adapts to your system. Your system doesn't adapt to the agent.**
+
+Atom is built to be adaptive to any workflow, any stack, any environment.
+We provide the core agent loop and tool infrastructure. You provide the tools
+that make it yours.
+
+- Working with a custom deployment system? Build a `deploy` tool.
+- Have a project-specific test runner? Add it as a tool.
+- Need domain-specific validation? Write a tool for it.
+
+The agent doesn't dictate your workflow. It learns your workflow through the
+tools you give it. **You don't adapt to the system — the system is built to
+adapt to your flow.**
+
+This is why tools are external, declarative, and easy to write. The barrier
+to extending Atom is deliberately low. A tool is a TypeScript function with
+a schema. That's it.
+
+Your context defines the agent's capabilities. Your tools define its behavior.
+
 ---
 
 ## What Makes an LLM an Agent
@@ -80,6 +102,30 @@ Base Kernel: loop + provider + message state
 ---
 
 ## Design Principles
+
+### 0. Tool Extensibility First
+
+**The agent adapts to you. You don't adapt to the agent.**
+
+Atom is designed for any system, any workflow, any stack. The agent doesn't
+know about your CI/CD pipeline, your deployment system, your test framework,
+or your project structure — until you teach it with tools.
+
+Tools are the adaptation layer. They are:
+
+- **External** — not hardcoded into the agent
+- **Declarative** — defined with simple TypeScript + Zod schemas
+- **Context-specific** — each project can have its own tools in `~/.config/atom/tools/`
+
+A new tool takes 20 lines. That's the barrier to entry. Low friction by design.
+
+**Examples:**
+- Custom deployment? Write a `deploy` tool that wraps your scripts
+- Project-specific testing? Add a `test` tool that knows your test runner
+- Internal APIs? Create tools that interact with your systems
+
+The agent discovers your workflow through the tools you provide. The harness
+stays generic. Your tools make it specific.
 
 ### 1. Minimal by Default
 
@@ -296,6 +342,7 @@ available set. In the TUI, `/profile research` allows manual override.
 - **No framework abstractions.** We use the AI SDK directly. No extra layers.
 - **No speculative features.** We build what we need now, not what we might need.
 - **No verbal guardrails.** If it can be enforced mechanically, it must be.
+- **No opinionated workflows.** We provide the loop and tools. You provide the context and the tools that fit your system. The agent adapts to you, not the other way around.
 
 ---
 

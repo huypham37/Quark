@@ -18,7 +18,7 @@ import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig, getModelId } from "../config/config"
+import { loadConfig, getModelId, parseModelSpec, getProviderId } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
@@ -48,8 +48,8 @@ function parseProfileArg(): string | undefined {
 // ---------------------------------------------------------------------------
 const profileArg = parseProfileArg()
 const profile = resolveProfile(profileArg)
-const promptContent = readPromptFile(profile)
-let activeAgent: AgentConfig = agentFromProfile(profile, promptContent)
+const promptResult = readPromptFile(profile)
+let activeAgent: AgentConfig = agentFromProfile(profile, promptResult.content)
 
 // Initialize the backend (DB + tools) with profile-bound skills
 await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
@@ -60,7 +60,7 @@ let currentSession: { id: string } | null = null
 // Listen for lazy session creation from prompt()
 bus.on("session-created", ({ sessionId }) => {
   currentSession = { id: sessionId }
-  process.env.ATOM_SESSION_ID = sessionId
+  process.env.QUARK_SESSION_ID = sessionId
 })
 
 // Discover skills and determine model name at startup
@@ -83,7 +83,10 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     sessionId: sid,
     parts,
     images,
-    model: modelOverride ? { provider: "copilot", model: modelOverride } : undefined,
+    model: modelOverride ? (() => {
+      const parsed = parseModelSpec(modelOverride)
+      return { provider: parsed.provider ?? getProviderId("main"), model: parsed.model }
+    })() : undefined,
     agent: activeAgent,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid ?? "unknown", error: err })
@@ -101,7 +104,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "new") {
     const newSession = createSession()
     currentSession = { id: newSession.id }
-    process.env.ATOM_SESSION_ID = newSession.id
+    process.env.QUARK_SESSION_ID = newSession.id
     bus.emit("session-reset", { sessionId: newSession.id })
     notifyInfo("Session", `New session started`, 2000)
     return { handled: true }
@@ -151,8 +154,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     resetProfileCache()
     clearSkillCache()
     const newProfile = resolveProfile(targetId)
-    const newPrompt = readPromptFile(newProfile)
-    activeAgent = agentFromProfile(newProfile, newPrompt)
+    const newPromptResult = readPromptFile(newProfile)
+    activeAgent = agentFromProfile(newProfile, newPromptResult.content)
 
     // Tear down and re-bootstrap with the new profile's tools and skills
     clearRegistry()
@@ -198,7 +201,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     }
 
     currentSession = match
-    process.env.ATOM_SESSION_ID = match.id
+    process.env.QUARK_SESSION_ID = match.id
     const { messages, parts } = loadMessages(match.id)
     const tuiMessages = dbToTuiMessages(messages, parts)
     // Prefer real API token count from DB; fall back to chars/4 heuristic
@@ -295,7 +298,7 @@ function handleGetSessions() {
 
 function handleGetModels() {
   const config = loadConfig()
-  return config.models.map((id) => ({ id, name: id }))
+  return config.models.map((id) => ({ id, name: parseModelSpec(id).model }))
 }
 
 function handleGetCurrentModel() {

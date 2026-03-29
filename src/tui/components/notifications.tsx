@@ -78,6 +78,7 @@ export const Notifications: Component = () => {
               paddingY={0}
               borderStyle="round"
               borderColor={getColor(n.type)}
+              bg={colors.notificationBg}
             >
               {/* Header: icon + title */}
               <box>
