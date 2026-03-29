@@ -1,0 +1,265 @@
+[
+  {
+    "id": "EPIC-01",
+    "title": "Core Agent Loop & Session Engine",
+    "description": "The foundational agent loop, message persistence, and session lifecycle. Includes the prompt() entry point, loop() iteration, processStream() for AI SDK stream handling, session CRUD, message/part persistence, and AbortController propagation.",
+    "business_goal": "Deliver the irreducible kernel of the agent — without this, nothing else works. Every other epic depends on the loop and session engine.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "prompt() creates or resumes a session and drives loop() to completion",
+      "loop() iterates: load messages → build system → resolve tools → stream → check finish → repeat",
+      "processStream() handles all AI SDK stream events (text, tool, step, reasoning, error)",
+      "Session CRUD operations (create, get, touch, setTitle, list) are functional",
+      "toModelMessages() correctly replays full conversation history for LLM context",
+      "AbortController is propagated through the entire call chain",
+      "cancel() API is exposed and halts execution cleanly"
+    ]
+  },
+  {
+    "id": "EPIC-02",
+    "title": "Profile System",
+    "description": "Profile-driven agent identity — every session has exactly one active profile declared via YAML config. Profiles bind system prompt, tools, skills, and optionally a model override. Supports global → project config hierarchy and runtime switching.",
+    "business_goal": "Enable noise reduction by ensuring agents only carry the tools and skills they need. Prevents context bloat and makes agent behaviour deterministic and auditable.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "YAML config hierarchy (global → project) is merged correctly",
+      "resolveProfile() resolves: explicit ID → config default → built-in coder fallback",
+      "readPromptFile() parses YAML frontmatter for name and description",
+      "project-level profile_overrides support additive skills_add and tools_add",
+      "Sub-agent profile validation warns and strips unknown profile IDs",
+      "/profile <name> switches profile at runtime without session restart",
+      "Profile cache is reset correctly on profile switch"
+    ]
+  },
+  {
+    "id": "EPIC-03",
+    "title": "Tool System",
+    "description": "Universal ToolDef interface, tool registry with validation, external tool loading from filesystem, built-in tools (read, compact, skill), and permission-gated execution via toAITool().",
+    "business_goal": "Allow users to extend the agent with custom tools that adapt it to any workflow, stack, or system — without modifying the harness. The tool system is the primary extensibility surface.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "ToolDef<T> interface with Zod parameter schema is enforced",
+      "Registry validates and rejects tools missing id, description, Zod parameters, or execute function",
+      "External tools load from ~/.config/quark/tools/{id}.ts with graceful error notifications on failure",
+      "Built-in tools (read, compact, skill) are registered and functional",
+      "toAITool() correctly converts ToolDef to AI SDK tool with permission and hook wiring",
+      "Only profile-declared tools are registered per session — no global tool pool leakage"
+    ]
+  },
+  {
+    "id": "EPIC-04",
+    "title": "Skill System",
+    "description": "Progressive 3-level skill disclosure (L1 metadata in prompt, L2 full instructions on demand, L3 filesystem resources never loaded). Skill discovery from project and global dirs, profile binding, and buildSkillTool() as a registered tool.",
+    "business_goal": "Minimise token cost while enabling on-demand specialised behaviour. Skills let the agent learn domain-specific workflows without paying the full context cost at startup.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "SKILL.md files are discovered from .quark/skills/ (project) and ~/.config/quark/skills/ (global)",
+      "Project skills override global skills of the same name",
+      "profileSkills() filters to profile-bound names; L1 metadata (~100 tokens) is injected into system prompt",
+      "loadSkill() loads full SKILL.md body (L2) only when triggered via skill tool call",
+      "buildSkillTool() wraps discovery and loading as a registered tool",
+      "L3 resources (scripts, references) are never loaded into context"
+    ]
+  },
+  {
+    "id": "EPIC-05",
+    "title": "Permission System",
+    "description": "Wildcard rule evaluation (allow/deny/ask) with async ask/respond lifecycle. Supports session-scope rules, CorrectedError/RejectedError feedback to model, and automatic cleanup.",
+    "business_goal": "Allow the agent to operate safely and autonomously by gating tool execution through configurable rules — without requiring human confirmation for every action.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "wildcardMatch() supports *, ?, and optional trailing ' *' patterns",
+      "evaluate() applies last-matching-rule-wins across merged rulesets",
+      "ask() enqueues a PendingRequest, emits permission-request event, and returns a Promise",
+      "respond() resolves or rejects pending requests; 'always' creates session-scope rule and auto-resolves matching pending requests",
+      "CorrectedError delivers user feedback back to the model; RejectedError halts execution",
+      "DeniedError is thrown immediately on hard deny rules",
+      "clearSession() cleans up pending requests on session end",
+      "disabled() correctly identifies tools blanket-denied by deny + * rules"
+    ]
+  },
+  {
+    "id": "EPIC-06",
+    "title": "Context Compaction",
+    "description": "Auto and manual context compaction with pluggable methods. Includes shouldCompact() heuristic, deduplication guard, general (new-session) and anchored (in-session) compaction strategies, plugin hook for context injection, and TUI/tool triggers.",
+    "business_goal": "Enable agents to survive long sessions without losing work when the context window fills up. Compaction preserves continuity while resetting token budget.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "shouldCompact() triggers when estimated tokens >= threshold × context_window (default 95%)",
+      "compact-resolver.ts deduplicates concurrent compaction requests on the same session",
+      "General method creates a new session seeded with LLM summary + N retained turns",
+      "Anchored method writes a summary anchor into the same session",
+      "session.compacting plugin hook allows injection of extra context strings into summary",
+      "/compact TUI command and compact tool both flow through compact-resolver",
+      "Auto-compaction can be disabled via config (auto: false)"
+    ]
+  },
+  {
+    "id": "EPIC-07",
+    "title": "Provider & Model System",
+    "description": "Multi-provider routing with GitHub Copilot as primary, native Anthropic API for Claude+thinking, and user-defined OpenAI-compatible providers. Includes model limit fetching from models.dev, Responses API routing for GPT-5+, and plugin-based runtime provider registration.",
+    "business_goal": "Give users flexibility to run the agent on any supported LLM provider without changing the harness code. Copilot is the default; custom providers extend this without friction.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "createCopilotProvider() creates a cached provider with correct auth headers",
+      "createCopilotAnthropicProvider() routes Claude models with thinking to Anthropic Messages API",
+      "createOpenAICompatibleProvider() supports user-defined providers from config.yaml",
+      "shouldUseResponsesApi() correctly routes GPT-5+ (non-mini) to Responses API",
+      "getModelLimit() retrieves token limits from models.dev cache; cache refreshes every hour",
+      "provider.request.before plugin hook fires before model creation and can override provider/model",
+      "API key resolution supports literal strings and env:VAR_NAME indirection"
+    ]
+  },
+  {
+    "id": "EPIC-08",
+    "title": "Plugin System",
+    "description": "Drop-in TypeScript plugins loaded from ~/.config/quark/plugins/*.ts with 10 typed hook points covering session, tool, provider, and loop lifecycle. Error-isolated loading with runtime provider registration support.",
+    "business_goal": "Enable power users and platform engineers to extend or customise agent behaviour (telemetry, fallbacks, context injection) without forking the harness.",
+    "owner": "Extensibility",
+    "priority": "Medium",
+    "status": "Done",
+    "acceptance_criteria": [
+      "Plugin files in ~/.config/quark/plugins/*.ts are loaded asynchronously at bootstrap",
+      "All 10 hook points are callable: provider.request.before, provider.request.error, session.created, session.idle, session.error, session.compacting, tool.execute.before, tool.execute.after, loop.step.before, loop.step.after",
+      "fireHook() runs all handlers sequentially and returns final mutable output",
+      "Plugin load failures emit notifications but never crash the agent",
+      "registerProvider() in PluginContext enables runtime provider registration without config file changes",
+      "output object is mutable per hook — plugins can modify provider, model, args, and injected context"
+    ]
+  },
+  {
+    "id": "EPIC-09",
+    "title": "Sub-Agent System",
+    "description": "Hierarchical session spawning via --sub-agent CLI flag, real-time event streaming from child to parent via stderr NDJSON, and TUI SubAgentView rendering nested tool activity inline.",
+    "business_goal": "Enable the agent to delegate specialised tasks to child agents with separate profiles, maintaining observability of the full agent tree from the parent TUI.",
+    "owner": "Core Platform",
+    "priority": "Medium",
+    "status": "Done",
+    "acceptance_criteria": [
+      "--sub-agent flag reads QUARK_SESSION_ID and creates a child session with kind: subagent",
+      "QUARK_SESSION_ID is propagated to child processes automatically",
+      "event-writer.ts writes structured NDJSON events to stderr during sub-agent runs",
+      "Parent Bash tool parses stderr NDJSON and re-emits as subagent-* events on the parent bus",
+      "TUI SubAgentView renders nested tool activity inline under the parent tool call",
+      "listChildSessions() enables session tree queries",
+      "Profile declares sub_agents: [id1, id2]; unknown IDs are warned and stripped"
+    ]
+  },
+  {
+    "id": "EPIC-10",
+    "title": "Interactive TUI",
+    "description": "Full terminal UI built on OpenTUI + SolidJS with reactive rendering, slash commands, permission overlays, session/model pickers, @file mention autocomplete, image paste, diff view, token/cost display, and theme adaptation.",
+    "business_goal": "Provide a rich, keyboard-driven interactive experience for power developers using Quark as a daily driver for complex coding tasks.",
+    "owner": "UX / Frontend",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "TUI renders at 60fps with full-terminal scrollable message area and sticky-bottom auto-scroll",
+      "Slash commands (/help, /new, /sessions, /compact, /clear, /model, /profile, /exit) are functional",
+      "@file mention triggers fuzzy autocomplete and inlines file content as context",
+      "Image paste via Ctrl+V creates image chips with Tab navigation and Backspace removal",
+      "Permission prompt overlay responds correctly to a (allow once), o (always), r (reject) keys",
+      "Session picker and model picker overlays support arrow key navigation",
+      "Token usage, cost, and model are displayed in the footer bar",
+      "Diff view renders syntax-highlighted unified diffs for file edits",
+      "Theme adapts automatically to terminal background (dark/light detection)",
+      "Undo/redo in input (Ctrl+Z / Ctrl+Shift+Z) works correctly",
+      "Up/Down arrow history navigation in chat input (session-scoped history with draft restore) — works like a terminal shell",
+      "Notification panel uses a solid background that fills the full panel and border area for improved readability"
+    ]
+  },
+  {
+    "id": "EPIC-11",
+    "title": "Extended Thinking (Reasoning)",
+    "description": "User-toggled extended thinking via Ctrl+T that routes to Anthropic Messages API for Claude models with a 10,000-token thinking budget. Reasoning parts are persisted and rendered in a collapsible TUI component.",
+    "business_goal": "Give users access to deeper model reasoning for hard problems without paying the cost on every request — opt-in, not always-on.",
+    "owner": "Core Platform",
+    "priority": "Medium",
+    "status": "Done",
+    "acceptance_criteria": [
+      "Ctrl+T toggles extended thinking on/off with a 10,000-token budget",
+      "Thinking-enabled requests are routed to the Anthopic Messages API",
+      "reasoning-start, reasoning-delta, reasoning-end stream events are handled and persisted as reasoning parts",
+      "ThinkingIndicator component renders collapsible thinking text in the TUI",
+      "Thinking budget is not applied to non-Claude models"
+    ]
+  },
+  {
+    "id": "EPIC-12",
+    "title": "Retry & Error Recovery",
+    "description": "Automatic retry with exponential backoff and jitter for HTTP 429, 5xx, network timeouts, and overload errors. Plugin hook for custom fallback logic. In-flight tool parts marked as errored on mid-stream abort.",
+    "business_goal": "Ensure resilient operation in the face of transient provider failures without user intervention, protecting long-running tasks from being lost.",
+    "owner": "Core Platform",
+    "priority": "Medium",
+    "status": "Done",
+    "acceptance_criteria": [
+      "isRetryable() correctly classifies HTTP 429, 5xx, network errors, and overloaded errors as retryable",
+      "401/403 and non-429 4xx errors are not retried",
+      "Exponential backoff with jitter retries at ~1s, ~2s, ~4s, ~8s intervals capped at 30s",
+      "provider.request.error plugin hook can trigger retry with provider/model override",
+      "In-flight tool parts are marked as errored when a mid-stream abort occurs",
+      "AbortError is not retried"
+    ]
+  },
+  {
+    "id": "EPIC-13",
+    "title": "SDK & CLI Distribution",
+    "description": "Quark as a publishable, embeddable SDK (@quark/sdk) and standalone CLI binary. Includes tsup bundle to ESM+CJS, full type exports, and CLI flags for all operational modes.",
+    "business_goal": "Allow platform engineers and AI tool builders to embed Quark in their own systems, CI/CD pipelines, and automation scripts without running the TUI.",
+    "owner": "Developer Experience",
+    "priority": "Medium",
+    "status": "In Progress",
+    "acceptance_criteria": [
+      "tsup produces valid ESM and CJS bundles under the @quark/sdk package name",
+      "All public types are exported: ToolDef, Session, AgentConfig, ProfileDef, BusEvents, etc.",
+      "quark binary is available via bin.quark and executes correctly",
+      "CLI flags work correctly: --list-profiles, --help, --session, --parent-session, --sub-agent",
+      "SDK package version, publishing pipeline, and changelog process are defined (resolves OQ-5)",
+      "SDK_GUIDE.md references are updated from @atom/sdk to @quark/sdk (resolves OQ-7)"
+    ]
+  },
+  {
+    "id": "EPIC-14",
+    "title": "Session Title Generation",
+    "description": "Automatic, non-blocking session title generation using a small model (gpt-4o-mini) in the background. Never fails the session if title generation errors.",
+    "business_goal": "Improve session discoverability in the TUI session picker without adding latency to the critical path.",
+    "owner": "Core Platform",
+    "priority": "Low",
+    "status": "Done",
+    "acceptance_criteria": [
+      "Session title is generated asynchronously using small_model (default: gpt-4o-mini)",
+      "Title generation errors do not propagate to or fail the parent session",
+      "Generated title is persisted via setTitle() and reflected in the TUI session picker"
+    ]
+  },
+  {
+    "id": "EPIC-15",
+    "title": "Event Bus",
+    "description": "Typed singleton event bus (TypedBus) with 30+ event types covering the full agent lifecycle — session, loop, tool, permission, compaction, and sub-agent events. TUI and CLI subscribe for real-time rendering and output.",
+    "business_goal": "Decouple the agent core from all consumers (TUI, CLI, plugins, sub-agent parent) via a clean event-driven interface, enabling real-time observability without tight coupling.",
+    "owner": "Core Platform",
+    "priority": "High",
+    "status": "Done",
+    "acceptance_criteria": [
+      "TypedBus exposes typed emit/on/off for all 30+ BusEvents",
+      "Max 100 listeners enforced to prevent memory leaks",
+      "TUI wireEvents() subscribes and dispatches all relevant bus events to SolidJS state",
+      "CLI subscribes to events and outputs structured data to stdout",
+      "Sub-agent events from child stderr NDJSON are correctly forwarded to the parent bus as subagent-* events"
+    ]
+  }
+]
