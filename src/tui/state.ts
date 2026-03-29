@@ -28,7 +28,7 @@ export interface TuiMessage {
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; subAgent?: SubAgentState }
-  | { type: "thinking"; done: boolean }
+  | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; label: string }
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
@@ -98,7 +98,7 @@ export type TuiAction =
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "toggle-thinking" }
   | { type: "reasoning-start"; messageId: string }
-  | { type: "reasoning-delta"; messageId: string }
+  | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
       } else if (p.type === "reasoning") {
         const d = JSON.parse(p.data) as ReasoningPartData
         if (d.text) {
-          tuiParts.push({ type: "thinking", done: true })
+          tuiParts.push({ type: "thinking", done: true, text: d.text })
         }
       }
       // skip step-start, step-finish — they're metadata
@@ -433,13 +433,23 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (m) => m.id === action.messageId,
         "parts",
         produce((parts: TuiPart[]) => {
-          parts.push({ type: "thinking", done: false })
+          parts.push({ type: "thinking", done: false, text: "" })
         }),
       )
       break
 
     case "reasoning-delta":
-      // Thinking indicator is already shown — no additional state needed for delta
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const last = parts[parts.length - 1]
+          if (last && last.type === "thinking") {
+            last.text = action.text
+          }
+        }),
+      )
       break
 
     case "reasoning-end":

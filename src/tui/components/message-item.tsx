@@ -46,7 +46,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
     <Switch>
       <Match when={props.part.type === "text" && props.part}>
         {(part) => (
-          <box marginBottom={(part() as Extract<TuiPart, { type: "text" }>).streaming ? 0 : 1}>
+          <box marginBottom={1}>
             <AssistantMessage
               text={(part() as Extract<TuiPart, { type: "text" }>).text}
               streaming={(part() as Extract<TuiPart, { type: "text" }>).streaming}
@@ -82,7 +82,6 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
                 }
               >
                 <InlineSpinner />
-                <text> </text>
               </Show>
             </box>
             <text>Bash</text>
@@ -123,7 +122,10 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
 
       <Match when={props.part.type === "thinking"}>
         <box marginBottom={1}>
-          <ThinkingIndicator done={(props.part as Extract<TuiPart, { type: "thinking" }>).done} />
+          <ThinkingIndicator
+            done={(props.part as Extract<TuiPart, { type: "thinking" }>).done}
+            text={(props.part as Extract<TuiPart, { type: "thinking" }>).text}
+          />
         </box>
       </Match>
     </Switch>

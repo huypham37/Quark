@@ -294,7 +294,7 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("reasoning-delta", (data) => {
-      dispatch(state, { type: "reasoning-delta", messageId: data.messageId })
+      dispatch(state, { type: "reasoning-delta", messageId: data.messageId, partId: data.partId, delta: data.delta, text: data.text })
     }))
 
     unsubs.push(on("reasoning-end", (data) => {
