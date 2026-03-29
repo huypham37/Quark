@@ -64,29 +64,37 @@ export const Notifications: Component = () => {
     position: "absolute" as const,
     top: 1,
     right: 2,
-    width: Math.min(PANEL_WIDTH, dims().width - 4),
+    width: panelWidth(),
   })
+
+  const panelWidth = () => Math.min(PANEL_WIDTH, dims().width - 4)
+
+  // Pad a string to fill the full content width so bg covers every cell.
+  // Border (2) + paddingX 1 each side (2) = 4 cols consumed from panel width.
+  const pad = (s: string) => {
+    const w = panelWidth() - 4
+    return s.length >= w ? s : s + " ".repeat(Math.max(0, w - s.length))
+  }
 
   return (
     <Show when={notifications().length > 0}>
       <box {...panelStyle()} flexDirection="column" gap={1}>
         <For each={notifications()}>
           {(n) => (
-            <box
-              flexDirection="column"
-              paddingX={1}
-              paddingY={0}
-              borderStyle="round"
-              borderColor={getColor(n.type)}
-              bg={colors.notificationBg}
-            >
-              {/* Header: icon + title */}
-              <box>
-                <text fg={getColor(n.type)} bold>{getIcon(n.type)} </text>
-                <text fg={getColor(n.type)} bold>{n.title}</text>
+            <box flexDirection="column" bg={colors.notificationBg}>
+              <box
+                flexDirection="column"
+                paddingX={1}
+                paddingY={0}
+                borderStyle="round"
+                borderColor={getColor(n.type)}
+                bg={colors.notificationBg}
+              >
+                {/* Header: icon + title */}
+                <text fg={getColor(n.type)} bg={colors.notificationBg} bold>{pad(`${getIcon(n.type)} ${n.title}`)}</text>
+                {/* Message body */}
+                <text fg={colors.textDim} bg={colors.notificationBg} wrap="wrap">{pad(n.message)}</text>
               </box>
-              {/* Message body */}
-              <text fg={colors.textDim} wrap="wrap">{n.message}</text>
             </box>
           )}
         </For>
