@@ -30,6 +30,7 @@ import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { info as notifyInfo } from "../../notification/notification"
+import { setCopilotThinking } from "../../provider/provider"
 
 /** Command handler result */
 export type CommandResult =
@@ -712,6 +713,15 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Ctrl+T — toggle extended thinking (reasoning)
+    if (evt.ctrl && evt.name === "t") {
+      dispatch(state, { type: "toggle-thinking" })
+      // Read AFTER dispatch — thinkingEnabled now reflects the new value
+      setCopilotThinking(state.store.thinkingEnabled ? 10000 : 0)
+      evt.preventDefault()
+      return
+    }
+
     // Ctrl+C — cancel agent or exit
     if (evt.ctrl && evt.name === "c") {
       if (renderer.getSelection()) {
@@ -779,6 +789,7 @@ export const App: Component<AppProps> = (props) => {
         images={pendingImages()}
         selectedImageIndex={selectedImageIndex()}
         onRemoveImage={removeImage}
+        thinkingEnabled={state.store.thinkingEnabled}
       />
 
       {/* Notifications overlay */}

@@ -9,6 +9,14 @@
 import type { FetchFn } from "./copilot-auth"
 
 // ---------------------------------------------------------------------------
+// CopilotFetchFn — extends FetchFn with a runtime thinking-budget setter
+// ---------------------------------------------------------------------------
+export interface CopilotFetchFn extends FetchFn {
+  /** Update the thinking budget. Pass 0 to disable extended thinking. */
+  setThinkingBudget(budget: number): void
+}
+
+// ---------------------------------------------------------------------------
 // inferInitiator — decides "user" vs "agent" from the request body
 // Chat API: looks at messages[last].role
 // Responses API: looks at input[last].role
@@ -88,16 +96,19 @@ export function hasVisionContent(body: unknown): boolean {
 export function createCopilotFetch(options: {
   getToken: () => Promise<string>
   fetch?: FetchFn
-}): FetchFn {
+  /** Initial thinking budget in tokens. 0 = disabled (default). */
+  thinkingBudget?: number
+}): CopilotFetchFn {
   const baseFetch = options.fetch ?? globalThis.fetch
+  let currentBudget = options.thinkingBudget ?? 0
 
-  return async (
+  const fetchFn = async (
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
     const token = await options.getToken()
 
-    // Parse the body to determine initiator and vision content
+    // Parse the body to determine initiator, vision content, and for thinking injection
     let parsedBody: unknown = undefined
     if (init?.body && typeof init.body === "string") {
       try {
@@ -105,6 +116,16 @@ export function createCopilotFetch(options: {
       } catch {
         // Not JSON — leave parsedBody undefined
       }
+    }
+
+    // Inject thinking parameter when budget > 0
+    let bodyToSend = init?.body
+    if (currentBudget > 0 && parsedBody && typeof parsedBody === "object") {
+      ;(parsedBody as Record<string, unknown>).thinking = {
+        type: "enabled",
+        budget_tokens: currentBudget,
+      }
+      bodyToSend = JSON.stringify(parsedBody)
     }
 
     // Build new headers
@@ -125,7 +146,15 @@ export function createCopilotFetch(options: {
 
     return baseFetch(input, {
       ...init,
+      body: bodyToSend,
       headers,
     })
   }
+
+  // Attach runtime budget setter
+  fetchFn.setThinkingBudget = (budget: number) => {
+    currentBudget = budget
+  }
+
+  return fetchFn as CopilotFetchFn
 }

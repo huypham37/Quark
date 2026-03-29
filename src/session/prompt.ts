@@ -25,7 +25,7 @@ import {
 } from "./compact-resolver"
 import { generateSessionTitle } from "./title"
 import { list as listTools, resolve as resolveTools } from "../tool/registry"
-import { getModel, createCopilotProvider, createOpenAICompatibleProvider } from "../provider/provider"
+import { getModel, createCopilotProvider, createOpenAICompatibleProvider, createCopilotAnthropicProvider, isClaude, getCopilotThinkingBudget } from "../provider/provider"
 import { loadToken } from "../provider/copilot-auth"
 import { getModelLimit } from "../provider/models"
 import { defaultAgent, type AgentConfig } from "../agent"
@@ -39,6 +39,7 @@ import {
   RejectedError,
   CorrectedError,
 } from "../permission/permission"
+import type { JSONObject } from "@ai-sdk/provider"
 import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 
@@ -76,8 +77,8 @@ export async function prompt(input: {
     fireHook("session.created", { sessionId }).catch(() => {})
   }
 
-  // Set ATOM_SESSION_ID so child processes (bash tool) can inherit it
-  process.env.ATOM_SESSION_ID = sessionId
+  // Set QUARK_SESSION_ID so child processes (bash tool) can inherit it
+  process.env.QUARK_SESSION_ID = sessionId
 
   touchSession(sessionId)
 
@@ -250,6 +251,14 @@ async function loop(
     const tools = resolveToolSet(agent, currentSessionId, assistantMsg.id, abort, modelMessages)
 
     // 6. Stream + process
+    // When thinking is enabled for a Copilot Claude model, pass providerOptions
+    // so @ai-sdk/anthropic forwards the thinking param to the Anthropic Messages API.
+    const thinkingBudget = getCopilotThinkingBudget()
+    const providerId = modelOpt?.provider ?? "copilot"
+    const thinkingProviderOptions: Record<string, JSONObject> | undefined =
+      thinkingBudget > 0 && providerId === "copilot" && isClaude(effectiveModel)
+        ? { anthropic: { thinking: { type: "enabled", budgetTokens: thinkingBudget } } as JSONObject }
+        : undefined
     const result = await processStream({
       model,
       system,
@@ -258,6 +267,7 @@ async function loop(
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
+      ...(thinkingProviderOptions ? { providerOptions: thinkingProviderOptions } : {}),
     })
 
     // Plugin hook: loop step ending
@@ -306,22 +316,30 @@ export async function resolveModel(
   modelId = beforeOutput.model
 
   if (providerId === "copilot") {
-    provider = createCopilotProvider({
-      getToken: async () => {
-        const token = loadToken()
-        if (!token) {
-          throw new Error(
-            "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
-          )
-        }
-        return token
-      },
-    })
+    const getToken = async () => {
+      const token = loadToken()
+      if (!token) {
+        throw new Error(
+          "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
+        )
+      }
+      return token
+    }
+
+    // Use the native Anthropic Messages API (via @ai-sdk/anthropic) for Claude models
+    // when thinking is enabled — this endpoint returns thinking_delta events.
+    if (isClaude(modelId) && getCopilotThinkingBudget() > 0) {
+      const anthropicProvider = createCopilotAnthropicProvider({ getToken })
+      return anthropicProvider(modelId)
+    }
+
+    // All other Copilot models use the OpenAI-compat Chat/Responses API
+    provider = createCopilotProvider({ getToken })
   } else {
     const pc = getProviderConfig(providerId)
     if (!pc) {
       throw new Error(
-        `Unknown provider "${providerId}". Define it in ~/.config/atom/config.yaml under "providers:".`,
+        `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
       )
     }
     provider = createOpenAICompatibleProvider({

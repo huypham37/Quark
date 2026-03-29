@@ -39,6 +39,10 @@ export interface ImagePartData {
   data: string // base64
 }
 
+export interface ReasoningPartData {
+  text: string
+}
+
 // ---- DB row types ----
 
 export interface MessageRow {
@@ -59,7 +63,7 @@ export interface PartRow {
   id: string
   messageId: string
   sessionId: string
-  type: "text" | "tool" | "step-start" | "step-finish" | "summary" | "image"
+  type: "text" | "tool" | "step-start" | "step-finish" | "summary" | "image" | "reasoning"
   data: string // JSON
 }
 
@@ -158,8 +162,8 @@ export function createAssistantMessage(input: {
 export function addPart(input: {
   messageId: string
   sessionId: string
-  type: "text" | "tool" | "step-start" | "step-finish" | "summary"
-  data: TextPartData | ToolPartData | StepFinishData | SummaryData | Record<string, never>
+  type: "text" | "tool" | "step-start" | "step-finish" | "summary" | "reasoning"
+  data: TextPartData | ToolPartData | StepFinishData | SummaryData | ReasoningPartData | Record<string, never>
 }): string {
   const db = getDB()
   const id = generateId()

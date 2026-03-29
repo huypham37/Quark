@@ -42,6 +42,8 @@ export interface PromptProps {
   selectedImageIndex?: number | null
   /** Called when user removes the image at the given index */
   onRemoveImage?: (index: number) => void
+  /** Whether extended thinking (reasoning) is currently enabled */
+  thinkingEnabled?: boolean
 }
 
 function formatTokens(n: number): string {
@@ -95,6 +97,9 @@ export const Prompt: Component<PromptProps> = (props) => {
         <text fg={borderColor()} flexShrink={0}>╭── </text>
         <text fg={colors.statusLine} flexShrink={0}>{leftStatus()}</text>
         <text fg={borderColor()} flexGrow={1} flexShrink={1} overflow="hidden" wrapMode="none">{" " + "─".repeat(300) + " "}</text>
+        <Show when={props.thinkingEnabled}>
+          <text fg={RGBA.fromHex("#a78bfa")} flexShrink={0}>[T]─</text>
+        </Show>
         <text fg={modelColor(modelName())} flexShrink={0}>{modelName()}</text>
         <text fg={borderColor()} flexShrink={0}>─</text>
         <text fg={borderColor()} flexShrink={0}> ──╮</text>

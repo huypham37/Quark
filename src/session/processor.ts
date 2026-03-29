@@ -12,6 +12,7 @@
 
 import { streamText, type ModelMessage, type LanguageModel, type ToolSet } from "ai"
 import { generateId } from "ai"
+import type { JSONObject } from "@ai-sdk/provider"
 import {
   addPart,
   updatePart,
@@ -20,6 +21,7 @@ import {
   type TextPartData,
   type ToolPartData,
   type StepFinishData,
+  type ReasoningPartData,
 } from "./message"
 import { isRetryable, retryDelay, sleep } from "./retry"
 import { bus } from "./events"
@@ -38,6 +40,8 @@ export interface ProcessInput {
   providerId?: string
   /** Model ID for plugin hooks (e.g. "claude-sonnet-4.6") */
   modelId?: string
+  /** Provider-specific options (e.g. thinking budget for Anthropic) */
+  providerOptions?: Record<string, JSONObject>
   /**
    * Optional callback so provider.request.error plugins can switch provider/model
    * without creating a circular import between processor and prompt.
@@ -49,6 +53,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   // Track tool parts by callId so we can update them as events arrive
   const toolParts = new Map<string, { partId: string; data: ToolPartData }>()
   let currentText: { partId: string; data: TextPartData } | undefined
+  let currentReasoning: { partId: string; data: ReasoningPartData } | undefined
   let lastFinish: string | undefined
   let attempt = 0
 
@@ -69,6 +74,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         abortSignal: input.abort,
         maxOutputTokens: input.maxOutputTokens,
         maxRetries: 0,
+        ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
       })
 
       for await (const event of result.fullStream) {
@@ -254,11 +260,46 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
           case "finish":
             break
 
-          // reasoning events — skip for now (minimal agent)
-          case "reasoning-start":
-          case "reasoning-delta":
-          case "reasoning-end":
+          // reasoning events — persist and emit to bus for TUI rendering
+          case "reasoning-start": {
+            const data: ReasoningPartData = { text: "" }
+            const partId = addPart({
+              messageId: mid,
+              sessionId: sid,
+              type: "reasoning",
+              data,
+            })
+            currentReasoning = { partId, data }
+            bus.emit("reasoning-start", { sessionId: sid, messageId: mid, partId })
             break
+          }
+
+          case "reasoning-delta": {
+            if (currentReasoning) {
+              currentReasoning.data.text += event.text
+              bus.emit("reasoning-delta", {
+                sessionId: sid,
+                messageId: mid,
+                partId: currentReasoning.partId,
+                delta: event.text,
+                text: currentReasoning.data.text,
+              })
+            }
+            break
+          }
+
+          case "reasoning-end": {
+            if (currentReasoning) {
+              updatePart(currentReasoning.partId, currentReasoning.data)
+              bus.emit("reasoning-end", {
+                sessionId: sid,
+                messageId: mid,
+                partId: currentReasoning.partId,
+              })
+              currentReasoning = undefined
+            }
+            break
+          }
 
           default:
             break

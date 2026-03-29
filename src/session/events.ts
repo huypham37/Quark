@@ -27,6 +27,11 @@ export interface BusEvents {
   "tool-input": { sessionId: string; messageId: string; partId: string; tool: string; callId: string; input: Record<string, unknown> }
   "tool-end": { sessionId: string; messageId: string; partId: string; tool: string; callId: string; status: "completed" | "error"; output?: string; error?: string }
 
+  // Streaming reasoning/thinking deltas (extended thinking)
+  "reasoning-start": { sessionId: string; messageId: string; partId: string }
+  "reasoning-delta": { sessionId: string; messageId: string; partId: string; delta: string; text: string }
+  "reasoning-end": { sessionId: string; messageId: string; partId: string }
+
   // Step boundaries
   "step-start": { sessionId: string; messageId: string }
   "step-finish": { sessionId: string; messageId: string; data: StepFinishData }
@@ -60,7 +65,7 @@ export interface BusEvents {
   "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
 
   // ---------------------------------------------------------------------------
-  // Sub-agent observability — events forwarded from child `atom --sub-agent`
+  // Sub-agent observability — events forwarded from child `quark --sub-agent`
   // processes via stderr NDJSON. The parent Bash tool parses these and re-emits
   // them on the parent bus so the TUI can render nested tool activity.
   // ---------------------------------------------------------------------------

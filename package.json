@@ -1,7 +1,7 @@
 {
-  "name": "@atom/sdk",
+  "name": "@quark/sdk",
   "version": "0.1.0",
-  "description": "AI coding agent SDK - build powerful AI agents with session management, tools, and streaming",
+  "description": "Quark — AI coding agent SDK with session management, tools, and streaming",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "bin": {
-    "atom": "./src/cli.ts"
+    "quark": "./src/cli.ts"
   },
   "scripts": {
     "build": "tsup && tsc --project tsconfig.build.json --emitDeclarationOnly",
@@ -38,6 +38,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.64",
     "@ai-sdk/openai": "^3.0.41",
     "@opentui/core": "^0.1.86",
     "@opentui/solid": "^0.1.86",

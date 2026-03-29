@@ -287,6 +287,20 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    // ----- Reasoning / thinking events -----
+
+    unsubs.push(on("reasoning-start", (data) => {
+      dispatch(state, { type: "reasoning-start", messageId: data.messageId })
+    }))
+
+    unsubs.push(on("reasoning-delta", (data) => {
+      dispatch(state, { type: "reasoning-delta", messageId: data.messageId })
+    }))
+
+    unsubs.push(on("reasoning-end", (data) => {
+      dispatch(state, { type: "reasoning-end", messageId: data.messageId })
+    }))
+
     onCleanup(() => {
       for (const unsub of unsubs) unsub()
     })

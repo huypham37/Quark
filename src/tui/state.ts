@@ -4,14 +4,14 @@
 // the SolidJS store + dispatch implementation.
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
-import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData } from "../session/message"
+import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { getModelLimit } from "../provider/models"
 import { getModelId, loadConfig } from "../config/config"
 import * as fs from "fs"
 
 // Debug log helper - writes to file since console.error is captured by TUI
 function debugLog(msg: string) {
-  fs.appendFileSync("/tmp/atom-state-debug.log", `${new Date().toISOString()} ${msg}\n`)
+  fs.appendFileSync("/tmp/quark-state-debug.log", `${new Date().toISOString()} ${msg}\n`)
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +96,10 @@ export type TuiAction =
   | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number }
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
+  | { type: "toggle-thinking" }
+  | { type: "reasoning-start"; messageId: string }
+  | { type: "reasoning-delta"; messageId: string }
+  | { type: "reasoning-end"; messageId: string }
 
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
@@ -138,6 +142,11 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         // Count existing image parts to derive label number
         const idx = tuiParts.filter((x) => x.type === "image").length + 1
         tuiParts.push({ type: "image", mime: d.mime, label: `Image ${idx}` })
+      } else if (p.type === "reasoning") {
+        const d = JSON.parse(p.data) as ReasoningPartData
+        if (d.text) {
+          tuiParts.push({ type: "thinking", done: true })
+        }
       }
       // skip step-start, step-finish — they're metadata
     }
@@ -164,6 +173,7 @@ export interface AppStore {
   messages: TuiMessage[]
   running: boolean
   compacting: boolean
+  thinkingEnabled: boolean
   status: TuiStatus
   error?: string
   permission?: PermissionRequest
@@ -185,6 +195,7 @@ export function createAppState(initial: {
     messages: [],
     running: false,
     compacting: false,
+    thinkingEnabled: false,
     status: {
       tokensUsed: 0,
       tokenLimit: (() => { const lim = getModelLimit(getModelId("main")); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
@@ -410,6 +421,39 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     case "set-compacting":
       setStore("compacting", action.compacting)
+      break
+
+    case "toggle-thinking":
+      setStore("thinkingEnabled", (prev) => !prev)
+      break
+
+    case "reasoning-start":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          parts.push({ type: "thinking", done: false })
+        }),
+      )
+      break
+
+    case "reasoning-delta":
+      // Thinking indicator is already shown — no additional state needed for delta
+      break
+
+    case "reasoning-end":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const last = parts[parts.length - 1]
+          if (last && last.type === "thinking") {
+            last.done = true
+          }
+        }),
+      )
       break
 
     // ------------------------------------------------------------------
