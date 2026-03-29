@@ -31,33 +31,23 @@ function getToolLabel(tool: string, input: Record<string, unknown>): string {
   }
 
   const cmd = input.command ?? input.cmd
-  if (typeof cmd === "string") {
-    return cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd
-  }
+  if (typeof cmd === "string") return cmd
 
   const pattern = input.pattern
-  if (typeof pattern === "string") {
-    return pattern.length > 60 ? pattern.slice(0, 57) + "..." : pattern
-  }
+  if (typeof pattern === "string") return pattern
 
   const query = input.query
-  if (typeof query === "string") {
-    return query.length > 60 ? query.slice(0, 57) + "..." : query
-  }
+  if (typeof query === "string") return query
 
   const url = input.url
-  if (typeof url === "string") {
-    return url.length > 60 ? url.slice(0, 57) + "..." : url
-  }
+  if (typeof url === "string") return url
 
   const name = input.name ?? input.skill
   if (typeof name === "string") return name
 
   // Generic fallback — first string value in the input object
   for (const val of Object.values(input)) {
-    if (typeof val === "string" && val.length > 0) {
-      return val.length > 60 ? val.slice(0, 57) + "..." : val
-    }
+    if (typeof val === "string" && val.length > 0) return val
   }
 
   return ""
@@ -105,10 +95,9 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
             </Show>
           </Show>
         </box>
-        <text bold>{displayName}</text>
+        <text bold>{displayName} </text>
         <Show when={label()}>
-          <text> </text>
-          <text fg={RGBA.fromHex("#365A61")} underline>{label()}</text>
+          <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
         </Show>
         <Show when={props.error}>
           <text> </text>

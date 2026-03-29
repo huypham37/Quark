@@ -141,9 +141,8 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
       <box flexShrink={0}>
         <StatusIndicator status={props.tool.status} />
       </box>
-      <text>{displayName}</text>
+      <text>{displayName} </text>
       <Show when={label()}>
-        <text> </text>
         <text fg={RGBA.fromHex("#365A61")}>{label()}</text>
       </Show>
       <Show when={props.tool.error}>
