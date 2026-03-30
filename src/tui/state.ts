@@ -7,12 +7,6 @@ import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { getModelLimit } from "../provider/models"
 import { getModelId, loadConfig } from "../config/config"
-import * as fs from "fs"
-
-// Debug log helper - writes to file since console.error is captured by TUI
-function debugLog(msg: string) {
-  fs.appendFileSync("/tmp/quark-state-debug.log", `${new Date().toISOString()} ${msg}\n`)
-}
 
 // ---------------------------------------------------------------------------
 // TUI data model types
@@ -339,20 +333,39 @@ export function dispatch(state: AppState, action: TuiAction): void {
       )
       break
 
-    case "tool-input":
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const part = parts.find((p) => p.type === "tool" && p.callId === action.callId)
-          if (part && part.type === "tool") {
-            part.status = "running"
-            part.input = action.input
-          }
-        }),
+    case "tool-input": {
+      // Find the part by index so we can use explicit setStore paths
+      const tiMsgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (tiMsgIdx === -1) break
+      const tiPartIdx = state.store.messages[tiMsgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.callId,
       )
+      if (tiPartIdx === -1) break
+      setStore("messages", tiMsgIdx, "parts", tiPartIdx, produce((part: TuiPart) => {
+        if (part.type === "tool") {
+          part.status = "running"
+          part.input = action.input
+        }
+      }))
+      // Eagerly initialize subAgent when the bash command is a sub-agent invocation.
+      // This makes the Match condition in message-item.tsx switch to SubAgentView
+      // immediately — before the child process boots and sends its first event.
+      const tiPart = state.store.messages[tiMsgIdx]!.parts[tiPartIdx] as Extract<TuiPart, { type: "tool" }>
+      if (tiPart.tool === "bash" && !tiPart.subAgent) {
+        const cmd = action.input.command ?? action.input.cmd
+        if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
+          const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
+          setStore("messages", tiMsgIdx, "parts", tiPartIdx, "subAgent" as any, {
+            profile,
+            tools: [],
+            tokensUsed: 0,
+            tokenLimit: 0,
+            done: false,
+          })
+        }
+      }
       break
+    }
 
     case "tool-end":
       setStore(
@@ -473,150 +486,160 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     // ------------------------------------------------------------------
     // Sub-agent observability — mutate the parent tool part's subAgent state
+    //
+    // All handlers use explicit setStore() path notation (never produce() for
+    // the subAgent property itself). SolidJS tracks property paths set via
+    // setStore(); assigning parent.subAgent = {} inside produce() on a
+    // previously-undefined property does NOT reliably notify Match/Show
+    // conditions watching that path.
     // ------------------------------------------------------------------
 
-    case "subagent-tool-start":
-      // DEBUG
-      debugLog(`subagent-tool-start: parentCallId=${action.parentCallId}, tool=${action.tool}, messageId=${action.messageId}`)
+    case "subagent-tool-start": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!existing) {
+        // First sub-agent event — initialize subAgent via explicit path so SolidJS
+        // registers the new property and notifies all Match/Show watchers.
+        setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
+          profile: action.profile,
+          tools: [],
+          tokensUsed: 0,
+          tokenLimit: 0,
+          done: false,
+        })
+      }
       setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          // DEBUG: log all tool parts to see what callIds exist
-          const toolParts = parts.filter((p) => p.type === "tool")
-          debugLog(`Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool") {
-            debugLog(`Found parent! Attaching subAgent state`)
-            if (!parent.subAgent) {
-              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
-            }
-            parent.subAgent.tools.push({
-              tool: action.tool,
-              callId: action.callId,
-              status: "pending",
-              input: {},
-            })
-          } else {
-            debugLog(`Parent NOT found!`)
-          }
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((sa: SubAgentState) => {
+          sa.tools.push({ tool: action.tool, callId: action.callId, status: "pending", input: {} })
         }),
       )
       break
+    }
 
-    case "subagent-tool-input":
+    case "subagent-tool-input": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const sa = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!sa) break
+      const childIdx = sa.tools.findIndex((t) => t.callId === action.callId)
+      if (childIdx === -1) break
       setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool" && parent.subAgent) {
-            const child = parent.subAgent.tools.find((t) => t.callId === action.callId)
-            if (child) {
-              child.status = "running"
-              child.input = action.input
-            }
-          }
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((s: SubAgentState) => {
+          s.tools[childIdx]!.status = "running"
+          s.tools[childIdx]!.input = action.input
         }),
       )
       break
+    }
 
-    case "subagent-tool-end":
+    case "subagent-tool-end": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const sa = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!sa) break
+      const childIdx = sa.tools.findIndex((t) => t.callId === action.callId)
+      if (childIdx === -1) break
       setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool" && parent.subAgent) {
-            const child = parent.subAgent.tools.find((t) => t.callId === action.callId)
-            if (child) {
-              child.status = action.status
-              child.error = action.error
-            }
-          }
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((s: SubAgentState) => {
+          s.tools[childIdx]!.status = action.status
+          s.tools[childIdx]!.error = action.error
         }),
       )
       break
+    }
 
-    case "subagent-step-finish":
-      // DEBUG
-      debugLog(`subagent-step-finish: parentCallId=${action.parentCallId}, tokens=${JSON.stringify(action.tokens)}, messageId=${action.messageId}`)
+    case "subagent-step-finish": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!existing) {
+        setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
+          profile: action.profile,
+          tools: [],
+          tokensUsed: 0,
+          tokenLimit: 0,
+          done: false,
+        })
+      }
       setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const toolParts = parts.filter((p) => p.type === "tool")
-          debugLog(`step-finish: Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool") {
-            // Initialize subAgent if it doesn't exist
-            if (!parent.subAgent) {
-              debugLog(`step-finish: Creating subAgent for parent`)
-              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
-            }
-            if (action.tokens?.input) {
-              parent.subAgent.tokensUsed = action.tokens.input
-            }
-            if (action.tokenLimit && action.tokenLimit > 0) {
-              parent.subAgent.tokenLimit = action.tokenLimit
-            }
-          } else {
-            debugLog(`step-finish: Parent NOT found for parentCallId=${action.parentCallId}`)
-          }
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((sa: SubAgentState) => {
+          if (action.tokens?.input) sa.tokensUsed = action.tokens.input
+          if (action.tokenLimit && action.tokenLimit > 0) sa.tokenLimit = action.tokenLimit
         }),
       )
       break
+    }
 
-    case "subagent-text-delta":
-      // DEBUG
-      debugLog(`subagent-text-delta: parentCallId=${action.parentCallId}, text=${action.text?.slice(0, 30)}..., messageId=${action.messageId}`)
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const toolParts = parts.filter((p) => p.type === "tool")
-          debugLog(`text-delta: Looking for parentCallId=${action.parentCallId} in ${toolParts.length} tool parts: ${toolParts.map((p: any) => p.callId).join(", ")}`)
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool") {
-            // Initialize subAgent if it doesn't exist (text-delta can arrive before tool-start)
-            if (!parent.subAgent) {
-              debugLog(`text-delta: Creating subAgent for parent`)
-              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
-            }
-            // Keep only last ~120 chars as a preview
-            const text = action.text
-            parent.subAgent.textPreview = text.length > 120 ? "…" + text.slice(-119) : text
-          } else {
-            debugLog(`text-delta: Parent NOT found for parentCallId=${action.parentCallId}`)
-          }
-        }),
+    case "subagent-text-delta": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!existing) {
+        setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
+          profile: action.profile,
+          tools: [],
+          tokensUsed: 0,
+          tokenLimit: 0,
+          done: false,
+        })
+      }
+      const text = action.text
+      const preview = text.length > 120 ? "…" + text.slice(-119) : text
+      setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((sa: SubAgentState) => { sa.textPreview = preview })
       )
       break
+    }
 
-    case "subagent-done":
-      // DEBUG
-      debugLog(`subagent-done: parentCallId=${action.parentCallId}, messageId=${action.messageId}`)
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const parent = parts.find((p) => p.type === "tool" && p.callId === action.parentCallId)
-          if (parent && parent.type === "tool") {
-            // Initialize subAgent if it doesn't exist
-            if (!parent.subAgent) {
-              parent.subAgent = { profile: action.profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: false }
-            }
-            parent.subAgent.done = true
-            parent.subAgent.textPreview = undefined
-          }
-        }),
+    case "subagent-done": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      if (!existing) {
+        setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
+          profile: action.profile,
+          tools: [],
+          tokensUsed: 0,
+          tokenLimit: 0,
+          done: false,
+        })
+      }
+      setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((sa: SubAgentState) => {
+          sa.done = true
+          sa.textPreview = undefined
+        })
       )
       break
+    }
   }
 }
