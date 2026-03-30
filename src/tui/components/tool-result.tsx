@@ -95,7 +95,8 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
             </Show>
           </Show>
         </box>
-        <text bold>{displayName} </text>
+        <text bold>{displayName}</text>
+        <text> </text>
         <Show when={label()}>
           <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
         </Show>
