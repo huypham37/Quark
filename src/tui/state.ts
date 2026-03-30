@@ -639,6 +639,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
           sa.textPreview = undefined
         })
       )
+      // Mark the parent tool part as completed so the InlineSpinner stops animating.
+      setStore("messages", msgIdx, "parts", partIdx, produce((part: TuiPart) => {
+        if (part.type === "tool") part.status = "completed"
+      }))
       break
     }
   }

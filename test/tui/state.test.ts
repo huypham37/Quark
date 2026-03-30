@@ -378,3 +378,67 @@ describe("dispatch: full streaming lifecycle", () => {
     })
   })
 })
+
+describe("dispatch: subagent-done marks parent tool completed", () => {
+  test("subagent-done sets parent tool part status to completed", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Setup: add assistant message with bash tool
+      dispatch(s, { type: "add-assistant-message", id: "a1" })
+      dispatch(s, { type: "tool-start", messageId: "a1", tool: "bash", callId: "parent-1" })
+      dispatch(s, { type: "tool-input", messageId: "a1", callId: "parent-1", input: { command: "quark --sub-agent --profile coder" } })
+      
+      // Verify tool is running
+      let part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("running")
+      
+      // Dispatch subagent-done
+      dispatch(s, { type: "subagent-done", messageId: "a1", parentCallId: "parent-1", profile: "coder" })
+      
+      // Assert: parent tool part status is completed
+      part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("completed")
+      
+      // Assert: subAgent.done is true
+      expect(part.subAgent).toBeDefined()
+      expect(part.subAgent!.done).toBe(true)
+    })
+  })
+
+  test("spinner stops: parent tool is not running after subagent-done", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Setup: add assistant message with bash tool
+      dispatch(s, { type: "add-assistant-message", id: "a1" })
+      dispatch(s, { type: "tool-start", messageId: "a1", tool: "bash", callId: "parent-2" })
+      dispatch(s, { type: "tool-input", messageId: "a1", callId: "parent-2", input: { command: "quark --sub-agent" } })
+      
+      // Dispatch subagent-done
+      dispatch(s, { type: "subagent-done", messageId: "a1", parentCallId: "parent-2", profile: "sub-agent" })
+      
+      // Assert: the condition that shows InlineSpinner is false
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).not.toBe("running")
+    })
+  })
+
+  test("subagent-done without existing subAgent still marks parent completed", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Setup: add assistant message with bash tool
+      dispatch(s, { type: "add-assistant-message", id: "a1" })
+      dispatch(s, { type: "tool-start", messageId: "a1", tool: "bash", callId: "parent-3" })
+      dispatch(s, { type: "tool-input", messageId: "a1", callId: "parent-3", input: { command: "some command" } })
+      
+      // Directly dispatch subagent-done (skip any subagent-tool-start events)
+      dispatch(s, { type: "subagent-done", messageId: "a1", parentCallId: "parent-3", profile: "coder" })
+      
+      // Assert: parent tool part status is completed
+      const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("completed")
+    })
+  })
+})
