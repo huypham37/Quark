@@ -282,6 +282,50 @@ describe("wireEvents: session-reset and session-switch", () => {
   })
 })
 
+describe("wireEvents: aborted tool state", () => {
+  test("running tool stays running if loop-end fires without tool-end (documents the gap)", () => {
+    const s = setup("s1")
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+    bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
+    bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", input: { command: "sleep 10" } })
+
+    // Simulate abort: loop ends without tool-end
+    bus.emit("loop-end", { sessionId: "s1" })
+
+    const part = s.store.messages[0]!.parts[0] as any
+    // Without the fix, the tool stays "running" — this documents the broken state
+    expect(part.status).toBe("running")
+  })
+
+  test("running tool transitions to error when tool-end with error is emitted before loop-end", () => {
+    const s = setup("s1")
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+    bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
+    bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", input: { command: "sleep 10" } })
+
+    // Processor emits tool-end on abort (after the fix)
+    bus.emit("tool-end", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", status: "error", error: "Tool execution aborted" })
+    bus.emit("loop-end", { sessionId: "s1" })
+
+    const part = s.store.messages[0]!.parts[0] as any
+    expect(part.status).toBe("error")
+    expect(part.error).toBe("Tool execution aborted")
+  })
+
+  test("pending tool transitions to error when tool-end with error is emitted", () => {
+    const s = setup("s1")
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+    bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
+    // No tool-input — tool is still pending
+
+    bus.emit("tool-end", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", status: "error", error: "Tool execution aborted" })
+
+    const part = s.store.messages[0]!.parts[0] as any
+    expect(part.status).toBe("error")
+    expect(part.error).toBe("Tool execution aborted")
+  })
+})
+
 describe("wireEvents: null sessionId", () => {
   test("does not subscribe when sessionId is null", () => {
     const s = setup(null)

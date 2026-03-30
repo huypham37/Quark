@@ -315,12 +315,21 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         }
       }
     } catch (e: any) {
-      // Mark any in-flight tool parts as errored
-      for (const [, entry] of toolParts) {
+      // Mark any in-flight tool parts as errored and notify the TUI via bus
+      for (const [callId, entry] of toolParts) {
         if (entry.data.status === "pending" || entry.data.status === "running") {
           entry.data.status = "error"
           entry.data.error = "Tool execution aborted"
           updatePart(entry.partId, entry.data)
+          bus.emit("tool-end", {
+            sessionId: sid,
+            messageId: mid,
+            partId: entry.partId,
+            tool: entry.data.tool,
+            callId,
+            status: "error",
+            error: entry.data.error,
+          })
         }
       }
       toolParts.clear()
