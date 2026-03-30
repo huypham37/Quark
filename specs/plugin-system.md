@@ -1,10 +1,10 @@
-# Plugin System for Atom
+# Plugin System for Quark
 
 ## What We're Building
 
-A plugin system where users drop `.ts` files in `~/.config/atom/plugins/`.
+A plugin system where users drop `.ts` files in `~/.config/quark/plugins/`.
 Each plugin returns a dictionary of `{ "event-name": function }`.
-Atom calls those functions at the right moments in its code.
+Quark calls those functions at the right moments in its code.
 
 ## Architecture (3 new files)
 
@@ -12,7 +12,7 @@ Atom calls those functions at the right moments in its code.
 src/plugin/
   plugin.ts      ← the PluginDef interface (what a plugin returns)
   registry.ts    ← stores all hooks from all plugins
-  loader.ts      ← scans ~/.config/atom/plugins/, imports, collects hooks
+  loader.ts      ← scans ~/.config/quark/plugins/, imports, collects hooks
 ```
 
 ## Step 1: Define the Plugin Interface
@@ -102,7 +102,7 @@ async function fireHook(name, input) {
 Same pattern as `src/tool/loader.ts`:
 
 ```
-1. Scan ~/.config/atom/plugins/*.ts
+1. Scan ~/.config/quark/plugins/*.ts
 2. For each file:
    a. await import(filePath)
    b. Grab the export (default or named)
@@ -195,7 +195,7 @@ Add to `config.yaml`:
 
 ```yaml
 plugins:
-  - "rate-limit-fallback"       # loads ~/.config/atom/plugins/rate-limit-fallback.ts
+  - "rate-limit-fallback"       # loads ~/.config/quark/plugins/rate-limit-fallback.ts
   - "opencode-wakatime"         # future: npm package support
 ```
 
@@ -212,7 +212,7 @@ plugins:
 ## Example Plugin: Rate Limit Fallback
 
 ```ts
-// ~/.config/atom/plugins/rate-limit-fallback.ts
+// ~/.config/quark/plugins/rate-limit-fallback.ts
 
 export default async (ctx) => {
   return {

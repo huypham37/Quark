@@ -48,9 +48,10 @@ export function getCopilotThinkingBudget(): number {
 }
 
 // ---------------------------------------------------------------------------
-// shouldUseResponsesApi — GPT-5+ (except gpt-5-mini) uses Responses API
+// shouldUseResponsesApi — GPT-5+ uses Responses API, except gpt-5-mini
 // Logic: match /^gpt-(\d+)/ where the major version number >= 5,
-// then exclude models containing "-mini".
+// then exclude only gpt-5-mini (the base model). Point releases like
+// gpt-5.4-mini DO use the Responses API.
 // ---------------------------------------------------------------------------
 export function shouldUseResponsesApi(modelId: string): boolean {
   const match = modelId.match(/^gpt-(\d+)/)
@@ -59,8 +60,8 @@ export function shouldUseResponsesApi(modelId: string): boolean {
   const majorVersion = parseInt(match[1]!, 10)
   if (majorVersion < 5) return false
 
-  // gpt-5-mini and variants use Chat API
-  if (modelId.includes("-mini")) return false
+  // Only gpt-5-mini (base, no point release) uses Chat API
+  if (/^gpt-5-mini/.test(modelId)) return false
 
   return true
 }

@@ -1,6 +1,6 @@
 // Tool: bash — execute shell commands
 //
-// Copy to ~/.config/atom/tools/bash.ts
+// Copy to ~/.config/quark/tools/bash.ts
 
 import { spawn } from "child_process"
 import { z } from "zod"
@@ -32,7 +32,7 @@ export default {
         env: {
           ...process.env,
           // Ensure child processes can discover their parent session
-          ...(ctx.sessionId ? { ATOM_SESSION_ID: ctx.sessionId } : {}),
+          ...(ctx.sessionId ? { QUARK_SESSION_ID: ctx.sessionId } : {}),
         },
         stdio: ["ignore", "pipe", "pipe"],
       })

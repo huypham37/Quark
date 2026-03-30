@@ -1,4 +1,4 @@
-# Claude Web Proxy: Atom → Proxy → Webapp Architecture
+# Claude Web Proxy: Quark → Proxy → Webapp Architecture
 
 **Status:** Implemented & running  
 **Proxy process:** `scripts/claude-web-proxy.py` (PID managed by tmux `proxy-agent`)  
@@ -8,7 +8,7 @@
 
 ## Problem
 
-Atom needs a Claude model backend. The official Anthropic API requires a paid key. The claude.ai webapp offers free-tier access to Sonnet/Haiku models, but it is protected by Cloudflare and uses a non-standard SSE streaming API rather than the OpenAI-compatible format Atom's AI SDK expects.
+Quark needs a Claude model backend. The official Anthropic API requires a paid key. The claude.ai webapp offers free-tier access to Sonnet/Haiku models, but it is protected by Cloudflare and uses a non-standard SSE streaming API rather than the OpenAI-compatible format Quark's AI SDK expects.
 
 ---
 
@@ -21,14 +21,14 @@ Run a local Python proxy (`claude-web-proxy.py`) that:
 3. Uses **`curl_cffi` with Safari TLS impersonation** to bypass Cloudflare
 4. Implements **tool calling** via prompt-engineering + response parsing (the webapp endpoint does not support native tool calls)
 
-Atom's config sets `main_provider: claude-web-proxy` and `sub_provider: claude-web-proxy`. The AI SDK in Atom uses `@ai-sdk/openai` pointed at the proxy — no Anthropic SDK needed.
+Quark's config sets `main_provider: claude-web-proxy` and `sub_provider: claude-web-proxy`. The AI SDK in Quark uses `@ai-sdk/openai` pointed at the proxy — no Anthropic SDK needed.
 
 ---
 
 ## Architecture
 
 ```
-Atom (TypeScript / Bun)
+Quark (TypeScript / Bun)
   └─ AI SDK (@ai-sdk/openai)
        └─ POST http://127.0.0.1:4318/v1/chat/completions
             │
@@ -155,7 +155,7 @@ The webapp completion endpoint ignores OpenAI-format `tools` fields. Tool callin
    - If only text was produced (no tool calls), proxy emits `delta.content` text chunks
    - On stream end, `finish_reason` is `"tool_calls"` if any tool calls were found, else `"stop"`
 
-4. **Tool results**: Incoming `role: "tool"` messages from Atom are serialized back into the prompt as:
+4. **Tool results**: Incoming `role: "tool"` messages from Quark are serialized back into the prompt as:
    ```
    Human: <tool_result tool_call_id="...">
    {result content}
@@ -174,7 +174,7 @@ Each OpenAI request carries the full message history. The proxy reconstructs the
 
 ---
 
-## Atom Provider Wiring
+## Quark Provider Wiring
 
 | File | Role |
 |---|---|
@@ -198,7 +198,7 @@ sub_provider: claude-web-proxy
 |---|---|---|
 | `small_provider` not set | Title generation falls back to `copilot` (fails without copilot token) | Add `small_provider: claude-web-proxy` to config.yaml |
 | `/v1/models` returns 404 | Some AI SDK paths may fail; currently non-blocking | Add `GET /v1/models` handler to proxy |
-| No auto-spawn from Atom | If proxy dies, Atom silently fails with connection error | Health-check + spawn proxy as child process on Atom startup |
+| No auto-spawn from Quark | If proxy dies, Quark silently fails with connection error | Health-check + spawn proxy as child process on Quark startup |
 
 ---
 

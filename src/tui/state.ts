@@ -330,6 +330,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
             callId: action.callId,
             status: "pending",
             input: {},
+            output: undefined,
+            error: undefined,
+            diff: undefined,
+            subAgent: undefined,
           })
         }),
       )

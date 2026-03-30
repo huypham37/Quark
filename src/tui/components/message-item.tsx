@@ -84,9 +84,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
                 <InlineSpinner />
               </Show>
             </box>
-            <text>Bash</text>
-            <text fg={colors.muted}> </text>
-            <text fg={colors.muted}>{getToolDescription(asTool().tool, asTool().input).slice(0, 60)}{getToolDescription(asTool().tool, asTool().input).length > 60 ? "..." : ""}</text>
+            <text bold>Bash</text>
           </box>
           {/* Nested sub-agent view with tree connector */}
           <box flexDirection="row">

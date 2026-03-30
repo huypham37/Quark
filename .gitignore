@@ -33,10 +33,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
+# Generated API docs (regenerate with typedoc)
+docs/api/
+
 # SQLite database files
-atom.db
-atom.db-shm
-atom.db-wal
+quark.db
+quark.db-shm
+quark.db-wal
 
 # Reference codebases (not part of this project)
 opencode-reference/

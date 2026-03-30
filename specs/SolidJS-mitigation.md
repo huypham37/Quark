@@ -124,7 +124,7 @@ preload = ["@opentui/solid/preload"]
 ## Migration phases
 
 ### Phase 0 — Scaffold (0.5 day)
-**Goal:** Bootable empty OpenTUI app that renders "Hello Atom" and exits on Ctrl+C.
+**Goal:** Bootable empty OpenTUI app that renders "Hello Quark" and exits on Ctrl+C.
 
 1. `bun add @opentui/core @opentui/solid solid-js`
 2. Update `tsconfig.json` (jsx, jsxImportSource)
@@ -137,7 +137,7 @@ preload = ["@opentui/solid/preload"]
      const dims = useTerminalDimensions()
      return (
        <box width={dims().width} height={dims().height}>
-         <text>Hello Atom</text>
+         <text>Hello Quark</text>
        </box>
      )
    }

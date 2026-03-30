@@ -29,7 +29,7 @@ async function main() {
     : args
   const input = filteredArgs[0] ?? "What is 2 + 2? Reply with just the number."
 
-  console.log("=== Atom E2E Test ===")
+  console.log("=== Quark E2E Test ===")
   console.log(`Prompt: ${input}`)
   if (modelId) console.log(`Model: ${modelId}`)
   console.log()

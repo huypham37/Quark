@@ -257,8 +257,14 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             break
           }
 
-          case "error":
+          case "error": {
+            // Responses API via Copilot emits non-fatal "text part <id> not found"
+            // errors interleaved with valid output. These are SDK parsing artifacts
+            // from opaque Copilot part IDs — safe to ignore.
+            const errMsg = String(event.error)
+            if (/text part .+ not found/.test(errMsg)) break
             throw event.error
+          }
 
           case "finish":
             break

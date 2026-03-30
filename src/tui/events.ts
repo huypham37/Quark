@@ -184,7 +184,11 @@ export function wireEvents(state: AppState) {
     unsubs.push(on("error", (data) => {
       const result = categorizeError(data.error)
       if (result) {
-        notifyError(result.title, result.message, 8000) // 8s for errors, then auto-dismiss
+        // Truncate long messages to keep the notification readable
+        const msg = result.message.length > 120
+          ? result.message.slice(0, 117) + "..."
+          : result.message
+        notifyError(result.title, msg, 8000) // 8s for errors, then auto-dismiss
       }
     }))
 

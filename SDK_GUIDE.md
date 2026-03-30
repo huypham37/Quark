@@ -1,8 +1,8 @@
-# Atom SDK - Quick Reference
+# Quark SDK - Quick Reference
 
 ## What Was Done
 
-Transformed Atom from a CLI-only app into a publishable SDK package.
+Transformed Quark from a CLI-only app into a publishable SDK package.
 
 ## Files Created/Modified
 
@@ -40,10 +40,10 @@ bun run build
 ### Import in Projects
 ```typescript
 // ESM
-import { createSession, prompt, register } from '@atom/sdk'
+import { createSession, prompt, register } from '@quark/sdk'
 
 // CommonJS
-const { createSession, prompt } = require('@atom/sdk')
+const { createSession, prompt } = require('@quark/sdk')
 ```
 
 ### Verify Build

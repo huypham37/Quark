@@ -39,7 +39,7 @@ tools you give it. **You don't adapt to the system — the system is built to
 adapt to your flow.**
 
 This is why tools are external, declarative, and easy to write. The barrier
-to extending Atom is deliberately low. A tool is a TypeScript function with
+to extending Quark is deliberately low. A tool is a TypeScript function with
 a schema. That's it.
 
 Your context defines the agent's capabilities. Your tools define its behavior.

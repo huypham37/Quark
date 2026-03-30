@@ -1,4 +1,4 @@
-# Atom — Philosophy & Design
+# Quark — Philosophy & Design
 
 > Built from scratch. Opencode as reference, not as fork.
 
@@ -9,7 +9,7 @@
 **Agent = Model + Harness.**
 
 The model provides intelligence. The harness makes that intelligence useful.
-Atom is a harness — it owns everything except the model's reasoning:
+Quark is a harness — it owns everything except the model's reasoning:
 tool execution, memory, context management, state persistence, and guardrails.
 
 The model is a pluggable component. The harness is the product.
@@ -18,7 +18,7 @@ The model is a pluggable component. The harness is the product.
 
 **The agent adapts to your system. Your system doesn't adapt to the agent.**
 
-Atom is built to be adaptive to any workflow, any stack, any environment.
+Quark is built to be adaptive to any workflow, any stack, any environment.
 We provide the core agent loop and tool infrastructure. You provide the tools
 that make it yours.
 
@@ -31,7 +31,7 @@ tools you give it. **You don't adapt to the system — the system is built to
 adapt to your flow.**
 
 This is why tools are external, declarative, and easy to write. The barrier
-to extending Atom is deliberately low. A tool is a TypeScript function with
+to extending Quark is deliberately low. A tool is a TypeScript function with
 a schema. That's it.
 
 Your context defines the agent's capabilities. Your tools define its behavior.
@@ -107,7 +107,7 @@ Base Kernel: loop + provider + message state
 
 **The agent adapts to you. You don't adapt to the agent.**
 
-Atom is designed for any system, any workflow, any stack. The agent doesn't
+Quark is designed for any system, any workflow, any stack. The agent doesn't
 know about your CI/CD pipeline, your deployment system, your test framework,
 or your project structure — until you teach it with tools.
 
@@ -115,7 +115,7 @@ Tools are the adaptation layer. They are:
 
 - **External** — not hardcoded into the agent
 - **Declarative** — defined with simple TypeScript + Zod schemas
-- **Context-specific** — each project can have its own tools in `~/.config/atom/tools/`
+- **Context-specific** — each project can have its own tools in `~/.config/quark/tools/`
 
 A new tool takes 20 lines. That's the barrier to entry. Low friction by design.
 
@@ -253,7 +253,7 @@ Profiles can be activated in two ways:
 ### Deterministic (Explicit)
 
 ```
-atom --profile coder
+quark --profile coder
 ```
 
 The profile is loaded at startup. No LLM call, no classification cost.
@@ -273,7 +273,7 @@ available set. In the TUI, `/profile research` allows manual override.
 ```
 ┌─────────────────────────────────────────────────┐
 │                  TUI / SDK / CLI                │
-│           atom --profile coder task.md          │
+│           quark --profile coder task.md          │
 ├─────────────────────────────────────────────────┤
 │                  Profile System                 │
 │        prompt_file + tools[] + skills[]         │
@@ -289,7 +289,7 @@ available set. In the TUI, `/profile research` allows manual override.
 ### Profile System
 - Reads YAML config for profile definitions
 - Loads prompt from file, resolves tool set, resolves skill set
-- Per-project overrides via `.atom/config.yaml`
+- Per-project overrides via `.quark/config.yaml`
 
 ### Tool System
 - Universal `ToolDef` interface
@@ -297,7 +297,7 @@ available set. In the TUI, `/profile research` allows manual override.
 - Tool descriptions only enter context for registered tools
 
 ### Skill System
-- SKILL.md files in `.atom/skills/` (project) and `~/.atom/skills/` (global)
+- SKILL.md files in `.quark/skills/` (project) and `~/.config/quark/skills/` (global)
 - Only profile-bound skills have L1 metadata loaded
 - Discovery of non-bound skills via sub-agent only
 
@@ -310,7 +310,7 @@ available set. In the TUI, `/profile research` allows manual override.
 ## File Structure
 
 ```
-.atom/
+.quark/
   config.yaml            — project-level config + profile overrides
   profiles/
     coder.md             — system prompt for coder profile
@@ -323,7 +323,7 @@ available set. In the TUI, `/profile research` allows manual override.
       references/
         model-guide.md
 
-~/.atom/
+~/.config/quark/
   config.yaml            — global config + profile definitions
   profiles/
     coder.md

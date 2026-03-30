@@ -29,6 +29,10 @@ describe("shouldUseResponsesApi", () => {
     expect(shouldUseResponsesApi("gpt-5.2-pro")).toBe(true)
   })
 
+  test("returns true for gpt-5.4-mini (point release mini uses Responses API)", () => {
+    expect(shouldUseResponsesApi("gpt-5.4-mini")).toBe(true)
+  })
+
   test("returns false for gpt-5-mini", () => {
     expect(shouldUseResponsesApi("gpt-5-mini")).toBe(false)
   })

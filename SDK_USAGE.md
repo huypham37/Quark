@@ -1,13 +1,13 @@
-# Atom SDK Example
+# Quark SDK Example
 
-This demonstrates using Atom as an SDK in your own project.
+This demonstrates using Quark as an SDK in your own project.
 
 ## Installation
 
 ```bash
-npm install @atom/sdk
+npm install @quark/sdk
 # or
-bun add @atom/sdk
+bun add @quark/sdk
 ```
 
 ## Usage Example
@@ -21,10 +21,10 @@ import {
   defineTool,
   bus,
   type ToolContext 
-} from '@atom/sdk'
+} from '@quark/sdk'
 import { z } from 'zod'
 
-// 1. Initialize Atom
+// 1. Initialize Quark
 await bootstrap()
 
 // 2. Register a custom tool
@@ -78,14 +78,14 @@ import type {
   Session, 
   AgentConfig,
   ProfileDef 
-} from '@atom/sdk'
+} from '@quark/sdk'
 ```
 
 ## API Reference
 
 ### Core Functions
 
-- `bootstrap()` - Initialize Atom
+- `bootstrap()` - Initialize Quark
 - `createSession(opts?)` - Create a new session
 - `prompt(options)` - Run the agent loop
 - `cancel(sessionId)` - Cancel a running session
