@@ -859,15 +859,15 @@ describe("resolveProfile: sub_agents validation", () => {
     resetProfileCache()
     // Dismiss any lingering notifications before each test
     for (const n of getActive()) dismiss(n.id)
-    // Write a temp .atom/config.yaml in the project root so resolveProfile picks it up
-    atomDir = path.resolve(process.cwd(), ".atom")
+    // Write a temp .quark/config.yaml in the project root so resolveProfile picks it up
+    atomDir = path.resolve(process.cwd(), ".quark")
     atomConfigPath = path.join(atomDir, "config.yaml")
     fs.mkdirSync(atomDir, { recursive: true })
   })
 
   afterEach(() => {
     resetProfileCache()
-    // Remove the temp .atom dir we created
+    // Remove the temp .quark dir we created
     fs.rmSync(atomDir, { recursive: true, force: true })
     // Dismiss all notifications left over
     for (const n of getActive()) dismiss(n.id)

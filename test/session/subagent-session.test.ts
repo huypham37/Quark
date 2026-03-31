@@ -6,7 +6,7 @@
 // - listAllSessions() includes everything
 // - listChildSessions() returns only children of a given parent
 // - prompt() with parentSessionId creates a child session
-// - ATOM_SESSION_ID is set in process.env after prompt()
+// - QUARK_SESSION_ID is set in process.env after prompt()
 //
 // DB is initialised with an in-memory SQLite instance.
 
@@ -139,8 +139,8 @@ describe("sub-agent session: prompt()", () => {
     expect(child.kind).toBe("subagent")
   })
 
-  test("prompt() sets ATOM_SESSION_ID in process.env", async () => {
-    delete process.env.ATOM_SESSION_ID
+  test("prompt() sets QUARK_SESSION_ID in process.env", async () => {
+    delete process.env.QUARK_SESSION_ID
 
     let capturedId = ""
     bus.on("session-created", ({ sessionId }) => {
@@ -152,7 +152,7 @@ describe("sub-agent session: prompt()", () => {
     }).catch(() => {})
 
     expect(capturedId.length).toBeGreaterThan(0)
-    expect(String(process.env.ATOM_SESSION_ID)).toBe(capturedId)
+    expect(String(process.env.QUARK_SESSION_ID)).toBe(capturedId)
   })
 
   test("prompt() without parentSessionId creates a main session", async () => {
