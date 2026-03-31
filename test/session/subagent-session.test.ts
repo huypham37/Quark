@@ -10,8 +10,12 @@
 //
 // DB is initialised with an in-memory SQLite instance.
 
-import { describe, test, expect, beforeAll, afterEach } from "bun:test"
-import { getDB } from "../../src/storage/db"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot } from "../../src/storage/session-jsonl"
 import { prompt } from "../../src/session/prompt"
 import {
   createSession,
@@ -23,10 +27,19 @@ import {
 import { bus } from "../../src/session/events"
 import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 
+let tmpDir: string
+
 beforeAll(async () => {
-  getDB(":memory:")
+  tmpDir = mkdtempSync(join(tmpdir(), "quark-test-subagent-"))
+  setSessionStorageRoot(tmpDir)
+  ensureStorageRoot()
   resetBootstrap()
   await bootstrap()
+})
+
+afterAll(() => {
+  setSessionStorageRoot(undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 afterEach(() => {

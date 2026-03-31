@@ -7,8 +7,12 @@
 // 4. Bus events reasoning-start, reasoning-delta, reasoning-end are emitted
 //    with correct payload
 
-import { describe, test, expect, beforeAll, afterEach } from "bun:test"
-import { getDB } from "../../src/storage/db"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot } from "../../src/storage/session-jsonl"
 import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 import { createSession } from "../../src/session/session"
 import {
@@ -24,10 +28,19 @@ import { bus } from "../../src/session/events"
 // Setup
 // ---------------------------------------------------------------------------
 
+let tmpDir: string
+
 beforeAll(async () => {
-  getDB(":memory:")
+  tmpDir = mkdtempSync(join(tmpdir(), "quark-test-reasoning-"))
+  setSessionStorageRoot(tmpDir)
+  ensureStorageRoot()
   resetBootstrap()
   await bootstrap()
+})
+
+afterAll(() => {
+  setSessionStorageRoot(undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 afterEach(() => {
@@ -80,10 +93,10 @@ describe("reasoning part persistence", () => {
     // Simulate delta accumulation
     const data: ReasoningPartData = { text: "" }
     data.text += "First delta."
-    updatePart(partId, data)
+    updatePart(partId, data, sessionId, messageId, "reasoning")
 
     data.text += " Second delta."
-    updatePart(partId, data)
+    updatePart(partId, data, sessionId, messageId, "reasoning")
 
     const { parts } = loadMessages(sessionId)
     const reasoningPart = parts.find((p) => p.id === partId)

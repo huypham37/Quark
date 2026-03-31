@@ -30,6 +30,10 @@ function makeCtx(sessionId = "sess-1"): CompactMethodContext {
       createMessage: (() => {}) as any,
       addPart: (() => {}) as any,
       finishMessage: (() => {}) as any,
+      saveUserMessage: (() => {}) as any,
+    },
+    session: {
+      create: (() => {}) as any,
     },
   }
 }

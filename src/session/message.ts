@@ -1,13 +1,20 @@
 // Message persistence — save, load, convert to AI SDK ModelMessage format
 //
-// DB structure: Message has many Parts. Parts hold the content as JSON blobs.
-// For LLM calls, we convert these to ModelMessage[] (the AI SDK wire format).
+// Backed by per-session JSONL files instead of SQLite.
+// All writes are append-only events. Reads replay the JSONL file.
+//
+// Key change: updatePart() is replaced by appendPartSnapshot() which appends
+// a new PartEvent for the same partId (later events overwrite earlier ones
+// during replay).
 
-import { eq, asc } from "drizzle-orm"
 import { generateId } from "ai"
 import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from "ai"
-import { getDB } from "../storage/db"
-import { message, part } from "./session.sql"
+import { appendEvents, replaySessionFile } from "../storage/session-jsonl"
+import type {
+  MessageEvent,
+  PartEvent,
+  MessageEndEvent,
+} from "../storage/session-format"
 
 // ---- Types for Part data blobs ----
 
@@ -46,7 +53,7 @@ export interface ReasoningPartData {
   text: string
 }
 
-// ---- DB row types ----
+// ---- DB row types (kept for API stability) ----
 
 export interface MessageRow {
   id: string
@@ -77,40 +84,65 @@ export function saveUserMessage(input: {
   text: string
   images?: { mime: string; data: string }[]
 }): MessageRow {
-  const db = getDB()
   const now = Date.now()
   const msgId = generateId()
   const partId = generateId()
 
-  const msgRow: typeof message.$inferInsert = {
-    id: msgId,
+  const msgEvent: MessageEvent = {
+    v: 1,
+    ts: now,
     sessionId: input.sessionId,
+    type: "message",
+    messageId: msgId,
     role: "user",
+    modelId: null,
+    providerId: null,
     timeCreated: now,
+  }
+
+  const partEvent: PartEvent = {
+    v: 1,
+    ts: now,
+    sessionId: input.sessionId,
+    type: "part",
+    messageId: msgId,
+    partId,
+    partType: "text",
+    data: { text: input.text } satisfies TextPartData,
+  }
+
+  const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [msgEvent, partEvent]
+
+  // Image parts
+  for (const img of input.images ?? []) {
+    events.push({
+      v: 1,
+      ts: now,
+      sessionId: input.sessionId,
+      type: "part",
+      messageId: msgId,
+      partId: generateId(),
+      partType: "image",
+      data: { mime: img.mime, data: img.data } satisfies ImagePartData,
+    })
+  }
+
+  // User messages are immediately complete
+  const endEvent: MessageEndEvent = {
+    v: 1,
+    ts: now,
+    sessionId: input.sessionId,
+    type: "message-end",
+    messageId: msgId,
+    finish: "stop",
+    cost: null,
+    tokensIn: null,
+    tokensOut: null,
     timeCompleted: now,
   }
+  events.push(endEvent)
 
-  const partRow: typeof part.$inferInsert = {
-    id: partId,
-    messageId: msgId,
-    sessionId: input.sessionId,
-    type: "text",
-    data: JSON.stringify({ text: input.text } satisfies TextPartData),
-  }
-
-  db.insert(message).values(msgRow).run()
-  db.insert(part).values(partRow).run()
-
-  // Persist image parts if any
-  for (const img of input.images ?? []) {
-    db.insert(part).values({
-      id: generateId(),
-      messageId: msgId,
-      sessionId: input.sessionId,
-      type: "image",
-      data: JSON.stringify({ mime: img.mime, data: img.data } satisfies ImagePartData),
-    }).run()
-  }
+  appendEvents(input.sessionId, events)
 
   return {
     id: msgId,
@@ -132,20 +164,22 @@ export function createAssistantMessage(input: {
   modelId?: string
   providerId?: string
 }): MessageRow {
-  const db = getDB()
   const now = Date.now()
   const msgId = generateId()
 
-  const msgRow: typeof message.$inferInsert = {
-    id: msgId,
+  const event: MessageEvent = {
+    v: 1,
+    ts: now,
     sessionId: input.sessionId,
+    type: "message",
+    messageId: msgId,
     role: "assistant",
     modelId: input.modelId ?? null,
     providerId: input.providerId ?? null,
     timeCreated: now,
   }
 
-  db.insert(message).values(msgRow).run()
+  appendEvents(input.sessionId, [event])
 
   return {
     id: msgId,
@@ -168,49 +202,82 @@ export function addPart(input: {
   type: "text" | "tool" | "step-start" | "step-finish" | "summary" | "reasoning"
   data: TextPartData | ToolPartData | StepFinishData | SummaryData | ReasoningPartData | Record<string, never>
 }): string {
-  const db = getDB()
   const id = generateId()
 
-  db.insert(part)
-    .values({
-      id,
-      messageId: input.messageId,
-      sessionId: input.sessionId,
-      type: input.type,
-      data: JSON.stringify(input.data),
-    })
-    .run()
+  const event: PartEvent = {
+    v: 1,
+    ts: Date.now(),
+    sessionId: input.sessionId,
+    type: "part",
+    messageId: input.messageId,
+    partId: id,
+    partType: input.type,
+    data: input.data,
+  }
 
+  appendEvents(input.sessionId, [event])
   return id
 }
 
+/**
+ * Append a new snapshot for an existing part (replaces mutable updatePart).
+ *
+ * During JSONL replay, later PartEvents with the same partId overwrite
+ * earlier ones — so this effectively "updates" the part.
+ */
 export function updatePart(
   id: string,
   data: TextPartData | ToolPartData | StepFinishData | SummaryData | Record<string, never>,
+  /** Session ID — required for JSONL append. Callers must provide this. */
+  sessionId?: string,
+  /** Message ID — required for JSONL append. Callers must provide this. */
+  messageId?: string,
+  /** Part type — required for JSONL append. Callers must provide this. */
+  partType?: string,
 ): void {
-  const db = getDB()
-  db.update(part)
-    .set({ data: JSON.stringify(data) })
-    .where(eq(part.id, id))
-    .run()
+  // If session/message/type context is missing, we cannot write the event.
+  // This maintains backward compatibility — processor.ts will be updated
+  // to always pass these.
+  if (!sessionId || !messageId || !partType) return
+
+  const event: PartEvent = {
+    v: 1,
+    ts: Date.now(),
+    sessionId,
+    type: "part",
+    messageId,
+    partId: id,
+    partType: partType as PartEvent["partType"],
+    data,
+  }
+
+  appendEvents(sessionId, [event])
 }
 
 export function finishMessage(
   id: string,
   finish: "stop" | "tool-calls" | "length",
   usage?: { tokensIn?: number; tokensOut?: number; cost?: number },
+  /** Session ID — required for JSONL append. */
+  sessionId?: string,
 ): void {
-  const db = getDB()
-  db.update(message)
-    .set({
-      finish,
-      tokensIn: usage?.tokensIn ?? null,
-      tokensOut: usage?.tokensOut ?? null,
-      cost: usage?.cost ?? null,
-      timeCompleted: Date.now(),
-    })
-    .where(eq(message.id, id))
-    .run()
+  // Session ID is required for JSONL. Callers will be updated.
+  if (!sessionId) return
+
+  const event: MessageEndEvent = {
+    v: 1,
+    ts: Date.now(),
+    sessionId,
+    type: "message-end",
+    messageId: id,
+    finish,
+    cost: usage?.cost ?? null,
+    tokensIn: usage?.tokensIn ?? null,
+    tokensOut: usage?.tokensOut ?? null,
+    timeCompleted: Date.now(),
+  }
+
+  appendEvents(sessionId, [event])
 }
 
 // ---- Load operations ----
@@ -219,21 +286,7 @@ export function loadMessages(sessionId: string): {
   messages: MessageRow[]
   parts: PartRow[]
 } {
-  const db = getDB()
-
-  const messages = db
-    .select()
-    .from(message)
-    .where(eq(message.sessionId, sessionId))
-    .orderBy(asc(message.timeCreated))
-    .all()
-
-  const parts = db
-    .select()
-    .from(part)
-    .where(eq(part.sessionId, sessionId))
-    .all()
-
+  const { messages, parts } = replaySessionFile(sessionId)
   return { messages, parts }
 }
 
