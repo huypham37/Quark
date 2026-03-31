@@ -30,6 +30,7 @@ import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { info as notifyInfo } from "../../notification/notification"
+import { getNextModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
 
 /** Command handler result */
@@ -689,6 +690,22 @@ export const App: Component<AppProps> = (props) => {
         evt.preventDefault()
         return
       }
+    }
+
+    // Tab model cycling — when no images, no dropdown, not running
+    if (evt.name === "tab" && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
+      if (props.getModels && props.getCurrentModel) {
+        const models = props.getModels()
+        const next = getNextModel(models, props.getCurrentModel())
+        if (next) {
+          if (props.onCommand) {
+            props.onCommand("model", next, state.store.sessionId)
+          }
+          state.setStore("status", "modelName", next)
+        }
+      }
+      evt.preventDefault()
+      return
     }
 
     // Permission mode: intercept a/o/r keys
