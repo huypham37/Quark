@@ -29,7 +29,18 @@ interface ToolResultLineProps {
 function getToolLabel(tool: string, input: Record<string, unknown>): string {
   const path = input.filePath ?? input.file_path ?? input.path
   if (typeof path === "string") {
-    return path.replace(/^\/Users\/[^/]+\//, "~/")
+    const short = path.replace(/^\/Users\/[^/]+\//, "~/")
+    if (tool === "read") {
+      const offset = typeof input.offset === "number" ? input.offset : null
+      const limit = typeof input.limit === "number" ? input.limit : null
+      if (offset !== null || limit !== null) {
+        const range = offset !== null && limit !== null
+          ? `:${offset}+${limit}`
+          : offset !== null ? `:${offset}` : `+${limit}`
+        return `${short} ${range}`
+      }
+    }
+    return short
   }
 
   const cmd = input.command ?? input.cmd
@@ -97,8 +108,7 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
             </Show>
           </Show>
         </box>
-        <text bold>{displayName}</text>
-        <text> </text>
+        <text bold flexShrink={0}>{displayName} </text>
         <Show when={label()}>
           <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
         </Show>
