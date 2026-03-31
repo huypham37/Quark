@@ -201,14 +201,16 @@ describe("wireEvents: step-finish token accumulation", () => {
       messageId: "m1",
       data: { tokens: { input: 100, output: 50 } } as any,
     })
-    expect(s.store.status.tokensUsed).toBe(150)
+    // tokensUsed tracks input tokens only (context window consumption)
+    expect(s.store.status.tokensUsed).toBe(100)
 
     bus.emit("step-finish", {
       sessionId: "s1",
       messageId: "m1",
       data: { tokens: { input: 200, output: 100 } } as any,
     })
-    expect(s.store.status.tokensUsed).toBe(450)
+    // Each step-finish replaces the value with latest input count (not cumulative)
+    expect(s.store.status.tokensUsed).toBe(200)
   })
 
   test("handles missing token data gracefully", () => {
@@ -243,7 +245,7 @@ describe("wireEvents: session-reset and session-switch", () => {
       messageId: "m1",
       data: { tokens: { input: 100, output: 50 } } as any,
     })
-    expect(s.store.status.tokensUsed).toBe(150)
+    expect(s.store.status.tokensUsed).toBe(100)
 
     bus.emit("session-reset", { sessionId: "s2" })
     expect(s.store.status.tokensUsed).toBe(0)
@@ -254,7 +256,7 @@ describe("wireEvents: session-reset and session-switch", () => {
       messageId: "m2",
       data: { tokens: { input: 10, output: 5 } } as any,
     })
-    expect(s.store.status.tokensUsed).toBe(15)
+    expect(s.store.status.tokensUsed).toBe(10)
   })
 
   test("session-switch loads messages and switches session", () => {
@@ -275,9 +277,10 @@ describe("wireEvents: session-reset and session-switch", () => {
       messageId: "m1",
       data: { tokens: { input: 500, output: 500 } } as any,
     })
-    expect(s.store.status.tokensUsed).toBe(1000)
+    expect(s.store.status.tokensUsed).toBe(500)
 
-    bus.emit("session-switch", { sessionId: "s2", messages: [] })
+    // Switch to a fresh session with no stored tokens — should reset to 0
+    bus.emit("session-switch", { sessionId: "brand-new-session-xyz", messages: [] })
     expect(s.store.status.tokensUsed).toBe(0)
   })
 })

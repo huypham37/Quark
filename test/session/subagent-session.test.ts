@@ -6,12 +6,16 @@
 // - listAllSessions() includes everything
 // - listChildSessions() returns only children of a given parent
 // - prompt() with parentSessionId creates a child session
-// - ATOM_SESSION_ID is set in process.env after prompt()
+// - QUARK_SESSION_ID is set in process.env after prompt()
 //
 // DB is initialised with an in-memory SQLite instance.
 
-import { describe, test, expect, beforeAll, afterEach } from "bun:test"
-import { getDB } from "../../src/storage/db"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot } from "../../src/storage/session-jsonl"
 import { prompt } from "../../src/session/prompt"
 import {
   createSession,
@@ -23,10 +27,19 @@ import {
 import { bus } from "../../src/session/events"
 import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 
+let tmpDir: string
+
 beforeAll(async () => {
-  getDB(":memory:")
+  tmpDir = mkdtempSync(join(tmpdir(), "quark-test-subagent-"))
+  setSessionStorageRoot(tmpDir)
+  ensureStorageRoot()
   resetBootstrap()
   await bootstrap()
+})
+
+afterAll(() => {
+  setSessionStorageRoot(undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 afterEach(() => {
@@ -126,8 +139,8 @@ describe("sub-agent session: prompt()", () => {
     expect(child.kind).toBe("subagent")
   })
 
-  test("prompt() sets ATOM_SESSION_ID in process.env", async () => {
-    delete process.env.ATOM_SESSION_ID
+  test("prompt() sets QUARK_SESSION_ID in process.env", async () => {
+    delete process.env.QUARK_SESSION_ID
 
     let capturedId = ""
     bus.on("session-created", ({ sessionId }) => {
@@ -139,7 +152,7 @@ describe("sub-agent session: prompt()", () => {
     }).catch(() => {})
 
     expect(capturedId.length).toBeGreaterThan(0)
-    expect(String(process.env.ATOM_SESSION_ID)).toBe(capturedId)
+    expect(String(process.env.QUARK_SESSION_ID)).toBe(capturedId)
   })
 
   test("prompt() without parentSessionId creates a main session", async () => {

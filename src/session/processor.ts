@@ -115,7 +115,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
           case "text-end": {
             if (currentText) {
               currentText.data.text = currentText.data.text.trimEnd()
-              updatePart(currentText.partId, currentText.data)
+              updatePart(currentText.partId, currentText.data, sid, mid, "text")
               bus.emit("text-end", {
                 sessionId: sid,
                 messageId: mid,
@@ -165,7 +165,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               match.data.status = "running"
               match.data.input = event.input as Record<string, unknown>
               match.data.tool = event.toolName
-              updatePart(match.partId, match.data)
+              updatePart(match.partId, match.data, sid, mid, "tool")
               bus.emit("tool-input", {
                 sessionId: sid,
                 messageId: mid,
@@ -188,7 +188,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               match.data.output = extractOutput(out)
               // Extract diff from metadata if present
               const diff = extractDiff(out)
-              updatePart(match.partId, match.data)
+              updatePart(match.partId, match.data, sid, mid, "tool")
               bus.emit("tool-end", {
                 sessionId: sid,
                 messageId: mid,
@@ -210,7 +210,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               match.data.status = "error"
               match.data.input = (event.input as Record<string, unknown>) ?? match.data.input
               match.data.error = String(event.error)
-              updatePart(match.partId, match.data)
+              updatePart(match.partId, match.data, sid, mid, "tool")
               bus.emit("tool-end", {
                 sessionId: sid,
                 messageId: mid,
@@ -300,7 +300,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
           case "reasoning-end": {
             if (currentReasoning) {
-              updatePart(currentReasoning.partId, currentReasoning.data)
+              updatePart(currentReasoning.partId, currentReasoning.data, sid, mid, "reasoning")
               bus.emit("reasoning-end", {
                 sessionId: sid,
                 messageId: mid,
@@ -321,7 +321,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         if (entry.data.status === "pending" || entry.data.status === "running") {
           entry.data.status = "error"
           entry.data.error = "Tool execution aborted"
-          updatePart(entry.partId, entry.data)
+          updatePart(entry.partId, entry.data, sid, mid, "tool")
           bus.emit("tool-end", {
             sessionId: sid,
             messageId: mid,
@@ -338,7 +338,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       // Flush any in-progress text
       if (currentText) {
         currentText.data.text = currentText.data.text.trimEnd()
-        updatePart(currentText.partId, currentText.data)
+        updatePart(currentText.partId, currentText.data, sid, mid, "text")
         currentText = undefined
       }
 
@@ -347,13 +347,13 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
         // If the server says wait > 5 minutes (e.g. monthly quota reset), don't retry — surface it
         if (serverDelay !== undefined && serverDelay > 5 * 60 * 1000) {
-          finishMessage(mid, "stop")
+          finishMessage(mid, "stop", undefined, sid)
           bus.emit("error", { sessionId: sid, error: e })
           throw e
         }
 
         if (attempt >= maxRetries) {
-          finishMessage(mid, "stop")
+          finishMessage(mid, "stop", undefined, sid)
           bus.emit("error", { sessionId: sid, error: e })
           throw e
         }
@@ -387,7 +387,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       }
 
       // Update the message with error state
-      finishMessage(mid, "stop")
+      finishMessage(mid, "stop", undefined, sid)
       bus.emit("error", { sessionId: sid, error: e })
       throw e
     }
@@ -398,7 +398,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       : "stop" as const
 
     // Accumulate total usage from step-finish parts
-    finishMessage(mid, finish)
+    finishMessage(mid, finish, undefined, sid)
     bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish })
 
     if (finish === "tool-calls") return "continue"
@@ -406,7 +406,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   }
 
   // Should not reach here, but if abort breaks the retry loop
-  finishMessage(mid, "stop")
+  finishMessage(mid, "stop", undefined, sid)
   return "stop"
 }
 

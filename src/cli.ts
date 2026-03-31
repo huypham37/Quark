@@ -6,6 +6,7 @@
 //   quark "quick prompt without flags"
 //   quark --sub-agent --profile researcher --prompt "research this topic"
 //   quark --parent-session <id> --profile researcher --prompt "research this topic"
+//   quark --model claude-sonnet-4.5 "one-off with a specific model"
 
 import { parseArgs } from "util"
 import { bootstrap } from "./bootstrap"
@@ -14,6 +15,7 @@ import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
 import { startEventWriter } from "./session/event-writer"
+import { getProviderId, parseModelSpec } from "./config/config"
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -27,8 +29,10 @@ Options:
   -p, --profile <name>          Profile to use (default: from config)
   -m, --prompt <text>           Prompt text (alternative to positional)
   -s, --session <id>            Resume an existing session
+      --model <id>              Model to use for this run (e.g. claude-sonnet-4.5)
       --parent-session <id>     Create a child session under this parent
       --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
+      --no-store                Run an ephemeral session — never written to disk
   -l, --list-profiles           List available profiles
   -h, --help                    Show this help message
 
@@ -36,6 +40,8 @@ Examples:
   quark --profile coder --prompt "fix the bug in main.ts"
   quark -p coder "fix the bug in main.ts"
   quark "quick question"
+  quark --model claude-sonnet-4.5 "use a specific model for this run"
+  quark --no-store "quick one-off question that should not be saved"
   quark --sub-agent --profile researcher --prompt "research auth flow"
   quark --parent-session sess_abc --profile researcher --prompt "research auth flow"
 `)
@@ -46,7 +52,9 @@ interface ParsedArgs {
   prompt?: string
   sessionId?: string
   parentSessionId?: string
+  model?: string
   subAgent?: boolean
+  noStore?: boolean
   listProfiles?: boolean
   help?: boolean
 }
@@ -58,8 +66,10 @@ function parseArguments(): ParsedArgs {
         profile: { type: "string", short: "p" },
         prompt: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
+        model: { type: "string" },
         "parent-session": { type: "string" },
         "sub-agent": { type: "boolean" },
+        "no-store": { type: "boolean" },
         "list-profiles": { type: "boolean", short: "l" },
         help: { type: "boolean", short: "h" },
       },
@@ -90,12 +100,20 @@ function parseArguments(): ParsedArgs {
       process.exit(1)
     }
 
+    // --no-store and --session are mutually exclusive (can't resume an ephemeral session)
+    if (values["no-store"] && values.session) {
+      console.error("Error: --no-store and --session are mutually exclusive")
+      process.exit(1)
+    }
+
     return {
       profile: values.profile,
       prompt: promptText,
       sessionId: values.session,
       parentSessionId,
+      model: values.model,
       subAgent: values["sub-agent"],
+      noStore: values["no-store"],
       listProfiles: values["list-profiles"],
       help: values.help,
     }
@@ -184,11 +202,17 @@ async function main() {
 
   // Run the prompt
   try {
+    const modelOverride = args.model
+      ? { provider: getProviderId("main"), model: parseModelSpec(args.model).model }
+      : undefined
+
     const result = await prompt({
       sessionId: args.sessionId,
       parentSessionId: args.parentSessionId,
+      ephemeral: args.noStore,
       parts: [{ type: "text", text: args.prompt }],
       agent,
+      model: modelOverride,
     })
 
     console.log(`\n[session: ${result.sessionId}]`)

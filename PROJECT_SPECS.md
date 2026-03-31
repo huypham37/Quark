@@ -2,7 +2,7 @@
 
 > Audit-grade specification document for the Quark AI coding agent.
 > Generated from deep code exploration of the live codebase.
-> Last updated: 2026-03-29
+> Last updated: 2026-03-31
 
 ---
 
@@ -71,12 +71,16 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 - `CorrectedError` delivers user feedback back to the model; `RejectedError` halts
 - `DeniedError` thrown immediately on hard deny rules
 
-### Session Persistence (SQLite)
-- Three tables: `session`, `message`, `part`
-- Session: id, title (auto-generated), directory, parent_session_id, kind (`main`/`subagent`), timestamps
-- Message: id, session_id, role (`user`/`assistant`), model_id, provider_id, finish reason, token usage, timestamps
-- Part: id, message_id, session_id, type (`text`/`tool`/`step-start`/`step-finish`/`summary`/`image`/`reasoning`), JSON data blob
-- Idempotent migrations run at startup — no migration files, inline `ALTER TABLE` guards
+### Session Persistence (JSONL, append-only)
+- Per-session storage: `~/.config/quark/session/<id>/session.jsonl` (append-only event log) + `meta.json` (derived cache)
+- Session kinds: `main` (top-level), `subagent` (spawned child), `ephemeral` (in-memory only, never written to disk)
+- Ephemeral sessions: created via `createSession({ ephemeral: true })`, `prompt({ ephemeral: true })`, or `--no-store` CLI flag; stored in a module-level Map, excluded from all listings
+- Session: id, title (auto-generated), directory, parentSessionId, kind, timestamps
+- Message: id, sessionId, role (`user`/`assistant`), modelId, providerId, finish reason, token/cost fields, timestamps
+- Part: id, messageId, sessionId, type (`text`/`tool`/`step-start`/`step-finish`/`summary`/`image`/`reasoning`), data blob
+- Event types: `session`, `session-update`, `message`, `part`, `message-end`
+- `meta.json` is an atomic-write derived cache (write `.tmp` → rename) for fast session listing without full replay
+- `scanSessionMetas()` reads only `meta.json` files; `replaySessionFile()` does full log replay as fallback
 
 ### Context Compaction
 - Auto-compaction triggered when estimated tokens ≥ `threshold` × context_window (default 95%)
@@ -104,7 +108,8 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 - TUI renders thinking text in a collapsible `ThinkingIndicator` component
 
 ### Sub-Agent System
-- CLI: `quark --sub-agent --profile <name> --prompt "..."` inherits `QUARK_SESSION_ID`
+- CLI: `quark --sub-agent --no-store --profile <name> --prompt "..."` — `--no-store` ensures sub-agent session is ephemeral (not persisted)
+- `QUARK_SESSION_ID` env var inherited from parent process to link sub-agent to parent session
 - Parent session auto-becomes parent; child session typed as `kind: "subagent"`
 - Sub-agent activity streamed to parent via NDJSON on stderr
 - Parent Bash tool parses NDJSON and re-emits on parent event bus
@@ -119,6 +124,7 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 - `@file` mention with fuzzy autocomplete — inlines file content as context
 - Image paste support (Ctrl+V) — image chips with Tab navigation and Backspace removal
 - Session picker and model picker overlays (arrow key navigation)
+- **Tab key cycles to the next model directly** — no picker required; `/model` command opens full picker for manual selection
 - Token usage + cost display in footer bar
 - Syntax-highlighted diff view for file edits
 - Notification toast system (non-blocking, auto-dismiss)
@@ -127,6 +133,7 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 - Notification panel uses a solid background that fills the full panel and border area for improved readability
 - Copy selection on mouse release (Ctrl+Y)
 - Terminal background detection for theme adaptation (dark/light)
+- Bash tool header renders label and command with clear spacing
 
 ### Plugin System
 - Plugins: `~/.config/quark/plugins/*.ts` — loaded async at bootstrap
@@ -157,14 +164,14 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 
 | Layer | Technology |
 |---|---|
-| **Runtime** | [Bun](https://bun.sh) — required (uses `bun:sqlite` native binding) |
+| **Runtime** | [Bun](https://bun.sh) — required (fast TypeScript execution, built-in test runner) |
 | **Language** | TypeScript (strict mode, ESNext, bundler module resolution) |
 | **LLM SDK** | [Vercel AI SDK](https://sdk.vercel.ai) v6 (`ai` package) — `streamText`, `generateText`, typed tool definitions |
 | **Anthropic Provider** | `@ai-sdk/anthropic` ^3.0.64 |
 | **OpenAI Provider** | `@ai-sdk/openai` ^3.0.41 |
 | **TUI Framework** | `@opentui/core` + `@opentui/solid` (OpenTUI) ^0.1.86 |
 | **UI Reactivity** | `solid-js` ^1.9.11 |
-| **Database** | SQLite via `bun:sqlite` + `drizzle-orm` ^0.45.1 (bun-sqlite adapter) |
+| **Storage** | Append-only JSONL files per session in `~/.config/quark/session/<id>/` — no database dependency |
 | **Config parsing** | `yaml` ^2.8.2 |
 | **Validation** | `zod` ^4.3.6 |
 | **Build** | `tsup` ^8.5.1 (SDK bundle), `tsc` for declaration files |
@@ -205,9 +212,9 @@ The design thesis: **the agent adapts to your system, not the other way around.*
                                  │
 ┌────────────────────────────────▼───────────────────────────────────────── ┐
 │                      Persistence Layer                                     │
-│  SQLite (quark.db) via bun:sqlite + drizzle-orm                            │
-│  Tables: session | message | part                                          │
-│  WAL mode, NORMAL sync, 5s busy timeout, foreign keys ON                   │
+│  Append-only JSONL per session  (~/.config/quark/session/<id>/)            │
+│  session.jsonl — event log | meta.json — derived fast-read cache           │
+│  Ephemeral sessions: in-memory Map only, never flushed to disk             │
 └─────────────────────────────────────────────────────────────────────────── ┘
 ```
 
@@ -217,14 +224,13 @@ The design thesis: **the agent adapts to your system, not the other way around.*
 src/
 ├── index.ts              — Public SDK exports
 ├── cli.ts                — CLI entry point (parseArgs, launch TUI or headless)
-├── bootstrap.ts          — Initialization: DB, tools, compaction methods, plugins
+├── bootstrap.ts          — Initialization: tools, compaction methods, plugins
 ├── agent.ts              — AgentConfig type + agentFromProfile()
 │
 ├── session/
 │   ├── prompt.ts         — prompt() + loop() — THE agent loop
 │   ├── processor.ts      — processStream() — consumes LLM stream, persists parts
-│   ├── session.ts        — createSession, getSession, listSessions, touchSession
-│   ├── session.sql.ts    — Drizzle schema (session, message, part tables)
+│   ├── session.ts        — createSession, getSession, listSessions, touchSession (+ ephemeral store)
 │   ├── message.ts        — saveUserMessage, createAssistantMessage, addPart, toModelMessages
 │   ├── system.ts         — buildSystem() — assembles system prompt array
 │   ├── compaction.ts     — shouldCompact, estimateTokens, compact (legacy), getTotalTokens
@@ -236,6 +242,11 @@ src/
 │   └── methods/
 │       ├── general.ts    — General compaction (new-session strategy)
 │       └── anchored.ts   — Anchored compaction (in-session summary anchor)
+│
+├── storage/
+│   ├── session-path.ts   — Path resolution for session dirs/files; setSessionStorageRoot (test override)
+│   ├── session-jsonl.ts  — JSONL read/write: createSessionLog, appendEvents, scanSessionMetas, replaySessionFile
+│   └── session-format.ts — JSONL event type definitions (SessionEvent, MessageEvent, PartEvent, etc.)
 │
 ├── tool/
 │   ├── tool.ts           — ToolDef, ToolContext, ToolResult interfaces
@@ -393,7 +404,8 @@ Drop-in TypeScript plugins with typed hook system.
 **Status:** Complete  
 Hierarchical sessions with real-time TUI observability.
 
-- `--sub-agent` CLI flag: reads `QUARK_SESSION_ID`, creates child session
+- `--sub-agent --no-store` CLI flags: reads `QUARK_SESSION_ID`, creates ephemeral child session
+- `--no-store` ensures sub-agent sessions are never persisted to disk
 - `event-writer.ts`: writes structured NDJSON events to stderr during sub-agent run
 - Parent Bash tool parses stderr NDJSON, re-emits as `subagent-*` events on parent bus
 - TUI `SubAgentView` renders nested tool activity inline under the parent tool call
@@ -411,6 +423,8 @@ Full terminal UI with rich interaction model.
 - Diff view for file edits with syntax highlighting
 - Token usage / cost / model display in footer
 - Theme system with automatic terminal background detection
+- **Tab key cycles model directly** — instant switch without opening picker
+- Bash tool renders with correct spacing between label and command argument
 
 ### Epic 11 — Retry & Error Recovery
 **Status:** Complete  
@@ -426,9 +440,35 @@ Resilient handling of provider failures.
 Quark as a publishable, embeddable SDK.
 
 - `tsup` bundle to ESM + CJS with `@quark/sdk` package name
-- Full type exports: ToolDef, Session, AgentConfig, ProfileDef, BusEvents, etc.
+- Full type exports: ToolDef, Session, SessionKind (`main`/`subagent`/`ephemeral`), AgentConfig, ProfileDef, BusEvents, etc.
 - CLI entry `quark` binary via `bin.quark`
-- `--list-profiles`, `--help`, `--session`, `--parent-session`, `--sub-agent` flags
+- `--list-profiles`, `--help`, `--session`, `--parent-session`, `--sub-agent`, `--no-store` flags
+
+### Epic 13 — JSONL Storage Migration
+**Status:** Complete  
+Replaced SQLite with per-session append-only JSONL storage.
+
+- Each session stored in `~/.config/quark/session/<id>/session.jsonl` + `meta.json`
+- Eliminated `bun:sqlite` and `drizzle-orm` dependencies — zero DB setup
+- `createSessionLog()`: creates session dir + writes first `session` event
+- `appendEvents()`: append-only writes, atomic `meta.json` patch on change
+- `replaySessionFile()`: materialises full session state from event log (source of truth)
+- `scanSessionMetas()`: fast session listing from cached `meta.json` files
+- `meta.json` written atomically (`.tmp` → rename) to prevent corruption
+- Resolved WAL contention and git interference issues from CWD-relative `quark.db` (#21, #22 closed)
+
+### Epic 14 — Ephemeral Sessions
+**Status:** Complete  
+In-memory sessions that are never persisted to disk.
+
+- `SessionKind` extended: `"main" | "subagent" | "ephemeral"`
+- `createSession({ ephemeral: true })`: stores in module-level Map, skips all filesystem writes
+- `prompt({ ephemeral: true })`: full agent loop on an ephemeral session
+- `--no-store` CLI flag: creates ephemeral session for one-off invocations
+- `getSession()` checks in-memory store first, then disk
+- `touchSession()` / `setSessionTitle()` are no-ops for ephemeral sessions
+- Excluded from `listSessions()` and `listAllSessions()` (disk scan only)
+- Primary use case: sub-agent spawning — child sessions don’t pollute the session list
 
 ---
 
@@ -459,9 +499,9 @@ The following are explicitly **not built** and not intended to be built unless a
 | OQ-1 | Should `general` compaction write a `compactedUntilMessageId` anchor into the new session's summary part? Currently it writes summary as a plain user message — no anchor linking back to the source session ID. | — | 2026-03-29 |
 | OQ-2 | `ruleset: []` is hardcoded in `toAITool()` — project/profile permission rules from config.yaml are not wired into tool execution. When will config-level rules be plumbed through? | — | 2026-03-29 |
 | OQ-3 | `getCopilotThinkingBudget()` returns a module-level singleton. If multiple concurrent sessions use different budgets, there will be a conflict. Should thinking budget be per-session? | — | 2026-03-29 |
-| OQ-4 | The `--sub-agent` mode requires `QUARK_SESSION_ID` set in environment. This works when spawned by the Bash tool but is fragile for other callers. Should there be a more robust session chaining API? | — | 2026-03-29 |
+| OQ-4 | ~~The `--sub-agent` mode requires `QUARK_SESSION_ID` set in environment. Fragile for non-Bash callers.~~ Resolved: `--no-store` + ephemeral sessions decouple sub-agent lifecycle from persistence. | — | 2026-03-29 |
 | OQ-5 | `sdk` package is named `@quark/sdk` but listed as v0.1.0. Is there a publishing pipeline, versioning strategy, or changelog process? | — | 2026-03-29 |
-| OQ-6 | `atom.db` and `quark.db` both exist at the project root — artifact from a naming migration? Only `quark.db` should be the live database. | — | 2026-03-29 |
+| OQ-6 | ~~`atom.db` and `quark.db` both exist at the project root — artifact from naming migration.~~ Resolved: JSONL migration (#23) removed all SQLite DB files from the project. | — | 2026-03-29 |
 | OQ-7 | `sdk_guide.md` still uses `@atom/sdk` import names. Should be updated to `@quark/sdk`. | — | 2026-03-29 |
 | OQ-8 | `PHILOSOPHY.md` references `Atom` throughout (internal name), while `AGENTS.md` correctly uses `Quark`. Should PHILOSOPHY.md be updated? | — | 2026-03-29 |
 
@@ -471,9 +511,9 @@ The following are explicitly **not built** and not intended to be built unless a
 
 | # | Date | Decision | Rationale | Alternatives Considered |
 |---|---|---|---|---|
-| DL-1 | Early | Use Bun as the runtime | `bun:sqlite` native SQLite binding, fast TypeScript execution, built-in test runner | Node.js (no native SQLite), Deno (ecosystem immaturity) |
+| DL-1 | Early | Use Bun as the runtime | Fast TypeScript execution, built-in test runner, native FS APIs; originally for `bun:sqlite` (since replaced by JSONL) | Node.js, Deno (ecosystem immaturity) |
 | DL-2 | Early | Vercel AI SDK as LLM abstraction | Provider-agnostic, first-class streaming, typed tool schemas, `streamText`/`generateText` symmetry | Raw fetch, LangChain (too opinionated), LlamaIndex |
-| DL-3 | Early | SQLite over PostgreSQL / in-memory state | Zero-deployment, local-first, persists across restarts, works offline | Postgres (overkill), in-memory (lost on crash), file-based JSON |
+| DL-3 | Early | ~~SQLite~~ → JSONL for session storage | SQLite was chosen for zero-deployment and local-first, but caused CWD pollution and WAL contention. Migrated (#23) to per-session append-only JSONL: simpler, no DB engine, git-safe, naturally isolated. | Postgres (overkill), shared SQLite in `~/.config/quark/` (still contended), in-memory only |
 | DL-4 | Early | OpenTUI + SolidJS for TUI | Terminal-native rendering at 60fps, reactive signals, no DOM dependency | Ink (React for terminals, slower), blessed, custom ANSI renderer |
 | DL-5 | Early | Profile-driven identity | Noise reduction — agents only carry tools/skills they need; prevents context bloat | Single global config, capability flags, per-request tool selection |
 | DL-6 | Milestone | "New-session" compaction strategy (general method) | Old session is archived as history; new session starts clean with summary seed. No risk of corrupting in-progress session state | In-place summary anchor (anchored method, kept as alternative), token pruning |
@@ -485,3 +525,4 @@ The following are explicitly **not built** and not intended to be built unless a
 | DL-12 | Milestone | `models.dev` for per-model token limits | Avoids hardcoding model limits that change; auto-refreshes hourly; single source of truth | Hardcoded map (stale fast), LLM vendor APIs (rate-limited, complex auth) |
 | DL-13 | 2026-03 | Extended thinking via Ctrl+T toggle | User-controlled toggle rather than always-on; `claude-*` models only; budget of 10k tokens | Always-on thinking (expensive), per-message flag, config file toggle |
 | DL-14 | 2026-03 | Rename from Atom → Quark | Brand/naming alignment; some residual `Atom` references remain in PHILOSOPHY.md and SDK_GUIDE.md | Keep Atom (conflict with Atom editor), Nucleus, Forge |
+| DL-15 | 2026-03-31 | Ephemeral sessions as `SessionKind` + `--no-store` flag | Sub-agent child sessions should not persist; first-class ephemeral kind is simpler and more correct than `:memory:` SQLite workaround or post-run cleanup | Delete after run (race condition), separate in-memory DB (complex), per-session config flag |

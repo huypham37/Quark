@@ -161,7 +161,7 @@ export const general: CompactMethodDef = {
             })
           }
         }
-        ctx.persist.finishMessage(newMsg.id, msg.finish ?? "stop")
+        ctx.persist.finishMessage(newMsg.id, msg.finish ?? "stop", undefined, newSid)
       }
     }
 

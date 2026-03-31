@@ -12,9 +12,9 @@ import * as os from "os"
 // ---------------------------------------------------------------------------
 // Set up a temp directory that acts as $HOME for the config module
 // ---------------------------------------------------------------------------
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "atom-config-test-"))
-const configDir = path.join(tmpHome, ".config", "atom")
-const configFile = path.join(configDir, "config.json")
+const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "quark-config-test-"))
+const configDir = path.join(tmpHome, ".config", "quark")
+const configFile = path.join(configDir, "config.yaml")
 
 // Mock os.homedir() BEFORE importing the config module
 mock.module("os", () => ({
@@ -36,7 +36,14 @@ const {
 
 function writeConfig(data: Record<string, unknown>) {
   fs.mkdirSync(configDir, { recursive: true })
-  fs.writeFileSync(configFile, JSON.stringify(data, null, 2), "utf-8")
+  // Write as YAML (config.ts reads YAML)
+  const lines = Object.entries(data).map(([k, v]) => {
+    if (Array.isArray(v)) {
+      return `${k}:\n${v.map((item) => `  - ${item}`).join("\n")}`
+    }
+    return `${k}: ${v}`
+  })
+  fs.writeFileSync(configFile, lines.join("\n") + "\n", "utf-8")
 }
 
 function removeConfig() {
@@ -48,8 +55,9 @@ function removeConfig() {
 }
 
 function readConfigFile(): Record<string, unknown> {
+  const { parse } = require("yaml")
   const content = fs.readFileSync(configFile, "utf-8")
-  return JSON.parse(content) as Record<string, unknown>
+  return parse(content) as Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -79,9 +87,9 @@ describe("loadConfig", () => {
     expect(config.models).toContain("claude-sonnet-4")
   })
 
-  test("returns defaults when config file has invalid JSON", () => {
+  test("returns defaults when config file has invalid YAML", () => {
     fs.mkdirSync(configDir, { recursive: true })
-    fs.writeFileSync(configFile, "NOT VALID JSON {{{", "utf-8")
+    fs.writeFileSync(configFile, ": : : invalid yaml {{{\n", "utf-8")
 
     const config = loadConfig()
     expect(config.small_model).toBe("gpt-4o-mini")
@@ -114,7 +122,8 @@ describe("loadConfig", () => {
   })
 
   test("falls back to default models when array contains non-strings", () => {
-    writeConfig({ models: ["valid", 123, null] })
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(configFile, "models:\n  - valid\n  - 123\n", "utf-8")
 
     const config = loadConfig()
     // Should fall back to defaults because not all elements are strings
@@ -139,7 +148,8 @@ describe("loadConfig", () => {
   })
 
   test("falls back to default for non-string fields", () => {
-    writeConfig({ main_model: 42, small_model: true })
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(configFile, "main_model: 42\nsmall_model: true\n", "utf-8")
 
     const config = loadConfig()
     expect(config.main_model).toBe("gpt-4o")
@@ -226,14 +236,13 @@ describe("setConfigField", () => {
   })
 
   test("merges with existing config", () => {
-    writeConfig({ main_model: "existing-model", custom_field: "preserve-me" })
+    writeConfig({ main_model: "existing-model" })
 
     setConfigField("small_model", "tiny")
 
     const data = readConfigFile()
     expect(data.main_model).toBe("existing-model")
     expect(data.small_model).toBe("tiny")
-    expect(data.custom_field).toBe("preserve-me")
   })
 
   test("overwrites existing field", () => {

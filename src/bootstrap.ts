@@ -9,7 +9,7 @@ import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
 import { compactTool } from "./tool/compact"
 import { buildSkillTool } from "./tool/skill"
-import { getDB } from "./storage/db"
+import { ensureStorageRoot } from "./storage/session-jsonl"
 import { loadProfileTools } from "./tool/loader"
 import { loadPlugins } from "./plugin/loader"
 import { registerMethod, setDefaultMethod } from "./session/compact-resolver"
@@ -36,7 +36,7 @@ export interface BootstrapOptions {
  * Subsequent calls are no-ops (idempotent).
  *
  * Responsibilities:
- * - Opens the SQLite database (`quark.db`)
+ * - Ensures the session storage directory exists (`~/.config/quark/session/`)
  * - Registers built-in tools: `read`, `compact`, `skill`
  * - Registers and sets the default compaction method from config
  * - Loads profile-declared external tools from `~/.config/quark/tools/{id}.ts`
@@ -56,8 +56,8 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   if (initialized) return
   initialized = true
 
-  // Initialize SQLite database (lazy — creates tables on first access)
-  getDB()
+  // Ensure session storage directory exists
+  ensureStorageRoot()
 
   // Register built-in tools (always available)
   register(readTool)

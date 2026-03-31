@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach } from "bun:test"
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "bun:test"
 import {
   saveUserMessage,
   createAssistantMessage,
@@ -11,7 +11,11 @@ import {
   type StepFinishData,
 } from "../../src/session/message"
 import { bus } from "../../src/session/events"
-import { getDB } from "../../src/storage/db"
+import { mkdtempSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot } from "../../src/storage/session-jsonl"
 import { createSession } from "../../src/session/session"
 import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 
@@ -19,11 +23,19 @@ import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 // Test Setup & Helpers
 // ---------------------------------------------------------------------------
 
+let tmpDir: string
+
 beforeAll(async () => {
-  // Initialize in-memory database once
-  getDB(":memory:")
+  tmpDir = mkdtempSync(join(tmpdir(), "quark-test-token-"))
+  setSessionStorageRoot(tmpDir)
+  ensureStorageRoot()
   resetBootstrap()
   await bootstrap()
+})
+
+afterAll(() => {
+  setSessionStorageRoot(undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 afterEach(() => {
@@ -56,7 +68,7 @@ describe("Token Usage - Basic Tracking", () => {
       tokensIn: 100,
       tokensOut: 50,
       cost: 0.005,
-    })
+    }, sessionId)
 
     // Step 3: Retrieve the message from database
     const { messages } = loadMessages(sessionId)
@@ -80,7 +92,7 @@ describe("Token Usage - Null Values", () => {
     const msg = createAssistantMessage({ sessionId })
 
     // Call finishMessage() without providing usage parameter
-    finishMessage(msg.id, "stop")
+    finishMessage(msg.id, "stop", undefined, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -101,7 +113,7 @@ describe("Token Usage - Partial Data", () => {
     const msg = createAssistantMessage({ sessionId })
 
     // Provide only tokensIn
-    finishMessage(msg.id, "stop", { tokensIn: 200 })
+    finishMessage(msg.id, "stop", { tokensIn: 200 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -114,7 +126,7 @@ describe("Token Usage - Partial Data", () => {
   it("should handle only tokensOut provided", () => {
     const sessionId = getUniqueSessionId()
     const msg = createAssistantMessage({ sessionId })
-    finishMessage(msg.id, "stop", { tokensOut: 75 })
+    finishMessage(msg.id, "stop", { tokensOut: 75 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -127,7 +139,7 @@ describe("Token Usage - Partial Data", () => {
   it("should handle only cost provided", () => {
     const sessionId = getUniqueSessionId()
     const msg = createAssistantMessage({ sessionId })
-    finishMessage(msg.id, "stop", { cost: 0.01 })
+    finishMessage(msg.id, "stop", { cost: 0.01 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -151,7 +163,7 @@ describe("Token Usage - Zero Values", () => {
       tokensIn: 0,
       tokensOut: 0,
       cost: 0,
-    })
+    }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -180,7 +192,7 @@ describe("Token Usage - Large Values", () => {
       tokensIn: largeTokensIn,
       tokensOut: largeTokensOut,
       cost: largeCost,
-    })
+    }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -286,7 +298,7 @@ describe("Token Usage - Cost Tracking", () => {
     const msg = createAssistantMessage({ sessionId })
     const preciseCost = 0.0123456789
 
-    finishMessage(msg.id, "stop", { cost: preciseCost })
+    finishMessage(msg.id, "stop", { cost: preciseCost }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -299,7 +311,7 @@ describe("Token Usage - Cost Tracking", () => {
   it("should handle very small cost values", () => {
     const sessionId = getUniqueSessionId()
     const msg = createAssistantMessage({ sessionId })
-    finishMessage(msg.id, "stop", { cost: 0.000001 })
+    finishMessage(msg.id, "stop", { cost: 0.000001 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -318,13 +330,13 @@ describe("Token Usage - Persistence", () => {
     const sessionId = getUniqueSessionId()
     // Create session with multiple messages
     const msg1 = createAssistantMessage({ sessionId })
-    finishMessage(msg1.id, "stop", { tokensIn: 100, tokensOut: 50, cost: 0.01 })
+    finishMessage(msg1.id, "stop", { tokensIn: 100, tokensOut: 50, cost: 0.01 }, sessionId)
 
     const msg2 = createAssistantMessage({ sessionId })
-    finishMessage(msg2.id, "tool-calls", { tokensIn: 200, tokensOut: 100, cost: 0.02 })
+    finishMessage(msg2.id, "tool-calls", { tokensIn: 200, tokensOut: 100, cost: 0.02 }, sessionId)
 
     const msg3 = createAssistantMessage({ sessionId })
-    finishMessage(msg3.id, "length", { tokensIn: 300, tokensOut: 150, cost: 0.03 })
+    finishMessage(msg3.id, "length", { tokensIn: 300, tokensOut: 150, cost: 0.03 }, sessionId)
 
     // First load
     const { messages: firstLoad } = loadMessages(sessionId)
@@ -405,7 +417,7 @@ describe("Token Usage - Aggregation", () => {
     finishMessage(msg.id, "stop", {
       tokensIn: 300,
       tokensOut: 150,
-    })
+    }, sessionId)
 
     const { messages, parts } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -439,14 +451,14 @@ describe("Token Usage - Concurrency", () => {
           tokensIn: 100,
           tokensOut: 50,
           cost: 0.01,
-        })
+        }, sessionId)
       ),
       Promise.resolve(
         finishMessage(msg2.id, "stop", {
           tokensIn: 200,
           tokensOut: 100,
           cost: 0.02,
-        })
+        }, sessionId)
       ),
     ])
 
@@ -488,7 +500,7 @@ describe("Token Usage - Data Transformation", () => {
       tokensIn: 100,
       tokensOut: 50,
       cost: 0.01,
-    })
+    }, sessionId)
 
     const { messages, parts } = loadMessages(sessionId)
     const modelMessages = toModelMessages(messages, parts)
@@ -520,7 +532,7 @@ describe("Token Usage - Validation", () => {
       tokensIn: -100,
       tokensOut: -50,
       cost: -0.01,
-    })
+    }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -541,13 +553,13 @@ describe("Token Usage - Finish Reasons", () => {
   it("tc-token-finish-reason: tracks tokens for all finish reasons", () => {
     const sessionId = getUniqueSessionId()
     const msg1 = createAssistantMessage({ sessionId })
-    finishMessage(msg1.id, "stop", { tokensIn: 100, tokensOut: 50 })
+    finishMessage(msg1.id, "stop", { tokensIn: 100, tokensOut: 50 }, sessionId)
 
     const msg2 = createAssistantMessage({ sessionId })
-    finishMessage(msg2.id, "tool-calls", { tokensIn: 200, tokensOut: 100 })
+    finishMessage(msg2.id, "tool-calls", { tokensIn: 200, tokensOut: 100 }, sessionId)
 
     const msg3 = createAssistantMessage({ sessionId })
-    finishMessage(msg3.id, "length", { tokensIn: 300, tokensOut: 150 })
+    finishMessage(msg3.id, "length", { tokensIn: 300, tokensOut: 150 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
 
@@ -573,7 +585,7 @@ describe("Token Usage - Additional Edge Cases", () => {
       tokensIn: undefined,
       tokensOut: undefined,
       cost: undefined,
-    })
+    }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -586,7 +598,7 @@ describe("Token Usage - Additional Edge Cases", () => {
   it("should handle empty usage object", () => {
     const sessionId = getUniqueSessionId()
     const msg = createAssistantMessage({ sessionId })
-    finishMessage(msg.id, "stop", {})
+    finishMessage(msg.id, "stop", {}, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)
@@ -601,10 +613,10 @@ describe("Token Usage - Additional Edge Cases", () => {
     const msg = createAssistantMessage({ sessionId })
 
     // First finish
-    finishMessage(msg.id, "tool-calls", { tokensIn: 100, tokensOut: 50 })
+    finishMessage(msg.id, "tool-calls", { tokensIn: 100, tokensOut: 50 }, sessionId)
 
     // Second finish (update scenario - though not typical)
-    finishMessage(msg.id, "stop", { tokensIn: 200, tokensOut: 100, cost: 0.02 })
+    finishMessage(msg.id, "stop", { tokensIn: 200, tokensOut: 100, cost: 0.02 }, sessionId)
 
     const { messages } = loadMessages(sessionId)
     const retrieved = messages.find((m) => m.id === msg.id)

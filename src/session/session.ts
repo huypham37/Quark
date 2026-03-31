@@ -1,11 +1,26 @@
 // Session CRUD — create, get, list, touch
+//
+// Backed by per-session JSONL files instead of SQLite.
+// Each session lives in ~/.config/quark/session/<id>/
+//
+// Ephemeral sessions are in-memory only — never written to disk.
 
-import { eq, desc, isNull } from "drizzle-orm"
 import { generateId } from "ai"
-import { getDB } from "../storage/db"
-import { session } from "./session.sql"
+import {
+  createSessionLog,
+  appendEvents,
+  readSessionMeta,
+  scanSessionMetas,
+  replaySessionFile,
+} from "../storage/session-jsonl"
+import type { SessionUpdateEvent } from "../storage/session-format"
 
-export type SessionKind = "main" | "subagent"
+export type SessionKind = "main" | "subagent" | "ephemeral"
+
+// ---------------------------------------------------------------------------
+// In-memory store for ephemeral sessions
+// ---------------------------------------------------------------------------
+const ephemeralStore = new Map<string, Session>()
 
 /**
  * A persisted conversation session.
@@ -28,89 +43,124 @@ export interface Session {
 }
 
 /**
- * Create a new session and persist it to the database.
+ * Create a new session and persist it to JSONL storage.
  *
  * @param opts.directory - Working directory (defaults to `process.cwd()`)
  * @param opts.parentSessionId - Parent session ID for sub-agent sessions
  * @param opts.kind - Explicit session kind; inferred from `parentSessionId` if omitted
+ * @param opts.ephemeral - If `true`, the session is stored in-memory only (never written to disk)
  * @returns The newly created {@link Session}
  */
 export function createSession(opts?: {
   directory?: string
   parentSessionId?: string
   kind?: SessionKind
+  ephemeral?: boolean
 }): Session {
-  const db = getDB()
   const now = Date.now()
   const id = generateId()
 
-  const row = {
+  const kind: SessionKind = opts?.ephemeral
+    ? "ephemeral"
+    : (opts?.kind ?? (opts?.parentSessionId ? "subagent" as const : "main" as const))
+
+  const session: Session = {
     id,
     title: null,
     directory: opts?.directory ?? process.cwd(),
     parentSessionId: opts?.parentSessionId ?? null,
-    kind: opts?.kind ?? (opts?.parentSessionId ? "subagent" as const : "main" as const),
+    kind,
     timeCreated: now,
     timeUpdated: now,
   }
 
-  db.insert(session).values(row).run()
-  return row
+  if (kind === "ephemeral") {
+    ephemeralStore.set(id, session)
+  } else {
+    createSessionLog(session)
+  }
+
+  return session
 }
 
 /**
  * Retrieve a session by ID.
  *
+ * Checks ephemeral in-memory store first, then meta.json (fast path),
+ * then falls back to full JSONL replay.
+ *
  * @param id - Session identifier
  * @throws {Error} If no session with the given ID exists
  */
 export function getSession(id: string): Session {
-  const db = getDB()
-  const row = db.select().from(session).where(eq(session.id, id)).get()
-  if (!row) throw new Error(`Session not found: ${id}`)
-  return row
+  // Ephemeral in-memory path
+  const ephemeral = ephemeralStore.get(id)
+  if (ephemeral) return ephemeral
+
+  // Fast path: read from meta.json
+  const meta = readSessionMeta(id)
+  if (meta) return meta
+
+  // Slow path: replay JSONL file
+  const { session } = replaySessionFile(id)
+  if (!session) throw new Error(`Session not found: ${id}`)
+  return session
 }
 
 /**
  * Update the `timeUpdated` timestamp of a session (touch).
  * Called at the start of each `prompt()` invocation.
+ * No-op for ephemeral sessions.
  */
 export function touchSession(id: string): void {
-  const db = getDB()
-  db.update(session)
-    .set({ timeUpdated: Date.now() })
-    .where(eq(session.id, id))
-    .run()
+  if (ephemeralStore.has(id)) return
+
+  const now = Date.now()
+  const event: SessionUpdateEvent = {
+    v: 1,
+    ts: now,
+    sessionId: id,
+    type: "session-update",
+    patch: { timeUpdated: now },
+  }
+  appendEvents(id, [event], { timeUpdated: now })
 }
 
 export function setSessionTitle(id: string, title: string): void {
-  const db = getDB()
-  db.update(session)
-    .set({ title, timeUpdated: Date.now() })
-    .where(eq(session.id, id))
-    .run()
+  // Update in-memory store for ephemeral sessions and return early
+  const ephemeral = ephemeralStore.get(id)
+  if (ephemeral) {
+    ephemeral.title = title
+    return
+  }
+
+  const now = Date.now()
+  const event: SessionUpdateEvent = {
+    v: 1,
+    ts: now,
+    sessionId: id,
+    type: "session-update",
+    patch: { title, timeUpdated: now },
+  }
+  appendEvents(id, [event], { title, timeUpdated: now })
 }
 
 /** List top-level sessions only (no sub-agent children), most recently updated first */
 export function listSessions(): Session[] {
-  const db = getDB()
-  return db.select().from(session)
-    .where(isNull(session.parentSessionId))
-    .orderBy(desc(session.timeUpdated))
-    .all()
+  return scanSessionMetas()
+    .filter((s) => !s.parentSessionId)
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
 }
 
 /** List all sessions including sub-agents, most recently updated first */
 export function listAllSessions(): Session[] {
-  const db = getDB()
-  return db.select().from(session).orderBy(desc(session.timeUpdated)).all()
+  return scanSessionMetas()
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
 }
 
 /** List child sessions of a given parent, most recently updated first */
 export function listChildSessions(parentId: string): Session[] {
-  const db = getDB()
-  return db.select().from(session)
-    .where(eq(session.parentSessionId, parentId))
-    .orderBy(desc(session.timeUpdated))
-    .all()
+  return scanSessionMetas()
+    .filter((s) => s.parentSessionId === parentId)
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
 }

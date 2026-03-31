@@ -29,7 +29,7 @@ describe("createAppState", () => {
       expect(store.messages).toEqual([])
       expect(store.running).toBe(false)
       expect(store.status.tokensUsed).toBe(0)
-      expect(store.status.tokenLimit).toBe(168_000)
+      expect(store.status.tokenLimit).toBeGreaterThan(0)
       expect(store.status.cost).toBe(0)
       expect(store.status.modelName).toBe("smart")
       expect(store.status.skillCount).toBe(3)

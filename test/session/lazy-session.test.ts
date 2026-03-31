@@ -1,26 +1,38 @@
 // Lazy session creation — unit tests
 //
-// Verifies that prompt() only creates a DB session when called without an
+// Verifies that prompt() only creates a session when called without an
 // existing sessionId, and that it broadcasts the session-created event so the
 // TUI can update its state.
 //
-// DB is initialised with an in-memory SQLite instance so no files are touched.
+// Storage is initialised with a temp JSONL directory so no files are touched.
 // prompt() will always throw at resolveModel() (no auth token in tests), but
 // session-created is emitted synchronously BEFORE loop() is awaited, so the
 // assertion is still reachable by catching the expected error.
 
-import { describe, test, expect, beforeAll, afterEach } from "bun:test"
-import { getDB } from "../../src/storage/db"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot } from "../../src/storage/session-jsonl"
 import { prompt } from "../../src/session/prompt"
 import { createSession, listSessions } from "../../src/session/session"
 import { bus } from "../../src/session/events"
 import { bootstrap, resetBootstrap } from "../../src/bootstrap"
 
+let tmpDir: string
+
 beforeAll(async () => {
-  // Force in-memory DB before any test touches the singleton
-  getDB(":memory:")
+  tmpDir = mkdtempSync(join(tmpdir(), "quark-test-lazy-"))
+  setSessionStorageRoot(tmpDir)
+  ensureStorageRoot()
   resetBootstrap()
   await bootstrap()
+})
+
+afterAll(() => {
+  setSessionStorageRoot(undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 afterEach(() => {

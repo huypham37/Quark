@@ -36,11 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Generated API docs (regenerate with typedoc)
 docs/api/
 
-# SQLite database files
-quark.db
-quark.db-shm
-quark.db-wal
-
 # Reference codebases (not part of this project)
 opencode-reference/
 pi-mono/

@@ -237,5 +237,5 @@ export async function compact(input: {
     data: { text: summaryText },
   })
 
-  finishMessage(msg.id, "stop")
+  finishMessage(msg.id, "stop", undefined, input.sessionId)
 }
