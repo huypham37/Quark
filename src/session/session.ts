@@ -2,6 +2,8 @@
 //
 // Backed by per-session JSONL files instead of SQLite.
 // Each session lives in ~/.config/quark/session/<id>/
+//
+// Ephemeral sessions are in-memory only — never written to disk.
 
 import { generateId } from "ai"
 import {
@@ -13,7 +15,12 @@ import {
 } from "../storage/session-jsonl"
 import type { SessionUpdateEvent } from "../storage/session-format"
 
-export type SessionKind = "main" | "subagent"
+export type SessionKind = "main" | "subagent" | "ephemeral"
+
+// ---------------------------------------------------------------------------
+// In-memory store for ephemeral sessions
+// ---------------------------------------------------------------------------
+const ephemeralStore = new Map<string, Session>()
 
 /**
  * A persisted conversation session.
@@ -41,39 +48,55 @@ export interface Session {
  * @param opts.directory - Working directory (defaults to `process.cwd()`)
  * @param opts.parentSessionId - Parent session ID for sub-agent sessions
  * @param opts.kind - Explicit session kind; inferred from `parentSessionId` if omitted
+ * @param opts.ephemeral - If `true`, the session is stored in-memory only (never written to disk)
  * @returns The newly created {@link Session}
  */
 export function createSession(opts?: {
   directory?: string
   parentSessionId?: string
   kind?: SessionKind
+  ephemeral?: boolean
 }): Session {
   const now = Date.now()
   const id = generateId()
+
+  const kind: SessionKind = opts?.ephemeral
+    ? "ephemeral"
+    : (opts?.kind ?? (opts?.parentSessionId ? "subagent" as const : "main" as const))
 
   const session: Session = {
     id,
     title: null,
     directory: opts?.directory ?? process.cwd(),
     parentSessionId: opts?.parentSessionId ?? null,
-    kind: opts?.kind ?? (opts?.parentSessionId ? "subagent" as const : "main" as const),
+    kind,
     timeCreated: now,
     timeUpdated: now,
   }
 
-  createSessionLog(session)
+  if (kind === "ephemeral") {
+    ephemeralStore.set(id, session)
+  } else {
+    createSessionLog(session)
+  }
+
   return session
 }
 
 /**
  * Retrieve a session by ID.
  *
- * First tries meta.json (fast path). Falls back to full JSONL replay.
+ * Checks ephemeral in-memory store first, then meta.json (fast path),
+ * then falls back to full JSONL replay.
  *
  * @param id - Session identifier
  * @throws {Error} If no session with the given ID exists
  */
 export function getSession(id: string): Session {
+  // Ephemeral in-memory path
+  const ephemeral = ephemeralStore.get(id)
+  if (ephemeral) return ephemeral
+
   // Fast path: read from meta.json
   const meta = readSessionMeta(id)
   if (meta) return meta
@@ -87,8 +110,11 @@ export function getSession(id: string): Session {
 /**
  * Update the `timeUpdated` timestamp of a session (touch).
  * Called at the start of each `prompt()` invocation.
+ * No-op for ephemeral sessions.
  */
 export function touchSession(id: string): void {
+  if (ephemeralStore.has(id)) return
+
   const now = Date.now()
   const event: SessionUpdateEvent = {
     v: 1,
@@ -101,6 +127,13 @@ export function touchSession(id: string): void {
 }
 
 export function setSessionTitle(id: string, title: string): void {
+  // Update in-memory store for ephemeral sessions and return early
+  const ephemeral = ephemeralStore.get(id)
+  if (ephemeral) {
+    ephemeral.title = title
+    return
+  }
+
   const now = Date.now()
   const event: SessionUpdateEvent = {
     v: 1,

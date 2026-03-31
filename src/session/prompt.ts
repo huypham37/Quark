@@ -75,6 +75,7 @@ const active = new Map<string, AbortController>()
 export async function prompt(input: {
   sessionId?: string
   parentSessionId?: string
+  ephemeral?: boolean
   parts: { type: "text"; text: string }[]
   images?: { mime: string; data: string }[]
   model?: { provider: string; model: string }
@@ -89,9 +90,11 @@ export async function prompt(input: {
     sessionId = input.sessionId
   } else {
     const sess = createSession(
-      input.parentSessionId
-        ? { parentSessionId: input.parentSessionId, kind: "subagent" }
-        : undefined,
+      input.ephemeral
+        ? { ephemeral: true }
+        : input.parentSessionId
+          ? { parentSessionId: input.parentSessionId, kind: "subagent" }
+          : undefined,
     )
     sessionId = sess.id
     bus.emit("session-created", { sessionId })
