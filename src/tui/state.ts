@@ -21,7 +21,7 @@ export interface TuiMessage {
 
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; subAgent?: SubAgentState }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; label: string }
 
@@ -75,6 +75,7 @@ export type TuiAction =
   | { type: "tool-start"; messageId: string; tool: string; callId: string }
   | { type: "tool-input"; messageId: string; callId: string; input: Record<string, unknown> }
   | { type: "tool-end"; messageId: string; callId: string; status: "completed" | "error"; output?: string; error?: string; diff?: string }
+  | { type: "tool-stream-delta"; messageId: string; callId: string; content: string }
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
   | { type: "update-status"; partial: Partial<TuiStatus> }
@@ -379,6 +380,21 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.output = action.output
             part.error = action.error
             part.diff = action.diff
+            part.streamingContent = undefined
+          }
+        }),
+      )
+      break
+
+    case "tool-stream-delta":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const part = parts.find((p) => p.type === "tool" && p.callId === action.callId)
+          if (part && part.type === "tool") {
+            part.streamingContent = action.content
           }
         }),
       )

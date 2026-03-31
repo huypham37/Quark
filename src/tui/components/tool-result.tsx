@@ -13,6 +13,7 @@ import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
 import { InlineSpinner } from "./inline-spinner"
 import { DiffView } from "./diff-view"
+import { WriteStreamView } from "./write-stream-view"
 
 interface ToolResultLineProps {
   tool: string
@@ -21,6 +22,7 @@ interface ToolResultLineProps {
   output?: string
   error?: string
   diff?: string
+  streamingContent?: string
 }
 
 // Extract a short label from tool input (e.g., file path for read/write/edit)
@@ -105,6 +107,12 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
           <text fg={colors.error}>({props.error})</text>
         </Show>
       </box>
+      <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
+        <WriteStreamView
+          content={props.streamingContent!}
+          filePath={typeof (props.input.filePath ?? props.input.path) === "string" ? (props.input.filePath ?? props.input.path) as string : undefined}
+        />
+      </Show>
       <Show when={props.diff && props.status === "completed"}>
         <DiffView
           diff={props.diff!}

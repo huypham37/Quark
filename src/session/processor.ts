@@ -23,7 +23,7 @@ import {
   type StepFinishData,
   type ReasoningPartData,
 } from "./message"
-import { isRetryable, retryDelay, sleep } from "./retry"
+import { isRetryable, retryDelay, extractRetryAfter, sleep } from "./retry"
 import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 
@@ -56,6 +56,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   let currentReasoning: { partId: string; data: ReasoningPartData } | undefined
   let lastFinish: string | undefined
   let attempt = 0
+  const maxRetries = 5
 
   const sid = input.sessionId
   const mid = input.msg.id
@@ -342,8 +343,23 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       }
 
       if (isRetryable(e)) {
+        const serverDelay = extractRetryAfter(e)
+
+        // If the server says wait > 5 minutes (e.g. monthly quota reset), don't retry — surface it
+        if (serverDelay !== undefined && serverDelay > 5 * 60 * 1000) {
+          finishMessage(mid, "stop")
+          bus.emit("error", { sessionId: sid, error: e })
+          throw e
+        }
+
+        if (attempt >= maxRetries) {
+          finishMessage(mid, "stop")
+          bus.emit("error", { sessionId: sid, error: e })
+          throw e
+        }
         attempt++
-        const delay = retryDelay(attempt)
+        const delay = serverDelay ?? retryDelay(attempt)
+        bus.emit("retry", { sessionId: sid, attempt, delayMs: delay, error: e })
         await sleep(delay, input.abort).catch(() => {})
         if (input.abort.aborted) break
         continue

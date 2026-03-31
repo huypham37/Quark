@@ -11,7 +11,7 @@
 import { createComputed, onCleanup } from "solid-js"
 import { bus, type BusEventName, type BusEvents } from "../session/events"
 import { dispatch, type AppState } from "./state"
-import { error as notifyError } from "../notification/notification"
+import { error as notifyError, warn as notifyWarn } from "../notification/notification"
 
 // Per-session last-known input token count — survives session switches so
 // returning to a session restores the correct context-window %.
@@ -156,11 +156,53 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "tool-start", messageId: data.messageId, tool: data.tool, callId: data.callId })
     }))
 
+    // Track active write-stream timers and deferred tool-end payloads.
+    // The write tool completes almost instantly (fs.writeFileSync), so tool-end
+    // arrives before the first setInterval tick fires.  We defer the tool-end
+    // dispatch until the streaming animation finishes so the user actually sees
+    // the progressive green-line effect.
+    const writeStreamTimers = new Map<string, ReturnType<typeof setInterval>>()
+    const deferredToolEnd = new Map<string, BusEvents["tool-end"]>()
+
     unsubs.push(on("tool-input", (data) => {
       dispatch(state, { type: "tool-input", messageId: data.messageId, callId: data.callId, input: data.input })
+
+      // Start progressive streaming for write tool content
+      if (data.tool === "write") {
+        const content = data.input.content
+        if (typeof content === "string" && content.length > 0) {
+          const lines = content.split("\n")
+          // Stream ~3 lines per tick at 30ms intervals → visible at 60 FPS
+          const linesPerTick = Math.max(1, Math.ceil(lines.length / 40))
+          let lineIdx = 0
+          const timer = setInterval(() => {
+            lineIdx = Math.min(lineIdx + linesPerTick, lines.length)
+            const partial = lines.slice(0, lineIdx).join("\n")
+            dispatch(state, { type: "tool-stream-delta", messageId: data.messageId, callId: data.callId, content: partial })
+            if (lineIdx >= lines.length) {
+              clearInterval(timer)
+              writeStreamTimers.delete(data.callId)
+              // Now flush the deferred tool-end if the tool already finished
+              const deferred = deferredToolEnd.get(data.callId)
+              if (deferred) {
+                deferredToolEnd.delete(data.callId)
+                dispatch(state, { type: "tool-end", messageId: deferred.messageId, callId: deferred.callId, status: deferred.status, output: deferred.output, error: deferred.error, diff: deferred.diff })
+              }
+            }
+          }, 30)
+          writeStreamTimers.set(data.callId, timer)
+        }
+      }
     }))
 
     unsubs.push(on("tool-end", (data) => {
+      // If a write-stream timer is still running, defer the tool-end dispatch
+      // until the animation completes — otherwise the timer gets cancelled and
+      // the user sees zero progressive frames.
+      if (writeStreamTimers.has(data.callId)) {
+        deferredToolEnd.set(data.callId, data)
+        return
+      }
       dispatch(state, { type: "tool-end", messageId: data.messageId, callId: data.callId, status: data.status, output: data.output, error: data.error, diff: data.diff })
     }))
 
@@ -179,6 +221,16 @@ export function wireEvents(state: AppState) {
 
     unsubs.push(on("loop-end", () => {
       dispatch(state, { type: "set-running", running: false })
+    }))
+
+    unsubs.push(on("retry", (data) => {
+      const delaySec = Math.round(data.delayMs / 1000)
+      const delayStr = delaySec >= 60
+        ? `${Math.round(delaySec / 60)}m ${delaySec % 60}s`
+        : `${delaySec}s`
+      const result = categorizeError(data.error)
+      const title = result?.title ?? "Provider Error"
+      notifyWarn(`${title} — Retry ${data.attempt}`, `Retrying in ${delayStr}…`, data.delayMs + 1000)
     }))
 
     unsubs.push(on("error", (data) => {
@@ -307,6 +359,9 @@ export function wireEvents(state: AppState) {
 
     onCleanup(() => {
       for (const unsub of unsubs) unsub()
+      for (const timer of writeStreamTimers.values()) clearInterval(timer)
+      writeStreamTimers.clear()
+      deferredToolEnd.clear()
     })
   })
 }

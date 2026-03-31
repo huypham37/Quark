@@ -67,6 +67,47 @@ function extractStatus(error: unknown): number | undefined {
 }
 
 /**
+ * Extract retry delay from provider response headers.
+ *
+ * Checks (in order):
+ * 1. `retry-after` header (seconds or HTTP-date)
+ * 2. `x-ratelimit-reset` header (UTC epoch seconds)
+ *
+ * Returns delay in milliseconds, or undefined if no header is present.
+ */
+export function extractRetryAfter(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined
+  const headers: Record<string, string> | undefined = (error as any).responseHeaders
+
+  if (!headers) return undefined
+
+  // retry-after: seconds (e.g. "60") or HTTP-date
+  const retryAfter = headers["retry-after"]
+  if (retryAfter) {
+    const secs = Number(retryAfter)
+    if (!isNaN(secs) && secs > 0) return secs * 1000
+    // Try HTTP-date format
+    const date = new Date(retryAfter)
+    if (!isNaN(date.getTime())) {
+      const delay = date.getTime() - Date.now()
+      if (delay > 0) return delay
+    }
+  }
+
+  // x-ratelimit-reset: UTC epoch seconds
+  const reset = headers["x-ratelimit-reset"]
+  if (reset) {
+    const epoch = Number(reset)
+    if (!isNaN(epoch) && epoch > 0) {
+      const delay = epoch * 1000 - Date.now()
+      if (delay > 0) return delay
+    }
+  }
+
+  return undefined
+}
+
+/**
  * Compute retry delay with exponential backoff + jitter.
  * attempt 0 → ~1s, 1 → ~2s, 2 → ~4s, 3 → ~8s, etc.
  * Capped at 30 seconds.

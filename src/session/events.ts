@@ -56,6 +56,9 @@ export interface BusEvents {
   "compaction-start": { sessionId: string }
   "compaction-end": { sessionId: string; result: import("./compact-resolver").CompactResult | null }
 
+  // Retry — emitted when a retryable error triggers a retry with backoff
+  "retry": { sessionId: string; attempt: number; delayMs: number; error: unknown }
+
   // Error
   "error": { sessionId: string; error: unknown }
 

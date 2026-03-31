@@ -22,6 +22,9 @@ export interface ToolPartData {
   input: Record<string, unknown>
   output?: string
   error?: string
+  // Optional streaming content for long-running tool outputs (e.g. write).
+  // Stored so the TUI can restore in-progress streaming views after reload.
+  streamingContent?: string
 }
 
 export interface StepFinishData {

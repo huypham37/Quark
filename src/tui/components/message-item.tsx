@@ -115,6 +115,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
             output={asTool().output}
             error={asTool().error}
             diff={asTool().diff}
+            streamingContent={asTool().streamingContent}
           />
         </box>
       </Match>
