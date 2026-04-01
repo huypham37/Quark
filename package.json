@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "bin": {
-    "quark": "./src/cli.ts"
+    "quark": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsup && tsc --project tsconfig.build.json --emitDeclarationOnly",

@@ -216,11 +216,12 @@ async function main() {
     })
 
     console.log(`\n[session: ${result.sessionId}]`)
+    cleanupEventWriter?.()
+    process.exit(0)
   } catch (err: any) {
     console.error("Error:", err.message)
-    process.exit(1)
-  } finally {
     cleanupEventWriter?.()
+    process.exit(1)
   }
 }
 

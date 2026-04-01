@@ -22,8 +22,14 @@ import type {
   SessionEvent,
   SessionMetaFile,
 } from "./session-format"
-import type { Session } from "../session/session"
+import { isEphemeral, type Session } from "../session/session"
 import type { MessageRow, PartRow } from "../session/message"
+
+// ---------------------------------------------------------------------------
+// In-memory event store for ephemeral sessions (never written to disk)
+// ---------------------------------------------------------------------------
+
+const ephemeralEvents = new Map<string, SessionLogEvent[]>()
 
 // ---------------------------------------------------------------------------
 // ensureStorageRoot — create the top-level session directory
@@ -66,6 +72,14 @@ export function appendEvents(
   metaPatch?: Partial<Session>,
 ): void {
   if (events.length === 0) return
+
+  // Ephemeral sessions: store in memory, never touch disk
+  if (isEphemeral(sessionId)) {
+    const existing = ephemeralEvents.get(sessionId) ?? []
+    existing.push(...events)
+    ephemeralEvents.set(sessionId, existing)
+    return
+  }
 
   const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n"
   appendFileSync(getSessionLogPath(sessionId), lines)
@@ -138,6 +152,12 @@ export function replaySessionFile(sessionId: string): {
   messages: MessageRow[]
   parts: PartRow[]
 } {
+  // Ephemeral sessions: replay from in-memory event store
+  const memEvents = ephemeralEvents.get(sessionId)
+  if (isEphemeral(sessionId) || memEvents) {
+    return replayEvents(memEvents ?? [])
+  }
+
   const logPath = getSessionLogPath(sessionId)
   let raw: string
   try {
@@ -146,22 +166,30 @@ export function replaySessionFile(sessionId: string): {
     return { session: null, messages: [], parts: [] }
   }
 
+  const events: SessionLogEvent[] = []
+  const lines = raw.split("\n")
+  for (const line of lines) {
+    if (!line.trim()) continue
+    try {
+      events.push(JSON.parse(line) as SessionLogEvent)
+    } catch {
+      continue
+    }
+  }
+
+  return replayEvents(events)
+}
+
+function replayEvents(events: SessionLogEvent[]): {
+  session: Session | null
+  messages: MessageRow[]
+  parts: PartRow[]
+} {
   let session: Session | null = null
   const messagesMap = new Map<string, MessageRow>()
   const partsMap = new Map<string, PartRow>()
 
-  const lines = raw.split("\n")
-  for (const line of lines) {
-    if (!line.trim()) continue
-
-    let event: SessionLogEvent
-    try {
-      event = JSON.parse(line) as SessionLogEvent
-    } catch {
-      // Skip malformed lines
-      continue
-    }
-
+  for (const event of events) {
     switch (event.type) {
       case "session": {
         session = event.session

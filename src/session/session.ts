@@ -112,6 +112,11 @@ export function getSession(id: string): Session {
  * Called at the start of each `prompt()` invocation.
  * No-op for ephemeral sessions.
  */
+/** Check if a session is ephemeral (in-memory only, never written to disk). */
+export function isEphemeral(id: string): boolean {
+  return ephemeralStore.has(id)
+}
+
 export function touchSession(id: string): void {
   if (ephemeralStore.has(id)) return
 
