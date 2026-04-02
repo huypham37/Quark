@@ -7,6 +7,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import { pathToFileURL } from "url"
 import { register, validateTool, type ToolValidationError } from "./registry"
 import { error as notifyError, warn as notifyWarn } from "../notification/notification"
 import type { ToolDef } from "./tool"
@@ -63,8 +64,11 @@ export async function loadProfileTools(toolIds: string[]): Promise<LoadResult> {
     }
 
     try {
-      // Dynamic import
-      const module = await import(filePath)
+      // Dynamic import — use file:// URL for Windows compatibility.
+      // On Windows, bare absolute paths like "C:\..." are rejected by
+      // Node's ESM loader which interprets "C:" as a URL protocol.
+      const importURL = pathToFileURL(filePath).href
+      const module = await import(importURL)
 
       // Look for default export or named 'tool' export
       const toolDef: ToolDef | undefined = module.default ?? module.tool

@@ -10,6 +10,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import { fileURLToPath, pathToFileURL } from "url"
 import { registerHook } from "./registry"
 import { registerProvider } from "../config/config"
 import { error as notifyError } from "../notification/notification"
@@ -50,7 +51,11 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
     .map((e) => e.name)
 
   // Derive quarkRoot: this file lives at src/plugin/loader.ts, so go up two levels
-  const quarkRoot = path.resolve(import.meta.dir, "../..")
+  // Use import.meta.dir (Bun) with Node.js fallback via import.meta.url
+  const thisDir = typeof import.meta.dir === "string"
+    ? import.meta.dir
+    : path.dirname(fileURLToPath(import.meta.url))
+  const quarkRoot = path.resolve(thisDir, "../..")
 
   const ctx = {
     directory: process.cwd(),
@@ -63,7 +68,11 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
     const filePath = path.join(PLUGINS_DIR, fileName)
 
     try {
-      const mod = await import(filePath)
+      // Dynamic import — use file:// URL for Windows compatibility.
+      // On Windows, bare absolute paths like "C:\..." are rejected by
+      // Node's ESM loader which interprets "C:" as a URL protocol.
+      const importURL = pathToFileURL(filePath).href
+      const mod = await import(importURL)
 
       // Support default export or named "plugin" export
       const pluginFn: PluginFn | undefined = mod.default ?? mod.plugin

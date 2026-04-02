@@ -15,7 +15,7 @@ import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
 import { startEventWriter } from "./session/event-writer"
-import { getProviderId, parseModelSpec } from "./config/config"
+import { getProviderId } from "./config/config"
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -147,7 +147,12 @@ async function main() {
   // No prompt provided → launch interactive TUI
   if (!args.prompt) {
     const { execSync } = await import("child_process")
-    const quarkDir = process.env.QUARK_DIR ?? import.meta.dir + "/.."
+    const { fileURLToPath } = await import("url")
+    const { dirname, resolve } = await import("path")
+    const thisDir = typeof import.meta.dir === "string"
+      ? import.meta.dir
+      : dirname(fileURLToPath(import.meta.url))
+    const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
     execSync(`bun --preload "${quarkDir}/preload.ts" "${quarkDir}/src/tui/index.tsx"`, {
       stdio: "inherit",
       env: { ...process.env, QUARK_DIR: quarkDir },
@@ -203,7 +208,7 @@ async function main() {
   // Run the prompt
   try {
     const modelOverride = args.model
-      ? { provider: getProviderId("main"), model: parseModelSpec(args.model).model }
+      ? { provider: getProviderId("main"), model: args.model }
       : undefined
 
     const result = await prompt({
