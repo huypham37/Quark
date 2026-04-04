@@ -575,13 +575,6 @@ export const App: Component<AppProps> = (props) => {
     }
 
     const imgs = pendingImages()
-    const msgId = generateId()
-    dispatch(state, {
-      type: "add-user-message",
-      id: msgId,
-      text,
-      images: imgs.map((img) => ({ mime: img.mime, label: img.label })),
-    })
 
     setInputText("")
     setPendingImages([])
