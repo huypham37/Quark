@@ -152,7 +152,14 @@ export function createCopilotFetch(options: {
     // Set Copilot-specific headers
     headers.set("Authorization", `Bearer ${token}`)
     headers.set("Openai-Intent", "conversation-edits")
-    headers.set("x-initiator", forceAgent ? "agent" : inferInitiator(parsedBody))
+    const initiator = forceAgent ? "agent" : inferInitiator(parsedBody)
+    if (process.env.DEBUG_INITIATOR) {
+      const b = parsedBody as Record<string, unknown> | undefined
+      const msgs = Array.isArray(b?.messages) ? b!.messages : []
+      const last = msgs[msgs.length - 1] as Record<string, unknown> | undefined
+      console.error(`[x-initiator] ${initiator} | forceAgent=${forceAgent} | lastRole=${last?.role} | contentTypes=${Array.isArray(last?.content) ? (last!.content as any[]).map((p: any) => p?.type).join(",") : typeof last?.content}`)
+    }
+    headers.set("x-initiator", initiator)
 
     // Vision header — only set when images are present
     if (hasVisionContent(parsedBody)) {

@@ -19,6 +19,7 @@ const COPILOT_ANTHROPIC_BASE_URL = "https://api.githubcopilot.com/v1"
 // across calls to createCopilotProvider with the same baseURL.
 // ---------------------------------------------------------------------------
 let _copilotFetch: CopilotFetchFn | undefined
+let _copilotAnthropicFetch: CopilotFetchFn | undefined
 let _copilotProvider: OpenAIProvider | undefined
 let _copilotAnthropicProvider: AnthropicProvider | undefined
 let _copilotBaseURL: string | undefined
@@ -31,6 +32,7 @@ let _thinkingBudget = 0
  */
 export function setCopilotForceAgent(force: boolean): void {
   if (_copilotFetch) _copilotFetch.setForceAgent(force)
+  if (_copilotAnthropicFetch) _copilotAnthropicFetch.setForceAgent(force)
 }
 
 /**
@@ -48,6 +50,7 @@ export function setCopilotThinking(budget: number): void {
   }
   // Reset cached Anthropic provider so it gets a fresh fetch instance next call
   _copilotAnthropicProvider = undefined
+  _copilotAnthropicFetch = undefined
 }
 
 /** Returns the current thinking budget (0 = disabled). */
@@ -143,6 +146,7 @@ export function createCopilotAnthropicProvider(options: {
     getToken: options.getToken,
     thinkingBudget: 0, // thinking via providerOptions, not body injection
   })
+  _copilotAnthropicFetch = copilotFetch
 
   _copilotAnthropicProvider = createAnthropic({
     // @ai-sdk/anthropic appends /messages to the base URL → /v1/messages
