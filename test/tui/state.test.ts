@@ -142,6 +142,98 @@ describe("dispatch: message lifecycle", () => {
   })
 })
 
+// Tests for gh issue #36: user messages appearing twice
+// https://github.com/user/repo/issues/36
+//
+// Bug: User messages appeared twice because:
+//   1. Bus event handler (src/tui/events.ts:135-137) dispatches 'add-user-message' 
+//      when it receives 'user-message' event (from session/prompt.ts:134)
+//   2. [OLD BUG] handleSubmit also dispatched 'add-user-message' optimistically
+//
+// Fix: Removed optimistic dispatch from handleSubmit. Now only the bus event adds the message.
+//
+// These tests verify:
+//   1. Single dispatch → exactly 1 message (the normal path after the fix)
+//   2. Double dispatch with different IDs → 2 messages (documents that deduplication
+//      must happen at call-site, not in the reducer)
+describe("dispatch: add-user-message deduplication (gh issue #36)", () => {
+  test("single add-user-message dispatch produces exactly one message in store", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Simulate the current (fixed) path: only bus event dispatches add-user-message
+      dispatch(s, { type: "add-user-message", id: "msg-db-123", text: "hello world" })
+      
+      expect(s.store.messages.length).toBe(1)
+      expect(s.store.messages[0]!.id).toBe("msg-db-123")
+      expect(s.store.messages[0]!.role).toBe("user")
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("hello world")
+    })
+  })
+
+  test("double add-user-message dispatch with different IDs produces two messages (reducer does NOT dedupe)", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Simulate the OLD buggy path: 
+      // 1. Optimistic dispatch with client-generated ID
+      // 2. Bus event dispatch with DB-generated ID
+      // Both have the same content but different IDs
+      dispatch(s, { type: "add-user-message", id: "client-temp-id", text: "hello world" })
+      dispatch(s, { type: "add-user-message", id: "msg-db-123", text: "hello world" })
+      
+      // The reducer itself does NOT deduplicate — it appends both
+      expect(s.store.messages.length).toBe(2)
+      expect(s.store.messages[0]!.id).toBe("client-temp-id")
+      expect(s.store.messages[1]!.id).toBe("msg-db-123")
+      
+      // Both messages have the same text
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("hello world")
+      expect((s.store.messages[1]!.parts[0] as any).text).toBe("hello world")
+    })
+  })
+
+  test("add-user-message with same ID twice still produces two messages (no ID-based deduplication)", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      // Even with the same ID, the reducer appends (doesn't check for duplicates)
+      dispatch(s, { type: "add-user-message", id: "m1", text: "first" })
+      dispatch(s, { type: "add-user-message", id: "m1", text: "second" })
+      
+      expect(s.store.messages.length).toBe(2)
+      expect(s.store.messages[0]!.id).toBe("m1")
+      expect(s.store.messages[1]!.id).toBe("m1")
+      expect((s.store.messages[0]!.parts[0] as any).text).toBe("first")
+      expect((s.store.messages[1]!.parts[0] as any).text).toBe("second")
+    })
+  })
+
+  test("add-user-message with images produces correct message structure", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      
+      dispatch(s, { 
+        type: "add-user-message", 
+        id: "m1", 
+        text: "look at this",
+        images: [
+          { mime: "image/png", label: "Screenshot" },
+          { mime: "image/jpeg", label: "Photo" }
+        ]
+      })
+      
+      expect(s.store.messages.length).toBe(1)
+      expect(s.store.messages[0]!.parts.length).toBe(3) // 1 text + 2 images
+      expect(s.store.messages[0]!.parts[0]!.type).toBe("text")
+      expect(s.store.messages[0]!.parts[1]!.type).toBe("image")
+      expect(s.store.messages[0]!.parts[2]!.type).toBe("image")
+      expect((s.store.messages[0]!.parts[1] as any).label).toBe("Screenshot")
+      expect((s.store.messages[0]!.parts[2] as any).label).toBe("Photo")
+    })
+  })
+})
+
 describe("dispatch: text streaming", () => {
   test("text-start adds a streaming text part", () => {
     withRoot(() => {
