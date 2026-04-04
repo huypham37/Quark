@@ -61,6 +61,48 @@ describe("inferInitiator", () => {
     expect(inferInitiator(body)).toBe("agent")
   })
 
+  test("returns 'agent' when last user message has only tool_result content (Anthropic API)", () => {
+    const body = {
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: [{ type: "tool_use", id: "1", name: "read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "1", content: "file contents" }] },
+      ],
+    }
+    expect(inferInitiator(body)).toBe("agent")
+  })
+
+  test("returns 'user' when last user message has non-tool_result content (Anthropic API)", () => {
+    const body = {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    }
+    expect(inferInitiator(body)).toBe("user")
+  })
+
+  test("returns 'user' when last user message has mixed content including text (Anthropic API)", () => {
+    const body = {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "1", content: "result" },
+            { type: "text", text: "and also this" },
+          ],
+        },
+      ],
+    }
+    expect(inferInitiator(body)).toBe("user")
+  })
+
+  test("returns 'user' when last user message has string content", () => {
+    const body = {
+      messages: [{ role: "user", content: "plain string" }],
+    }
+    expect(inferInitiator(body)).toBe("user")
+  })
+
   test("returns 'user' for empty/missing body", () => {
     expect(inferInitiator(undefined)).toBe("user")
     expect(inferInitiator({})).toBe("user")
@@ -276,5 +318,36 @@ describe("createCopilotFetch", () => {
     })
 
     expect(captured.headers?.["x-api-key"]).toBeUndefined()
+  })
+
+  test("setForceAgent forces x-initiator to 'agent' regardless of body", async () => {
+    const captured: { headers?: Record<string, string> } = {}
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      captured.headers = Object.fromEntries(
+        new Headers(init?.headers as HeadersInit).entries(),
+      )
+      return new Response("{}", { status: 200 })
+    }
+
+    const copilotFetch = createCopilotFetch({
+      getToken: async () => "tok",
+      fetch: mockFetch as typeof fetch,
+    })
+
+    // Even though last message is user, forceAgent should override
+    copilotFetch.setForceAgent(true)
+    await copilotFetch("https://api.githubcopilot.com/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+    })
+    expect(captured.headers?.["x-initiator"]).toBe("agent")
+
+    // Turning it off restores normal behavior
+    copilotFetch.setForceAgent(false)
+    await copilotFetch("https://api.githubcopilot.com/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+    })
+    expect(captured.headers?.["x-initiator"]).toBe("user")
   })
 })
