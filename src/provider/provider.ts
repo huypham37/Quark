@@ -26,6 +26,14 @@ let _copilotBaseURL: string | undefined
 let _thinkingBudget = 0
 
 /**
+ * Force x-initiator to "agent" for all Copilot requests.
+ * Use around compaction runs and for sub-agent sessions.
+ */
+export function setCopilotForceAgent(force: boolean): void {
+  if (_copilotFetch) _copilotFetch.setForceAgent(force)
+}
+
+/**
  * Set the thinking budget on the active Copilot fetch wrapper.
  * Pass a positive number (e.g. 10000) to enable, 0 to disable.
  * Also persists the desired budget so it is applied if the provider

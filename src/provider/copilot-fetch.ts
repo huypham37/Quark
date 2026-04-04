@@ -14,6 +14,8 @@ import type { FetchFn } from "./copilot-auth"
 export interface CopilotFetchFn extends FetchFn {
   /** Update the thinking budget. Pass 0 to disable extended thinking. */
   setThinkingBudget(budget: number): void
+  /** Force x-initiator to "agent" for all requests (compaction, sub-agents). */
+  setForceAgent(force: boolean): void
 }
 
 // ---------------------------------------------------------------------------
@@ -26,12 +28,24 @@ export function inferInitiator(body: unknown): "user" | "agent" {
 
   const b = body as Record<string, unknown>
 
-  // Chat Completions API — body.messages
+  // Chat Completions API / Anthropic Messages API — body.messages
   if (Array.isArray(b.messages) && b.messages.length > 0) {
-    const last = b.messages[b.messages.length - 1]
-    if (last && typeof last === "object" && "role" in last) {
-      return (last as { role: string }).role === "user" ? "user" : "agent"
+    const last = b.messages[b.messages.length - 1] as Record<string, unknown>
+    if (!last || typeof last !== "object" || !("role" in last)) return "user"
+
+    const role = (last as { role: string }).role
+    if (role !== "user") return "agent"
+
+    // Anthropic Messages API: a "user" message carrying only tool_result
+    // blocks is a tool-call continuation, not a new user prompt.
+    if (Array.isArray(last.content)) {
+      const hasNonToolResult = (last.content as Record<string, unknown>[]).some(
+        (part) => part?.type !== "tool_result",
+      )
+      return hasNonToolResult ? "user" : "agent"
     }
+
+    return "user"
   }
 
   // Responses API — body.input
@@ -101,6 +115,7 @@ export function createCopilotFetch(options: {
 }): CopilotFetchFn {
   const baseFetch = options.fetch ?? globalThis.fetch
   let currentBudget = options.thinkingBudget ?? 0
+  let forceAgent = false
 
   const fetchFn = async (
     input: string | URL | Request,
@@ -137,7 +152,7 @@ export function createCopilotFetch(options: {
     // Set Copilot-specific headers
     headers.set("Authorization", `Bearer ${token}`)
     headers.set("Openai-Intent", "conversation-edits")
-    headers.set("x-initiator", inferInitiator(parsedBody))
+    headers.set("x-initiator", forceAgent ? "agent" : inferInitiator(parsedBody))
 
     // Vision header — only set when images are present
     if (hasVisionContent(parsedBody)) {
@@ -151,9 +166,12 @@ export function createCopilotFetch(options: {
     })
   }
 
-  // Attach runtime budget setter
+  // Attach runtime setters
   fetchFn.setThinkingBudget = (budget: number) => {
     currentBudget = budget
+  }
+  fetchFn.setForceAgent = (force: boolean) => {
+    forceAgent = force
   }
 
   return fetchFn as CopilotFetchFn
