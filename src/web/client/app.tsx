@@ -151,13 +151,21 @@ export function App() {
         set({ compacting: true })
         toast('Compacting', 'Compacting context…', 'warn')
         break
-      case 'compaction-end':
+      case 'compaction-end': {
         set({ compacting: false })
+        const result = d.result
+        if (!result) {
+          toast('Compaction failed', 'An error occurred during compaction', 'error')
+        } else if (result.evictedCount === 0) {
+          toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
+        }
         break
+      }
       case 'session-switch':
         set({ sessionId: d.sessionId })
         if (d.messages) dispatch({ type: 'LOAD_MESSAGES', messages: d.messages })
         if (d.estimatedTokens) set({ tokensUsed: d.estimatedTokens })
+        refreshSessions()
         break
       case 'session-reset':
         set({ sessionId: d.sessionId })
@@ -261,8 +269,21 @@ export function App() {
   }
 
   async function compactContext() {
-    if (!s.sessionId) return
-    try { await api('POST', '/api/compact', { sessionId: s.sessionId }) } catch { toast('Error', 'Failed to compact', 'error') }
+    if (!s.sessionId) {
+      toast('Nothing to compact', 'No active session', 'warn')
+      return
+    }
+    try {
+      set({ compacting: true })
+      const r = await api<{ ok?: boolean; error?: string }>('POST', '/api/compact', { sessionId: s.sessionId })
+      if (r.error) {
+        set({ compacting: false })
+        toast('Compaction failed', r.error, 'error')
+      }
+    } catch {
+      set({ compacting: false })
+      toast('Error', 'Failed to compact', 'error')
+    }
   }
 
   async function respondPerm(action: 'once' | 'always' | 'reject') {

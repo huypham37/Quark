@@ -142,15 +142,27 @@ function createRequestHandler(agent: AgentConfig) {
       const { sessionId } = body
       try {
         getSession(sessionId)
-      } catch {
-        return json({ error: "Session not found" }, 404)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error("[compact] getSession failed:", msg, "sessionId:", sessionId)
+        return json({ error: msg }, 404)
       }
-      const { messages, parts } = loadMessages(sessionId)
-      const modelMessages = toModelMessages(messages, parts)
-      const modelId = modelOverride ?? getModelId("main")
-      const budget = getModelLimit(modelId)
-      const model = await resolveModel(getModelOpt())
-      const system = buildSystem(agent)
+
+      let messages, parts, modelMessages, budget, model, system
+      try {
+        const loaded = loadMessages(sessionId)
+        messages = loaded.messages
+        parts = loaded.parts
+        modelMessages = toModelMessages(messages, parts)
+        const modelId = modelOverride ?? getModelId("main")
+        budget = getModelLimit(modelId)
+        model = await resolveModel(getModelOpt())
+        system = buildSystem(agent)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return json({ error: msg }, 500)
+      }
+
       bus.emit("compaction-start", { sessionId })
       resolveCompaction({
         trigger: "command",
@@ -165,10 +177,22 @@ function createRequestHandler(agent: AgentConfig) {
           persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
           session: { create: createSession },
         },
-      }).then((result) => {
+      }).then(async (result) => {
         bus.emit("compaction-end", { sessionId, result })
-      }).catch(() => {
+        if (result.type === "new-session" && result.newSessionId !== sessionId) {
+          const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
+          const newModelMsgs = toModelMessages(newMsgs, newParts)
+          const sysStr = Array.isArray(system) ? system.join("\n") : system
+          const { estimateTokens } = await import("../session/compaction")
+          bus.emit("session-switch", {
+            sessionId: result.newSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens: estimateTokens(sysStr, newModelMsgs),
+          })
+        }
+      }).catch((err) => {
         bus.emit("compaction-end", { sessionId, result: null })
+        bus.emit("error", { sessionId, error: err instanceof Error ? err.message : String(err) })
       })
       return json({ ok: true })
     }
