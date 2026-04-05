@@ -167,39 +167,59 @@ function createRequestHandler(agent: AgentConfig) {
       console.log("[compact] messages:", messages.length, "parts:", parts.length, "modelMessages:", modelMessages.length)
       console.log("[compact] budget:", JSON.stringify(budget))
       bus.emit("compaction-start", { sessionId })
-      resolveCompaction({
-        trigger: "command",
-        ctx: {
-          sessionId,
-          messages,
-          parts,
-          modelMessages,
-          model,
-          agentPrompt: system,
-          budget,
-          persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
-          session: { create: createSession },
-        },
-      }).then(async (result) => {
+      try {
+        const result = await resolveCompaction({
+          trigger: "command",
+          ctx: {
+            sessionId,
+            messages,
+            parts,
+            modelMessages,
+            model,
+            agentPrompt: system,
+            budget,
+            persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
+            session: { create: createSession },
+          },
+        })
         console.log("[compact] compaction resolved:", JSON.stringify(result))
         bus.emit("compaction-end", { sessionId, result })
+
+        let newSessionId: string | undefined
+        let switchMessages: ReturnType<typeof dbToTuiMessages> | undefined
+        let estimatedTokens: number | undefined
+
         if (result.type === "new-session" && result.newSessionId !== sessionId) {
           const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
           const newModelMsgs = toModelMessages(newMsgs, newParts)
           const sysStr = Array.isArray(system) ? system.join("\n") : system
           const { estimateTokens } = await import("../session/compaction")
+          newSessionId = result.newSessionId
+          switchMessages = dbToTuiMessages(newMsgs, newParts)
+          estimatedTokens = estimateTokens(sysStr, newModelMsgs)
           bus.emit("session-switch", {
             sessionId: result.newSessionId,
-            messages: dbToTuiMessages(newMsgs, newParts),
-            estimatedTokens: estimateTokens(sysStr, newModelMsgs),
+            messages: switchMessages,
+            estimatedTokens,
           })
         }
-      }).catch((err) => {
+
+        return json({
+          ok: true,
+          result: {
+            type: result.type,
+            evictedCount: "evictedCount" in result ? result.evictedCount : 0,
+            summary: "summary" in result ? result.summary : undefined,
+            newSessionId,
+            estimatedTokens,
+          },
+        })
+      } catch (err) {
         console.error("[compact] compaction FAILED:", err instanceof Error ? err.stack : String(err))
         bus.emit("compaction-end", { sessionId, result: null })
         bus.emit("error", { sessionId, error: err instanceof Error ? err.message : String(err) })
-      })
-      return json({ ok: true })
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500)
+      }
     }
 
     if (req.method === "POST" && pathname === "/api/model") {
@@ -312,7 +332,9 @@ export async function startWebServer() {
       // WebSocket upgrade MUST be synchronous — cannot be behind async
       const url = new URL(req.url)
       if (url.pathname === "/ws") {
+        console.log("[ws] upgrade request received")
         const upgraded = server.upgrade(req, { data: { handlers: new Map() } as WSData })
+        console.log("[ws] upgrade result:", upgraded)
         if (upgraded) return undefined as unknown as Response
         return json({ error: "WebSocket upgrade failed" }, 400)
       }
@@ -320,10 +342,14 @@ export async function startWebServer() {
     },
     websocket: {
       open(ws) {
+        console.log("[ws] client connected")
         const handlers = (ws.data as WSData).handlers
         for (const event of ALL_EVENTS) {
           const handler = (data: unknown) => {
             try {
+              if (event === "compaction-start" || event === "compaction-end") {
+                console.log(`[ws] sending ${event} to client`)
+              }
               ws.send(JSON.stringify({ event, data }))
             } catch {}
           }
@@ -340,6 +366,7 @@ export async function startWebServer() {
         } catch {}
       },
       close(ws) {
+        console.log("[ws] client disconnected")
         const handlers = (ws.data as WSData).handlers
         for (const [event, handler] of handlers) {
           bus.off(event, handler as any)
