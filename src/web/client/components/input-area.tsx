@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { T } from '../tokens'
-import { SendIcon, StopIcon, PaperclipIcon, CommandIcon, AtIcon, XSmallIcon } from '../icons'
+import { SendIcon, StopIcon, PaperclipIcon, AtIcon, XSmallIcon } from '../icons'
 import { CommandPalette } from './command-palette'
 import { MentionPicker } from './mention-picker'
 import type { SlashCommand } from '../../../tui/commands'
@@ -263,14 +263,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
               >
                 <AtIcon />
               </button>
-              <button
-                onClick={togglePalette}
-                disabled={running}
-                className="input-btn input-btn--slash"
-                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-              >
-                <CommandIcon />
-              </button>
+
             </div>
             <div className="input-toolbar-right">
               {running ? (
