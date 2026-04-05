@@ -70,21 +70,40 @@ describe("web UI header element — CSS properties (gh issue #44)", () => {
     expect(source).toContain("React.createElement('header',")
   })
 
-  test("header has flexShrink:0 to prevent flex compression", () => {
+  test("header has position:fixed to stay visible regardless of scroll", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    expect(propsBlock).toMatch(/flexShrink\s*:\s*0/)
+    expect(propsBlock).toMatch(/position\s*:\s*['"]fixed['"]/)
   })
 
-  test("header has minHeight:52 to enforce minimum height", () => {
+  test("header is pinned to top:0", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    expect(propsBlock).toMatch(/minHeight\s*:\s*52/)
+    expect(propsBlock).toMatch(/top\s*:\s*0/)
   })
 
-  test("header has all required mobile-stability properties together", () => {
+  test("header spans full width with left:0 and right:0", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    expect(propsBlock).toMatch(/flexShrink\s*:\s*0/)
-    expect(propsBlock).toMatch(/minHeight\s*:\s*52/)
-    expect(propsBlock).toMatch(/zIndex\s*:\s*10[^0-9]/)
+    expect(propsBlock).toMatch(/left\s*:\s*0/)
+    expect(propsBlock).toMatch(/right\s*:\s*0/)
+  })
+
+  test("header has zIndex to stay above content", () => {
+    const propsBlock = extractHeaderStyleObject(source)
+    expect(propsBlock).toMatch(/zIndex\s*:\s*10/)
+  })
+
+  test("a spacer div exists after the header to prevent content overlap", () => {
+    // The spacer should have height:52 and flexShrink:0
+    expect(source).toContain("Header spacer")
+    expect(source).toMatch(/height:52,minHeight:52,flexShrink:0/)
+  })
+
+  test("header has all required fixed-position properties", () => {
+    const propsBlock = extractHeaderStyleObject(source)
+    expect(propsBlock).toMatch(/position\s*:\s*['"]fixed['"]/)
+    expect(propsBlock).toMatch(/top\s*:\s*0/)
+    expect(propsBlock).toMatch(/left\s*:\s*0/)
+    expect(propsBlock).toMatch(/right\s*:\s*0/)
+    expect(propsBlock).toMatch(/zIndex\s*:\s*10/)
   })
 })
 
