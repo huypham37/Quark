@@ -23,7 +23,7 @@ export function App() {
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
   const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn') => {
     const id = Date.now()
-    dispatch({ type: 'ADD_TOAST', title, body, kind })
+    dispatch({ type: 'ADD_TOAST', id, title, body, kind })
     setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
   }, [])
 

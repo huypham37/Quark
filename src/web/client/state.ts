@@ -101,7 +101,7 @@ export const initialState: AppState = {
 
 export type Action =
   | { type: 'SET'; payload: Partial<AppState> }
-  | { type: 'ADD_TOAST'; title: string; body: string; kind?: 'error' | 'warn' }
+  | { type: 'ADD_TOAST'; id: number; title: string; body: string; kind?: 'error' | 'warn' }
   | { type: 'REMOVE_TOAST'; id: number }
   | { type: 'ADD_USER_MSG'; id: string; text: string; images?: { mime: string; data: string }[] }
   | { type: 'ENSURE_ASSISTANT'; id: string }
@@ -116,7 +116,7 @@ export function reducer(s: AppState, a: Action): AppState {
     case 'SET':
       return { ...s, ...a.payload }
     case 'ADD_TOAST':
-      return { ...s, toasts: [...s.toasts, { id: Date.now(), title: a.title, body: a.body, kind: a.kind || 'error' }] }
+      return { ...s, toasts: [...s.toasts, { id: a.id, title: a.title, body: a.body, kind: a.kind || 'error' }] }
     case 'REMOVE_TOAST':
       return { ...s, toasts: s.toasts.filter(t => t.id !== a.id) }
     case 'ADD_USER_MSG': {
