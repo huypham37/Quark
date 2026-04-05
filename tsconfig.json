@@ -25,5 +25,5 @@
     "jsxImportSource": "react"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "index.ts", "drizzle.config.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src/web/client"]
 }

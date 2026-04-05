@@ -26,6 +26,8 @@
     "typecheck": "tsc --project tsconfig.build.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts",
+    "build:web": "bun scripts/build-web.ts",
+    "web": "bun scripts/build-web.ts && bun --preload ./preload.ts src/web/index.ts",
     "prepublishOnly": "bun run build",
     "docs": "typedoc"
   },
@@ -44,7 +46,12 @@
     "@ai-sdk/openai": "^3.0.41",
     "@opentui/core": "^0.1.86",
     "@opentui/solid": "^0.1.86",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "ai": "^6.0.116",
+    "marked": "^17.0.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "solid-js": "^1.9.11",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"

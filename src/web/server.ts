@@ -2,14 +2,19 @@ import { bootstrap } from "../bootstrap"
 import { prompt, cancel } from "../session/prompt"
 import { bus, type BusEventName } from "../session/events"
 import { createSession, listSessions, getSession } from "../session/session"
-import { loadMessages } from "../session/message"
+import { loadMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage, toModelMessages } from "../session/message"
 import { dbToTuiMessages } from "../tui/state"
 import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile"
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
-import { loadConfig, parseModelSpec, getProviderId } from "../config/config"
+import { buildSystem } from "../session/system"
+import { loadConfig, parseModelSpec, getProviderId, getModelId } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
+import { getFiles, fuzzyFilter } from "../tui/filelist"
+import { resolve as resolveCompaction } from "../session/compact-resolver"
+import { resolveModel } from "../session/prompt"
+import { getModelLimit } from "../provider/models"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -132,10 +137,77 @@ function createRequestHandler(agent: AgentConfig) {
       return json({ ok: true })
     }
 
+    if (req.method === "POST" && pathname === "/api/compact") {
+      const body = (await req.json()) as { sessionId: string }
+      const { sessionId } = body
+      try {
+        getSession(sessionId)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error("[compact] getSession failed:", msg, "sessionId:", sessionId)
+        return json({ error: msg }, 404)
+      }
+
+      let messages, parts, modelMessages, budget, model, system
+      try {
+        const loaded = loadMessages(sessionId)
+        messages = loaded.messages
+        parts = loaded.parts
+        modelMessages = toModelMessages(messages, parts)
+        const modelId = modelOverride ?? getModelId("main")
+        budget = getModelLimit(modelId)
+        model = await resolveModel(getModelOpt())
+        system = buildSystem(agent)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return json({ error: msg }, 500)
+      }
+
+      console.log("[compact] starting compaction for session:", sessionId)
+      console.log("[compact] messages:", messages.length, "parts:", parts.length, "modelMessages:", modelMessages.length)
+      console.log("[compact] budget:", JSON.stringify(budget))
+      bus.emit("compaction-start", { sessionId })
+      resolveCompaction({
+        trigger: "command",
+        ctx: {
+          sessionId,
+          messages,
+          parts,
+          modelMessages,
+          model,
+          agentPrompt: system,
+          budget,
+          persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
+          session: { create: createSession },
+        },
+      }).then(async (result) => {
+        console.log("[compact] compaction resolved:", JSON.stringify(result))
+        bus.emit("compaction-end", { sessionId, result })
+        if (result.type === "new-session" && result.newSessionId !== sessionId) {
+          const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
+          const newModelMsgs = toModelMessages(newMsgs, newParts)
+          const sysStr = Array.isArray(system) ? system.join("\n") : system
+          const { estimateTokens } = await import("../session/compaction")
+          bus.emit("session-switch", {
+            sessionId: result.newSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens: estimateTokens(sysStr, newModelMsgs),
+          })
+        }
+      }).catch((err) => {
+        console.error("[compact] compaction FAILED:", err instanceof Error ? err.stack : String(err))
+        bus.emit("compaction-end", { sessionId, result: null })
+        bus.emit("error", { sessionId, error: err instanceof Error ? err.message : String(err) })
+      })
+      return json({ ok: true })
+    }
+
     if (req.method === "POST" && pathname === "/api/model") {
       const body = (await req.json()) as { model: string | null }
-      modelOverride = body.model || null
-      return json({ model: modelOverride ?? loadConfig().main_model })
+      const mainModel = loadConfig().main_model
+      // Clear the override when the user picks the main model so config default is used
+      modelOverride = (body.model && body.model !== mainModel) ? body.model : null
+      return json({ model: modelOverride ?? mainModel })
     }
 
     if (req.method === "GET" && pathname === "/api/model") {
@@ -181,6 +253,13 @@ function createRequestHandler(agent: AgentConfig) {
       })
     }
 
+    if (req.method === "GET" && pathname === "/api/files") {
+      const q = url.searchParams.get("q") ?? ""
+      const files = await getFiles()
+      const filtered = fuzzyFilter(files, q, 20)
+      return json(filtered)
+    }
+
     // --- Static files ---
 
     if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
@@ -219,6 +298,12 @@ export async function startWebServer() {
 
   const port = Number(process.env.QUARK_WEB_PORT) || 3000
   const handleRequest = createRequestHandler(agent)
+
+  // Register a default error handler so bus.emit("error") never crashes the
+  // process when no WebSocket client is connected.
+  bus.on("error", ({ sessionId, error }) => {
+    console.error(`[web] bus error (session ${sessionId}):`, error)
+  })
 
   const server = Bun.serve<WSData>({
     port,

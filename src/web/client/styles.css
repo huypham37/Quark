@@ -123,10 +123,10 @@ body {
   background: #2a2a2a;
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 20px;
-  padding: 4px 6px 4px 14px;
+  padding: 12px 14px 6px;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   transition: border-color 0.15s;
 }
 
@@ -140,9 +140,22 @@ body {
   font-size: 16px; /* ≥16px prevents iOS auto-zoom on focus */
   line-height: 1.5;
   resize: none;
-  padding: 9px 0;
+  padding: 0;
   min-height: 20px;
   max-height: 200px;
+}
+
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.input-toolbar-left,
+.input-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .input-btn {
@@ -572,6 +585,74 @@ body {
 .input-btn--slash {
   background: transparent;
   border: none;
+}
+
+.input-btn--mention {
+  background: transparent;
+  border: none;
+}
+
+.input-btn--compact {
+  background: transparent;
+  border: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Mention picker — @ file/directory picker
+   ═══════════════════════════════════════════════════════════════ */
+.mention-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: #232323;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  animation: dropIn 0.12s ease-out;
+  z-index: 20;
+}
+
+.mention-picker-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.mention-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.mention-picker-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.mention-picker-item--selected {
+  background: rgba(232,115,90,0.12);
+}
+
+.mention-picker-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.mention-picker-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #e8e0d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ═══════════════════════════════════════════════════════════════

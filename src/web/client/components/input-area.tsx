@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { T } from '../tokens'
-import { SendIcon, StopIcon, PaperclipIcon, CommandIcon, XSmallIcon } from '../icons'
+import { SendIcon, StopIcon, PaperclipIcon, AtIcon, CompactIcon, XSmallIcon } from '../icons'
+import { BrailleSpinner } from '../icons'
 import { CommandPalette } from './command-palette'
+import { MentionPicker } from './mention-picker'
 import type { SlashCommand } from '../../../tui/commands'
 
 export interface Attachment {
@@ -14,16 +16,24 @@ interface InputAreaProps {
   onSend: (text: string, images: Attachment[]) => void
   running: boolean
   onCancel: () => void
+  onCompact?: () => void
+  compacting?: boolean
   onToast?: (title: string, body: string, kind: 'error' | 'warn') => void
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
-export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps) {
+export function InputArea({ onSend, running, onCancel, onCompact, compacting, onToast }: InputAreaProps) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<Attachment[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionAtIndex, setMentionAtIndex] = useState(-1)
+  const mentionQueryRef = useRef('')
+  const mentionAtIndexRef = useRef(-1)
+  const mentionFromButtonRef = useRef(false)
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -35,6 +45,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   }, [text])
 
   const handleKey = (e: React.KeyboardEvent) => {
+    if (mentionOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) return
+    if (e.key === 'Escape' && mentionOpen) { e.preventDefault(); closeMention(); return }
     if (paletteOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) return
     if (e.key === 'Escape' && paletteOpen) { e.preventDefault(); setPaletteOpen(false); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() }
@@ -44,6 +56,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setText(val)
+
+    // Slash command detection
     if (val === '/') {
       setPaletteOpen(true)
       setSlashQuery('')
@@ -52,6 +66,94 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     } else if (!val.startsWith('/')) {
       setPaletteOpen(false)
     }
+
+    // @ mention detection — find the last @ that is at start or preceded by space
+    updateMention(val, e.target.selectionStart ?? val.length)
+  }
+
+  const updateMention = (val: string, cursorPos: number) => {
+    // Look backwards from cursor for an unfinished @mention
+    const before = val.slice(0, cursorPos)
+    const lastAt = before.lastIndexOf('@')
+
+    if (lastAt === -1) {
+      closeMention()
+      return
+    }
+
+    // @ must be at start or preceded by a space/newline
+    if (lastAt > 0 && before[lastAt - 1] !== ' ' && before[lastAt - 1] !== '\n') {
+      closeMention()
+      return
+    }
+
+    const query = before.slice(lastAt + 1)
+
+    // If there's a space in the query, mention is done
+    if (query.includes(' ')) {
+      closeMention()
+      return
+    }
+
+    setMentionOpen(true)
+    setMentionQuery(query)
+    setMentionAtIndex(lastAt)
+    mentionQueryRef.current = query
+    mentionAtIndexRef.current = lastAt
+  }
+
+  const closeMention = () => {
+    setMentionOpen(false)
+    setMentionQuery('')
+    setMentionAtIndex(-1)
+    mentionQueryRef.current = ''
+    mentionAtIndexRef.current = -1
+    mentionFromButtonRef.current = false
+  }
+
+  const handleMentionSelect = (path: string) => {
+    const atIdx = mentionAtIndexRef.current
+    const query = mentionQueryRef.current
+    const fromButton = mentionFromButtonRef.current
+    const currentText = ref.current?.value ?? text
+    let newText: string
+    let cursorPos: number
+
+    if (fromButton) {
+      // Opened via @ button — no @ was inserted, just splice in @path at cursor
+      const before = currentText.slice(0, atIdx)
+      const after = currentText.slice(atIdx)
+      newText = before + '@' + path + ' ' + after
+      cursorPos = atIdx + 1 + path.length + 1
+    } else {
+      // Typed @ — replace @query with @path
+      const before = currentText.slice(0, atIdx)
+      const after = currentText.slice(atIdx + 1 + query.length)
+      newText = before + '@' + path + ' ' + after
+      cursorPos = atIdx + 1 + path.length + 1
+    }
+
+    setText(newText)
+    closeMention()
+    setTimeout(() => {
+      if (ref.current) {
+        ref.current.focus()
+        ref.current.setSelectionRange(cursorPos, cursorPos)
+      }
+    }, 0)
+  }
+
+  const openMentionFromButton = () => {
+    // Open the picker without inserting @ — it will be added on selection
+    const ta = ref.current
+    if (!ta) return
+    const pos = ta.selectionStart ?? text.length
+    setMentionOpen(true)
+    setMentionQuery('')
+    setMentionAtIndex(pos)
+    mentionQueryRef.current = ''
+    mentionAtIndexRef.current = pos
+    mentionFromButtonRef.current = true
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
@@ -79,6 +181,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setText('')
     setImages([])
     setPaletteOpen(false)
+    closeMention()
   }
 
   const handleFiles = (files: FileList | null) => {
@@ -123,6 +226,9 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
         {paletteOpen && (
           <CommandPalette query={slashQuery} onSelect={handleSlashSelect} onClose={handleSlashClose} />
         )}
+        {mentionOpen && (
+          <MentionPicker query={mentionQuery} onSelect={handleMentionSelect} onClose={closeMention} />
+        )}
         <div className="input-container">
           <input
             ref={fileRef}
@@ -132,22 +238,6 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             style={{ display: 'none' }}
             onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={running}
-            className="input-btn input-btn--attach"
-            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-          >
-            <PaperclipIcon />
-          </button>
-          <button
-            onClick={togglePalette}
-            disabled={running}
-            className="input-btn input-btn--slash"
-            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-          >
-            <CommandIcon />
-          </button>
           <textarea
             ref={ref}
             value={text}
@@ -158,24 +248,56 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             rows={1}
             className="input-textarea"
           />
-          {running ? (
-            <button onClick={onCancel} className="input-btn input-btn--cancel">
-              <StopIcon />
-            </button>
-          ) : (
-            <button
-              onClick={doSend}
-              disabled={!hasContent}
-              className="input-btn"
-              style={{
-                background: hasContent ? T.accent : T.surface,
-                color: hasContent ? '#fff' : T.text3,
-                cursor: hasContent ? 'pointer' : 'default',
-              }}
-            >
-              <SendIcon />
-            </button>
-          )}
+          <div className="input-toolbar">
+            <div className="input-toolbar-left">
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={running}
+                className="input-btn input-btn--attach"
+                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+              >
+                <PaperclipIcon />
+              </button>
+              <button
+                onClick={openMentionFromButton}
+                disabled={running}
+                className="input-btn input-btn--mention"
+                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+              >
+                <AtIcon />
+              </button>
+              <button
+                onClick={onCompact}
+                disabled={running || compacting || !onCompact}
+                className="input-btn input-btn--compact"
+                style={{ color: compacting ? T.accent : T.text3, cursor: (running || compacting || !onCompact) ? 'default' : 'pointer' }}
+                title="Compact context"
+              >
+                {compacting ? <BrailleSpinner size={18} /> : <CompactIcon />}
+              </button>
+
+            </div>
+            <div className="input-toolbar-right">
+              {running ? (
+                <button onClick={onCancel} className="input-btn input-btn--cancel">
+                  <StopIcon />
+                </button>
+              ) : (
+                <button
+                  onClick={doSend}
+                  disabled={!hasContent}
+                  className="input-btn"
+                  style={{
+                    background: hasContent ? T.accent : T.surface,
+                    color: hasContent ? '#fff' : T.text3,
+                    cursor: hasContent ? 'pointer' : 'default',
+                  }}
+                >
+                  <SendIcon />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
         <div className="input-hint">Enter to send · Shift+Enter for newline</div>
       </div>

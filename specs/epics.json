@@ -261,5 +261,55 @@
       "CLI subscribes to events and outputs structured data to stdout",
       "Sub-agent events from child stderr NDJSON are correctly forwarded to the parent bus as subagent-* events"
     ]
+  },
+  {
+    "id": "EPIC-16",
+    "title": "Web UI — Image Attachment Pipeline",
+    "description": "End-to-end image attachment for the Quark web chat UI. Users can pick one or more images via a file picker, preview and remove them before sending, and submit them alongside their message. Sent images are rendered as thumbnails inside the user chat bubble and survive session reload. The backend contract (images: { mime, data }[] in POST /api/prompt) already exists — all work is front-end.",
+    "business_goal": "Enable users to share visual context (screenshots, diagrams, mockups) with the agent directly from the web UI, unlocking image-aware responses without any backend changes.",
+    "owner": "UX / Frontend",
+    "priority": "Medium",
+    "status": "Planned",
+    "user_stories": [
+      {
+        "id": "US-16-1",
+        "title": "File & directory mention picker",
+        "story": "As a user of the Quark web UI, I want to click an @ button in the input toolbar to search and select files or directories so that I can mention them in my message without typing the full path manually.",
+        "acceptance_criteria": [
+          "An @ button sits in the input toolbar at the same level as the attachment button",
+          "Clicking it opens an inline search popover above the textarea",
+          "The popover calls GET /api/files?q=<query> (or equivalent) and lists matching file and directory paths",
+          "Selecting an entry inserts @<path> at the current cursor position in the textarea and closes the popover",
+          "Typing after @ in the textarea also triggers the same popover (keyboard parity with the button)",
+          "Popover closes on Escape or click-outside without inserting anything"
+        ]
+      },
+      {
+        "id": "US-16-2",
+        "title": "Slash command picker button",
+        "story": "As a user of the Quark web UI, I want to click a / button in the input toolbar to browse and select available slash commands so that I can trigger agent actions without remembering exact command names.",
+        "acceptance_criteria": [
+          "A / button sits in the input toolbar at the same level as the attachment button",
+          "Clicking it opens an inline command palette above the textarea listing all supported commands: /help, /new, /sessions, /compact, /clear, /model, /profile",
+          "Each entry shows the command name, a short description, and optional usage hint (sourced from the same command registry as the TUI, src/tui/commands.ts)",
+          "Selecting a command inserts /<command> into the textarea and closes the palette",
+          "Typing / in the textarea also triggers the same palette with live prefix filtering (keyboard parity with the button)",
+          "Palette closes on Escape or click-outside without inserting anything"
+        ]
+      }
+    ],
+    "acceptance_criteria": [
+      "InputArea exposes an attachment button that opens a native file picker (accept: image/*, multiple)",
+      "Selected images are encoded to base64 and held in component state with mime type and preview URL",
+      "Thumbnail previews are shown above the textarea; each has an ✕ button to remove it before send",
+      "Files over 5 MB are rejected with an inline error toast and not added to the queue",
+      "sendMessage() in app.tsx forwards images: [{ mime, data }] to POST /api/prompt",
+      "Attachment state is cleared after a successful send",
+      "Sent images are rendered as thumbnails inside the user chat bubble in message-item.tsx",
+      "ImagePart is added to the MessagePart union in state.ts so images survive session reload",
+      "Text-only messages continue to work exactly as before",
+      "@ button and / button sit in the input toolbar alongside the attachment button",
+      "Both pickers can be triggered by button click or keyboard (@ and / typed in textarea)"
+    ]
   }
 ]

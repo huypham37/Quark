@@ -13,6 +13,8 @@ import { InputArea } from './components/input-area'
 import { PermissionDialog } from './components/permission-dialog'
 import { Toasts } from './components/toasts'
 
+const COMPACTION_TOAST_ID = -1
+
 export function App() {
   const vh = useViewportHeight()
   const [s, dispatch] = useReducer(reducer, initialState)
@@ -21,10 +23,11 @@ export function App() {
   const reconnectDelay = useRef(1000)
 
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
-  const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn') => {
-    const id = Date.now()
-    dispatch({ type: 'ADD_TOAST', title, body, kind })
-    setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
+  const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn', opts?: { id?: number; persistent?: boolean }) => {
+    const id = opts?.id ?? Date.now()
+    dispatch({ type: 'ADD_TOAST', id, title, body, kind })
+    if (!opts?.persistent) setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
+    return id
   }, [])
 
   // Persist sessionId to localStorage
@@ -148,12 +151,27 @@ export function App() {
         toast('Retrying', `Attempt ${d.attempt} — ${Math.round((d.delayMs || 1000) / 1000)}s…`, 'warn')
         break
       case 'compaction-start':
-        toast('Compacting', 'Compacting context…', 'warn')
+        set({ compacting: true })
+        toast('Compacting', 'Compacting context…', 'warn', { id: COMPACTION_TOAST_ID, persistent: true })
         break
+      case 'compaction-end': {
+        set({ compacting: false })
+        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
+        const result = d.result
+        if (!result) {
+          toast('Compaction failed', 'An error occurred during compaction', 'error')
+        } else if (result.evictedCount === 0) {
+          toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
+        } else {
+          toast('Compacted', `Evicted ${result.evictedCount} messages`, 'warn')
+        }
+        break
+      }
       case 'session-switch':
         set({ sessionId: d.sessionId })
         if (d.messages) dispatch({ type: 'LOAD_MESSAGES', messages: d.messages })
         if (d.estimatedTokens) set({ tokensUsed: d.estimatedTokens })
+        refreshSessions()
         break
       case 'session-reset':
         set({ sessionId: d.sessionId })
@@ -256,6 +274,26 @@ export function App() {
     } catch { toast('Error', 'Failed to switch model', 'error') }
   }
 
+  async function compactContext() {
+    if (!s.sessionId) {
+      toast('Nothing to compact', 'No active session', 'warn')
+      return
+    }
+    try {
+      set({ compacting: true })
+      const r = await api<{ ok?: boolean; error?: string }>('POST', '/api/compact', { sessionId: s.sessionId })
+      if (r.error) {
+        set({ compacting: false })
+        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
+        toast('Compaction failed', r.error, 'error')
+      }
+    } catch {
+      set({ compacting: false })
+      dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
+      toast('Error', 'Failed to compact', 'error')
+    }
+  }
+
   async function respondPerm(action: 'once' | 'always' | 'reject') {
     if (!s.permission) return
     set({ permission: null })
@@ -300,7 +338,7 @@ export function App() {
           )}
         </div>
 
-        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onToast={toast} />
+        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onCompact={compactContext} compacting={s.compacting} onToast={toast} />
       </div>
 
       {s.permission && <PermissionDialog perm={s.permission} onRespond={respondPerm} />}
