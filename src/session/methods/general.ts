@@ -67,11 +67,14 @@ export const general: CompactMethodDef = {
   async execute(ctx: CompactMethodContext): Promise<CompactResult> {
     const config = loadConfig()
     const retainTurns = config.compact.retain_turns
+    console.log("[compact-general] execute start, retainTurns:", retainTurns, "total messages:", ctx.messages.length, "total parts:", ctx.parts.length)
 
     // Step 1: Split messages into evicted and retained
     const { evicted, retained } = splitMessages(ctx.messages, retainTurns)
+    console.log("[compact-general] split: evicted:", evicted.length, "retained:", retained.length)
 
     if (evicted.length === 0) {
+      console.log("[compact-general] nothing to evict, returning early")
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: 0 }
     }
 
@@ -80,8 +83,10 @@ export const general: CompactMethodDef = {
       evicted.some((m) => m.id === p.messageId),
     )
     const textMessages = buildTextOnlyMessages(evicted, evictedParts)
+    console.log("[compact-general] textMessages from evicted:", textMessages.length)
 
     if (textMessages.length === 0) {
+      console.log("[compact-general] no text messages from evicted span, returning early")
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: 0 }
     }
 
@@ -91,8 +96,10 @@ export const general: CompactMethodDef = {
     const mergeInstruction = existingAnchor
       ? `\n\nPrevious summary to incorporate and update (don't discard):\n${existingAnchor.text}`
       : ""
+    console.log("[compact-general] existingAnchor:", existingAnchor ? "yes" : "no")
 
     // Step 4: Send text-only evicted span + prompt to model
+    console.log("[compact-general] calling generateText with", textMessages.length + 1, "messages")
     const result = await generateText({
       model: ctx.model,
       messages: [
@@ -101,15 +108,19 @@ export const general: CompactMethodDef = {
       ],
       maxRetries: 1,
     })
+    console.log("[compact-general] generateText returned, text length:", result.text?.length ?? 0)
 
     const summaryText = result.text
     if (!summaryText) {
+      console.log("[compact-general] empty summary text, returning early")
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: evicted.length }
     }
 
     // Step 5: Create a new session and seed it with summary + retained turns
+    console.log("[compact-general] creating new session...")
     const newSession = ctx.session.create()
     const newSid = newSession.id
+    console.log("[compact-general] new session created:", newSid)
 
     // 5a. Inject summary as the first user message in the new session
     ctx.persist.saveUserMessage({ sessionId: newSid, text: summaryText })

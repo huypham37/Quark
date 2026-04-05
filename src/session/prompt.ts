@@ -221,6 +221,7 @@ async function loop(
     // 0. Run pending compaction (queued from previous iteration or tool call)
     const pendingReq = takePending(currentSessionId);
     if (pendingReq) {
+      console.log("[prompt] running pending compaction for session:", currentSessionId);
       bus.emit("compaction-start", { sessionId: currentSessionId });
       setCopilotForceAgent(true);
       try {
@@ -229,6 +230,7 @@ async function loop(
           ctx: pendingReq.ctx,
           methodId: pendingReq.methodId,
         });
+        console.log("[prompt] pending compaction result:", JSON.stringify(result));
         bus.emit("compaction-end", { sessionId: currentSessionId, result });
         if (result.type === "new-session") {
           currentSessionId = result.newSessionId;
@@ -245,6 +247,7 @@ async function loop(
           });
         }
       } catch (err) {
+        console.error("[prompt] pending compaction FAILED:", err instanceof Error ? err.stack : String(err));
         bus.emit("compaction-end", {
           sessionId: currentSessionId,
           result: null,
@@ -330,6 +333,7 @@ async function loop(
         // Re-load after compaction so the model sees the compacted context
         continue;
       } catch (err) {
+        console.error("[prompt] auto-compaction FAILED:", err instanceof Error ? err.stack : String(err));
         bus.emit("compaction-end", {
           sessionId: currentSessionId,
           result: null,

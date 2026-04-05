@@ -142,6 +142,7 @@ export async function resolve(input: {
 
   // Resolve method
   const id = methodId ?? defaultMethodId
+  console.log("[compact-resolver] trigger:", trigger, "method:", id, "defaultMethodId:", defaultMethodId, "registered methods:", [...methods.keys()])
   if (!id) {
     throw new Error("No compaction method configured. Register a method and call setDefaultMethod().")
   }
@@ -152,7 +153,14 @@ export async function resolve(input: {
   }
 
   // Run with deduplication guard
-  const promise = method.execute(ctx).finally(() => {
+  console.log("[compact-resolver] executing method:", method.id)
+  const promise = method.execute(ctx).then((result) => {
+    console.log("[compact-resolver] method returned:", JSON.stringify(result))
+    return result
+  }).catch((err) => {
+    console.error("[compact-resolver] method execute FAILED:", err instanceof Error ? err.stack : String(err))
+    throw err
+  }).finally(() => {
     running.delete(sid)
   })
 

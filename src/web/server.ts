@@ -163,6 +163,9 @@ function createRequestHandler(agent: AgentConfig) {
         return json({ error: msg }, 500)
       }
 
+      console.log("[compact] starting compaction for session:", sessionId)
+      console.log("[compact] messages:", messages.length, "parts:", parts.length, "modelMessages:", modelMessages.length)
+      console.log("[compact] budget:", JSON.stringify(budget))
       bus.emit("compaction-start", { sessionId })
       resolveCompaction({
         trigger: "command",
@@ -178,6 +181,7 @@ function createRequestHandler(agent: AgentConfig) {
           session: { create: createSession },
         },
       }).then(async (result) => {
+        console.log("[compact] compaction resolved:", JSON.stringify(result))
         bus.emit("compaction-end", { sessionId, result })
         if (result.type === "new-session" && result.newSessionId !== sessionId) {
           const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
@@ -191,6 +195,7 @@ function createRequestHandler(agent: AgentConfig) {
           })
         }
       }).catch((err) => {
+        console.error("[compact] compaction FAILED:", err instanceof Error ? err.stack : String(err))
         bus.emit("compaction-end", { sessionId, result: null })
         bus.emit("error", { sessionId, error: err instanceof Error ? err.message : String(err) })
       })
@@ -293,6 +298,12 @@ export async function startWebServer() {
 
   const port = Number(process.env.QUARK_WEB_PORT) || 3000
   const handleRequest = createRequestHandler(agent)
+
+  // Register a default error handler so bus.emit("error") never crashes the
+  // process when no WebSocket client is connected.
+  bus.on("error", ({ sessionId, error }) => {
+    console.error(`[web] bus error (session ${sessionId}):`, error)
+  })
 
   const server = Bun.serve<WSData>({
     port,
