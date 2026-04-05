@@ -13,6 +13,8 @@ import { InputArea } from './components/input-area'
 import { PermissionDialog } from './components/permission-dialog'
 import { Toasts } from './components/toasts'
 
+const COMPACTION_TOAST_ID = -1
+
 export function App() {
   const vh = useViewportHeight()
   const [s, dispatch] = useReducer(reducer, initialState)
@@ -21,10 +23,11 @@ export function App() {
   const reconnectDelay = useRef(1000)
 
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
-  const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn') => {
-    const id = Date.now()
+  const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn', opts?: { id?: number; persistent?: boolean }) => {
+    const id = opts?.id ?? Date.now()
     dispatch({ type: 'ADD_TOAST', id, title, body, kind })
-    setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
+    if (!opts?.persistent) setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
+    return id
   }, [])
 
   // Persist sessionId to localStorage
@@ -149,15 +152,18 @@ export function App() {
         break
       case 'compaction-start':
         set({ compacting: true })
-        toast('Compacting', 'Compacting context…', 'warn')
+        toast('Compacting', 'Compacting context…', 'warn', { id: COMPACTION_TOAST_ID, persistent: true })
         break
       case 'compaction-end': {
         set({ compacting: false })
+        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
         const result = d.result
         if (!result) {
           toast('Compaction failed', 'An error occurred during compaction', 'error')
         } else if (result.evictedCount === 0) {
           toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
+        } else {
+          toast('Compacted', `Evicted ${result.evictedCount} messages`, 'warn')
         }
         break
       }
@@ -278,10 +284,12 @@ export function App() {
       const r = await api<{ ok?: boolean; error?: string }>('POST', '/api/compact', { sessionId: s.sessionId })
       if (r.error) {
         set({ compacting: false })
+        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
         toast('Compaction failed', r.error, 'error')
       }
     } catch {
       set({ compacting: false })
+      dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
       toast('Error', 'Failed to compact', 'error')
     }
   }
