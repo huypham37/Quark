@@ -137,6 +137,15 @@ export function PaperclipIcon() {
   )
 }
 
+export function CommandIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4,6 10,10 4,14" />
+      <line x1={12} y1={14} x2={16} y2={14} />
+    </svg>
+  )
+}
+
 export function XSmallIcon() {
   return (
     <svg width={12} height={12} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

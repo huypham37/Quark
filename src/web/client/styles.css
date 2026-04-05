@@ -569,6 +569,74 @@ body {
   border: none;
 }
 
+.input-btn--slash {
+  background: transparent;
+  border: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Command palette — slash command picker (gh issue #54)
+   ═══════════════════════════════════════════════════════════════ */
+.command-palette {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: #232323;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  animation: dropIn 0.12s ease-out;
+  z-index: 20;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.command-palette-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.command-palette-item--selected {
+  background: rgba(232,115,90,0.12);
+}
+
+.command-palette-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #E8735A;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.command-palette-usage {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.command-palette-desc {
+  font-size: 13px;
+  color: #a09890;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Mobile responsive — all mobile concerns in ONE place
    ═══════════════════════════════════════════════════════════════ */
