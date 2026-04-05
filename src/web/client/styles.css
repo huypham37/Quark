@@ -525,6 +525,51 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   Image attachment preview
+   ═══════════════════════════════════════════════════════════════ */
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 4px;
+  flex-wrap: wrap;
+}
+
+.image-thumb-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.image-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.image-thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #333;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #e8e0d8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.input-btn--attach {
+  background: transparent;
+  border: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    Mobile responsive — all mobile concerns in ONE place
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 420px) {
