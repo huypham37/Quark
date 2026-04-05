@@ -29,8 +29,8 @@ export interface CompactConfig {
   retain_turns: number
   /**
    * Fraction of the model's context window at which auto-compaction triggers.
-   * e.g. 0.95 means compact when estimated tokens >= 95% of context_window.
-   * Default: 0.95
+   * e.g. 0.50 means compact when estimated tokens >= 50% of context_window.
+   * Default: 0.50
    */
   threshold: number
   /** Enable auto-compaction. Default: true */
@@ -40,7 +40,7 @@ export interface CompactConfig {
 const COMPACT_DEFAULTS: CompactConfig = {
   method: "general",
   retain_turns: 5,
-  threshold: 0.95,
+  threshold: 0.50,
   auto: true,
 }
 

@@ -276,6 +276,21 @@ describe("setConfigField", () => {
 })
 
 // ---------------------------------------------------------------------------
+// loadConfig — compact defaults (issue #69)
+// ---------------------------------------------------------------------------
+describe("loadConfig — compact defaults", () => {
+  test("default compact threshold is 0.50", () => {
+    const config = loadConfig()
+    expect(config.compact.threshold).toBe(0.50)
+  })
+
+  test("default compact auto is true", () => {
+    const config = loadConfig()
+    expect(config.compact.auto).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // resetConfigCache
 // ---------------------------------------------------------------------------
 describe("resetConfigCache", () => {
