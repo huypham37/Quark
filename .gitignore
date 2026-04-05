@@ -33,6 +33,11 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
+# Web client build output (regenerate with bun scripts/build-web.ts)
+src/web/public/bundle.js
+src/web/public/bundle.js.map
+src/web/public/styles.css
+
 # Generated API docs (regenerate with typedoc)
 docs/api/
 
