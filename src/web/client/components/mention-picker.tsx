@@ -110,7 +110,7 @@ export function MentionPicker({ query, onSelect, onClose }: MentionPickerProps) 
               key={item}
               className={`mention-picker-item${i === selectedIndex ? ' mention-picker-item--selected' : ''}`}
               onMouseEnter={() => setSelectedIndex(i)}
-              onClick={() => onSelect(item)}
+              onPointerDown={(e) => { e.preventDefault(); onSelect(item) }}
             >
               <span className="mention-picker-icon">{isDir ? '📁' : '📄'}</span>
               <span className="mention-picker-path">{item}</span>

@@ -28,6 +28,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionAtIndex, setMentionAtIndex] = useState(-1)
+  const mentionQueryRef = useRef('')
+  const mentionAtIndexRef = useRef(-1)
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -92,25 +94,33 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setMentionOpen(true)
     setMentionQuery(query)
     setMentionAtIndex(lastAt)
+    mentionQueryRef.current = query
+    mentionAtIndexRef.current = lastAt
   }
 
   const closeMention = () => {
     setMentionOpen(false)
     setMentionQuery('')
     setMentionAtIndex(-1)
+    mentionQueryRef.current = ''
+    mentionAtIndexRef.current = -1
   }
 
   const handleMentionSelect = (path: string) => {
-    // Replace @query with @path
-    const before = text.slice(0, mentionAtIndex)
-    const after = text.slice(mentionAtIndex + 1 + mentionQuery.length)
+    // Use refs for fresh values — state may be stale on mobile due to touch/blur ordering
+    const atIdx = mentionAtIndexRef.current
+    const query = mentionQueryRef.current
+    // Replace @query with @path in current textarea value
+    const currentText = ref.current?.value ?? text
+    const before = currentText.slice(0, atIdx)
+    const after = currentText.slice(atIdx + 1 + query.length)
     const newText = before + '@' + path + ' ' + after
     setText(newText)
     closeMention()
     // Refocus textarea
     setTimeout(() => {
       if (ref.current) {
-        const pos = mentionAtIndex + 1 + path.length + 1
+        const pos = atIdx + 1 + path.length + 1
         ref.current.focus()
         ref.current.setSelectionRange(pos, pos)
       }
@@ -128,6 +138,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setMentionOpen(true)
     setMentionQuery('')
     setMentionAtIndex(pos)
+    mentionQueryRef.current = ''
+    mentionAtIndexRef.current = pos
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
