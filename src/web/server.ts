@@ -135,8 +135,10 @@ function createRequestHandler(agent: AgentConfig) {
 
     if (req.method === "POST" && pathname === "/api/model") {
       const body = (await req.json()) as { model: string | null }
-      modelOverride = body.model || null
-      return json({ model: modelOverride ?? loadConfig().main_model })
+      const mainModel = loadConfig().main_model
+      // Clear the override when the user picks the main model so config default is used
+      modelOverride = (body.model && body.model !== mainModel) ? body.model : null
+      return json({ model: modelOverride ?? mainModel })
     }
 
     if (req.method === "GET" && pathname === "/api/model") {
