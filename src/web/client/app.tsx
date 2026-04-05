@@ -53,14 +53,38 @@ export function App() {
 
   // WebSocket connection
   useEffect(() => {
-    let ws: WebSocket
+    let cancelled = false
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
     function connect() {
+      if (cancelled) return
+      // Ensure previous connection is fully closed before opening a new one
+      if (ws) {
+        ws.onopen = null
+        ws.onclose = null
+        ws.onerror = null
+        ws.onmessage = null
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close()
+        }
+      }
+
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
       ws = new WebSocket(`${proto}://${location.host}/ws`)
       wsRef.current = ws
 
-      ws.onopen = () => { set({ connected: true }); reconnectDelay.current = 1000 }
-      ws.onclose = () => { set({ connected: false }); setTimeout(connect, reconnectDelay.current); reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000) }
+      ws.onopen = () => {
+        if (cancelled) return
+        set({ connected: true })
+        reconnectDelay.current = 1000
+      }
+      ws.onclose = () => {
+        if (cancelled) return
+        set({ connected: false })
+        reconnectTimer = setTimeout(connect, reconnectDelay.current)
+        reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000)
+      }
       ws.onerror = () => {}
       ws.onmessage = (e) => {
         try {
@@ -69,11 +93,21 @@ export function App() {
         } catch {}
       }
 
-      const ping = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })) }, 30000)
+      const ping = setInterval(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })) }, 30000)
       ws.addEventListener('close', () => clearInterval(ping))
     }
     connect()
-    return () => { if (ws) ws.close() }
+    return () => {
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (ws) {
+        ws.onopen = null
+        ws.onclose = null
+        ws.onerror = null
+        ws.onmessage = null
+        ws.close()
+      }
+    }
   }, [])
 
   // Event handler
@@ -84,7 +118,14 @@ export function App() {
         refreshSessions()
         break
       case 'user-message':
-        dispatch({ type: 'ADD_USER_MSG', id: d.messageId, text: d.text })
+        // Replace optimistic message with the real server message
+        if (pendingOptMsgRef.current) {
+          const optId = pendingOptMsgRef.current
+          pendingOptMsgRef.current = null
+          dispatch({ type: 'UPDATE_MSG', id: optId, updater: m => ({ ...m, id: d.messageId }) })
+        } else {
+          dispatch({ type: 'ADD_USER_MSG', id: d.messageId, text: d.text })
+        }
         break
       case 'assistant-message-start':
         dispatch({ type: 'ENSURE_ASSISTANT', id: d.messageId })
@@ -230,18 +271,33 @@ export function App() {
     try { const c = await api('GET', '/api/config'); set({ tokenLimit: c.contextWindow || 200000 }) } catch {}
   }
 
+  // Initial health check — set connected immediately if server responds
+  // (avoids red flash while WS handshake is in flight)
+  useEffect(() => {
+    api('GET', '/api/health').then(() => set({ connected: true })).catch(() => {})
+  }, [])
+
   useEffect(() => { refreshSessions(); loadModels(); loadAppConfig() }, [])
 
   // Actions
+  const pendingOptMsgRef = useRef<string | null>(null)
+
   async function sendMessage(text: string, images: { mime: string; data: string }[] = []) {
     if (!text.trim() && images.length === 0 || s.running) return
     const body: any = { text: text.trim() }
     if (s.sessionId) body.sessionId = s.sessionId
     if (images.length > 0) body.images = images.map(({ mime, data }) => ({ mime, data }))
+
+    // Optimistic: show user message immediately (before server round-trip)
+    const optimisticId = '_opt_' + Date.now()
+    pendingOptMsgRef.current = optimisticId
+    dispatch({ type: 'ADD_USER_MSG', id: optimisticId, text: text.trim(), images: images.length > 0 ? images : undefined })
+    set({ running: true })
+
     try {
       const r = await api('POST', '/api/prompt', body)
       if (r.sessionId) set({ sessionId: r.sessionId })
-    } catch { toast('Error', 'Failed to send', 'error') }
+    } catch { toast('Error', 'Failed to send', 'error'); set({ running: false }) }
   }
 
   async function cancelAgent() {
