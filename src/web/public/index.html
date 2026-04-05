@@ -39,7 +39,21 @@ body{
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useRef,useEffect,useCallback,useMemo,useReducer}=React;
-const VH=CSS.supports('height','100svh')?'100svh':CSS.supports('height','100dvh')?'100dvh':'100vh';
+const VH_FALLBACK=CSS.supports('height','100svh')?'100svh':CSS.supports('height','100dvh')?'100dvh':'100vh';
+
+// Hook: track actual visible viewport height (handles mobile browser chrome)
+function useViewportHeight(){
+  const[vh,setVh]=useState(()=>window.visualViewport?window.visualViewport.height+'px':VH_FALLBACK);
+  useEffect(()=>{
+    const vv=window.visualViewport;
+    if(!vv)return;
+    const update=()=>setVh(vv.height+'px');
+    update();
+    vv.addEventListener('resize',update);
+    return()=>vv.removeEventListener('resize',update);
+  },[]);
+  return vh;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // Design tokens — matching the reference mockup
@@ -226,6 +240,7 @@ function reducer(s,a){
 // Main App
 // ═══════════════════════════════════════════════════════════════════
 function App(){
+  const VH=useViewportHeight();
   const[s,dispatch]=useReducer(reducer,init);
   const wsRef=useRef(null);
   const msgEndRef=useRef(null);
