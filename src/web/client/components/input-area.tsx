@@ -30,6 +30,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   const [mentionAtIndex, setMentionAtIndex] = useState(-1)
   const mentionQueryRef = useRef('')
   const mentionAtIndexRef = useRef(-1)
+  const mentionFromButtonRef = useRef(false)
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -104,42 +105,52 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setMentionAtIndex(-1)
     mentionQueryRef.current = ''
     mentionAtIndexRef.current = -1
+    mentionFromButtonRef.current = false
   }
 
   const handleMentionSelect = (path: string) => {
-    // Use refs for fresh values — state may be stale on mobile due to touch/blur ordering
     const atIdx = mentionAtIndexRef.current
     const query = mentionQueryRef.current
-    // Replace @query with @path in current textarea value
+    const fromButton = mentionFromButtonRef.current
     const currentText = ref.current?.value ?? text
-    const before = currentText.slice(0, atIdx)
-    const after = currentText.slice(atIdx + 1 + query.length)
-    const newText = before + '@' + path + ' ' + after
+    let newText: string
+    let cursorPos: number
+
+    if (fromButton) {
+      // Opened via @ button — no @ was inserted, just splice in @path at cursor
+      const before = currentText.slice(0, atIdx)
+      const after = currentText.slice(atIdx)
+      newText = before + '@' + path + ' ' + after
+      cursorPos = atIdx + 1 + path.length + 1
+    } else {
+      // Typed @ — replace @query with @path
+      const before = currentText.slice(0, atIdx)
+      const after = currentText.slice(atIdx + 1 + query.length)
+      newText = before + '@' + path + ' ' + after
+      cursorPos = atIdx + 1 + path.length + 1
+    }
+
     setText(newText)
     closeMention()
-    // Refocus textarea
     setTimeout(() => {
       if (ref.current) {
-        const pos = atIdx + 1 + path.length + 1
         ref.current.focus()
-        ref.current.setSelectionRange(pos, pos)
+        ref.current.setSelectionRange(cursorPos, cursorPos)
       }
     }, 0)
   }
 
   const openMentionFromButton = () => {
-    // Always insert @ at cursor and (re)open the picker
+    // Open the picker without inserting @ — it will be added on selection
     const ta = ref.current
     if (!ta) return
     const pos = ta.selectionStart ?? text.length
-    const before = text.slice(0, pos)
-    const after = text.slice(pos)
-    setText(before + '@' + after)
     setMentionOpen(true)
     setMentionQuery('')
     setMentionAtIndex(pos)
     mentionQueryRef.current = ''
     mentionAtIndexRef.current = pos
+    mentionFromButtonRef.current = true
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
