@@ -9,7 +9,7 @@ import { $ } from "bun"
 let fileCache: string[] | null = null
 let cacheDir: string | null = null
 
-/** Get all tracked files using git ls-files, fallback to directory walk */
+/** Get all tracked files and directories using git ls-files, fallback to directory walk */
 export async function getFiles(cwd?: string): Promise<string[]> {
   const dir = cwd ?? process.cwd()
 
@@ -18,10 +18,20 @@ export async function getFiles(cwd?: string): Promise<string[]> {
 
   try {
     const result = await $`git ls-files -z`.cwd(dir).text()
-    fileCache = result
+    const files = result
       .split("\0")
       .filter((f) => f.length > 0)
-      .sort()
+
+    // Extract unique directories from file paths (with trailing /)
+    const dirSet = new Set<string>()
+    for (const f of files) {
+      const parts = f.split("/")
+      for (let i = 1; i < parts.length; i++) {
+        dirSet.add(parts.slice(0, i).join("/") + "/")
+      }
+    }
+
+    fileCache = [...files, ...dirSet].sort()
     cacheDir = dir
     return fileCache
   } catch {
@@ -38,20 +48,26 @@ async function getFilesFallback(dir: string): Promise<string[]> {
   ])
 
   const files: string[] = []
+  const dirSet = new Set<string>()
   const glob = new Bun.Glob("**/*")
 
   let count = 0
-  for await (const path of glob.scan({ cwd: dir, onlyFiles: true })) {
+  for await (const p of glob.scan({ cwd: dir, onlyFiles: true })) {
     // Skip noise directories
-    const firstSegment = path.split("/")[0]
+    const firstSegment = p.split("/")[0]
     if (firstSegment && skipDirs.has(firstSegment)) continue
 
-    files.push(path)
+    files.push(p)
+    // Collect parent directories
+    const parts = p.split("/")
+    for (let i = 1; i < parts.length; i++) {
+      dirSet.add(parts.slice(0, i).join("/") + "/")
+    }
     count++
     if (count >= 5000) break // safety limit
   }
 
-  fileCache = files.sort()
+  fileCache = [...files, ...dirSet].sort()
   cacheDir = dir
   return fileCache
 }

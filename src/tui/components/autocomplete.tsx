@@ -98,7 +98,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
     // Empty-state row OR data rows (mutually exclusive)
     if (mode.type === "files" && mode.items.length === 0) {
-      result.push({ label: `No files matching @${mode.query}`, fg: colors.muted, bold: false })
+      result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bold: false })
     } else if (mode.type === "commands" && mode.items.length === 0) {
       result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bold: false })
     } else if (mode.type === "sessions" && mode.items.length === 0) {
@@ -119,10 +119,10 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       }
     } else if (mode.type === "files") {
       for (let i = 0; i < mode.items.length; i++) {
-        const file = mode.items[i]!
+        const item = mode.items[i]!
         const sel = i === mode.selectedIndex
         result.push({
-          label: `${sel ? "❯ " : "  "}${file}`,
+          label: `${sel ? "❯ " : "  "}${item}`,
           fg: sel ? colors.primary : colors.textDim,
           bold: sel,
         })
