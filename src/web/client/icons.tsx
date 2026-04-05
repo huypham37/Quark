@@ -20,8 +20,9 @@ export function ChevronDown({ s = 10 }: { s?: number }) {
 
 export function SendIcon() {
   return (
-    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 10l12-6-6 12-1.5-5.5L4 10z" />
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m5 12 7-7 7 7" />
+      <path d="M12 19V5" />
     </svg>
   )
 }
@@ -131,26 +132,26 @@ export function WarningIcon() {
 
 export function PaperclipIcon() {
   return (
-    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.5 11.5l-5.5 5.5a3.5 3.5 0 01-5-5l7-7a2.5 2.5 0 013.5 3.5l-6.5 6.5a1.5 1.5 0 01-2-2l5-5" />
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
     </svg>
   )
 }
 
 export function CommandIcon() {
   return (
-    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="4,6 10,10 4,14" />
-      <line x1={12} y1={14} x2={16} y2={14} />
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m4 17 6-6-6-6" />
+      <path d="M12 19h8" />
     </svg>
   )
 }
 
 export function AtIcon() {
   return (
-    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx={10} cy={10} r={4} />
-      <path d="M14 10a4 4 0 01-4 4 6 6 0 110-8 6 6 0 016 6v1a2 2 0 004 0v-1" />
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
     </svg>
   )
 }
