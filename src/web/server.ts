@@ -15,7 +15,6 @@ import { getFiles, fuzzyFilter } from "../tui/filelist"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
-import { shouldCompact, estimateTokens as estimateTokensSync } from "../session/compaction"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -162,12 +161,6 @@ function createRequestHandler(agent: AgentConfig) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         return json({ error: msg }, 500)
-      }
-
-      const cfg = loadConfig()
-      const systemStr = Array.isArray(system) ? system.join("\n") : system
-      if (!shouldCompact(systemStr, modelMessages, budget, cfg.context_window, 0.50)) {
-        return json({ ok: false, reason: "Context is below 50% — compaction not needed yet." })
       }
 
       console.log("[compact] starting compaction for session:", sessionId)

@@ -13,7 +13,7 @@ import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishM
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
 import { getModelLimit } from "../provider/models"
-import { estimateTokens, getLastInputTokens, shouldCompact } from "../session/compaction"
+import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
@@ -233,17 +233,6 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         const modelId = modelOverride ?? getModelId("main")
         const budget = getModelLimit(modelId)
         const system = buildSystem(activeAgent)
-        const cfg = loadConfig()
-        const systemStr = Array.isArray(system) ? system.join("\n") : system
-
-        if (!shouldCompact(systemStr, modelMessages, budget, cfg.context_window, 0.50)) {
-          bus.emit("user-message", {
-            sessionId: sid,
-            messageId: `compact-result-${Date.now()}`,
-            text: "[compact] Context is below 50% — compaction not needed yet.",
-          })
-          return
-        }
 
         bus.emit("compaction-start", { sessionId: sid })
 
@@ -270,6 +259,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
           const tuiMessages = dbToTuiMessages(newMsgs, newParts)
           const newModelMessages = toModelMessages(newMsgs, newParts)
+          const systemStr = Array.isArray(system) ? system.join("\n") : system
           const estimatedTokens = estimateTokens(systemStr, newModelMessages)
           bus.emit("session-switch", { sessionId: result.newSessionId, messages: tuiMessages, estimatedTokens })
 

@@ -21,6 +21,7 @@ import type {
   CompactResult,
 } from "../compact-resolver"
 import { loadConfig } from "../../config/config"
+import { shouldCompact } from "../compaction"
 import type { MessageRow, PartRow, ToolPartData } from "../message"
 
 // ---------------------------------------------------------------------------
@@ -70,8 +71,17 @@ export const general: CompactMethodDef = {
     console.log("[compact-general] execute start, retainTurns:", retainTurns, "total messages:", ctx.messages.length, "total parts:", ctx.parts.length)
 
     // Step 1: Split messages into evicted and retained
-    const { evicted, retained } = splitMessages(ctx.messages, retainTurns)
+    let { evicted, retained } = splitMessages(ctx.messages, retainTurns)
     console.log("[compact-general] split: evicted:", evicted.length, "retained:", retained.length)
+
+    // Context-override (issue #69): if turn-count gate blocked eviction but
+    // context usage exceeds 50%, re-split keeping only 1 turn so compaction
+    // can proceed.
+    if (evicted.length === 0 && shouldCompact(ctx.agentPrompt, ctx.modelMessages, ctx.budget, config.context_window, 0.50)) {
+      console.log("[compact-general] context > 50% override — re-splitting with retainTurns=1")
+      ;({ evicted, retained } = splitMessages(ctx.messages, 1))
+      console.log("[compact-general] re-split: evicted:", evicted.length, "retained:", retained.length)
+    }
 
     if (evicted.length === 0) {
       console.log("[compact-general] nothing to evict, returning early")
