@@ -30,7 +30,7 @@ import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { info as notifyInfo } from "../../notification/notification"
-import { getNextModel } from "../model-cycle"
+import { getNextModel, getPrevModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
 
 /** Command handler result */
@@ -560,17 +560,40 @@ export const App: Component<AppProps> = (props) => {
       }
     }
 
-    // Extract @file mentions and read their content
-    const mentionedFiles = extractMentions(text)
+    // Extract @file and @directory mentions and read their content
+    const mentionedPaths = extractMentions(text)
 
     let context = ""
-    for (const filePath of mentionedFiles) {
+    for (const mentionPath of mentionedPaths) {
       try {
-        const absPath = path.resolve(process.cwd(), filePath)
-        const content = fs.readFileSync(absPath, "utf-8")
-        context += `\n<file path="${filePath}">\n${content}\n</file>\n`
+        const absPath = path.resolve(process.cwd(), mentionPath)
+        const stat = fs.statSync(absPath)
+        if (stat.isDirectory()) {
+          // Read directory listing and include shallow file contents
+          const entries = fs.readdirSync(absPath)
+          context += `\n<directory path="${mentionPath}">\n`
+          for (const entry of entries) {
+            const entryPath = path.join(absPath, entry)
+            try {
+              const entryStat = fs.statSync(entryPath)
+              if (entryStat.isFile()) {
+                const content = fs.readFileSync(entryPath, "utf-8")
+                const relPath = path.join(mentionPath, entry)
+                context += `<file path="${relPath}">\n${content}\n</file>\n`
+              } else if (entryStat.isDirectory()) {
+                context += `<subdirectory name="${entry}/" />\n`
+              }
+            } catch {
+              // Entry not readable — skip
+            }
+          }
+          context += `</directory>\n`
+        } else {
+          const content = fs.readFileSync(absPath, "utf-8")
+          context += `\n<file path="${mentionPath}">\n${content}\n</file>\n`
+        }
       } catch {
-        // File not readable — skip silently
+        // Path not readable — skip silently
       }
     }
 
@@ -686,7 +709,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     // Tab model cycling — when no images, no dropdown, not running
-    if (evt.name === "tab" && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
+    if (evt.name === "tab" && !evt.shift && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
       if (props.getModels && props.getCurrentModel) {
         const models = props.getModels()
         const next = getNextModel(models, props.getCurrentModel())
@@ -695,6 +718,22 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
+        }
+      }
+      evt.preventDefault()
+      return
+    }
+
+    // Shift+Tab model cycling (reverse) — when no images, no dropdown, not running
+    if (evt.name === "tab" && evt.shift && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
+      if (props.getModels && props.getCurrentModel) {
+        const models = props.getModels()
+        const prev = getPrevModel(models, props.getCurrentModel())
+        if (prev) {
+          if (props.onCommand) {
+            props.onCommand("model", prev, state.store.sessionId)
+          }
+          state.setStore("status", "modelName", prev)
         }
       }
       evt.preventDefault()
@@ -892,7 +931,7 @@ export const App: Component<AppProps> = (props) => {
 
 /** Extract @file_path mentions from text */
 function extractMentions(text: string): string[] {
-  const regex = /@([\w.\/\-]+)/g
+  const regex = /@([\w.\/\-]+\/?)/g
   const mentions: string[] = []
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
