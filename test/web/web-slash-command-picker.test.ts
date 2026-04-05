@@ -71,15 +71,15 @@ function extractBlock(src: string, startMarker: string): string {
   return src.slice(bodyStart, i + 1)
 }
 
-// ── 1. icons.tsx — SlashIcon (gh issue #54) ──────────────────────────────────
+// ── 1. icons.tsx — CommandIcon (gh issue #54) ──────────────────────────────────
 
-describe("icons.tsx — SlashIcon for the / toolbar button (gh issue #54)", () => {
-  test("SlashIcon is exported from icons.tsx", () => {
-    expect(iconsSrc).toContain("export function SlashIcon(")
+describe("icons.tsx — CommandIcon for the toolbar button (gh issue #54)", () => {
+  test("CommandIcon is exported from icons.tsx", () => {
+    expect(iconsSrc).toContain("export function CommandIcon(")
   })
 
-  test("SlashIcon renders an SVG element", () => {
-    const block = extractBlock(iconsSrc, "export function SlashIcon(")
+  test("CommandIcon renders an SVG element", () => {
+    const block = extractBlock(iconsSrc, "export function CommandIcon(")
     expect(block).toContain("<svg")
   })
 })
@@ -126,8 +126,8 @@ describe("command-palette.tsx — component structure (gh issue #54)", () => {
 // ── 3. InputArea — / button, state, keyboard (gh issue #54) ─────────────────
 
 describe("InputArea — slash command picker integration (gh issue #54)", () => {
-  test("InputArea imports SlashIcon", () => {
-    expect(inputSrc).toContain("SlashIcon")
+  test("InputArea imports CommandIcon", () => {
+    expect(inputSrc).toContain("CommandIcon")
   })
 
   test("InputArea imports CommandPalette", () => {
@@ -139,9 +139,9 @@ describe("InputArea — slash command picker integration (gh issue #54)", () => 
     expect(inputSrc).toMatch(/showPalette|slashOpen|paletteOpen|showSlash|slashVisible/)
   })
 
-  test("InputArea has a / button in the toolbar", () => {
-    // The slash button should use SlashIcon or have a 'slash' className or aria-label
-    expect(inputSrc).toMatch(/SlashIcon|slash/)
+  test("InputArea has a command button in the toolbar", () => {
+    // The command button should use CommandIcon or have a 'slash' className
+    expect(inputSrc).toMatch(/CommandIcon|slash/)
   })
 
   test("InputArea opens the palette on '/' keypress in the textarea", () => {

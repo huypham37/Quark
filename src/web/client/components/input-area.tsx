@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { T } from '../tokens'
-import { SendIcon, StopIcon, PaperclipIcon, SlashIcon, XSmallIcon } from '../icons'
+import { SendIcon, StopIcon, PaperclipIcon, CommandIcon, XSmallIcon } from '../icons'
 import { CommandPalette } from './command-palette'
 import type { SlashCommand } from '../../../tui/commands'
 
@@ -55,9 +55,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
-    setText(`/${cmd.id}`)
     setPaletteOpen(false)
-    ref.current?.focus()
+    onSend(`/${cmd.id}`, [])
   }
 
   const handleSlashClose = () => {
@@ -148,7 +147,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             className="input-btn input-btn--slash"
             style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
           >
-            <SlashIcon />
+            <CommandIcon />
           </button>
           <textarea
             ref={ref}
