@@ -30,7 +30,7 @@ import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { info as notifyInfo } from "../../notification/notification"
-import { getNextModel } from "../model-cycle"
+import { getNextModel, getPrevModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
 
 /** Command handler result */
@@ -709,7 +709,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     // Tab model cycling — when no images, no dropdown, not running
-    if (evt.name === "tab" && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
+    if (evt.name === "tab" && !evt.shift && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
       if (props.getModels && props.getCurrentModel) {
         const models = props.getModels()
         const next = getNextModel(models, props.getCurrentModel())
@@ -718,6 +718,22 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
+        }
+      }
+      evt.preventDefault()
+      return
+    }
+
+    // Shift+Tab model cycling (reverse) — when no images, no dropdown, not running
+    if (evt.name === "tab" && evt.shift && !dropdownActive() && !state.store.running && pendingImages().length === 0) {
+      if (props.getModels && props.getCurrentModel) {
+        const models = props.getModels()
+        const prev = getPrevModel(models, props.getCurrentModel())
+        if (prev) {
+          if (props.onCommand) {
+            props.onCommand("model", prev, state.store.sessionId)
+          }
+          state.setStore("status", "modelName", prev)
         }
       }
       evt.preventDefault()
