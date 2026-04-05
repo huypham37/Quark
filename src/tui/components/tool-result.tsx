@@ -78,6 +78,7 @@ function getToolDisplayName(tool: string): string {
     grep: "Grep",
     glob: "Glob",
     websearch: "WebSearch",
+    question: "Question",
   }
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }

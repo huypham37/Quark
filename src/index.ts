@@ -39,6 +39,9 @@ export {
   CorrectedError,
 } from "./permission/permission"
 
+// Question tool
+export { respondQuestion, type QuestionResponse } from "./tool/question"
+
 // Agent configuration
 export { defaultAgent, agentFromProfile, type AgentConfig } from "./agent"
 

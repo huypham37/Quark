@@ -251,6 +251,17 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("question-request", (data) => {
+      dispatch(state, {
+        type: "set-question",
+        request: {
+          requestId: data.requestId,
+          sessionId: data.sessionId,
+          questions: data.questions,
+        },
+      })
+    }))
+
     unsubs.push(on("compaction-start", () => {
       dispatch(state, { type: "set-compacting", compacting: true })
     }))

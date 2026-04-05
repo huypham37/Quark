@@ -52,6 +52,19 @@ export interface BusEvents {
   // Permission request (TUI needs to prompt user)
   "permission-request": { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }
 
+  // Question request — agent asks user interactive questions, TUI displays picker
+  "question-request": {
+    sessionId: string
+    requestId: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{ label: string; description: string }>
+      multiple?: boolean
+      custom?: boolean
+    }>
+  }
+
   // Compaction lifecycle
   "compaction-start": { sessionId: string }
   "compaction-end": { sessionId: string; result: import("./compact-resolver").CompactResult | null }

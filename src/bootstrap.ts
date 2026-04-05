@@ -8,6 +8,7 @@
 import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
 import { compactTool } from "./tool/compact"
+import { questionTool } from "./tool/question"
 import { buildSkillTool } from "./tool/skill"
 import { ensureStorageRoot } from "./storage/session-jsonl"
 import { loadProfileTools } from "./tool/loader"
@@ -62,6 +63,7 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   // Register built-in tools (always available)
   register(readTool)
   register(compactTool)
+  register(questionTool)
   register(buildSkillTool(opts?.boundSkills))
 
   // Register compaction methods and set default from config
