@@ -10,6 +10,7 @@ import type { AgentConfig } from "../agent"
 import { loadConfig, parseModelSpec, getProviderId } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
+import { getFiles, fuzzyFilter } from "../tui/filelist"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -179,6 +180,13 @@ function createRequestHandler(agent: AgentConfig) {
         contextWindow: config.context_window,
         maxSteps: config.max_steps,
       })
+    }
+
+    if (req.method === "GET" && pathname === "/api/files") {
+      const q = url.searchParams.get("q") ?? ""
+      const files = await getFiles()
+      const filtered = fuzzyFilter(files, q, 20)
+      return json(filtered)
     }
 
     // --- Static files ---

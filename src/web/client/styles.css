@@ -574,6 +574,69 @@ body {
   border: none;
 }
 
+.input-btn--mention {
+  background: transparent;
+  border: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Mention picker — @ file/directory picker
+   ═══════════════════════════════════════════════════════════════ */
+.mention-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: #232323;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  animation: dropIn 0.12s ease-out;
+  z-index: 20;
+}
+
+.mention-picker-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.mention-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.mention-picker-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.mention-picker-item--selected {
+  background: rgba(232,115,90,0.12);
+}
+
+.mention-picker-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.mention-picker-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #e8e0d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Command palette — slash command picker (gh issue #54)
    ═══════════════════════════════════════════════════════════════ */

@@ -146,6 +146,15 @@ export function CommandIcon() {
   )
 }
 
+export function AtIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx={10} cy={10} r={4} />
+      <path d="M14 10a4 4 0 01-4 4 6 6 0 110-8 6 6 0 016 6v1a2 2 0 004 0v-1" />
+    </svg>
+  )
+}
+
 export function XSmallIcon() {
   return (
     <svg width={12} height={12} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

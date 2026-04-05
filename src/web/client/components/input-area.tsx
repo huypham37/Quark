@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { T } from '../tokens'
-import { SendIcon, StopIcon, PaperclipIcon, CommandIcon, XSmallIcon } from '../icons'
+import { SendIcon, StopIcon, PaperclipIcon, CommandIcon, AtIcon, XSmallIcon } from '../icons'
 import { CommandPalette } from './command-palette'
+import { MentionPicker } from './mention-picker'
 import type { SlashCommand } from '../../../tui/commands'
 
 export interface Attachment {
@@ -24,6 +25,9 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   const [images, setImages] = useState<Attachment[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionAtIndex, setMentionAtIndex] = useState(-1)
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -35,6 +39,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   }, [text])
 
   const handleKey = (e: React.KeyboardEvent) => {
+    if (mentionOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) return
+    if (e.key === 'Escape' && mentionOpen) { e.preventDefault(); closeMention(); return }
     if (paletteOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) return
     if (e.key === 'Escape' && paletteOpen) { e.preventDefault(); setPaletteOpen(false); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() }
@@ -44,6 +50,8 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setText(val)
+
+    // Slash command detection
     if (val === '/') {
       setPaletteOpen(true)
       setSlashQuery('')
@@ -52,6 +60,83 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     } else if (!val.startsWith('/')) {
       setPaletteOpen(false)
     }
+
+    // @ mention detection — find the last @ that is at start or preceded by space
+    updateMention(val, e.target.selectionStart ?? val.length)
+  }
+
+  const updateMention = (val: string, cursorPos: number) => {
+    // Look backwards from cursor for an unfinished @mention
+    const before = val.slice(0, cursorPos)
+    const lastAt = before.lastIndexOf('@')
+
+    if (lastAt === -1) {
+      closeMention()
+      return
+    }
+
+    // @ must be at start or preceded by a space/newline
+    if (lastAt > 0 && before[lastAt - 1] !== ' ' && before[lastAt - 1] !== '\n') {
+      closeMention()
+      return
+    }
+
+    const query = before.slice(lastAt + 1)
+
+    // If there's a space in the query, mention is done
+    if (query.includes(' ')) {
+      closeMention()
+      return
+    }
+
+    setMentionOpen(true)
+    setMentionQuery(query)
+    setMentionAtIndex(lastAt)
+  }
+
+  const closeMention = () => {
+    setMentionOpen(false)
+    setMentionQuery('')
+    setMentionAtIndex(-1)
+  }
+
+  const handleMentionSelect = (path: string) => {
+    // Replace @query with @path
+    const before = text.slice(0, mentionAtIndex)
+    const after = text.slice(mentionAtIndex + 1 + mentionQuery.length)
+    const newText = before + '@' + path + ' ' + after
+    setText(newText)
+    closeMention()
+    // Refocus textarea
+    setTimeout(() => {
+      if (ref.current) {
+        const pos = mentionAtIndex + 1 + path.length + 1
+        ref.current.focus()
+        ref.current.setSelectionRange(pos, pos)
+      }
+    }, 0)
+  }
+
+  const openMentionFromButton = () => {
+    if (mentionOpen) {
+      closeMention()
+      return
+    }
+    // Insert @ at cursor position if not already there
+    const ta = ref.current
+    if (!ta) return
+    const pos = ta.selectionStart ?? text.length
+    const before = text.slice(0, pos)
+    const after = text.slice(pos)
+    const newText = before + '@' + after
+    setText(newText)
+    setMentionOpen(true)
+    setMentionQuery('')
+    setMentionAtIndex(pos)
+    setTimeout(() => {
+      ta.focus()
+      ta.setSelectionRange(pos + 1, pos + 1)
+    }, 0)
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
@@ -79,6 +164,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setText('')
     setImages([])
     setPaletteOpen(false)
+    closeMention()
   }
 
   const handleFiles = (files: FileList | null) => {
@@ -123,6 +209,9 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
         {paletteOpen && (
           <CommandPalette query={slashQuery} onSelect={handleSlashSelect} onClose={handleSlashClose} />
         )}
+        {mentionOpen && (
+          <MentionPicker query={mentionQuery} onSelect={handleMentionSelect} onClose={closeMention} />
+        )}
         <div className="input-container">
           <input
             ref={fileRef}
@@ -139,6 +228,14 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
           >
             <PaperclipIcon />
+          </button>
+          <button
+            onClick={openMentionFromButton}
+            disabled={running}
+            className="input-btn input-btn--mention"
+            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+          >
+            <AtIcon />
           </button>
           <button
             onClick={togglePalette}
