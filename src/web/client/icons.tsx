@@ -167,6 +167,15 @@ export function CompactIcon() {
   )
 }
 
+export function ThinkingIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a7 7 0 0 1 5.468 11.37A4 4 0 0 1 16 20H8a4 4 0 0 1-1.468-7.63A7 7 0 0 1 12 2z" />
+      <line x1={9} y1={20} x2={15} y2={20} />
+    </svg>
+  )
+}
+
 export function XSmallIcon() {
   return (
     <svg width={12} height={12} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

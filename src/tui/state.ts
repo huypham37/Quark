@@ -59,6 +59,25 @@ export interface PermissionRequest {
   input: Record<string, unknown>
 }
 
+export interface QuestionOption {
+  label: string
+  description: string
+}
+
+export interface QuestionInfo {
+  question: string
+  header: string
+  options: QuestionOption[]
+  multiple?: boolean
+  custom?: boolean
+}
+
+export interface QuestionRequest {
+  requestId: string
+  sessionId: string
+  questions: QuestionInfo[]
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -93,6 +112,8 @@ export type TuiAction =
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "toggle-thinking" }
   | { type: "reasoning-start"; messageId: string }
+  | { type: "set-question"; request: QuestionRequest }
+  | { type: "clear-question" }
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
 
@@ -173,6 +194,8 @@ export interface AppStore {
   error?: string
   permission?: PermissionRequest
   permissionQueue: PermissionRequest[]
+  question?: QuestionRequest
+  questionQueue: QuestionRequest[]
 }
 
 export interface AppState {
@@ -201,6 +224,8 @@ export function createAppState(initial: {
     error: undefined,
     permission: undefined,
     permissionQueue: [],
+    question: undefined,
+    questionQueue: [],
   })
   return { store, setStore }
 }
@@ -223,6 +248,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.cost = 0
           s.error = undefined
           s.permission = undefined
+          s.question = undefined
         }),
       )
       break
@@ -448,6 +474,33 @@ export function dispatch(state: AppState, action: TuiAction): void {
             s.permission = next
           } else {
             s.permission = undefined
+          }
+        }),
+      )
+      break
+
+    case "set-question":
+      setStore(
+        produce((s) => {
+          if (s.question) {
+            // Another question is already visible — queue this one
+            s.questionQueue.push(action.request)
+          } else {
+            s.question = action.request
+            s.running = false
+          }
+        }),
+      )
+      break
+
+    case "clear-question":
+      setStore(
+        produce((s) => {
+          const next = s.questionQueue.shift()
+          if (next) {
+            s.question = next
+          } else {
+            s.question = undefined
           }
         }),
       )

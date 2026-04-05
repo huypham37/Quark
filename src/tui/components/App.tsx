@@ -18,10 +18,12 @@ import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { PermissionPrompt } from "./permission-prompt"
+import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
 import { colors } from "../theme"
 import { respond as respondPermission } from "../../permission/permission"
+import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter } from "../filelist"
 import { filterCommands, type SlashCommand } from "../commands"
 import { generateId } from "ai"
@@ -133,6 +135,35 @@ export const App: Component<AppProps> = (props) => {
 
   // Wire event bus to state store
   wireEvents(state)
+
+  // Question prompt key handler
+  const questionHandler = createQuestionKeyHandler({
+    request: () => state.store.question,
+    onReply: (answers) => {
+      const q = state.store.question
+      if (!q) return
+
+      // Show the answer as a user message in the chat
+      const answerText = q.questions
+        .map((qn, i) => {
+          const picked = answers[i]
+          return picked?.length ? picked.join(", ") : "(no answer)"
+        })
+        .join("; ")
+      const msgId = generateId()
+      dispatch(state, { type: "add-user-message", id: msgId, text: answerText })
+
+      respondQuestion({ requestId: q.requestId, answers })
+      dispatch(state, { type: "clear-question" })
+      dispatch(state, { type: "set-running", running: true })
+    },
+    onReject: () => {
+      const q = state.store.question
+      if (!q) return
+      respondQuestion({ requestId: q.requestId, rejected: true })
+      dispatch(state, { type: "clear-question" })
+    },
+  })
 
   // Update tokenLimit once models.dev data is available
   modelsReady.then(() => {
@@ -759,6 +790,15 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Question mode: intercept arrow/number/enter/escape keys
+    if (state.store.question) {
+      const consumed = questionHandler.handleKey(evt.name)
+      if (consumed) {
+        evt.preventDefault()
+        return
+      }
+    }
+
     // Dropdown navigation — intercept arrow/tab/enter/escape BEFORE input processes them
     if (dropdownActive()) {
       const consumed = handleDropdownKey(
@@ -895,6 +935,18 @@ export const App: Component<AppProps> = (props) => {
         {(perm) => <PermissionPrompt request={perm()} />}
       </Show>
 
+      {/* Question prompt */}
+      <Show when={state.store.question}>
+        {(q) => (
+          <QuestionPrompt
+            request={q()}
+            tab={questionHandler.tab}
+            selected={questionHandler.selected}
+            answers={questionHandler.answers}
+          />
+        )}
+      </Show>
+
       {/* Autocomplete dropdown — absolute overlay, does NOT shrink scrollbox */}
       <Autocomplete mode={autocompleteMode()} />
 
@@ -903,7 +955,7 @@ export const App: Component<AppProps> = (props) => {
         onSubmit={handleSubmit}
         onContentChange={handleInputChange}
         onRef={(r: TextareaRenderable) => { inputRef = r }}
-        disabled={state.store.running || !!state.store.permission}
+        disabled={state.store.running || !!state.store.permission || !!state.store.question}
         placeholder=""
         tokensUsed={state.store.status.tokensUsed}
         tokenLimit={state.store.status.tokenLimit}

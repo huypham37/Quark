@@ -386,7 +386,7 @@ export function App() {
           ) : (
             <div className="message-list">
               {s.messages.map((msg, mi) => (
-                <MessageItem key={msg.id || mi} msg={msg} showHeader={msg.role !== 'assistant' || mi === 0 || s.messages[mi - 1]?.role !== 'assistant'} />
+                <MessageItem key={msg.id || mi} msg={msg} showHeader={msg.role !== 'assistant' || mi === 0 || s.messages[mi - 1]?.role !== 'assistant'} showThinking={s.showThinking} />
               ))}
               {s.running && <TypingIndicator />}
               <div ref={msgEndRef} />
