@@ -96,12 +96,12 @@ export function MentionPicker({ query, onSelect, onClose }: MentionPickerProps) 
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  if (!loading && items.length === 0) return null
-
   return (
     <div ref={ref} className="mention-picker">
-      {loading && items.length === 0 ? (
+      {loading ? (
         <div className="mention-picker-empty">Searching…</div>
+      ) : items.length === 0 ? (
+        <div className="mention-picker-empty">No files found</div>
       ) : (
         items.map((item, i) => {
           const isDir = item.endsWith('/')

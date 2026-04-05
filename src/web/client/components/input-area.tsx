@@ -118,11 +118,7 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
   }
 
   const openMentionFromButton = () => {
-    if (mentionOpen) {
-      closeMention()
-      return
-    }
-    // Insert @ at cursor position
+    // Always insert @ at cursor and (re)open the picker
     const ta = ref.current
     if (!ta) return
     const pos = ta.selectionStart ?? text.length
