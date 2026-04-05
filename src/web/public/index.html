@@ -448,10 +448,10 @@ function App(){
     ),
 
     // ── Main area ──
-    React.createElement('div',{style:{flex:1,display:'flex',flexDirection:'column',background:T.bg,minWidth:0,height:'100%',overflow:'hidden',width:'100%'}},
+    React.createElement('div',{style:{flex:1,display:'flex',flexDirection:'column',background:T.bg,minWidth:0,height:'100%',width:'100%',overflow:'hidden'}},
 
       // ── Header ──
-      React.createElement('header',{style:{position:'sticky',top:0,zIndex:10,height:52,minHeight:52,padding:'0 12px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:8,background:T.bg,overflow:'hidden',flexShrink:0}},
+      React.createElement('header',{style:{height:52,minHeight:52,flexShrink:0,padding:'0 12px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:8,background:T.bg,zIndex:10}},
         React.createElement('button',{onClick:()=>set({sidebarOpen:true}),style:{background:'rgba(255,255,255,0.05)',border:'none',borderRadius:T.radiusPill,width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',color:T.text2,cursor:'pointer',flexShrink:0}},React.createElement(MenuIcon)),
         React.createElement('span',{style:{fontFamily:T.fontBrand,fontWeight:500,fontSize:14,letterSpacing:'0.18em',color:T.text,flexShrink:0}},'QUARK'),
         React.createElement('div',{style:{flex:1,minWidth:0}}),

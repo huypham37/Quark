@@ -70,36 +70,21 @@ describe("web UI header element — CSS properties (gh issue #44)", () => {
     expect(source).toContain("React.createElement('header',")
   })
 
-  test("header has position:'sticky'", () => {
+  test("header has flexShrink:0 to prevent flex compression", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    // Matches position:'sticky' or position: 'sticky' (with optional spaces)
-    expect(propsBlock).toMatch(/position\s*:\s*['"]sticky['"]/)
+    expect(propsBlock).toMatch(/flexShrink\s*:\s*0/)
   })
 
-  test("header has top:0", () => {
+  test("header has minHeight:52 to enforce minimum height", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    // Matches top:0 or top: 0
-    expect(propsBlock).toMatch(/top\s*:\s*0[^.]/)
+    expect(propsBlock).toMatch(/minHeight\s*:\s*52/)
   })
 
-  test("header has zIndex:10", () => {
+  test("header has all required mobile-stability properties together", () => {
     const propsBlock = extractHeaderStyleObject(source)
-    // Matches zIndex:10 or zIndex: 10
+    expect(propsBlock).toMatch(/flexShrink\s*:\s*0/)
+    expect(propsBlock).toMatch(/minHeight\s*:\s*52/)
     expect(propsBlock).toMatch(/zIndex\s*:\s*10[^0-9]/)
-  })
-
-  test("header has flexShrink:0", () => {
-    const propsBlock = extractHeaderStyleObject(source)
-    // Matches flexShrink:0 or flexShrink: 0
-    expect(propsBlock).toMatch(/flexShrink\s*:\s*0[^.]/)
-  })
-
-  test("header has all four required mobile-stability properties together", () => {
-    const propsBlock = extractHeaderStyleObject(source)
-    expect(propsBlock).toMatch(/position\s*:\s*['"]sticky['"]/)
-    expect(propsBlock).toMatch(/top\s*:\s*0[^.]/)
-    expect(propsBlock).toMatch(/zIndex\s*:\s*10[^0-9]/)
-    expect(propsBlock).toMatch(/flexShrink\s*:\s*0[^.]/)
   })
 })
 
