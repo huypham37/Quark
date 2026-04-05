@@ -19,6 +19,7 @@ import type {
   CompactResult,
 } from "../compact-resolver"
 import { loadConfig } from "../../config/config"
+import { shouldCompact } from "../compaction"
 import type { MessageRow, PartRow, ToolPartData, SummaryData } from "../message"
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,14 @@ export const anchored: CompactMethodDef = {
     const prompt = DEFAULTS.prompt
 
     // Step 1: Split messages into evicted and retained
-    const { evicted, retained } = splitMessages(ctx.messages, retainTurns)
+    let { evicted, retained } = splitMessages(ctx.messages, retainTurns)
+
+    // Context-override (issue #69): if turn-count gate blocked eviction but
+    // context usage exceeds 50%, re-split keeping only 1 turn so compaction
+    // can proceed.
+    if (evicted.length === 0 && shouldCompact(ctx.agentPrompt, ctx.modelMessages, ctx.budget, config.context_window, 0.50)) {
+      ;({ evicted, retained } = splitMessages(ctx.messages, 1))
+    }
 
     if (evicted.length === 0) {
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: 0 }

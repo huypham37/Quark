@@ -5,7 +5,7 @@ import { ToolCallPart } from './tool-call'
 import { ThinkingBlock } from './thinking'
 import type { Message, TextPart, ImagePart } from '../state'
 
-export function MessageItem({ msg, showHeader = true }: { msg: Message; showHeader?: boolean }) {
+export function MessageItem({ msg, showHeader = true, showThinking = false }: { msg: Message; showHeader?: boolean; showThinking?: boolean }) {
   if (msg.role === 'user') {
     const text = msg.parts.find((p): p is TextPart => p.type === 'text')
     const images = msg.parts.filter((p): p is ImagePart => p.type === 'image')
@@ -46,7 +46,7 @@ export function MessageItem({ msg, showHeader = true }: { msg: Message; showHead
             </div>
           )
         if (part.type === 'tool') return <ToolCallPart key={part.callId || i} part={part} />
-        if (part.type === 'thinking') return <ThinkingBlock key={i} part={part} />
+        if (part.type === 'thinking') return <ThinkingBlock key={i} part={part} globalOpen={showThinking} />
         return null
       })}
     </div>

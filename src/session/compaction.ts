@@ -53,7 +53,7 @@ When constructing the summary, try to stick to this template:
 // Uses chars/4 heuristic on system prompt + current modelMessages.
 // Triggers when estimated tokens >= threshold * context_window.
 //
-// threshold comes from config.compact.threshold (default 0.95).
+// threshold comes from config.compact.threshold (default 0.50).
 // context_window is resolved from models.dev (modelLimit) or
 // config.context_window as fallback.
 // ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ When constructing the summary, try to stick to this template:
  * @param modelMessages - The current model message array
  * @param modelLimit - Per-model limits from `models.dev` (or `null` if unavailable)
  * @param contextWindow - Fallback context window size from config (tokens)
- * @param threshold - Trigger threshold fraction (default `0.95`)
+ * @param threshold - Trigger threshold fraction (default `0.50`)
  * @returns `true` if compaction should be triggered
  */
 export function shouldCompact(

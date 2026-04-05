@@ -193,19 +193,10 @@ export function App() {
         break
       case 'compaction-start':
         set({ compacting: true })
-        toast('Compacting', 'Compacting context…', 'warn', { id: COMPACTION_TOAST_ID, persistent: true })
         break
       case 'compaction-end': {
         set({ compacting: false })
         dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
-        const result = d.result
-        if (!result) {
-          toast('Compaction failed', 'An error occurred during compaction', 'error')
-        } else if (result.evictedCount === 0) {
-          toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
-        } else {
-          toast('Compacted', `Evicted ${result.evictedCount} messages`, 'warn')
-        }
         break
       }
       case 'session-switch':
@@ -337,11 +328,30 @@ export function App() {
     }
     try {
       set({ compacting: true })
-      const r = await api<{ ok?: boolean; error?: string }>('POST', '/api/compact', { sessionId: s.sessionId })
-      if (r.error) {
-        set({ compacting: false })
-        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
-        toast('Compaction failed', r.error, 'error')
+      toast('Compacting', 'Compacting context…', 'warn', { id: COMPACTION_TOAST_ID, persistent: true })
+      const r = await api<{
+        ok?: boolean
+        error?: string
+        result?: { type: string; evictedCount?: number; newSessionId?: string; estimatedTokens?: number }
+      }>('POST', '/api/compact', { sessionId: s.sessionId })
+      set({ compacting: false })
+      dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
+      if (!r.ok || r.error) {
+        toast('Compaction failed', r.error || 'An error occurred during compaction', 'error')
+      } else if (!r.result || r.result.evictedCount === 0) {
+        toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
+      } else {
+        toast('Compacted', `Evicted ${r.result.evictedCount} messages`, 'warn')
+        if (r.result.newSessionId && r.result.newSessionId !== s.sessionId) {
+          set({ sessionId: r.result.newSessionId })
+          if (r.result.estimatedTokens) set({ tokensUsed: r.result.estimatedTokens })
+          // Reload messages for the new session
+          try {
+            const msgs = await api('GET', `/api/sessions/${r.result.newSessionId}/messages`)
+            if (Array.isArray(msgs)) dispatch({ type: 'LOAD_MESSAGES', messages: msgs })
+          } catch {}
+          refreshSessions()
+        }
       }
     } catch {
       set({ compacting: false })
@@ -386,7 +396,7 @@ export function App() {
           ) : (
             <div className="message-list">
               {s.messages.map((msg, mi) => (
-                <MessageItem key={msg.id || mi} msg={msg} showHeader={msg.role !== 'assistant' || mi === 0 || s.messages[mi - 1]?.role !== 'assistant'} />
+                <MessageItem key={msg.id || mi} msg={msg} showHeader={msg.role !== 'assistant' || mi === 0 || s.messages[mi - 1]?.role !== 'assistant'} showThinking={s.showThinking} />
               ))}
               {s.running && <TypingIndicator />}
               <div ref={msgEndRef} />

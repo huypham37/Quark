@@ -82,6 +82,7 @@ export interface AppState {
   sidebarOpen: boolean
   modelPickerOpen: boolean
   compacting: boolean
+  showThinking: boolean
 }
 
 export const initialState: AppState = {
@@ -99,6 +100,7 @@ export const initialState: AppState = {
   sidebarOpen: false,
   modelPickerOpen: false,
   compacting: false,
+  showThinking: false,
 }
 
 export type Action =

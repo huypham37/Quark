@@ -227,13 +227,14 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
   switch (command) {
     case "compact": {
-      bus.emit("compaction-start", { sessionId: sid })
       resolveModel().then(async (model) => {
         const { messages, parts } = loadMessages(sid)
         const modelMessages = toModelMessages(messages, parts)
         const modelId = modelOverride ?? getModelId("main")
         const budget = getModelLimit(modelId)
         const system = buildSystem(activeAgent)
+
+        bus.emit("compaction-start", { sessionId: sid })
 
         const result = await resolveCompaction({
           trigger: "command",
