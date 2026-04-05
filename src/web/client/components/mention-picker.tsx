@@ -48,8 +48,13 @@ export function MentionPicker({ query, onSelect, onClose }: MentionPickerProps) 
   useEffect(() => {
     const handler = (e: MouseEvent | TouchEvent) => {
       if (!mountedRef.current) return
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onCloseRef.current()
+      const target = e.target as Node
+      // Close only if tap is outside both the picker AND the input container
+      if (ref.current && !ref.current.contains(target)) {
+        const inputContainer = ref.current.closest('.input-area')
+        if (!inputContainer || !inputContainer.contains(target)) {
+          onCloseRef.current()
+        }
       }
     }
     document.addEventListener('mousedown', handler)

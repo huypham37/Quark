@@ -122,24 +122,16 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
       closeMention()
       return
     }
-    // Insert @ at cursor position if not already there
+    // Insert @ at cursor position
     const ta = ref.current
     if (!ta) return
     const pos = ta.selectionStart ?? text.length
     const before = text.slice(0, pos)
     const after = text.slice(pos)
-    const newText = before + '@' + after
-    setText(newText)
+    setText(before + '@' + after)
     setMentionOpen(true)
     setMentionQuery('')
     setMentionAtIndex(pos)
-    // Defer focus to next frame — avoids mobile keyboard race conditions
-    requestAnimationFrame(() => {
-      if (ref.current) {
-        ref.current.focus()
-        ref.current.setSelectionRange(pos + 1, pos + 1)
-      }
-    })
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {
