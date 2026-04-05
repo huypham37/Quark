@@ -256,6 +256,11 @@ export function App() {
     } catch { toast('Error', 'Failed to switch model', 'error') }
   }
 
+  async function compactContext() {
+    if (!s.sessionId) return
+    try { await api('POST', '/api/compact', { sessionId: s.sessionId }) } catch { toast('Error', 'Failed to compact', 'error') }
+  }
+
   async function respondPerm(action: 'once' | 'always' | 'reject') {
     if (!s.permission) return
     set({ permission: null })
@@ -300,7 +305,7 @@ export function App() {
           )}
         </div>
 
-        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onToast={toast} />
+        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onCompact={compactContext} onToast={toast} />
       </div>
 
       {s.permission && <PermissionDialog perm={s.permission} onRespond={respondPerm} />}

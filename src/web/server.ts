@@ -2,15 +2,19 @@ import { bootstrap } from "../bootstrap"
 import { prompt, cancel } from "../session/prompt"
 import { bus, type BusEventName } from "../session/events"
 import { createSession, listSessions, getSession } from "../session/session"
-import { loadMessages } from "../session/message"
+import { loadMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage, toModelMessages } from "../session/message"
 import { dbToTuiMessages } from "../tui/state"
 import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile"
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
-import { loadConfig, parseModelSpec, getProviderId } from "../config/config"
+import { buildSystem } from "../session/system"
+import { loadConfig, parseModelSpec, getProviderId, getModelId } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
 import { getFiles, fuzzyFilter } from "../tui/filelist"
+import { resolve as resolveCompaction } from "../session/compact-resolver"
+import { resolveModel } from "../session/prompt"
+import { getModelLimit } from "../provider/models"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -130,6 +134,42 @@ function createRequestHandler(agent: AgentConfig) {
     if (req.method === "POST" && pathname === "/api/cancel") {
       const body = (await req.json()) as { sessionId: string }
       cancel(body.sessionId)
+      return json({ ok: true })
+    }
+
+    if (req.method === "POST" && pathname === "/api/compact") {
+      const body = (await req.json()) as { sessionId: string }
+      const { sessionId } = body
+      try {
+        getSession(sessionId)
+      } catch {
+        return json({ error: "Session not found" }, 404)
+      }
+      const { messages, parts } = loadMessages(sessionId)
+      const modelMessages = toModelMessages(messages, parts)
+      const modelId = modelOverride ?? getModelId("main")
+      const budget = getModelLimit(modelId)
+      const model = await resolveModel(getModelOpt())
+      const system = buildSystem(agent)
+      bus.emit("compaction-start", { sessionId })
+      resolveCompaction({
+        trigger: "command",
+        ctx: {
+          sessionId,
+          messages,
+          parts,
+          modelMessages,
+          model,
+          agentPrompt: system,
+          budget,
+          persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
+          session: { create: createSession },
+        },
+      }).then((result) => {
+        bus.emit("compaction-end", { sessionId, result })
+      }).catch(() => {
+        bus.emit("compaction-end", { sessionId, result: null })
+      })
       return json({ ok: true })
     }
 

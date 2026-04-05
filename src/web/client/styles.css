@@ -592,6 +592,11 @@ body {
   border: none;
 }
 
+.input-btn--compact {
+  background: transparent;
+  border: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Mention picker — @ file/directory picker
    ═══════════════════════════════════════════════════════════════ */
