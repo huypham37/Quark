@@ -67,7 +67,6 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     if (paletteOpen) {
       setPaletteOpen(false)
     } else {
-      setText('/')
       setSlashQuery('')
       setPaletteOpen(true)
       ref.current?.focus()
