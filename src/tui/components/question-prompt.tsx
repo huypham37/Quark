@@ -6,8 +6,9 @@
 // and a "Type your own answer" custom option.
 //
 // Key handling: arrow/number keys navigate, enter selects, escape dismisses.
+// State is owned by createQuestionKeyHandler and passed in via props.
 
-import type { Component } from "solid-js"
+import type { Accessor, Component } from "solid-js"
 import { For, Show, createSignal } from "solid-js"
 import type { QuestionRequest } from "../state"
 import { colors } from "../theme"
@@ -15,28 +16,24 @@ import { RGBA } from "@opentui/core"
 
 export interface QuestionPromptProps {
   request: QuestionRequest
-  onReply: (answers: string[][]) => void
-  onReject: () => void
+  /** Reactive accessor for the currently active tab index */
+  tab: Accessor<number>
+  /** Reactive accessor for the currently highlighted option index */
+  selected: Accessor<number>
+  /** Reactive accessor for the accumulated answers */
+  answers: Accessor<string[][]>
 }
 
 export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
   const questions = () => props.request.questions
   const single = () => questions().length === 1 && questions()[0]?.multiple !== true
 
-  // Track current question tab (for multi-question flows)
-  const [tab, setTab] = createSignal(0)
-  const [selected, setSelected] = createSignal(0)
-  const [answers, setAnswers] = createSignal<string[][]>([])
-
-  const question = () => questions()[tab()]
+  const question = () => questions()[props.tab()]
   const options = () => question()?.options ?? []
   const isMulti = () => question()?.multiple === true
-  const isConfirm = () => !single() && tab() === questions().length
+  const isConfirm = () => !single() && props.tab() === questions().length
 
-  // Navigate exposed for App.tsx keyboard handler
-  const totalOptions = () => options().length
-
-  const currentAnswers = () => answers()[tab()] ?? []
+  const currentAnswers = () => props.answers()[props.tab()] ?? []
 
   return (
     <box flexDirection="column" border={["left"]} borderColor={colors.primary}>
@@ -45,8 +42,8 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
         <box flexDirection="row" gap={1} paddingLeft={1} marginBottom={1}>
           <For each={questions()}>
             {(q, index) => {
-              const isActive = () => index() === tab()
-              const isAnswered = () => (answers()[index()]?.length ?? 0) > 0
+              const isActive = () => index() === props.tab()
+              const isAnswered = () => (props.answers()[index()]?.length ?? 0) > 0
               return (
                 <text
                   bold={isActive()}
@@ -75,7 +72,7 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
           <box flexDirection="column">
             <For each={options()}>
               {(opt, i) => {
-                const active = () => i() === selected()
+                const active = () => i() === props.selected()
                 const picked = () => currentAnswers().includes(opt.label)
                 return (
                   <box flexDirection="row">
@@ -106,7 +103,7 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
           <text bold>Review your answers:</text>
           <For each={questions()}>
             {(q, index) => {
-              const value = () => answers()[index()]?.join(", ") ?? ""
+              const value = () => props.answers()[index()]?.join(", ") ?? ""
               return (
                 <box>
                   <text fg={colors.muted}>{q.header}: </text>

@@ -142,6 +142,17 @@ export const App: Component<AppProps> = (props) => {
     onReply: (answers) => {
       const q = state.store.question
       if (!q) return
+
+      // Show the answer as a user message in the chat
+      const answerText = q.questions
+        .map((qn, i) => {
+          const picked = answers[i]
+          return picked?.length ? picked.join(", ") : "(no answer)"
+        })
+        .join("; ")
+      const msgId = generateId()
+      dispatch(state, { type: "add-user-message", id: msgId, text: answerText })
+
       respondQuestion({ requestId: q.requestId, answers })
       dispatch(state, { type: "clear-question" })
       dispatch(state, { type: "set-running", running: true })
@@ -929,15 +940,9 @@ export const App: Component<AppProps> = (props) => {
         {(q) => (
           <QuestionPrompt
             request={q()}
-            onReply={(answers) => {
-              respondQuestion({ requestId: q().requestId, answers })
-              dispatch(state, { type: "clear-question" })
-              dispatch(state, { type: "set-running", running: true })
-            }}
-            onReject={() => {
-              respondQuestion({ requestId: q().requestId, rejected: true })
-              dispatch(state, { type: "clear-question" })
-            }}
+            tab={questionHandler.tab}
+            selected={questionHandler.selected}
+            answers={questionHandler.answers}
           />
         )}
       </Show>
