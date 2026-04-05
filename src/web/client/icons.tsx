@@ -128,3 +128,20 @@ export function WarningIcon() {
     </svg>
   )
 }
+
+export function PaperclipIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.5 11.5l-5.5 5.5a3.5 3.5 0 01-5-5l7-7a2.5 2.5 0 013.5 3.5l-6.5 6.5a1.5 1.5 0 01-2-2l5-5" />
+    </svg>
+  )
+}
+
+export function XSmallIcon() {
+  return (
+    <svg width={12} height={12} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <line x1={3} y1={3} x2={9} y2={9} />
+      <line x1={9} y1={3} x2={3} y2={9} />
+    </svg>
+  )
+}

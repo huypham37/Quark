@@ -215,10 +215,11 @@ export function App() {
   useEffect(() => { refreshSessions(); loadModels(); loadAppConfig() }, [])
 
   // Actions
-  async function sendMessage(text: string) {
-    if (!text.trim() || s.running) return
+  async function sendMessage(text: string, images: { mime: string; data: string }[] = []) {
+    if (!text.trim() && images.length === 0 || s.running) return
     const body: any = { text: text.trim() }
     if (s.sessionId) body.sessionId = s.sessionId
+    if (images.length > 0) body.images = images.map(({ mime, data }) => ({ mime, data }))
     try {
       const r = await api('POST', '/api/prompt', body)
       if (r.sessionId) set({ sessionId: r.sessionId })
@@ -299,7 +300,7 @@ export function App() {
           )}
         </div>
 
-        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} />
+        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onToast={toast} />
       </div>
 
       {s.permission && <PermissionDialog perm={s.permission} onRespond={respondPerm} />}

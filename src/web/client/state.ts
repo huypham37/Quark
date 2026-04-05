@@ -40,7 +40,13 @@ export interface ThinkingPart {
   done: boolean
 }
 
-export type MessagePart = TextPart | ToolPart | ThinkingPart
+export interface ImagePart {
+  type: 'image'
+  mime: string
+  data: string
+}
+
+export type MessagePart = TextPart | ToolPart | ThinkingPart | ImagePart
 
 export interface Message {
   id: string
@@ -97,7 +103,7 @@ export type Action =
   | { type: 'SET'; payload: Partial<AppState> }
   | { type: 'ADD_TOAST'; title: string; body: string; kind?: 'error' | 'warn' }
   | { type: 'REMOVE_TOAST'; id: number }
-  | { type: 'ADD_USER_MSG'; id: string; text: string }
+  | { type: 'ADD_USER_MSG'; id: string; text: string; images?: { mime: string; data: string }[] }
   | { type: 'ENSURE_ASSISTANT'; id: string }
   | { type: 'UPDATE_MSG'; id: string; updater: (m: Message) => Message }
   | { type: 'CLEAR_MESSAGES' }
@@ -115,7 +121,13 @@ export function reducer(s: AppState, a: Action): AppState {
       return { ...s, toasts: s.toasts.filter(t => t.id !== a.id) }
     case 'ADD_USER_MSG': {
       if (s.messages.find(m => m.id === a.id)) return s
-      return { ...s, messages: [...s.messages, { id: a.id, role: 'user', parts: [{ type: 'text', text: a.text }] }] }
+      const parts: MessagePart[] = [{ type: 'text', text: a.text }]
+      if (a.images) {
+        for (const img of a.images) {
+          parts.push({ type: 'image', mime: img.mime, data: img.data })
+        }
+      }
+      return { ...s, messages: [...s.messages, { id: a.id, role: 'user', parts }] }
     }
     case 'ENSURE_ASSISTANT': {
       if (s.messages.find(m => m.id === a.id)) return s

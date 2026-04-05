@@ -3,14 +3,22 @@ import { AgentDot } from '../icons'
 import { RichText } from './rich-text'
 import { ToolCallPart } from './tool-call'
 import { ThinkingBlock } from './thinking'
-import type { Message, TextPart } from '../state'
+import type { Message, TextPart, ImagePart } from '../state'
 
 export function MessageItem({ msg, showHeader = true }: { msg: Message; showHeader?: boolean }) {
   if (msg.role === 'user') {
     const text = msg.parts.find((p): p is TextPart => p.type === 'text')
+    const images = msg.parts.filter((p): p is ImagePart => p.type === 'image')
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 0', animation: 'fadeUp 0.2s ease-out' }}>
         <div style={{ background: T.surface2, borderRadius: '18px 18px 4px 18px', padding: '10px 14px', maxWidth: '70%', fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, overflow: 'hidden' }}>
+          {images.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: text?.text ? 8 : 0 }}>
+              {images.map((img, i) => (
+                <img key={i} src={`data:${img.mime};base64,${img.data}`} alt={`Attachment ${i + 1}`} className="image-thumb" style={{ borderRadius: 8, maxWidth: 180, maxHeight: 140 }} />
+              ))}
+            </div>
+          )}
           {text ? text.text : ''}
         </div>
       </div>
