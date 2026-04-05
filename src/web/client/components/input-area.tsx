@@ -235,30 +235,6 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             style={{ display: 'none' }}
             onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={running}
-            className="input-btn input-btn--attach"
-            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-          >
-            <PaperclipIcon />
-          </button>
-          <button
-            onClick={openMentionFromButton}
-            disabled={running}
-            className="input-btn input-btn--mention"
-            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-          >
-            <AtIcon />
-          </button>
-          <button
-            onClick={togglePalette}
-            disabled={running}
-            className="input-btn input-btn--slash"
-            style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
-          >
-            <CommandIcon />
-          </button>
           <textarea
             ref={ref}
             value={text}
@@ -269,24 +245,54 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
             rows={1}
             className="input-textarea"
           />
-          {running ? (
-            <button onClick={onCancel} className="input-btn input-btn--cancel">
-              <StopIcon />
-            </button>
-          ) : (
-            <button
-              onClick={doSend}
-              disabled={!hasContent}
-              className="input-btn"
-              style={{
-                background: hasContent ? T.accent : T.surface,
-                color: hasContent ? '#fff' : T.text3,
-                cursor: hasContent ? 'pointer' : 'default',
-              }}
-            >
-              <SendIcon />
-            </button>
-          )}
+          <div className="input-toolbar">
+            <div className="input-toolbar-left">
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={running}
+                className="input-btn input-btn--attach"
+                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+              >
+                <PaperclipIcon />
+              </button>
+              <button
+                onClick={openMentionFromButton}
+                disabled={running}
+                className="input-btn input-btn--mention"
+                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+              >
+                <AtIcon />
+              </button>
+              <button
+                onClick={togglePalette}
+                disabled={running}
+                className="input-btn input-btn--slash"
+                style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
+              >
+                <CommandIcon />
+              </button>
+            </div>
+            <div className="input-toolbar-right">
+              {running ? (
+                <button onClick={onCancel} className="input-btn input-btn--cancel">
+                  <StopIcon />
+                </button>
+              ) : (
+                <button
+                  onClick={doSend}
+                  disabled={!hasContent}
+                  className="input-btn"
+                  style={{
+                    background: hasContent ? T.accent : T.surface,
+                    color: hasContent ? '#fff' : T.text3,
+                    cursor: hasContent ? 'pointer' : 'default',
+                  }}
+                >
+                  <SendIcon />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
         <div className="input-hint">Enter to send · Shift+Enter for newline</div>
       </div>
