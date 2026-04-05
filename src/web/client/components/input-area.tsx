@@ -133,10 +133,13 @@ export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps
     setMentionOpen(true)
     setMentionQuery('')
     setMentionAtIndex(pos)
-    setTimeout(() => {
-      ta.focus()
-      ta.setSelectionRange(pos + 1, pos + 1)
-    }, 0)
+    // Defer focus to next frame — avoids mobile keyboard race conditions
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        ref.current.focus()
+        ref.current.setSelectionRange(pos + 1, pos + 1)
+      }
+    })
   }
 
   const handleSlashSelect = (cmd: SlashCommand) => {

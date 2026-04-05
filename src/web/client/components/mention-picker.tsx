@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../api'
-import { T } from '../tokens'
 
 interface MentionPickerProps {
   query: string
@@ -11,58 +10,86 @@ interface MentionPickerProps {
 export function MentionPicker({ query, onSelect, onClose }: MentionPickerProps) {
   const [items, setItems] = useState<string[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const ref = useRef<HTMLDivElement>(null)
+  // Guard: skip the first click-outside event to avoid immediate close from the
+  // same tap/click that opened the picker (mobile touch → mousedown propagation)
+  const mountedRef = useRef(false)
 
-  // Fetch files when query changes
+  // Fetch files when query changes (debounced slightly for typing)
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    api<string[]>('GET', `/api/files?q=${encodeURIComponent(query)}`)
-      .then((files) => {
-        if (!cancelled) {
-          setItems(files)
-          setSelectedIndex(0)
-          setLoading(false)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
+    const timer = setTimeout(() => {
+      api<string[]>('GET', `/api/files?q=${encodeURIComponent(query)}`)
+        .then((files) => {
+          if (!cancelled) {
+            setItems(Array.isArray(files) ? files : [])
+            setSelectedIndex(0)
+            setLoading(false)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) { setItems([]); setLoading(false) }
+        })
+    }, 50)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [query])
 
-  // Click-outside to close
+  // Mark as mounted after a frame so click-outside skips the opening tap
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const id = requestAnimationFrame(() => { mountedRef.current = true })
+    return () => { cancelAnimationFrame(id); mountedRef.current = false }
+  }, [])
+
+  // Click-outside to close — stable ref via useCallback
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (!mountedRef.current) return
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose()
+        onCloseRef.current()
       }
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
+    document.addEventListener('touchstart', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler)
+    }
+  }, [])
 
-  // Keyboard navigation
+  // Keyboard navigation — stable refs to avoid effect churn
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+  const selectedRef = useRef(selectedIndex)
+  selectedRef.current = selectedIndex
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const len = itemsRef.current.length
+      if (!len) return
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(i => (i + 1) % (items.length || 1))
+        setSelectedIndex(i => (i + 1) % len)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex(i => (i - 1 + (items.length || 1)) % (items.length || 1))
+        setSelectedIndex(i => (i - 1 + len) % len)
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (items[selectedIndex]) onSelect(items[selectedIndex])
+        const item = itemsRef.current[selectedRef.current]
+        if (item) onSelectRef.current(item)
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        onCloseRef.current()
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [items, selectedIndex, onSelect, onClose])
+  }, [])
 
   if (!loading && items.length === 0) return null
 
