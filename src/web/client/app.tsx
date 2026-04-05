@@ -148,7 +148,11 @@ export function App() {
         toast('Retrying', `Attempt ${d.attempt} — ${Math.round((d.delayMs || 1000) / 1000)}s…`, 'warn')
         break
       case 'compaction-start':
+        set({ compacting: true })
         toast('Compacting', 'Compacting context…', 'warn')
+        break
+      case 'compaction-end':
+        set({ compacting: false })
         break
       case 'session-switch':
         set({ sessionId: d.sessionId })
@@ -305,7 +309,7 @@ export function App() {
           )}
         </div>
 
-        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onCompact={compactContext} onToast={toast} />
+        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onCompact={compactContext} compacting={s.compacting} onToast={toast} />
       </div>
 
       {s.permission && <PermissionDialog perm={s.permission} onRespond={respondPerm} />}

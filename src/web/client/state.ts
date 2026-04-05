@@ -81,6 +81,7 @@ export interface AppState {
   toasts: Toast[]
   sidebarOpen: boolean
   modelPickerOpen: boolean
+  compacting: boolean
 }
 
 export const initialState: AppState = {
@@ -97,6 +98,7 @@ export const initialState: AppState = {
   toasts: [],
   sidebarOpen: false,
   modelPickerOpen: false,
+  compacting: false,
 }
 
 export type Action =
