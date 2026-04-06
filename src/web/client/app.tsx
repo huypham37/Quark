@@ -21,15 +21,46 @@ export function App() {
   const wsRef = useRef<WebSocket | null>(null)
   const msgEndRef = useRef<HTMLDivElement>(null)
   const reconnectDelay = useRef(1000)
+  const sessionIdRef = useRef<string | null>(null)
   const handleEventRef = useRef<(event: string, d: any) => void>(() => {})
 
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
+
+  // --- rAF-throttled delta buffer ---
+  // iOS Safari coalesces/skips paints when rapid WebSocket onmessage events
+  // each trigger a React state update. We accumulate high-frequency deltas
+  // (text-delta, reasoning-delta, subagent-text-delta) and flush once per
+  // animation frame so the browser gets time to paint between updates.
+  const deltaBuffer = useRef<Map<string, Action>>(new Map())
+  const rafHandle = useRef<number>(0)
+
+  const flushDeltas = useCallback(() => {
+    rafHandle.current = 0
+    const buf = deltaBuffer.current
+    if (buf.size === 0) return
+    // Dispatch all buffered actions in one batch
+    for (const action of buf.values()) dispatch(action)
+    buf.clear()
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (!rafHandle.current) {
+      rafHandle.current = requestAnimationFrame(flushDeltas)
+    }
+  }, [flushDeltas])
+
+  // Cleanup rAF on unmount
+  useEffect(() => () => { if (rafHandle.current) cancelAnimationFrame(rafHandle.current) }, [])
+
   const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn', opts?: { id?: number; persistent?: boolean }) => {
     const id = opts?.id ?? Date.now()
     dispatch({ type: 'ADD_TOAST', id, title, body, kind })
     if (!opts?.persistent) setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 5000)
     return id
   }, [])
+
+  // Keep sessionId ref in sync for WS reconnect closure
+  sessionIdRef.current = s.sessionId
 
   // Persist sessionId to localStorage
   const SESSION_KEY = 'quark-session-id'
@@ -86,6 +117,17 @@ export function App() {
         if (cancelled) return
         set({ connected: true })
         reconnectDelay.current = 1000
+        // Reconcile on reconnect: fetch messages & status to recover events lost during the gap
+        const sid = sessionIdRef.current
+        if (sid) {
+          Promise.all([
+            api('GET', `/api/sessions/${sid}/messages`),
+            api<{ running: boolean }>('GET', `/api/sessions/${sid}/status`),
+          ]).then(([msgs, status]: [any, { running: boolean }]) => {
+            dispatch({ type: 'LOAD_MESSAGES', messages: msgs })
+            set({ running: status.running })
+          }).catch(() => {})
+        }
       }
       ws.onclose = () => {
         if (cancelled) return
@@ -151,10 +193,17 @@ export function App() {
           return { ...m, parts: [...m.parts, { type: 'text' as const, text: '', partId: d.partId, streaming: true }] }
         }})
         break
-      case 'text-delta':
-        dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'text' && (p as any).partId === d.partId ? { ...p, text: d.text, streaming: true } : p) }) })
+      case 'text-delta': {
+        // Buffer text-delta updates and flush once per animation frame
+        // to prevent iOS Safari from coalescing/skipping paints
+        const key = `td:${d.messageId}:${d.partId}`
+        deltaBuffer.current.set(key, { type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'text' && (p as any).partId === d.partId ? { ...p, text: d.text, streaming: true } : p) }) })
+        scheduleFlush()
         break
+      }
       case 'text-end':
+        // Flush any pending buffered delta for this part before applying final text
+        deltaBuffer.current.delete(`td:${d.messageId}:${d.partId}`)
         dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'text' && (p as any).partId === d.partId ? { ...p, text: d.text, streaming: false } : p) }) })
         break
       case 'tool-start':
@@ -179,10 +228,14 @@ export function App() {
         dispatch({ type: 'ENSURE_ASSISTANT', id: d.messageId })
         dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: [...m.parts, { type: 'thinking' as const, text: '', partId: d.partId, done: false }] }) })
         break
-      case 'reasoning-delta':
-        dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'thinking' && (p as any).partId === d.partId ? { ...p, text: d.text } : p) }) })
+      case 'reasoning-delta': {
+        const key = `rd:${d.messageId}:${d.partId}`
+        deltaBuffer.current.set(key, { type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'thinking' && (p as any).partId === d.partId ? { ...p, text: d.text } : p) }) })
+        scheduleFlush()
         break
+      }
       case 'reasoning-end':
+        deltaBuffer.current.delete(`rd:${d.messageId}:${d.partId}`)
         dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'thinking' && (p as any).partId === d.partId ? { ...p, done: true } : p) }) })
         break
       case 'step-finish':
@@ -257,13 +310,17 @@ export function App() {
           if (d.tokenLimit && d.tokenLimit > 0) sa.tokenLimit = d.tokenLimit
         }, profile: d.profile })
         break
-      case 'subagent-text-delta':
-        dispatch({ type: 'SUBAGENT_EVENT', messageId: d.messageId, parentCallId: d.parentCallId, updater: (sa) => {
+      case 'subagent-text-delta': {
+        const key = `satd:${d.messageId}:${d.parentCallId}`
+        deltaBuffer.current.set(key, { type: 'SUBAGENT_EVENT', messageId: d.messageId, parentCallId: d.parentCallId, updater: (sa) => {
           const text = d.text
           sa.textPreview = text.length > 120 ? '…' + text.slice(-119) : text
         }, profile: d.profile })
+        scheduleFlush()
         break
+      }
       case 'subagent-done':
+        deltaBuffer.current.delete(`satd:${d.messageId}:${d.parentCallId}`)
         dispatch({ type: 'SUBAGENT_EVENT', messageId: d.messageId, parentCallId: d.parentCallId, updater: (sa) => {
           sa.done = true
           sa.textPreview = undefined

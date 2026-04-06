@@ -83,6 +83,8 @@ export interface AppState {
   modelPickerOpen: boolean
   compacting: boolean
   showThinking: boolean
+  /** Optimistic IDs that were already reconciled — ADD_USER_MSG should skip these */
+  _reconciledOptIds: Set<string>
 }
 
 export const initialState: AppState = {
@@ -101,6 +103,7 @@ export const initialState: AppState = {
   modelPickerOpen: false,
   compacting: false,
   showThinking: false,
+  _reconciledOptIds: new Set(),
 }
 
 export type Action =
@@ -108,6 +111,7 @@ export type Action =
   | { type: 'ADD_TOAST'; id: number; title: string; body: string; kind?: 'error' | 'warn' }
   | { type: 'REMOVE_TOAST'; id: number }
   | { type: 'ADD_USER_MSG'; id: string; text: string; images?: { mime: string; data: string }[] }
+  | { type: 'RECONCILE_USER_MSG'; optimisticId: string; realId: string; text: string }
   | { type: 'ENSURE_ASSISTANT'; id: string }
   | { type: 'UPDATE_MSG'; id: string; updater: (m: Message) => Message }
   | { type: 'CLEAR_MESSAGES' }
@@ -124,6 +128,8 @@ export function reducer(s: AppState, a: Action): AppState {
     case 'REMOVE_TOAST':
       return { ...s, toasts: s.toasts.filter(t => t.id !== a.id) }
     case 'ADD_USER_MSG': {
+      // Skip if already reconciled (RECONCILE_USER_MSG ran first in the race)
+      if (s._reconciledOptIds.has(a.id)) return s
       if (s.messages.find(m => m.id === a.id)) return s
       const parts: MessagePart[] = [{ type: 'text', text: a.text }]
       if (a.images) {
@@ -132,6 +138,27 @@ export function reducer(s: AppState, a: Action): AppState {
         }
       }
       return { ...s, messages: [...s.messages, { id: a.id, role: 'user', parts }] }
+    }
+    case 'RECONCILE_USER_MSG': {
+      // The WS user-message event fires the real server messageId.
+      // If the optimistic message exists in state, rename it.
+      // If React hasn't committed it yet (race), add with the real ID
+      // and mark the optimistic ID so ADD_USER_MSG skips it later.
+      if (s.messages.find(m => m.id === a.realId)) return s
+      const optIdx = s.messages.findIndex(m => m.id === a.optimisticId)
+      if (optIdx !== -1) {
+        // Rename optimistic → real
+        const updated = s.messages.map(m => m.id === a.optimisticId ? { ...m, id: a.realId } : m)
+        return { ...s, messages: updated }
+      }
+      // Optimistic not committed yet — add with real ID and suppress the future ADD_USER_MSG
+      const newReconciled = new Set(s._reconciledOptIds)
+      newReconciled.add(a.optimisticId)
+      return {
+        ...s,
+        messages: [...s.messages, { id: a.realId, role: 'user' as const, parts: [{ type: 'text' as const, text: a.text }] }],
+        _reconciledOptIds: newReconciled,
+      }
     }
     case 'ENSURE_ASSISTANT': {
       if (s.messages.find(m => m.id === a.id)) return s
