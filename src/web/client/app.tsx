@@ -21,6 +21,7 @@ export function App() {
   const wsRef = useRef<WebSocket | null>(null)
   const msgEndRef = useRef<HTMLDivElement>(null)
   const reconnectDelay = useRef(1000)
+  const handleEventRef = useRef<(event: string, d: any) => void>(() => {})
 
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
   const toast = useCallback((title: string, body: string, kind?: 'error' | 'warn', opts?: { id?: number; persistent?: boolean }) => {
@@ -41,8 +42,15 @@ export function App() {
     const saved = localStorage.getItem(SESSION_KEY)
     if (!saved) return
     set({ sessionId: saved })
-    api('GET', `/api/sessions/${saved}/messages`)
-      .then((msgs: any) => dispatch({ type: 'LOAD_MESSAGES', messages: msgs }))
+    // Load persisted messages and check if the session is still running
+    Promise.all([
+      api('GET', `/api/sessions/${saved}/messages`),
+      api<{ running: boolean }>('GET', `/api/sessions/${saved}/status`),
+    ])
+      .then(([msgs, status]: [any, { running: boolean }]) => {
+        dispatch({ type: 'LOAD_MESSAGES', messages: msgs })
+        if (status.running) set({ running: true })
+      })
       .catch(() => localStorage.removeItem(SESSION_KEY))
   }, [])
 
@@ -89,7 +97,7 @@ export function App() {
       ws.onmessage = (e) => {
         try {
           const { event, data } = JSON.parse(e.data)
-          handleEvent(event, data)
+          handleEventRef.current(event, data)
         } catch {}
       }
 
@@ -110,7 +118,8 @@ export function App() {
     }
   }, [])
 
-  // Event handler
+  // Event handler — keep ref up-to-date so the WS onmessage closure (set up
+  // once on mount) always calls the latest version with fresh state/callbacks.
   function handleEvent(event: string, d: any) {
     switch (event) {
       case 'session-created':
@@ -118,11 +127,15 @@ export function App() {
         refreshSessions()
         break
       case 'user-message':
-        // Replace optimistic message with the real server message
+        // Reconcile with the optimistic message added in sendMessage().
+        // The WS event can arrive before React commits the ADD_USER_MSG
+        // dispatch, so UPDATE_MSG may silently no-op.  To fix this we:
+        //   1. Record the mapping from optimistic ID → real server ID
+        //   2. Let the reducer handle both cases (rename if found, add if not)
         if (pendingOptMsgRef.current) {
           const optId = pendingOptMsgRef.current
           pendingOptMsgRef.current = null
-          dispatch({ type: 'UPDATE_MSG', id: optId, updater: m => ({ ...m, id: d.messageId }) })
+          dispatch({ type: 'RECONCILE_USER_MSG', optimisticId: optId, realId: d.messageId, text: d.text })
         } else {
           dispatch({ type: 'ADD_USER_MSG', id: d.messageId, text: d.text })
         }
@@ -176,7 +189,18 @@ export function App() {
         if (d.data?.tokens?.input) set({ tokensUsed: d.data.tokens.input })
         break
       case 'loop-start': set({ running: true }); break
-      case 'loop-end': set({ running: false }); break
+      case 'loop-end': {
+        set({ running: false })
+        // Reconcile: fetch full message history to recover any events lost
+        // during WebSocket disconnect/reconnect gaps (e.g. new session creation)
+        const sid = d.sessionId || s.sessionId
+        if (sid) {
+          api('GET', `/api/sessions/${sid}/messages`)
+            .then((msgs: any) => dispatch({ type: 'LOAD_MESSAGES', messages: msgs }))
+            .catch(() => {})
+        }
+        break
+      }
       case 'assistant-message-end':
         if (d.finish === 'stop' || d.finish === 'length') set({ running: false })
         break
@@ -247,6 +271,7 @@ export function App() {
         break
     }
   }
+  handleEventRef.current = handleEvent
 
   // REST calls
   async function refreshSessions() {
