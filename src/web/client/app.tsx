@@ -318,7 +318,10 @@ export function App() {
 
   async function cancelAgent() {
     if (!s.sessionId) return
-    try { await api('POST', '/api/cancel', { sessionId: s.sessionId }) } catch {}
+    try {
+      await api('POST', '/api/cancel', { sessionId: s.sessionId })
+      set({ running: false })
+    } catch {}
   }
 
   async function switchSession(id: string) {
