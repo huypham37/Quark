@@ -9,9 +9,10 @@ interface HeaderProps {
   dispatch: React.Dispatch<Action>
   onCancel: () => void
   onSwitchModel: (model: string) => void
+  onToggleThinking: () => void
 }
 
-export function Header({ state, dispatch, onCancel, onSwitchModel }: HeaderProps) {
+export function Header({ state, dispatch, onCancel, onSwitchModel, onToggleThinking }: HeaderProps) {
   const set = (p: Partial<AppState>) => dispatch({ type: 'SET', payload: p })
 
   return (
@@ -22,9 +23,9 @@ export function Header({ state, dispatch, onCancel, onSwitchModel }: HeaderProps
       <span className="brand-text">QUARK</span>
       <div style={{ flex: 1, minWidth: 0 }} />
       <button
-        title={state.showThinking ? 'Hide all thinking' : 'Show all thinking'}
+        title={state.showThinking ? 'Disable extended thinking' : 'Enable extended thinking'}
         className="icon-btn"
-        onClick={() => set({ showThinking: !state.showThinking })}
+        onClick={onToggleThinking}
         style={{ color: state.showThinking ? T.purple : T.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}
       >
         <ThinkingIcon />

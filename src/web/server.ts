@@ -15,6 +15,7 @@ import { getFiles, fuzzyFilter } from "../tui/filelist"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
+import { setCopilotThinking, getCopilotThinkingBudget } from "../provider/provider"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -237,6 +238,16 @@ function createRequestHandler(agent: AgentConfig) {
 
     if (req.method === "GET" && pathname === "/api/model") {
       return json({ model: modelOverride ?? loadConfig().main_model })
+    }
+
+    if (req.method === "POST" && pathname === "/api/thinking") {
+      const body = (await req.json()) as { enabled: boolean }
+      setCopilotThinking(body.enabled ? 10000 : 0)
+      return json({ enabled: getCopilotThinkingBudget() > 0 })
+    }
+
+    if (req.method === "GET" && pathname === "/api/thinking") {
+      return json({ enabled: getCopilotThinkingBudget() > 0 })
     }
 
     if (req.method === "POST" && pathname === "/api/permission") {

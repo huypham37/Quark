@@ -86,6 +86,18 @@ export function App() {
       .catch(() => localStorage.removeItem(SESSION_KEY))
   }, [])
 
+  // Restore thinking toggle from localStorage on mount, then sync with server
+  useEffect(() => {
+    const saved = localStorage.getItem('quark-thinking')
+    if (saved === 'true') set({ showThinking: true })
+    api<{ enabled: boolean }>('GET', '/api/thinking')
+      .then(r => {
+        set({ showThinking: r.enabled })
+        localStorage.setItem('quark-thinking', JSON.stringify(r.enabled))
+      })
+      .catch(() => {})
+  }, [])
+
   // Auto-scroll
   useEffect(() => {
     if (msgEndRef.current) msgEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -504,6 +516,15 @@ export function App() {
     } catch { toast('Error', 'Failed to switch model', 'error') }
   }
 
+  async function toggleThinking() {
+    const next = !s.showThinking
+    set({ showThinking: next })
+    localStorage.setItem('quark-thinking', JSON.stringify(next))
+    try {
+      await api('POST', '/api/thinking', { enabled: next })
+    } catch { toast('Error', 'Failed to toggle thinking', 'error') }
+  }
+
   async function compactContext() {
     if (!s.sessionId) {
       toast('Nothing to compact', 'No active session', 'warn')
@@ -563,7 +584,7 @@ export function App() {
       />
 
       <div className="main-area">
-        <Header state={s} dispatch={dispatch} onCancel={cancelAgent} onSwitchModel={switchModel} />
+        <Header state={s} dispatch={dispatch} onCancel={cancelAgent} onSwitchModel={switchModel} onToggleThinking={toggleThinking} />
         <div className="header-spacer" />
 
         {s.running && <RunningBar onCancel={cancelAgent} />}
