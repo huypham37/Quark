@@ -1,0 +1,23 @@
+{
+  "runtime": { "name": "Bun", "version": "latest" },
+  "language": { "name": "TypeScript", "version": "^6.0.2" },
+  "build": { "name": "tsup", "version": "^8.5.1", "output": "ESM + CJS" },
+  "tui": {
+    "framework": { "name": "OpenTUI", "version": "^0.1.86" },
+    "rendering": { "name": "SolidJS", "version": "^1.9.11" }
+  },
+  "web_ui": {
+    "framework": { "name": "React", "version": "^19.2.4" }
+  },
+  "ai": {
+    "sdk": { "name": "Vercel AI SDK", "package": "ai", "version": "^6.0.116" },
+    "providers": [
+      { "name": "@ai-sdk/anthropic", "version": "^3.0.64" },
+      { "name": "@ai-sdk/openai", "version": "^3.0.41" }
+    ],
+    "default_provider": "GitHub Copilot"
+  },
+  "schema": { "name": "Zod", "version": "^4.3.6" },
+  "config": { "name": "yaml", "version": "^2.8.2" },
+  "docs": { "name": "typedoc", "version": "^0.28.18" }
+}
