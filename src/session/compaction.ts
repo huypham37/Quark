@@ -45,6 +45,10 @@ When constructing the summary, try to stick to this template:
 ## Relevant files / directories
 
 [Construct a structured list of relevant files that have been read, edited, or created that pertain to the task at hand.]
+
+## Key findings
+
+[Document any important findings, decisions, or insights from the conversation that should be remembered — e.g. root causes identified, trade-offs considered, approaches rejected and why.]
 ---`
 
 // ---------------------------------------------------------------------------
