@@ -1,5 +1,5 @@
 import { bootstrap } from "../bootstrap"
-import { prompt, cancel } from "../session/prompt"
+import { prompt, cancel, isActive } from "../session/prompt"
 import { bus, type BusEventName } from "../session/events"
 import { createSession, listSessions, getSession } from "../session/session"
 import { loadMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage, toModelMessages } from "../session/message"
@@ -94,6 +94,11 @@ function createRequestHandler(agent: AgentConfig) {
       }
       const { messages, parts } = loadMessages(id)
       return json(dbToTuiMessages(messages, parts))
+    }
+
+    if (req.method === "GET" && pathname.startsWith("/api/sessions/") && pathname.endsWith("/status")) {
+      const id = pathname.slice("/api/sessions/".length, -"/status".length)
+      return json({ running: isActive(id) })
     }
 
     if (req.method === "POST" && pathname === "/api/sessions") {
@@ -347,9 +352,6 @@ export async function startWebServer() {
         for (const event of ALL_EVENTS) {
           const handler = (data: unknown) => {
             try {
-              if (event === "compaction-start" || event === "compaction-end") {
-                console.log(`[ws] sending ${event} to client`)
-              }
               ws.send(JSON.stringify({ event, data }))
             } catch {}
           }
