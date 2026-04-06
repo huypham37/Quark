@@ -23,6 +23,7 @@ export function App() {
   const reconnectDelay = useRef(1000)
   const sessionIdRef = useRef<string | null>(null)
   const handleEventRef = useRef<(event: string, d: any) => void>(() => {})
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const set = useCallback((p: Partial<AppState>) => dispatch({ type: 'SET', payload: p }), [])
 
@@ -98,26 +99,52 @@ export function App() {
 
     function connect() {
       if (cancelled) return
-      // Ensure previous connection is fully closed before opening a new one
+      // CRITICAL (WebKit bug 228296): Never close a CONNECTING socket on iOS Safari.
+      // NSURLSession WebSocket corrupts its internal state when a CONNECTING socket is
+      // closed, making ALL future WS connections fail until Safari is restarted.
+      if (ws && ws.readyState === WebSocket.CONNECTING) return
       if (ws) {
         ws.onopen = null
         ws.onclose = null
         ws.onerror = null
         ws.onmessage = null
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close()
-        }
+        if (ws.readyState === WebSocket.OPEN) ws.close()
       }
 
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
       ws = new WebSocket(`${proto}://${location.host}/ws`)
       wsRef.current = ws
 
-      ws.onopen = () => {
+      // Capture per-socket references to prevent cross-socket races.
+      // If connect() is called again before this socket opens, the shared `ws`
+      // variable will be reassigned, so all closures below compare against thisWs.
+      const thisWs = ws
+      let thisPing: ReturnType<typeof setInterval> | null = null
+
+      // Give the connection 10s to open before giving up and retrying.
+      // Do NOT call ws.close() on timeout — that triggers the NSURLSession bug.
+      // Orphan the stale socket and create a new one instead.
+      const connectTimeout = setTimeout(() => {
+        if (thisWs.readyState === WebSocket.CONNECTING) {
+          thisWs.onopen = null
+          thisWs.onclose = null
+          thisWs.onerror = null
+          thisWs.onmessage = null
+          if (thisPing) clearInterval(thisPing)
+          // Only clear shared ref if it still points to this socket
+          if (ws === thisWs) { ws = null; wsRef.current = null }
+          if (!cancelled) {
+            reconnectTimer = setTimeout(connect, reconnectDelay.current)
+            reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000)
+          }
+        }
+      }, 10000)
+
+      thisWs.onopen = () => {
+        clearTimeout(connectTimeout)
         if (cancelled) return
-        set({ connected: true })
         reconnectDelay.current = 1000
-        // Reconcile on reconnect: fetch messages & status to recover events lost during the gap
+        set({ connected: true })
         const sid = sessionIdRef.current
         if (sid) {
           Promise.all([
@@ -129,27 +156,69 @@ export function App() {
           }).catch(() => {})
         }
       }
-      ws.onclose = () => {
+      thisWs.onclose = () => {
+        clearTimeout(connectTimeout)
         if (cancelled) return
         set({ connected: false })
-        reconnectTimer = setTimeout(connect, reconnectDelay.current)
-        reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000)
+        const delay = reconnectDelay.current
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        reconnectTimer = setTimeout(connect, delay)
+        reconnectDelay.current = Math.min(delay * 2, 30000)
       }
-      ws.onerror = () => {}
-      ws.onmessage = (e) => {
+      thisWs.onerror = () => {}
+      thisWs.onmessage = (e) => {
         try {
           const { event, data } = JSON.parse(e.data)
           handleEventRef.current(event, data)
         } catch {}
       }
 
-      const ping = setInterval(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })) }, 30000)
-      ws.addEventListener('close', () => clearInterval(ping))
+      thisPing = setInterval(() => { if (thisWs.readyState === WebSocket.OPEN) thisWs.send(JSON.stringify({ type: 'ping' })) }, 15000)
+      thisWs.addEventListener('close', () => { if (thisPing) clearInterval(thisPing) })
     }
     connect()
+
+    // Apple Safari on iOS only — exclude Chrome/Firefox/Edge on iOS (CriOS/FxiOS/EdgiOS)
+    const isIosSafari = /iP(hone|ad|od)/.test(navigator.userAgent)
+      && /WebKit/.test(navigator.userAgent)
+      && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        if (isIosSafari && ws) {
+          ws.onopen = null
+          ws.onclose = null
+          ws.onerror = null
+          ws.onmessage = null
+          if (ws.readyState === WebSocket.OPEN) ws.close()
+          ws = null
+          wsRef.current = null
+        }
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+        reconnectDelay.current = 1000
+      } else if (document.visibilityState === 'visible') {
+        if (!ws || ws.readyState === WebSocket.CLOSED) {
+          reconnectDelay.current = 1000
+          connect()
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    // iOS bfcache restore: page was served from cache, WS is dead
+    function onPageShow(ev: PageTransitionEvent) {
+      if (ev.persisted && (!ws || ws.readyState !== WebSocket.OPEN)) {
+        reconnectDelay.current = 1000
+        connect()
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+
     return () => {
       cancelled = true
+      window.removeEventListener('pageshow', onPageShow)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
       if (ws) {
         ws.onopen = null
         ws.onclose = null
@@ -367,10 +436,39 @@ export function App() {
     dispatch({ type: 'ADD_USER_MSG', id: optimisticId, text: text.trim(), images: images.length > 0 ? images : undefined })
     set({ running: true })
 
+    let sid = s.sessionId
     try {
       const r = await api('POST', '/api/prompt', body)
-      if (r.sessionId) set({ sessionId: r.sessionId })
-    } catch { toast('Error', 'Failed to send', 'error'); set({ running: false }) }
+      if (r.sessionId) { sid = r.sessionId; set({ sessionId: r.sessionId }) }
+    } catch (e: any) {
+      toast('Error', 'Failed to send', 'error'); set({ running: false }); return
+    }
+
+    // iOS Safari fallback: if WS is not connected, poll for completion.
+    // The WS may take 20-30s to stabilize on iOS, so events are lost.
+    // Poll every 2s until the agent finishes, then reconcile messages.
+    if (sid && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+      let polling = false
+      pollTimerRef.current = setInterval(async () => {
+        if (polling) return
+        polling = true
+        try {
+          const [status, msgs] = await Promise.all([
+            api<{ running: boolean }>('GET', `/api/sessions/${sid}/status`),
+            api('GET', `/api/sessions/${sid}/messages`),
+          ])
+          dispatch({ type: 'LOAD_MESSAGES', messages: msgs })
+          if (!status.running) {
+            clearInterval(pollTimerRef.current!)
+            pollTimerRef.current = null
+            set({ running: false })
+          }
+        } catch {} finally {
+          polling = false
+        }
+      }, 2000)
+    }
   }
 
   async function cancelAgent() {

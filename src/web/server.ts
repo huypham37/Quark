@@ -290,7 +290,11 @@ function createRequestHandler(agent: AgentConfig) {
     if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
       const file = Bun.file(new URL("public/index.html", import.meta.url).pathname)
       if (await file.exists()) {
-        return new Response(file, { headers: cors({ "Content-Type": "text/html" }) })
+        const headers = cors({ "Content-Type": "text/html" })
+        // Prevent bfcache on iOS Safari — bfcache kills WebSocket connections
+        // with code 1001 ("Going Away") and does not restore them on pageshow
+        headers.set("Cache-Control", "no-store")
+        return new Response(file, { headers })
       }
       return new Response("Frontend not found", { status: 404, headers: cors() })
     }
@@ -346,6 +350,11 @@ export async function startWebServer() {
       return handleRequest(req, server)
     },
     websocket: {
+      // Disable per-message compression — Safari has known issues with it
+      perMessageDeflate: false,
+      // Keep connection alive — iOS Safari aggressively kills idle WS connections
+      idleTimeout: 120,
+      sendPong: true,
       open(ws) {
         console.log("[ws] client connected")
         const handlers = (ws.data as WSData).handlers
@@ -367,8 +376,8 @@ export async function startWebServer() {
           }
         } catch {}
       },
-      close(ws) {
-        console.log("[ws] client disconnected")
+      close(ws, code, reason) {
+        console.log(`[ws] client disconnected (code=${code}, reason=${reason})`)
         const handlers = (ws.data as WSData).handlers
         for (const [event, handler] of handlers) {
           bus.off(event, handler as any)
