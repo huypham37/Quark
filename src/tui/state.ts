@@ -144,6 +144,15 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
+        // Reconstruct minimal subAgent state for bash sub-agent invocations
+        let subAgent: SubAgentState | undefined
+        if (d.tool === "bash") {
+          const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
+          if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
+            const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
+            subAgent = { profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status !== "running" }
+          }
+        }
         tuiParts.push({
           type: "tool",
           tool: d.tool,
@@ -152,6 +161,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
           input: d.input,
           output: d.output,
           error: d.error,
+          ...(subAgent ? { subAgent } : {}),
         })
       } else if (p.type === "image") {
         const d = JSON.parse(p.data) as ImagePartData
