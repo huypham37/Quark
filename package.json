@@ -42,6 +42,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
+    "@ai-sdk/alibaba": "^1.0.17",
     "@ai-sdk/anthropic": "^3.0.64",
     "@ai-sdk/openai": "^3.0.41",
     "@opentui/core": "^0.1.86",

@@ -36,6 +36,7 @@ import {
   getModel,
   createCopilotProvider,
   createOpenAICompatibleProvider,
+  createAlibabaCompatibleProvider,
   createCopilotAnthropicProvider,
   isClaude,
   getCopilotThinkingBudget,
@@ -180,6 +181,16 @@ export function cancel(sessionId: string) {
     controller.abort();
     active.delete(sessionId);
   }
+}
+
+/**
+ * Check if an agent loop is currently running for the given session.
+ *
+ * @param sessionId - The session to check
+ * @returns `true` if the session has an active agent loop
+ */
+export function isActive(sessionId: string): boolean {
+  return active.has(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +486,18 @@ export async function resolveModel(
         `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
       );
     }
+
+    // Route Qwen models through @ai-sdk/alibaba which natively handles
+    // delta.reasoning_content → reasoning-start/delta/end events.
+    // Same pattern as Copilot routing Claude to @ai-sdk/anthropic.
+    if (providerId === "qwen") {
+      const alibabaProvider = createAlibabaCompatibleProvider({
+        baseURL: pc.baseURL,
+        apiKey: resolveApiKey(pc.apiKey),
+      });
+      return alibabaProvider(modelId);
+    }
+
     provider = createOpenAICompatibleProvider({
       name: providerId,
       baseURL: pc.baseURL,

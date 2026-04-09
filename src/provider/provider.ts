@@ -2,9 +2,12 @@
 // and routes models to the correct API (Chat vs Responses).
 // For Claude models with thinking enabled, uses @ai-sdk/anthropic pointed at
 // https://api.githubcopilot.com/v1 (the native Anthropic Messages API endpoint).
+// For Qwen models via proxy, uses @ai-sdk/alibaba which natively handles
+// delta.reasoning_content → reasoning-start/delta/end events.
 
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai"
 import { createAnthropic, type AnthropicProvider } from "@ai-sdk/anthropic"
+import { createAlibaba, type AlibabaProvider } from "@ai-sdk/alibaba"
 import type { FetchFunction } from "@ai-sdk/provider-utils"
 import { createCopilotFetch, type CopilotFetchFn } from "./copilot-fetch"
 
@@ -122,6 +125,22 @@ export function createOpenAICompatibleProvider(options: {
 }): OpenAIProvider {
   return createOpenAI({
     name: options.name,
+    baseURL: options.baseURL,
+    apiKey: options.apiKey,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// createAlibabaCompatibleProvider — creates an @ai-sdk/alibaba provider
+// pointed at a custom baseURL (e.g. the Qwen web proxy).
+// The proxy emits SSE chunks with delta.reasoning_content which
+// @ai-sdk/alibaba natively maps to reasoning-start/delta/end events.
+// ---------------------------------------------------------------------------
+export function createAlibabaCompatibleProvider(options: {
+  baseURL: string
+  apiKey: string
+}): AlibabaProvider {
+  return createAlibaba({
     baseURL: options.baseURL,
     apiKey: options.apiKey,
   })
