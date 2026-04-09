@@ -165,12 +165,23 @@ def delete_chat(token: str, chat_id: str):
         pass
 
 
-def stream_chat(token: str, chat_id: str, model_id: str, user_input: str):
+def stream_chat(token: str, chat_id: str, model_id: str, user_input: str, tools: list | None = None):
     """
     POST to /api/v2/chat/completions and yield parsed SSE dicts.
     Each dict has 'choices' with delta containing phase/content/status.
     """
     ts = int(time.time())
+
+    feature_config = {
+        "thinking_enabled": True,
+        "output_schema": "phase",
+        "research_mode": "normal",
+        "auto_thinking": True,
+        "thinking_mode": "Auto",
+        "thinking_format": "summary",
+        "auto_search": False,
+    }
+
     payload = {
         "stream": True,
         "version": "2.1",
@@ -191,15 +202,7 @@ def stream_chat(token: str, chat_id: str, model_id: str, user_input: str):
                 "timestamp": ts,
                 "models": [model_id],
                 "chat_type": "t2t",
-                "feature_config": {
-                    "thinking_enabled": True,
-                    "output_schema": "phase",
-                    "research_mode": "normal",
-                    "auto_thinking": True,
-                    "thinking_mode": "Auto",
-                    "thinking_format": "summary",
-                    "auto_search": True,
-                },
+                "feature_config": feature_config,
                 "extra": {"meta": {"subChatType": "t2t"}},
                 "sub_chat_type": "t2t",
                 "parent_id": None,
@@ -207,6 +210,27 @@ def stream_chat(token: str, chat_id: str, model_id: str, user_input: str):
         ],
         "timestamp": ts,
     }
+
+    # Pass tools natively so the Qwen backend can resolve function_call
+    if tools:
+        qwen_tools = []
+        for t in tools:
+            if isinstance(t, dict) and t.get("type") == "function":
+                fn = t.get("function", {})
+            elif isinstance(t, dict) and "name" in t:
+                fn = t
+            else:
+                continue
+            qwen_tools.append({
+                "type": "function",
+                "function": {
+                    "name": fn.get("name", ""),
+                    "description": fn.get("description", ""),
+                    "parameters": fn.get("parameters", {}),
+                },
+            })
+        if qwen_tools:
+            payload["tools"] = qwen_tools
 
     hdrs = _headers(token)
     hdrs["Accept"] = "text/event-stream"
@@ -569,6 +593,8 @@ class Handler(BaseHTTPRequestHandler):
 
         model_id = resolve_model(model)
 
+        # Inject tools into prompt text — Qwen webapp recognises them and
+        # responds with native delta.function_call JSON
         user_input = messages_to_prompt(messages, tools if tools else None)
 
         if not user_input.strip():
@@ -583,11 +609,11 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[qwen-proxy] Model: {model_id} | Tools: {len(tools)} | Query: {user_input[:80]!r}")
 
         if stream:
-            self._stream(user_input, model, model_id, token, has_tools)
+            self._stream(user_input, model, model_id, token, has_tools, tools)
         else:
-            self._collect(user_input, model, model_id, token, has_tools)
+            self._collect(user_input, model, model_id, token, has_tools, tools)
 
-    def _stream(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False):
+    def _stream(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False, tools: list | None = None):
         chat_id = None
         try:
             chat_id = create_chat(token, model_id)
@@ -601,13 +627,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         chunk_id = _make_id()
-        reasoning_buffer = ""
         parser = ToolCallParser() if has_tools else None
         call_index = 0
         saw_tool_call = False
+        # Track native function_call accumulation (Qwen streams args incrementally)
+        active_fc_name = None
+        active_fc_args = ""
 
         try:
-            for event in stream_chat(token, chat_id, model_id, user_input):
+            for event in stream_chat(token, chat_id, model_id, user_input, tools=tools):
                 if event.get("done"):
                     break
 
@@ -619,22 +647,63 @@ class Handler(BaseHTTPRequestHandler):
                 phase = delta.get("phase")
                 status = delta.get("status")
                 content = delta.get("content", "")
+                fc = delta.get("function_call")
+                reasoning = delta.get("reasoning_content", "")
+                finish = choices[0].get("finish_reason")
 
-                if phase == "think" and status != "finished":
-                    reasoning_buffer += content
+                # --- Native function_call from Qwen API (qwen3.6-plus) ---
+                if fc and has_tools:
+                    fc_name = fc.get("name", "")
+                    fc_args = fc.get("arguments", "")
+
+                    if fc_name and fc_name != active_fc_name:
+                        # Flush previous function_call if any
+                        if active_fc_name is not None:
+                            call_id = f"call_{uuid.uuid4().hex[:12]}"
+                            self.wfile.write(_sse_tool_call_start(model, chunk_id, call_index, call_id, active_fc_name))
+                            self.wfile.write(_sse_tool_call_args(model, chunk_id, call_index, active_fc_args))
+                            self.wfile.flush()
+                            call_index += 1
+                        # Start new function_call
+                        active_fc_name = fc_name
+                        active_fc_args = fc_args
+                        saw_tool_call = True
+                    elif active_fc_name is not None:
+                        # Accumulate incremental args (Qwen sends full args each time)
+                        active_fc_args = fc_args
+                    continue
+
+                # --- Reasoning content (qwen3-coder-plus sends delta.reasoning_content) ---
+                if reasoning:
+                    self.wfile.write(_sse_chunk("", model, chunk_id, reasoning_content=reasoning))
+                    self.wfile.flush()
+
+                # --- Phase-based thinking (qwen3.6-plus) ---
+                if phase == "think" and status != "finished" and content:
+                    self.wfile.write(_sse_chunk("", model, chunk_id, reasoning_content=content))
+                    self.wfile.flush()
+                    continue
                 elif phase == "thinking_summary" and status != "finished":
-                    pass
-                elif phase == "answer" or (phase is None and content):
-                    rc = None
-                    if reasoning_buffer:
-                        rc = reasoning_buffer
-                        reasoning_buffer = ""
+                    continue
+
+                # --- Text content (both models) ---
+                # For phase-based: phase=="answer" or phase is None
+                # For non-phase: content is present directly
+                if phase == "answer" or (phase is None and content):
+                    # Flush any pending native function_call before text
+                    if active_fc_name is not None:
+                        call_id = f"call_{uuid.uuid4().hex[:12]}"
+                        self.wfile.write(_sse_tool_call_start(model, chunk_id, call_index, call_id, active_fc_name))
+                        self.wfile.write(_sse_tool_call_args(model, chunk_id, call_index, active_fc_args))
+                        self.wfile.flush()
+                        call_index += 1
+                        active_fc_name = None
+                        active_fc_args = ""
 
                     if parser and content:
                         for kind, value in parser.feed(content):
                             if kind == "text" and value:
-                                self.wfile.write(_sse_chunk(value, model, chunk_id, reasoning_content=rc))
-                                rc = None
+                                self.wfile.write(_sse_chunk(value, model, chunk_id))
                                 self.wfile.flush()
                             elif kind == "tool_call":
                                 saw_tool_call = True
@@ -645,12 +714,24 @@ class Handler(BaseHTTPRequestHandler):
                                 self.wfile.write(_sse_tool_call_args(model, chunk_id, call_index, args))
                                 self.wfile.flush()
                                 call_index += 1
-                    else:
-                        self.wfile.write(_sse_chunk(content, model, chunk_id, reasoning_content=rc))
+                    elif content:
+                        self.wfile.write(_sse_chunk(content, model, chunk_id))
                         self.wfile.flush()
 
-                if status == "finished" and phase == "answer":
-                    # Flush parser remainder
+                # --- Stream finished ---
+                is_done = (status == "finished" and phase == "answer") or finish == "stop"
+                if is_done:
+                    # Flush any pending native function_call
+                    if active_fc_name is not None:
+                        call_id = f"call_{uuid.uuid4().hex[:12]}"
+                        self.wfile.write(_sse_tool_call_start(model, chunk_id, call_index, call_id, active_fc_name))
+                        self.wfile.write(_sse_tool_call_args(model, chunk_id, call_index, active_fc_args))
+                        self.wfile.flush()
+                        call_index += 1
+                        active_fc_name = None
+                        active_fc_args = ""
+
+                    # Flush XML parser remainder
                     if parser:
                         for kind, value in parser.flush():
                             if kind == "text" and value:
@@ -666,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
                                 self.wfile.flush()
                                 call_index += 1
 
-                    finish_reason = "tool_calls" if saw_tool_call else delta.get("finish_reason", "stop")
+                    finish_reason = "tool_calls" if saw_tool_call else "stop"
                     self.wfile.write(_sse_chunk("", model, chunk_id, finish_reason=finish_reason))
                     self.wfile.write(_SSE_DONE)
                     self.wfile.flush()
@@ -686,14 +767,14 @@ class Handler(BaseHTTPRequestHandler):
             if chat_id:
                 delete_chat(token, chat_id)
 
-    def _collect(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False):
+    def _collect(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False, tools: list | None = None):
         chat_id = None
         try:
             chat_id = create_chat(token, model_id)
             full_answer = ""
             reasoning = ""
 
-            for event in stream_chat(token, chat_id, model_id, user_input):
+            for event in stream_chat(token, chat_id, model_id, user_input, tools=tools):
                 if event.get("done"):
                     break
                 choices = event.get("choices", [])
