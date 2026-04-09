@@ -165,7 +165,7 @@ def delete_chat(token: str, chat_id: str):
         pass
 
 
-def stream_chat(token: str, chat_id: str, model_id: str, user_input: str, tools: list | None = None):
+def stream_chat(token: str, chat_id: str, model_id: str, user_input: str):
     """
     POST to /api/v2/chat/completions and yield parsed SSE dicts.
     Each dict has 'choices' with delta containing phase/content/status.
@@ -211,26 +211,10 @@ def stream_chat(token: str, chat_id: str, model_id: str, user_input: str, tools:
         "timestamp": ts,
     }
 
-    # Pass tools natively so the Qwen backend can resolve function_call
-    if tools:
-        qwen_tools = []
-        for t in tools:
-            if isinstance(t, dict) and t.get("type") == "function":
-                fn = t.get("function", {})
-            elif isinstance(t, dict) and "name" in t:
-                fn = t
-            else:
-                continue
-            qwen_tools.append({
-                "type": "function",
-                "function": {
-                    "name": fn.get("name", ""),
-                    "description": fn.get("description", ""),
-                    "parameters": fn.get("parameters", {}),
-                },
-            })
-        if qwen_tools:
-            payload["tools"] = qwen_tools
+    # NOTE: Do NOT pass tools in the payload. The Qwen webapp backend
+    # intercepts native function_call and tries to execute tools server-side,
+    # returning "Tool does not exists." We rely on prompt injection +
+    # client-side <tool_call> XML parsing instead.
 
     hdrs = _headers(token)
     hdrs["Accept"] = "text/event-stream"
@@ -609,11 +593,11 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[qwen-proxy] Model: {model_id} | Tools: {len(tools)} | Query: {user_input[:80]!r}")
 
         if stream:
-            self._stream(user_input, model, model_id, token, has_tools, tools)
+            self._stream(user_input, model, model_id, token, has_tools)
         else:
-            self._collect(user_input, model, model_id, token, has_tools, tools)
+            self._collect(user_input, model, model_id, token, has_tools)
 
-    def _stream(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False, tools: list | None = None):
+    def _stream(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False):
         chat_id = None
         try:
             chat_id = create_chat(token, model_id)
@@ -635,7 +619,7 @@ class Handler(BaseHTTPRequestHandler):
         active_fc_args = ""
 
         try:
-            for event in stream_chat(token, chat_id, model_id, user_input, tools=tools):
+            for event in stream_chat(token, chat_id, model_id, user_input):
                 if event.get("done"):
                     break
 
@@ -767,14 +751,14 @@ class Handler(BaseHTTPRequestHandler):
             if chat_id:
                 delete_chat(token, chat_id)
 
-    def _collect(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False, tools: list | None = None):
+    def _collect(self, user_input: str, model: str, model_id: str, token: str, has_tools: bool = False):
         chat_id = None
         try:
             chat_id = create_chat(token, model_id)
             full_answer = ""
             reasoning = ""
 
-            for event in stream_chat(token, chat_id, model_id, user_input, tools=tools):
+            for event in stream_chat(token, chat_id, model_id, user_input):
                 if event.get("done"):
                     break
                 choices = event.get("choices", [])
