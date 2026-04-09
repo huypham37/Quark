@@ -36,6 +36,7 @@ import {
   getModel,
   createCopilotProvider,
   createOpenAICompatibleProvider,
+  createAlibabaCompatibleProvider,
   createCopilotAnthropicProvider,
   isClaude,
   getCopilotThinkingBudget,
@@ -485,6 +486,20 @@ export async function resolveModel(
         `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
       );
     }
+
+    // Route all "web" provider models through @ai-sdk/alibaba.
+    // The unified web-proxy normalises everything to OpenAI SSE with
+    // delta.reasoning_content for thinking tokens, so @ai-sdk/alibaba
+    // handles reasoning events (reasoning-start/delta/end) uniformly
+    // regardless of which underlying provider (Qwen, Claude, Meta, …) is used.
+    if (providerId === "web") {
+      const alibabaProvider = createAlibabaCompatibleProvider({
+        baseURL: pc.baseURL,
+        apiKey: resolveApiKey(pc.apiKey),
+      });
+      return alibabaProvider(modelId);
+    }
+
     provider = createOpenAICompatibleProvider({
       name: providerId,
       baseURL: pc.baseURL,
