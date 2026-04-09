@@ -184,10 +184,10 @@ export function cancel(sessionId: string) {
 }
 
 /**
- * Check if an agent loop is currently running for the given session.
+ * Check if a session is currently running.
  *
  * @param sessionId - The session to check
- * @returns `true` if the session has an active agent loop
+ * @returns `true` if the session has an active abort controller (i.e., prompt() is running)
  */
 export function isActive(sessionId: string): boolean {
   return active.has(sessionId);
