@@ -5,6 +5,7 @@
     "": {
       "name": "atom",
       "dependencies": {
+        "@ai-sdk/alibaba": "^1.0.17",
         "@ai-sdk/anthropic": "^3.0.64",
         "@ai-sdk/openai": "^3.0.41",
         "@opentui/core": "^0.1.86",
@@ -16,6 +17,7 @@
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
         "solid-js": "^1.9.11",
+        "web-tree-sitter": "0.25.10",
         "yaml": "^2.8.2",
         "zod": "^4.3.6",
       },
@@ -32,15 +34,19 @@
     },
   },
   "packages": {
+    "@ai-sdk/alibaba": ["@ai-sdk/alibaba@1.0.17", "", { "dependencies": { "@ai-sdk/openai-compatible": "2.0.41", "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.23" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-ZbE+U5bWz2JBc5DERLowx5+TKbjGBE93LqKZAWvuEn7HOSQMraxFMZuc0ST335QZJAyfBOzh7m1mPQ+y7EaaoA=="],
+
     "@ai-sdk/anthropic": ["@ai-sdk/anthropic@3.0.64", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-rwLi/Rsuj2pYniQXIrvClHvXDzgM4UQHHnvHTWEF14efnlKclG/1ghpNC+adsRujAbCTr6gRsSbDE2vEqriV7g=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.66", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.19", "@vercel/oidc": "3.1.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-SIQ0YY0iMuv+07HLsZ+bB990zUJ6S4ujORAh+Jv1V2KGNn73qQKnGO0JBk+w+Res8YqOFSycwDoWcFlQrVxS4A=="],
 
     "@ai-sdk/openai": ["@ai-sdk/openai@3.0.41", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.19" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-IZ42A+FO+vuEQCVNqlnAPYQnnUpUfdJIwn1BEDOBywiEHa23fw7PahxVtlX9zm3/zMvTW4JKPzWyvAgDu+SQ2A=="],
 
+    "@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@2.0.41", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.23" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-kNAGINk71AlOXx10Dq/PXw4t/9XjdK8uxfpVElRwtSFMdeSiLVt58p9TPx4/FJD+hxZuVhvxYj9r42osxWq79g=="],
+
     "@ai-sdk/provider": ["@ai-sdk/provider@3.0.8", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ=="],
 
-    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.21", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.6" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-MtFUYI1/8mgDvRmaBDjbLJPFFrMG777AvSgyIFQtZHIMzm88R/12vYBBpnk7pfiWLFE1DSZzY4WDYzGbKAcmiw=="],
+    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.23", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.6" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-z8GlDaCmRSDlqkMF2f4/RFgWxdarvIbyuk+m6WXT1LYgsnGiXRJGTD2Z1+SDl3LqtFuRtGX1aghYvQLoHL/9pg=="],
 
     "@ampproject/remapping": ["@ampproject/remapping@2.3.0", "", { "dependencies": { "@jridgewell/gen-mapping": "^0.3.5", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="],
 
@@ -639,6 +645,8 @@
     "yoga-layout": ["yoga-layout@3.2.1", "", {}, "sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ=="],
 
     "zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
+
+    "@ai-sdk/anthropic/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.21", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.6" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-MtFUYI1/8mgDvRmaBDjbLJPFFrMG777AvSgyIFQtZHIMzm88R/12vYBBpnk7pfiWLFE1DSZzY4WDYzGbKAcmiw=="],
 
     "@ai-sdk/gateway/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.19", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.6" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-3eG55CrSWCu2SXlqq2QCsFjo3+E7+Gmg7i/oRVoSZzIodTuDSfLb3MRje67xE9RFea73Zao7Lm4mADIfUETKGg=="],
 
