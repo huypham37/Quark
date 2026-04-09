@@ -487,10 +487,12 @@ export async function resolveModel(
       );
     }
 
-    // Route Qwen models through @ai-sdk/alibaba which natively handles
-    // delta.reasoning_content → reasoning-start/delta/end events.
-    // Same pattern as Copilot routing Claude to @ai-sdk/anthropic.
-    if (providerId === "qwen") {
+    // Route all "web" provider models through @ai-sdk/alibaba.
+    // The unified web-proxy normalises everything to OpenAI SSE with
+    // delta.reasoning_content for thinking tokens, so @ai-sdk/alibaba
+    // handles reasoning events (reasoning-start/delta/end) uniformly
+    // regardless of which underlying provider (Qwen, Claude, Meta, …) is used.
+    if (providerId === "web") {
       const alibabaProvider = createAlibabaCompatibleProvider({
         baseURL: pc.baseURL,
         apiKey: resolveApiKey(pc.apiKey),
