@@ -635,6 +635,13 @@ class Handler(BaseHTTPRequestHandler):
                 reasoning = delta.get("reasoning_content", "")
                 finish = choices[0].get("finish_reason")
 
+                # --- Filter out Qwen's failed server-side tool execution errors ---
+                # When the Qwen web backend tries to execute tools server-side and fails,
+                # it sends back role="function" deltas with "Tool X does not exists." errors.
+                # These must be suppressed — we handle tool execution client-side.
+                if delta.get("role") == "function":
+                    continue
+
                 # --- Native function_call from Qwen API (qwen3.6-plus) ---
                 if fc and has_tools:
                     fc_name = fc.get("name", "")
@@ -768,6 +775,10 @@ class Handler(BaseHTTPRequestHandler):
                 phase = delta.get("phase")
                 status = delta.get("status")
                 content = delta.get("content", "")
+
+                # Filter out Qwen's failed server-side tool execution errors
+                if delta.get("role") == "function":
+                    continue
 
                 if phase == "think" and status != "finished":
                     reasoning += content
