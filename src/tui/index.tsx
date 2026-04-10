@@ -13,7 +13,7 @@ import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishM
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
 import { getModelLimit } from "../provider/models"
-import { estimateTokens, getLastInputTokens } from "../session/compaction"
+import { estimateTokens, getLastInputTokens, isContextFull } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
@@ -274,7 +274,15 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           })
         } else {
           // No new session (evictedCount === 0 — nothing to compact)
-          const feedbackText = `[compact] Nothing to compact — fewer than ${loadConfig().compact.retain_turns} turns available to evict.`
+          // Check if context is still full — if so, user is stuck and needs to /clear
+          const { messages: currentMsgs, parts: currentParts } = loadMessages(sid)
+          const currentModelMessages = toModelMessages(currentMsgs, currentParts)
+          const systemStr = Array.isArray(system) ? system.join("\n") : system
+          const cfg = loadConfig()
+          const contextStillFull = isContextFull(systemStr, currentModelMessages, budget, cfg.context_window)
+          const feedbackText = contextStillFull
+            ? `[compact] Context is full but there are too few turns to compact. Run /clear to start a new session.`
+            : `[compact] Nothing to compact — fewer than ${cfg.compact.retain_turns} turns available to evict.`
           bus.emit("user-message", {
             sessionId: sid,
             messageId: `compact-result-${Date.now()}`,
