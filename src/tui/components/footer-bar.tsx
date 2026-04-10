@@ -41,8 +41,16 @@ function getGitBranch(): string {
 
 export const FooterBar: Component<FooterBarProps> = (props) => {
   const cwd = abbreviatePath(process.cwd())
-  const [branch] = createSignal(getGitBranch())
+  const [branch, setBranch] = createSignal(getGitBranch())
   const [frameIndex, setFrameIndex] = createSignal(0)
+
+  // Poll git branch every 5 seconds so the footer stays current
+  createEffect(() => {
+    const id = setInterval(() => {
+      setBranch(getGitBranch())
+    }, 5_000)
+    onCleanup(() => clearInterval(id))
+  })
 
   // Animate spinner when running or compacting
   createEffect(() => {

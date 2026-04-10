@@ -87,6 +87,31 @@ export function shouldCompact(
   return estimated >= limit * threshold
 }
 
+/**
+ * Check if the context window is at or above 100% capacity.
+ *
+ * Unlike `shouldCompact` which uses a configurable threshold (e.g. 50%),
+ * this function checks if the context is completely full — used to block
+ * new user messages when there is no room left.
+ *
+ * @param system - The current system prompt (string or array of strings)
+ * @param modelMessages - The current model message array
+ * @param modelLimit - Per-model limits from `models.dev` (or `null` if unavailable)
+ * @param contextWindow - Fallback context window size from config (tokens)
+ * @returns `true` if estimated tokens >= context window
+ */
+export function isContextFull(
+  system: string | string[],
+  modelMessages: import("ai").ModelMessage[],
+  modelLimit: { context: number; input?: number; output: number } | null,
+  contextWindow: number,
+): boolean {
+  const systemStr = Array.isArray(system) ? system.join("\n") : system
+  const estimated = estimateTokens(systemStr, modelMessages)
+  const limit = getContextWindow(modelLimit, contextWindow)
+  return estimated >= limit
+}
+
 // ---------------------------------------------------------------------------
 // estimateTokens — chars/4 heuristic on the content that will be sent
 // ---------------------------------------------------------------------------

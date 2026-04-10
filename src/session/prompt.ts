@@ -24,7 +24,7 @@ import {
 } from "./message";
 import { buildSystem } from "./system";
 import { processStream } from "./processor";
-import { shouldCompact, estimateTokens } from "./compaction";
+import { shouldCompact, isContextFull, estimateTokens } from "./compaction";
 import {
   resolve as resolveCompaction,
   takePending,
@@ -360,6 +360,76 @@ async function loop(
       }
     }
 
+    // 3b. Hard guard: force compaction if context is at 100% (even if auto-compact is off)
+    //     Re-load messages after threshold compaction above, then check again.
+    if (
+      !cfg.compact.auto &&
+      isContextFull(system, modelMessages, modelLimit, cfg.context_window)
+    ) {
+      bus.emit("compaction-start", { sessionId: currentSessionId });
+      setCopilotForceAgent(true);
+      try {
+        const compactingOutput = await fireHook("session.compacting", {
+          sessionId: currentSessionId,
+        });
+        const compactCtx: CompactMethodContext = {
+          sessionId: currentSessionId,
+          messages,
+          parts,
+          modelMessages,
+          model,
+          agentPrompt: system,
+          budget: modelLimit,
+          persist: {
+            createMessage: createAssistantMessage,
+            addPart,
+            finishMessage,
+            saveUserMessage,
+          },
+          session: { create: createSession },
+          extraContext: compactingOutput.context,
+        };
+        const compactResult = await resolveCompaction({
+          trigger: "auto",
+          ctx: compactCtx,
+        });
+        bus.emit("compaction-end", {
+          sessionId: currentSessionId,
+          result: compactResult,
+        });
+
+        if (compactResult.type === "new-session") {
+          currentSessionId = compactResult.newSessionId;
+          const { messages: newMsgs, parts: newParts } =
+            loadMessages(currentSessionId);
+          const { dbToTuiMessages } = await import("../tui/state");
+          const systemStr = Array.isArray(system) ? system.join("\n") : system;
+          const newModelMessages = toModelMessages(newMsgs, newParts);
+          const estimatedTokens = estimateTokens(systemStr, newModelMessages);
+          bus.emit("session-switch", {
+            sessionId: currentSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens,
+          });
+        }
+
+        continue;
+      } catch (err) {
+        console.error("[prompt] forced compaction FAILED:", err instanceof Error ? err.stack : String(err));
+        bus.emit("compaction-end", {
+          sessionId: currentSessionId,
+          result: null,
+        });
+        bus.emit("error", { sessionId: currentSessionId, error: err });
+        fireHook("session.error", {
+          sessionId: currentSessionId,
+          error: err,
+        }).catch(() => {});
+      } finally {
+        setCopilotForceAgent(false);
+      }
+    }
+
     // 4. Create assistant message row
     const assistantMsg = createAssistantMessage({
       sessionId: currentSessionId,
@@ -415,6 +485,70 @@ async function loop(
 
     // 7. Decide next action
     if (result === "continue") continue;
+    if (result === "compact") {
+      // Provider returned context-too-long — force compaction and retry
+      bus.emit("compaction-start", { sessionId: currentSessionId });
+      setCopilotForceAgent(true);
+      try {
+        const { messages: curMsgs, parts: curParts } = loadMessages(currentSessionId);
+        const curModelMessages = toModelMessages(curMsgs, curParts);
+        const compactingOutput = await fireHook("session.compacting", {
+          sessionId: currentSessionId,
+        });
+        const compactCtx: CompactMethodContext = {
+          sessionId: currentSessionId,
+          messages: curMsgs,
+          parts: curParts,
+          modelMessages: curModelMessages,
+          model,
+          agentPrompt: system,
+          budget: modelLimit,
+          persist: {
+            createMessage: createAssistantMessage,
+            addPart,
+            finishMessage,
+            saveUserMessage,
+          },
+          session: { create: createSession },
+          extraContext: compactingOutput.context,
+        };
+        const compactResult = await resolveCompaction({
+          trigger: "auto",
+          ctx: compactCtx,
+        });
+        bus.emit("compaction-end", {
+          sessionId: currentSessionId,
+          result: compactResult,
+        });
+
+        if (compactResult.type === "new-session") {
+          currentSessionId = compactResult.newSessionId;
+          const { messages: newMsgs, parts: newParts } =
+            loadMessages(currentSessionId);
+          const { dbToTuiMessages } = await import("../tui/state");
+          const systemStr = Array.isArray(system) ? system.join("\n") : system;
+          const newModelMessages = toModelMessages(newMsgs, newParts);
+          const estTokens = estimateTokens(systemStr, newModelMessages);
+          bus.emit("session-switch", {
+            sessionId: currentSessionId,
+            messages: dbToTuiMessages(newMsgs, newParts),
+            estimatedTokens: estTokens,
+          });
+        }
+
+        continue;
+      } catch (err) {
+        console.error("[prompt] context-too-long compaction FAILED:", err instanceof Error ? err.stack : String(err));
+        bus.emit("compaction-end", {
+          sessionId: currentSessionId,
+          result: null,
+        });
+        bus.emit("error", { sessionId: currentSessionId, error: err });
+        break;
+      } finally {
+        setCopilotForceAgent(false);
+      }
+    }
     break; // "stop"
   }
 }

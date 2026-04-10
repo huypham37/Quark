@@ -270,6 +270,10 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "set-compacting", compacting: false })
     }))
 
+    unsubs.push(on("context-too-long", () => {
+      notifyWarn("Context Too Long", "Provider rejected request — compacting context…", 5000)
+    }))
+
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
       if (tokens) {
@@ -282,6 +286,11 @@ export function wireEvents(state: AppState) {
           lastInputTokens = total
           sessionTokens.set(sid, lastInputTokens)
           dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
+          // Auto-compact trigger: if usage hit the limit, emit context-full
+          const tokenLimit = state.store.status.tokenLimit
+          if (tokenLimit > 0 && lastInputTokens >= tokenLimit) {
+            bus.emit("context-full", { sessionId: sid })
+          }
         }
       }
     }))

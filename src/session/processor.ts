@@ -23,7 +23,7 @@ import {
   type StepFinishData,
   type ReasoningPartData,
 } from "./message"
-import { isRetryable, retryDelay, extractRetryAfter, sleep } from "./retry"
+import { isRetryable, isContextTooLong, retryDelay, extractRetryAfter, sleep } from "./retry"
 import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 
@@ -49,7 +49,7 @@ export interface ProcessInput {
   rebuildModel?: (provider: string, model: string) => Promise<LanguageModel>
 }
 
-export async function processStream(input: ProcessInput): Promise<"stop" | "continue"> {
+export async function processStream(input: ProcessInput): Promise<"stop" | "continue" | "compact"> {
   // Track tool parts by callId so we can update them as events arrive
   const toolParts = new Map<string, { partId: string; data: ToolPartData }>()
   let currentText: { partId: string; data: TextPartData } | undefined
@@ -340,6 +340,13 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         currentText.data.text = currentText.data.text.trimEnd()
         updatePart(currentText.partId, currentText.data, sid, mid, "text")
         currentText = undefined
+      }
+
+      // Context-too-long: signal the loop to compact instead of crashing
+      if (isContextTooLong(e)) {
+        finishMessage(mid, "stop", undefined, sid)
+        bus.emit("context-too-long", { sessionId: sid, error: e })
+        return "compact"
       }
 
       if (isRetryable(e)) {

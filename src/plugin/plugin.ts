@@ -89,7 +89,7 @@ export interface PluginHooks {
 
   // --- Loop hooks ---
   "loop.step.before": { input: { sessionId: string; step: number }; output?: never }
-  "loop.step.after":  { input: { sessionId: string; step: number; result: "continue" | "stop" }; output?: never }
+  "loop.step.after":  { input: { sessionId: string; step: number; result: "continue" | "stop" | "compact" }; output?: never }
 }
 
 // ---------------------------------------------------------------------------

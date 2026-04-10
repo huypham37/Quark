@@ -12,6 +12,7 @@ import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
+import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
 import { getModelId, loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
@@ -31,7 +32,7 @@ import * as fs from "fs"
 import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
-import { info as notifyInfo } from "../../notification/notification"
+import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
 
@@ -135,6 +136,14 @@ export const App: Component<AppProps> = (props) => {
 
   // Wire event bus to state store
   wireEvents(state)
+
+  // Auto-compact when step-finish reports usage >= tokenLimit
+  bus.on("context-full", (data) => {
+    if (data.sessionId !== state.store.sessionId) return
+    if (state.store.compacting) return
+    notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
+    executeCommand("compact", "")
+  })
 
   // Question prompt key handler
   const questionHandler = createQuestionKeyHandler({
@@ -589,6 +598,13 @@ export const App: Component<AppProps> = (props) => {
         setInputText("")
         return
       }
+    }
+
+    // Guard: block send when context is full (auto-compact fires via context-full event)
+    const { tokensUsed, tokenLimit } = state.store.status
+    if (tokenLimit > 0 && tokensUsed >= tokenLimit) {
+      notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
+      return
     }
 
     // Extract @file and @directory mentions and read their content
