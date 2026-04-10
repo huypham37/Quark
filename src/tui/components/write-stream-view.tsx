@@ -11,7 +11,8 @@
 //       ─────────────────────────────────────
 
 import type { Component } from "solid-js"
-import { For, Show } from "solid-js"
+import { For, Show, createEffect } from "solid-js"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
 
@@ -20,7 +21,7 @@ interface WriteStreamViewProps {
   filePath?: string
 }
 
-const MAX_VISIBLE_LINES = 30
+const MAX_SCROLL_HEIGHT = 30
 
 const COLOR_ADDED_FG = RGBA.fromHex("#98C379")
 const COLOR_LINENUM  = RGBA.fromHex("#4a5568")
@@ -33,9 +34,17 @@ function truncateLine(content: string, maxLen = 80): string {
 
 export const WriteStreamView: Component<WriteStreamViewProps> = (props) => {
   const lines = () => props.content.split("\n")
-  const visibleLines = () => lines().slice(0, MAX_VISIBLE_LINES)
-  const overflow = () => lines().length - MAX_VISIBLE_LINES
+  const scrollHeight = () => Math.min(lines().length, MAX_SCROLL_HEIGHT)
   const rule = "─".repeat(42)
+  let scrollRef: ScrollBoxRenderable | undefined
+
+  // Auto-scroll to bottom as new streaming content arrives
+  createEffect(() => {
+    const count = lines().length
+    if (scrollRef && count > MAX_SCROLL_HEIGHT) {
+      scrollRef.scrollTo(count - MAX_SCROLL_HEIGHT)
+    }
+  })
 
   return (
     <box flexDirection="column" marginLeft={2}>
@@ -49,20 +58,28 @@ export const WriteStreamView: Component<WriteStreamViewProps> = (props) => {
       </box>
       <box flexDirection="column" marginLeft={4}>
         <text fg={COLOR_RULE}>{rule}</text>
-        <For each={visibleLines()}>
-          {(line, i) => (
-            <box flexDirection="row">
-              <text fg={COLOR_LINENUM}>{String(i() + 1).padStart(4)}</text>
-              <text fg={colors.muted}>│</text>
-              <text fg={COLOR_ADDED_FG}>+</text>
-              <text fg={COLOR_ADDED_FG}>{truncateLine(line)}</text>
-            </box>
-          )}
-        </For>
+        <scrollbox
+          ref={(r: ScrollBoxRenderable) => { scrollRef = r }}
+          height={scrollHeight()}
+          scrollbarOptions={{
+            trackOptions: {
+              backgroundColor: colors.scrollbarTrack,
+              foregroundColor: colors.scrollbarThumb,
+            },
+          }}
+        >
+          <For each={lines()}>
+            {(line, i) => (
+              <box flexDirection="row">
+                <text fg={COLOR_LINENUM}>{String(i() + 1).padStart(4)}</text>
+                <text fg={colors.muted}>│</text>
+                <text fg={COLOR_ADDED_FG}>+</text>
+                <text fg={COLOR_ADDED_FG}>{truncateLine(line)}</text>
+              </box>
+            )}
+          </For>
+        </scrollbox>
         <text fg={COLOR_RULE}>{rule}</text>
-        <Show when={overflow() > 0}>
-          <text fg={colors.muted}>     … {overflow()} more lines</text>
-        </Show>
       </box>
     </box>
   )
