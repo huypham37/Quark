@@ -320,7 +320,14 @@ export function App() {
         dispatch({ type: 'UPDATE_MSG', id: d.messageId, updater: m => ({ ...m, parts: m.parts.map(p => p.type === 'thinking' && (p as any).partId === d.partId ? { ...p, done: true } : p) }) })
         break
       case 'step-finish':
-        if (d.data?.tokens?.input) set({ tokensUsed: d.data.tokens.input })
+        if (d.data?.tokens?.input) {
+          set({ tokensUsed: d.data.tokens.input })
+          // Auto-compact when usage hits the limit
+          if (s.tokenLimit > 0 && d.data.tokens.input >= s.tokenLimit && !s.compacting) {
+            toast('Context Full', 'Context window full — compacting automatically…', 'warn')
+            compactContext()
+          }
+        }
         break
       case 'loop-start': set({ running: true }); break
       case 'loop-end': {
@@ -439,9 +446,9 @@ export function App() {
   async function sendMessage(text: string, images: { mime: string; data: string }[] = []) {
     if (!text.trim() && images.length === 0 || s.running) return
 
-    // Guard: block send when context window is full
+    // Guard: block send when context window is full (auto-compact fires from step-finish)
     if (s.tokenLimit > 0 && s.tokensUsed >= s.tokenLimit) {
-      toast('Context Full', 'Context window full — run /compact to continue', 'warn')
+      toast('Context Full', 'Context window full — compacting automatically…', 'warn')
       return
     }
 

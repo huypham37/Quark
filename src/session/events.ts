@@ -78,6 +78,9 @@ export interface BusEvents {
   // Context-too-long — provider rejected the request because prompt exceeds context window
   "context-too-long": { sessionId: string; error: unknown }
 
+  // Context-full — token usage hit 100% of the model limit after a step-finish
+  "context-full": { sessionId: string }
+
   // Session was lazily created (first message in a new conversation)
   "session-created": { sessionId: string }
 

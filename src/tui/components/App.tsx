@@ -12,6 +12,7 @@ import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
+import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
 import { getModelId, loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
@@ -135,6 +136,14 @@ export const App: Component<AppProps> = (props) => {
 
   // Wire event bus to state store
   wireEvents(state)
+
+  // Auto-compact when step-finish reports usage >= tokenLimit
+  bus.on("context-full", (data) => {
+    if (data.sessionId !== state.store.sessionId) return
+    if (state.store.compacting) return
+    notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
+    executeCommand("compact", "")
+  })
 
   // Question prompt key handler
   const questionHandler = createQuestionKeyHandler({
@@ -591,10 +600,10 @@ export const App: Component<AppProps> = (props) => {
       }
     }
 
-    // Guard: block send when context window is full
+    // Guard: block send when context is full (auto-compact fires via context-full event)
     const { tokensUsed, tokenLimit } = state.store.status
     if (tokenLimit > 0 && tokensUsed >= tokenLimit) {
-      notifyWarn("Context Full", "Context window full — run /compact to continue", 5000)
+      notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
       return
     }
 
