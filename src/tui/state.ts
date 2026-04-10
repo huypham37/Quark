@@ -23,7 +23,7 @@ export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string }
-  | { type: "image"; mime: string; data: string; label: string }
+  | { type: "image"; mime: string; label: string }
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
 export interface SubAgentToolPart {
@@ -167,7 +167,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         const d = JSON.parse(p.data) as ImagePartData
         // Count existing image parts to derive label number
         const idx = tuiParts.filter((x) => x.type === "image").length + 1
-        tuiParts.push({ type: "image", mime: d.mime, data: d.data, label: `Image ${idx}` })
+        tuiParts.push({ type: "image", mime: d.mime, label: `Image ${idx}` })
       } else if (p.type === "reasoning") {
         const d = JSON.parse(p.data) as ReasoningPartData
         if (d.text) {
@@ -417,6 +417,19 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.error = action.error
             part.diff = action.diff
             part.streamingContent = undefined
+            // Cascade status to sub-agent: when the parent tool ends (error or
+            // completed), mark the sub-agent as done and transition any
+            // pending/running child tools to the parent's terminal status.
+            if (part.subAgent) {
+              part.subAgent.done = true
+              part.subAgent.textPreview = undefined
+              const childStatus = action.status === "error" ? "error" as const : "completed" as const
+              for (const child of part.subAgent.tools) {
+                if (child.status === "pending" || child.status === "running") {
+                  child.status = childStatus
+                }
+              }
+            }
           }
         }),
       )
