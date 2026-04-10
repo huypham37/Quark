@@ -31,7 +31,7 @@ import * as fs from "fs"
 import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
-import { info as notifyInfo } from "../../notification/notification"
+import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
 
@@ -589,6 +589,13 @@ export const App: Component<AppProps> = (props) => {
         setInputText("")
         return
       }
+    }
+
+    // Guard: block send when context window is full
+    const { tokensUsed, tokenLimit } = state.store.status
+    if (tokenLimit > 0 && tokensUsed >= tokenLimit) {
+      notifyWarn("Context Full", "Context window full — run /compact to continue", 5000)
+      return
     }
 
     // Extract @file and @directory mentions and read their content

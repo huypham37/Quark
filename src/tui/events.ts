@@ -270,6 +270,10 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "set-compacting", compacting: false })
     }))
 
+    unsubs.push(on("context-too-long", () => {
+      notifyWarn("Context Too Long", "Provider rejected request — compacting context…", 5000)
+    }))
+
     unsubs.push(on("step-finish", (data) => {
       const tokens = data.data.tokens
       if (tokens) {

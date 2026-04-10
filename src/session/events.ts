@@ -75,6 +75,9 @@ export interface BusEvents {
   // Error
   "error": { sessionId: string; error: unknown }
 
+  // Context-too-long — provider rejected the request because prompt exceeds context window
+  "context-too-long": { sessionId: string; error: unknown }
+
   // Session was lazily created (first message in a new conversation)
   "session-created": { sessionId: string }
 

@@ -108,6 +108,32 @@ export function extractRetryAfter(error: unknown): number | undefined {
 }
 
 /**
+ * Detect context-too-long / prompt-too-long errors from providers.
+ *
+ * These are 400-class errors where the prompt exceeds the model's context
+ * window. Unlike generic 400s they should trigger compaction instead of
+ * being treated as fatal.
+ *
+ * Matches common error patterns from OpenAI, Anthropic, and other providers:
+ * - "context_length_exceeded"
+ * - "maximum context length"
+ * - "context window exceeded"
+ * - "too many tokens"
+ * - "prompt_too_long"
+ */
+export function isContextTooLong(error: unknown): boolean {
+  if (!error) return false
+  const msg = error instanceof Error ? error.message : String(error)
+  const lower = msg.toLowerCase()
+  if (lower.includes("context_length_exceeded")) return true
+  if (lower.includes("context length")) return true
+  if (lower.includes("context window exceeded")) return true
+  if (lower.includes("too many tokens")) return true
+  if (lower.includes("prompt_too_long")) return true
+  return false
+}
+
+/**
  * Compute retry delay with exponential backoff + jitter.
  * attempt 0 → ~1s, 1 → ~2s, 2 → ~4s, 3 → ~8s, etc.
  * Capped at 30 seconds.

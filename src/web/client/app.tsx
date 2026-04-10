@@ -438,6 +438,13 @@ export function App() {
 
   async function sendMessage(text: string, images: { mime: string; data: string }[] = []) {
     if (!text.trim() && images.length === 0 || s.running) return
+
+    // Guard: block send when context window is full
+    if (s.tokenLimit > 0 && s.tokensUsed >= s.tokenLimit) {
+      toast('Context Full', 'Context window full — run /compact to continue', 'warn')
+      return
+    }
+
     const body: any = { text: text.trim() }
     if (s.sessionId) body.sessionId = s.sessionId
     if (images.length > 0) body.images = images.map(({ mime, data }) => ({ mime, data }))

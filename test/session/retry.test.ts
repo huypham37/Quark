@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { isRetryable, retryDelay, sleep } from "../../src/session/retry"
+import { isRetryable, retryDelay, sleep, isContextTooLong } from "../../src/session/retry"
 
 describe("isRetryable", () => {
   it("returns false for null/undefined", () => {
@@ -132,5 +132,55 @@ describe("sleep", () => {
     const promise = sleep(5000, controller.signal)
     setTimeout(() => controller.abort(), 10)
     await expect(promise).rejects.toThrow("Aborted")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isContextTooLong (issue #89)
+// ---------------------------------------------------------------------------
+
+describe('isContextTooLong', () => {
+  it('returns true for 400 error with context_length_exceeded message', () => {
+    const err = Object.assign(new Error('context_length_exceeded: max context length is 128000'), { status: 400 })
+    expect(isContextTooLong(err)).toBe(true)
+  })
+
+  it('returns true for error mentioning max context length', () => {
+    const err = new Error('This model maximum context length is 128000 tokens')
+    expect(isContextTooLong(err)).toBe(true)
+  })
+
+  it('returns true for error mentioning context window exceeded', () => {
+    const err = new Error('context window exceeded')
+    expect(isContextTooLong(err)).toBe(true)
+  })
+
+  it('returns true for error mentioning too many tokens', () => {
+    const err = new Error('Request too large: too many tokens in the prompt')
+    expect(isContextTooLong(err)).toBe(true)
+  })
+
+  it('returns true for prompt_too_long error', () => {
+    const err = new Error('prompt_too_long: the prompt is too long for this model')
+    expect(isContextTooLong(err)).toBe(true)
+  })
+
+  it('returns false for regular 400 error', () => {
+    const err = Object.assign(new Error('Bad Request: invalid parameter'), { status: 400 })
+    expect(isContextTooLong(err)).toBe(false)
+  })
+
+  it('returns false for 429 rate limit error', () => {
+    const err = Object.assign(new Error('Too Many Requests'), { status: 429 })
+    expect(isContextTooLong(err)).toBe(false)
+  })
+
+  it('returns false for null/undefined', () => {
+    expect(isContextTooLong(null)).toBe(false)
+    expect(isContextTooLong(undefined)).toBe(false)
+  })
+
+  it('returns false for regular errors', () => {
+    expect(isContextTooLong(new Error('something went wrong'))).toBe(false)
   })
 })

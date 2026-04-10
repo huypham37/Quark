@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { shouldCompact, estimateTokens } from "../../src/session/compaction"
+import { shouldCompact, estimateTokens, isContextFull } from "../../src/session/compaction"
 import type { ModelMessage } from "ai"
 
 // ---------------------------------------------------------------------------
@@ -219,5 +219,45 @@ describe("shouldCompact — 50% default threshold", () => {
     ]
     const result = shouldCompact(systemParts, messages, null, 1000, 0.50)
     expect(result).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isContextFull (issue #89)
+// ---------------------------------------------------------------------------
+
+describe('isContextFull', () => {
+  it('returns true when estimated tokens >= context window', () => {
+    const system = 'a'.repeat(4000) // 1000 tokens
+    const messages: ModelMessage[] = [{ role: 'user', content: 'b'.repeat(36000) }] // 9000 tokens
+    // total = 10000 tokens, context window = 10000
+    expect(isContextFull(system, messages, { context: 10_000, output: 1_000 }, 100_000)).toBe(true)
+  })
+
+  it('returns true when estimated tokens exceed context window', () => {
+    const system = 'a'.repeat(4000) // 1000 tokens
+    const messages: ModelMessage[] = [{ role: 'user', content: 'b'.repeat(40000) }] // 10000 tokens
+    // total = 11000 tokens, context window = 10000 → over
+    expect(isContextFull(system, messages, { context: 10_000, output: 1_000 }, 100_000)).toBe(true)
+  })
+
+  it('returns false when estimated tokens < context window', () => {
+    const system = 'a'.repeat(400) // 100 tokens
+    const messages: ModelMessage[] = [{ role: 'user', content: 'b'.repeat(800) }] // 200 tokens
+    // total = 300 tokens, context window = 10000 → well under
+    expect(isContextFull(system, messages, { context: 10_000, output: 1_000 }, 100_000)).toBe(false)
+  })
+
+  it('uses fallback context_window when no model limit', () => {
+    const system = 'a'.repeat(4000) // 1000 tokens
+    const messages: ModelMessage[] = [{ role: 'user', content: 'b'.repeat(3000) }] // 750 tokens
+    // total = 1750 tokens, fallback = 1000 → over
+    expect(isContextFull(system, messages, null, 1000)).toBe(true)
+  })
+
+  it('returns false for brand new session', () => {
+    const system = 'You are a helpful assistant.'
+    const messages: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
+    expect(isContextFull(system, messages, null, 200_000)).toBe(false)
   })
 })
