@@ -155,7 +155,7 @@ export function estimateTokens(
 // Prefers the per-model limit from models.dev. Falls back to the
 // user-configured context_window from config.yaml.
 // ---------------------------------------------------------------------------
-function getContextWindow(
+export function getContextWindow(
   modelLimit: { context: number; input?: number; output: number } | null,
   fallback: number,
 ): number {
@@ -190,6 +190,67 @@ export function getTotalTokens(parts: PartRow[]): {
   }
 
   return { input, output, total: input + output }
+}
+
+// ---------------------------------------------------------------------------
+// isOverContextThreshold — pure helper for percentage comparison
+//
+// Centralises the `inputTokens >= threshold × contextWindow` check used by
+// the pre-call compaction gate and the mid-stream overflow detection.
+// ---------------------------------------------------------------------------
+/**
+ * Check if the given input token count exceeds the threshold fraction of the context window.
+ *
+ * @param inputTokens - Actual or estimated input token count
+ * @param contextWindow - Total context window size in tokens
+ * @param threshold - Fraction (0–1) at which compaction triggers
+ * @returns `true` if `inputTokens >= threshold × contextWindow`
+ */
+export function isOverContextThreshold(
+  inputTokens: number,
+  contextWindow: number,
+  threshold: number,
+): boolean {
+  return inputTokens >= contextWindow * threshold
+}
+
+// ---------------------------------------------------------------------------
+// shouldCompactWithRealTokens — prefer real token count, fall back to estimate
+//
+// When step-finish parts exist, the last one's input token count is the best
+// measure of context-window usage.  Only falls back to the chars/4 estimate
+// when no step-finish data is available (first turn of a session).
+// ---------------------------------------------------------------------------
+/**
+ * Decide whether compaction should trigger, using the provider-reported token
+ * count from the most recent step-finish when available.
+ *
+ * Falls back to the `chars/4` estimate (via {@link shouldCompact}) only when
+ * no step-finish parts exist (e.g. the very first turn before any LLM call).
+ *
+ * @param system - Current system prompt
+ * @param modelMessages - Current model message array
+ * @param modelLimit - Per-model limits from models.dev (or null)
+ * @param contextWindow - Fallback context window size from config
+ * @param threshold - Trigger threshold fraction
+ * @param parts - All part rows for the current session (to find step-finish)
+ * @returns `true` if compaction should be triggered
+ */
+export function shouldCompactWithRealTokens(
+  system: string | string[],
+  modelMessages: import("ai").ModelMessage[],
+  modelLimit: { context: number; input?: number; output: number } | null,
+  contextWindow: number,
+  threshold: number,
+  parts: PartRow[],
+): boolean {
+  const realTokens = getLastInputTokens(parts)
+  if (realTokens > 0) {
+    const limit = getContextWindow(modelLimit, contextWindow)
+    return isOverContextThreshold(realTokens, limit, threshold)
+  }
+  // No step-finish data yet — fall back to chars/4 estimate
+  return shouldCompact(system, modelMessages, modelLimit, contextWindow, threshold)
 }
 
 // ---------------------------------------------------------------------------

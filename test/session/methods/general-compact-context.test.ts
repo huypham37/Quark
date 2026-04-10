@@ -7,7 +7,7 @@
 //      re-split with retainTurns=1 should produce a non-empty eviction.
 
 import { describe, it, expect } from "bun:test"
-import { splitMessages } from "../../../src/session/methods/general"
+import { splitMessages, pruneToTokenBudget } from "../../../src/session/methods/general"
 import { shouldCompact } from "../../../src/session/compaction"
 import type { MessageRow } from "../../../src/session/message"
 import type { ModelMessage } from "ai"
@@ -277,5 +277,80 @@ describe("context-override: shouldCompact at 50% with low turn count", () => {
     const result = shouldCompact(systemParts, modelMessages, null, 3000, 0.50)
 
     expect(result).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pruneToTokenBudget
+// ---------------------------------------------------------------------------
+
+describe("pruneToTokenBudget", () => {
+  it("returns all messages when they fit within the budget", () => {
+    const msgs: ModelMessage[] = [
+      { role: "user", content: "hello" },       // ~1 token
+      { role: "assistant", content: "hi" },      // ~0 tokens
+    ]
+    const result = pruneToTokenBudget(msgs, 1000)
+    expect(result).toHaveLength(2)
+  })
+
+  it("drops oldest messages first when over budget", () => {
+    // 400 chars each = 100 tokens each; budget = 150 → only 1 fits
+    const long = "x".repeat(400)
+    const msgs: ModelMessage[] = [
+      { role: "user", content: long },
+      { role: "assistant", content: long },
+      { role: "user", content: long },
+    ]
+    const result = pruneToTokenBudget(msgs, 150)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual(msgs[2]) // most recent survives
+  })
+
+  it("never drops below 1 message even when it exceeds budget", () => {
+    const huge = "x".repeat(100_000)
+    const msgs: ModelMessage[] = [
+      { role: "user", content: huge },
+    ]
+    const result = pruneToTokenBudget(msgs, 1)
+    expect(result).toHaveLength(1)
+  })
+
+  it("returns empty array for empty input", () => {
+    const result = pruneToTokenBudget([], 1000)
+    expect(result).toHaveLength(0)
+  })
+
+  it("counts array content parts (text + input) toward estimate", () => {
+    // 400-char text part = 100 tokens; budget = 50 → should prune
+    const msgs: ModelMessage[] = [
+      { role: "user", content: [{ type: "text", text: "x".repeat(400) }] },
+      { role: "assistant", content: [{ type: "text", text: "y".repeat(400) }] },
+    ]
+    const result = pruneToTokenBudget(msgs, 50)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual(msgs[1]) // most recent survives
+  })
+
+  it("clamps budget at 0 — never prunes below 1 message even with zero budget", () => {
+    const msgs: ModelMessage[] = [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "world" },
+    ]
+    const result = pruneToTokenBudget(msgs, 0)
+    expect(result).toHaveLength(1)
+  })
+
+  it("keeps multiple messages that together fit the budget", () => {
+    // 80 chars = 20 tokens each; budget = 100 → all 4 fit (80 tokens)
+    const msg = "x".repeat(80)
+    const msgs: ModelMessage[] = [
+      { role: "user", content: msg },
+      { role: "assistant", content: msg },
+      { role: "user", content: msg },
+      { role: "assistant", content: msg },
+    ]
+    const result = pruneToTokenBudget(msgs, 100)
+    expect(result).toHaveLength(4)
   })
 })

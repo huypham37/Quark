@@ -71,7 +71,7 @@ const DEFAULTS = {
   small_model: "gpt-4o-mini",
   main_model: "gpt-4o",
   max_steps: 100,
-  context_window: 100_000,
+  context_window: 128_000,
   compact: COMPACT_DEFAULTS,
   providers: {} as Record<string, ProviderConfig>,
 } as const
