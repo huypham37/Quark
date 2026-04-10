@@ -90,7 +90,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
           <box flexDirection="row">
             <text fg={colors.muted}>└─ </text>
             <box flexDirection="column" flexGrow={1}>
-              <SubAgentView subAgent={asTool().subAgent!} />
+              <SubAgentView subAgent={asTool().subAgent!} parentStatus={asTool().status} />
             </box>
           </box>
         </box>

@@ -22,6 +22,7 @@ import type { SubAgentState, SubAgentToolPart } from "../state"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
+  parentStatus: "pending" | "running" | "completed" | "error"
 }
 
 // Map tool IDs to display names (same as tool-result.tsx)
@@ -160,10 +161,10 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     return p.charAt(0).toUpperCase() + p.slice(1)
   }
   const isDone = () => props.subAgent.done
-  const isError = () => isDone() && props.subAgent.tools.some((t) => t.status === "error")
   const headerStatus = (): "running" | "completed" | "error" => {
+    if (props.parentStatus === "error") return "error"
     if (!isDone()) return "running"
-    return isError() ? "error" : "completed"
+    return "completed"
   }
   const tokensUsed = () => props.subAgent.tokensUsed
   const tokenLimit = () => props.subAgent.tokenLimit
