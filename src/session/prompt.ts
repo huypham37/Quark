@@ -531,6 +531,29 @@ function resolveToolSet(
 }
 
 // ---------------------------------------------------------------------------
+// abortSignalToPromise — convert an AbortSignal to a rejecting promise
+// ---------------------------------------------------------------------------
+
+function abortSignalToPromise(signal: AbortSignal): Promise<never> {
+  if (signal.aborted) {
+    return Promise.reject(
+      Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+    );
+  }
+  return new Promise<never>((_, reject) => {
+    signal.addEventListener(
+      "abort",
+      () => {
+        reject(
+          Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+        );
+      },
+      { once: true },
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
 // toAITool — convert a single ToolDef to an AI SDK tool()
 // ---------------------------------------------------------------------------
 // Question: why do have to convert a single tooldef to AISDK tools()?
@@ -569,7 +592,11 @@ function toAITool(
         { tool: def.id, args },
         { args },
       );
-      const toolResult = await def.execute(beforeArgs.args as typeof args, ctx);
+      const abortSig = options.abortSignal ?? abort;
+      const toolResult = await Promise.race([
+        def.execute(beforeArgs.args as typeof args, ctx),
+        abortSignalToPromise(abortSig),
+      ]);
       await fireHook("tool.execute.after", {
         tool: def.id,
         args: beforeArgs.args,
