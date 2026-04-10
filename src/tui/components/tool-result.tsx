@@ -1,21 +1,21 @@
 // @jsxImportSource @opentui/solid
-// ToolResultContent — renders the body content of a completed/error/running tool call
+// ToolResultLine — shows completed/failed/pending tool call result
 //
-// This is the inner content placed inside a ToolBox. It shows:
-// - Tool label (file path, command, query, etc.)
-// - Error message (if error)
-// - Diff view (for edit/write completed)
-// - Write stream view (for write running)
-// - Tool output (for bash, read, grep, etc.)
+// Matches the style:
+//   ✓ Read package.json
+//   ✗ Write failed.txt
+//   ⠋ Bash running...   (animated white spinner when running)
+//   … Bash             (muted ellipsis when pending/input streaming)
 
 import type { Component } from "solid-js"
-import { Show, For } from "solid-js"
+import { Show } from "solid-js"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
+import { InlineSpinner } from "./inline-spinner"
 import { DiffView } from "./diff-view"
 import { WriteStreamView } from "./write-stream-view"
 
-interface ToolResultContentProps {
+interface ToolResultLineProps {
   tool: string
   input: Record<string, unknown>
   status: "completed" | "error" | "running" | "pending"
@@ -24,8 +24,6 @@ interface ToolResultContentProps {
   diff?: string
   streamingContent?: string
 }
-
-const MAX_OUTPUT_SCROLL_HEIGHT = 20
 
 // Extract a short label from tool input (e.g., file path for read/write/edit)
 function getToolLabel(tool: string, input: Record<string, unknown>): string {
@@ -68,75 +66,69 @@ function getToolLabel(tool: string, input: Record<string, unknown>): string {
   return ""
 }
 
-// Truncate a single line for output display
-function truncateLine(content: string, maxLen = 120): string {
-  return content.length > maxLen ? content.slice(0, maxLen - 1) + "…" : content
-}
-
-const OutputView: Component<{ output: string }> = (props) => {
-  const lines = () => props.output.split("\n")
-  const scrollHeight = () => Math.min(lines().length, MAX_OUTPUT_SCROLL_HEIGHT)
-
-  return (
-    <scrollbox
-      height={scrollHeight()}
-      scrollbarOptions={{
-        trackOptions: {
-          backgroundColor: colors.scrollbarTrack,
-          foregroundColor: colors.scrollbarThumb,
-        },
-      }}
-    >
-      <For each={lines()}>
-        {(line) => <text fg={colors.textDim} wrap="wrap">{truncateLine(line)}</text>}
-      </For>
-    </scrollbox>
-  )
-}
-
-export const ToolResultContent: Component<ToolResultContentProps> = (props) => {
-  const label = () => getToolLabel(props.tool, props.input)
-
-  // Determine if we should show output (bash, grep, glob, read, websearch, etc.)
-  // Don't show output for tools that use diff or streaming content instead
-  const showOutput = () => {
-    if (!props.output) return false
-    if (props.diff) return false // diff view takes precedence
-    if (props.tool === "write" && props.streamingContent) return false
-    return true
+// Map tool IDs to display names
+function getToolDisplayName(tool: string): string {
+  const names: Record<string, string> = {
+    read: "Read",
+    write: "Write",
+    edit: "Edit",
+    bash: "Bash",
+    skill: "Skill",
+    todo: "Todo",
+    grep: "Grep",
+    glob: "Glob",
+    websearch: "WebSearch",
+    question: "Question",
   }
+  return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
+}
+
+export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
+  const displayName = getToolDisplayName(props.tool)
+  const label = () => getToolLabel(props.tool, props.input)
+  const isPending = () => props.status === "pending"
+  const isRunning = () => props.status === "running"
+  const isError = () => props.status === "error"
 
   return (
     <box flexDirection="column">
-      {/* Label row: file path, command, query, etc. */}
-      <Show when={label()}>
-        <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap">{label()}</text>
-      </Show>
-
-      {/* Error message */}
-      <Show when={props.error}>
-        <text fg={colors.error}>{props.error}</text>
-      </Show>
-
-      {/* Write streaming content */}
+      <box flexDirection="row">
+        <box flexShrink={0}>
+          <Show when={isRunning() || isPending()}>
+            <InlineSpinner />
+          </Show>
+          <Show
+            when={!isPending() && !isRunning()}
+            fallback={null}
+          >
+            <Show
+              when={!isError()}
+              fallback={<text fg={colors.error}>✗ </text>}
+            >
+              <text fg={RGBA.fromHex("#98C379")}>✓ </text>
+            </Show>
+          </Show>
+        </box>
+        <text bold flexShrink={0}>{displayName} </text>
+        <Show when={label()}>
+          <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
+        </Show>
+        <Show when={props.error}>
+          <text> </text>
+          <text fg={colors.error}>({props.error})</text>
+        </Show>
+      </box>
       <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
         <WriteStreamView
           content={props.streamingContent!}
           filePath={typeof (props.input.filePath ?? props.input.path) === "string" ? (props.input.filePath ?? props.input.path) as string : undefined}
         />
       </Show>
-
-      {/* Diff view for completed edits/writes */}
       <Show when={props.diff && props.status === "completed"}>
         <DiffView
           diff={props.diff!}
           filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
         />
-      </Show>
-
-      {/* Tool output (bash stdout, read content, grep results, etc.) */}
-      <Show when={showOutput()}>
-        <OutputView output={props.output!} />
       </Show>
     </box>
   )
