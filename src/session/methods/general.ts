@@ -21,7 +21,6 @@ import type {
   CompactResult,
 } from "../compact-resolver"
 import { loadConfig } from "../../config/config"
-import { shouldCompact } from "../compaction"
 import type { MessageRow, PartRow, ToolPartData } from "../message"
 
 // ---------------------------------------------------------------------------
@@ -70,18 +69,11 @@ export const general: CompactMethodDef = {
     const retainTurns = config.compact.retain_turns
     console.log("[compact-general] execute start, retainTurns:", retainTurns, "total messages:", ctx.messages.length, "total parts:", ctx.parts.length)
 
-    // Step 1: Split messages into evicted and retained
-    let { evicted, retained } = splitMessages(ctx.messages, retainTurns)
-    console.log("[compact-general] split: evicted:", evicted.length, "retained:", retained.length)
-
-    // Context-override (issue #69): if turn-count gate blocked eviction but
-    // context usage exceeds 50%, re-split keeping only 1 turn so compaction
-    // can proceed.
-    if (evicted.length === 0 && shouldCompact(ctx.agentPrompt, ctx.modelMessages, ctx.budget, config.context_window, 0.50)) {
-      console.log("[compact-general] context > 50% override — re-splitting with retainTurns=1")
-      ;({ evicted, retained } = splitMessages(ctx.messages, 1))
-      console.log("[compact-general] re-split: evicted:", evicted.length, "retained:", retained.length)
-    }
+    // Step 1: Split messages into evicted and retained using cascade
+    // cascadeSplit tries retainTurns, retainTurns-1, …, 0 to always evict
+    // something when there are messages to evict.
+    const { evicted, retained } = cascadeSplit(ctx.messages, retainTurns)
+    console.log("[compact-general] cascadeSplit: evicted:", evicted.length, "retained:", retained.length)
 
     if (evicted.length === 0) {
       console.log("[compact-general] nothing to evict, returning early")
@@ -108,12 +100,22 @@ export const general: CompactMethodDef = {
       : ""
     console.log("[compact-general] existingAnchor:", existingAnchor ? "yes" : "no")
 
-    // Step 4: Send text-only evicted span + prompt to model
-    console.log("[compact-general] calling generateText with", textMessages.length + 1, "messages")
+    // Step 4: Prune evicted text messages to fit the model's input budget.
+    // Budget = model input window - output window - prompt overhead.
+    // Drop oldest messages first until they fit.
+    const inputLimit = ctx.budget?.input ?? ctx.budget?.context ?? 128_000
+    const outputReserve = ctx.budget?.output ?? 64_000
+    const promptOverhead = Math.ceil((DEFAULT_PROMPT.length + mergeInstruction.length) / 4) + 512
+    const budget = Math.max(0, inputLimit - outputReserve - promptOverhead)
+    const prunedMessages = pruneToTokenBudget(textMessages, budget)
+    console.log("[compact-general] budget=%d pruned from %d to %d messages", budget, textMessages.length, prunedMessages.length)
+
+    // Step 5: Send text-only evicted span + prompt to model
+    console.log("[compact-general] calling generateText with", prunedMessages.length + 1, "messages")
     const result = await generateText({
       model: ctx.model,
       messages: [
-        ...textMessages,
+        ...prunedMessages,
         { role: "user", content: DEFAULT_PROMPT + mergeInstruction },
       ],
       maxRetries: 1,
@@ -126,7 +128,7 @@ export const general: CompactMethodDef = {
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: evicted.length }
     }
 
-    // Step 5: Create a new session and seed it with summary + retained turns
+    // Step 6: Create a new session and seed it with summary + retained turns
     console.log("[compact-general] creating new session...")
     const newSession = ctx.session.create()
     const newSid = newSession.id
@@ -246,6 +248,25 @@ export function splitMessages(
 }
 
 // ---------------------------------------------------------------------------
+// cascadeSplit — try retainTurns, retainTurns-1, …, 0 until we can evict
+//
+// splitMessages returns evicted=[] when turns < retainTurns.  This wrapper
+// cascades downward so compaction always evicts something when there are
+// messages to evict.  Stops at the highest N that produces non-empty eviction.
+// ---------------------------------------------------------------------------
+
+export function cascadeSplit(
+  messages: MessageRow[],
+  retainTurns: number,
+): { evicted: MessageRow[]; retained: MessageRow[] } {
+  for (let n = retainTurns; n >= 0; n--) {
+    const result = splitMessages(messages, n)
+    if (result.evicted.length > 0) return result
+  }
+  return { evicted: [], retained: [] }
+}
+
+// ---------------------------------------------------------------------------
 // buildTextOnlyMessages — extract only user and assistant text from evicted
 // span. ALL tool calls and tool results are stripped entirely.
 // ---------------------------------------------------------------------------
@@ -289,9 +310,34 @@ export function buildTextOnlyMessages(
 }
 
 // ---------------------------------------------------------------------------
-// findExistingAnchor — find the most recent anchor summary in messages
-// (from a prior compaction cycle within this session)
+// pruneToTokenBudget — drop oldest messages until estimated tokens fit budget
+//
+// Uses chars/4 heuristic. Drops from the front (oldest first) so the most
+// recent context is always preserved for the summarization call.
 // ---------------------------------------------------------------------------
+
+export function pruneToTokenBudget(messages: ModelMessage[], budget: number): ModelMessage[] {
+  const estimateContent = (content: ModelMessage["content"]): number => {
+    if (typeof content === "string") return content.length
+    if (Array.isArray(content)) {
+      return content.reduce((sum, part) => {
+        if ("text" in part && typeof part.text === "string") return sum + part.text.length
+        if ("input" in part) return sum + JSON.stringify(part.input).length
+        return sum
+      }, 0)
+    }
+    return 0
+  }
+
+  const estimate = (msgs: ModelMessage[]) =>
+    Math.ceil(msgs.reduce((sum, m) => sum + estimateContent(m.content), 0) / 4)
+
+  let result = [...messages]
+  while (result.length > 1 && estimate(result) > budget) {
+    result.shift()
+  }
+  return result
+}
 
 export function findExistingAnchor(
   messages: MessageRow[],

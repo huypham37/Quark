@@ -44,7 +44,7 @@ export interface CompactMethodContext {
   modelMessages: ModelMessage[]
   model: LanguageModel
   agentPrompt: string | string[]
-  budget: { context: number; output: number } | null
+  budget: { context: number; input?: number; output: number } | null
   persist: {
     createMessage: typeof import("./message").createAssistantMessage
     addPart: typeof import("./message").addPart
