@@ -197,3 +197,96 @@ describe("tool-end error cascades to sub-agent (#108)", () => {
     })
   })
 })
+
+describe("late sub-agent events ignored after abort (#108)", () => {
+  test("subagent-done does NOT override parent error status", () => {
+    withRoot(() => {
+      const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      setupSubAgent(state)
+
+      // Abort fires tool-end error
+      dispatch(state, {
+        type: "tool-end",
+        messageId: "m1",
+        callId: "parent-1",
+        status: "error",
+        error: "Tool execution aborted",
+      })
+
+      // Late subagent-done arrives from dying subprocess
+      dispatch(state, {
+        type: "subagent-done",
+        messageId: "m1",
+        parentCallId: "parent-1",
+        profile: "finder",
+      })
+
+      const part = state.store.messages[0]!.parts[0] as any
+      // Parent should still be error, NOT completed
+      expect(part.status).toBe("error")
+    })
+  })
+
+  test("late subagent-tool-input does NOT override child error status", () => {
+    withRoot(() => {
+      const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      setupSubAgent(state)
+
+      // Abort
+      dispatch(state, {
+        type: "tool-end",
+        messageId: "m1",
+        callId: "parent-1",
+        status: "error",
+        error: "Tool execution aborted",
+      })
+
+      // Late subagent-tool-input arrives
+      dispatch(state, {
+        type: "subagent-tool-input",
+        messageId: "m1",
+        parentCallId: "parent-1",
+        profile: "finder",
+        tool: "read",
+        callId: "child-1",
+        input: { path: "/some/file" },
+      })
+
+      const part = state.store.messages[0]!.parts[0] as any
+      // Child should still be error
+      expect(part.subAgent.tools[0].status).toBe("error")
+    })
+  })
+
+  test("late subagent-tool-start does NOT add new tools after abort", () => {
+    withRoot(() => {
+      const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      setupSubAgent(state)
+
+      const toolCountBefore = (state.store.messages[0]!.parts[0] as any).subAgent.tools.length
+
+      // Abort
+      dispatch(state, {
+        type: "tool-end",
+        messageId: "m1",
+        callId: "parent-1",
+        status: "error",
+        error: "Tool execution aborted",
+      })
+
+      // Late subagent-tool-start arrives
+      dispatch(state, {
+        type: "subagent-tool-start",
+        messageId: "m1",
+        parentCallId: "parent-1",
+        profile: "finder",
+        tool: "websearch",
+        callId: "child-new",
+      })
+
+      const part = state.store.messages[0]!.parts[0] as any
+      // No new tools added
+      expect(part.subAgent.tools.length).toBe(toolCountBefore)
+    })
+  })
+})

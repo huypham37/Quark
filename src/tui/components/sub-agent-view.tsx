@@ -160,6 +160,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     return p.charAt(0).toUpperCase() + p.slice(1)
   }
   const isDone = () => props.subAgent.done
+  const isError = () => isDone() && props.subAgent.tools.some((t) => t.status === "error")
+  const headerStatus = (): "running" | "completed" | "error" => {
+    if (!isDone()) return "running"
+    return isError() ? "error" : "completed"
+  }
   const tokensUsed = () => props.subAgent.tokensUsed
   const tokenLimit = () => props.subAgent.tokenLimit
   const tokenPct = () => {
@@ -176,7 +181,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       {/* Header: spinner/check + profile name + token usage */}
       <box flexDirection="row">
         <box flexShrink={0}>
-          <StatusIndicator status={isDone() ? "completed" : "running"} />
+          <StatusIndicator status={headerStatus()} />
         </box>
         <text fg={colors.text}>{profileName()}</text>
         <Show when={hasTokens()}>
