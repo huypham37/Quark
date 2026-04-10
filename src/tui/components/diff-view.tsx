@@ -14,6 +14,7 @@
 
 import type { Component } from "solid-js"
 import { For, Show } from "solid-js"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
 import { parseDiffHunks } from "../diff-utils"
@@ -24,8 +25,7 @@ interface DiffViewProps {
   filePath?: string
 }
 
-const MAX_LINES_PER_HUNK = 30
-const MAX_HUNKS = 5
+const MAX_SCROLL_HEIGHT = 30
 
 const COLOR_ADDED    = RGBA.fromHex("#3a5c3a")  // dark green bg feel via text color
 const COLOR_REMOVED  = RGBA.fromHex("#5c3a3a")  // dark red bg feel via text color
@@ -90,27 +90,29 @@ const DiffLineView: Component<{ line: DiffLine }> = (props) => {
 }
 
 const HunkView: Component<{ hunk: DiffHunk }> = (props) => {
-  const visibleLines = () => props.hunk.lines.slice(0, MAX_LINES_PER_HUNK)
-  const overflow = () => props.hunk.lines.length - MAX_LINES_PER_HUNK
-
   return (
     <box flexDirection="column">
-      <For each={visibleLines()}>
+      <For each={props.hunk.lines}>
         {(line) => <DiffLineView line={line} />}
       </For>
-      <Show when={overflow() > 0}>
-        <text fg={colors.muted}>     … {overflow()} more lines</text>
-      </Show>
     </box>
   )
 }
 
 export const DiffView: Component<DiffViewProps> = (props) => {
   const hunks = () => parseDiffHunks(props.diff)
-  const visibleHunks = () => hunks().slice(0, MAX_HUNKS)
-  const overflowHunks = () => hunks().length - MAX_HUNKS
   const changes = () => countChanges(hunks())
   const rule = "─".repeat(42)
+
+  // Count total lines across all hunks + separator rules between hunks
+  const totalContentLines = () => {
+    const h = hunks()
+    const lineCount = h.reduce((sum, hunk) => sum + hunk.lines.length, 0)
+    // Each hunk except the last has a separator rule between it and the next
+    const separators = h.length > 1 ? h.length - 1 : 0
+    return lineCount + separators
+  }
+  const scrollHeight = () => Math.min(totalContentLines(), MAX_SCROLL_HEIGHT)
 
   return (
     <Show when={hunks().length > 0}>
@@ -126,23 +128,30 @@ export const DiffView: Component<DiffViewProps> = (props) => {
           <text> </text>
           <text fg={COLOR_REMOVED_FG}>-{changes().removed}</text>
         </box>
-        {/* Hunks */}
+        {/* Hunks — scrollable when content exceeds MAX_SCROLL_HEIGHT */}
         <box flexDirection="column" marginLeft={4}>
           <text fg={COLOR_RULE}>{rule}</text>
-          <For each={visibleHunks()}>
-            {(hunk, i) => (
-              <box flexDirection="column">
-                <HunkView hunk={hunk} />
-                <Show when={i() < visibleHunks().length - 1}>
-                  <text fg={COLOR_RULE}>{rule}</text>
-                </Show>
-              </box>
-            )}
-          </For>
+          <scrollbox
+            height={scrollHeight()}
+            scrollbarOptions={{
+              trackOptions: {
+                backgroundColor: colors.scrollbarTrack,
+                foregroundColor: colors.scrollbarThumb,
+              },
+            }}
+          >
+            <For each={hunks()}>
+              {(hunk, i) => (
+                <box flexDirection="column">
+                  <HunkView hunk={hunk} />
+                  <Show when={i() < hunks().length - 1}>
+                    <text fg={COLOR_RULE}>{rule}</text>
+                  </Show>
+                </box>
+              )}
+            </For>
+          </scrollbox>
           <text fg={COLOR_RULE}>{rule}</text>
-          <Show when={overflowHunks() > 0}>
-            <text fg={colors.muted}>… {overflowHunks()} more hunk{overflowHunks() > 1 ? "s" : ""}</text>
-          </Show>
         </box>
       </box>
     </Show>
