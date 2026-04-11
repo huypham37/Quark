@@ -23,7 +23,7 @@ export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string }
-  | { type: "image"; mime: string; label: string }
+  | { type: "image"; mime: string; data: string; label: string }
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
 export interface SubAgentToolPart {
@@ -167,7 +167,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         const d = JSON.parse(p.data) as ImagePartData
         // Count existing image parts to derive label number
         const idx = tuiParts.filter((x) => x.type === "image").length + 1
-        tuiParts.push({ type: "image", mime: d.mime, label: `Image ${idx}` })
+        tuiParts.push({ type: "image", mime: d.mime, data: d.data, label: `Image ${idx}` })
       } else if (p.type === "reasoning") {
         const d = JSON.parse(p.data) as ReasoningPartData
         if (d.text) {
