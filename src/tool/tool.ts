@@ -3,6 +3,16 @@
 import { z } from "zod"
 
 /**
+ * A single content part that a tool can return in its output.
+ * When a tool returns an array of these instead of a plain string,
+ * the result is sent to the LLM provider as multi-modal content
+ * (e.g. text + images).
+ */
+export type ToolResultContentPart =
+  | { type: "text"; text: string }
+  | { type: "image-data"; data: string; mediaType: string }
+
+/**
  * Execution context passed to every tool's `execute` function.
  */
 export interface ToolContext {
@@ -32,8 +42,11 @@ export interface ToolContext {
 export interface ToolResult {
   /** Short human-readable label shown in the TUI tool call header */
   title: string
-  /** The content returned to the LLM as the tool result */
-  output: string
+  /** The content returned to the LLM as the tool result.
+   *  - `string` — plain text (backward compatible)
+   *  - `ToolResultContentPart[]` — multi-modal content (text + images)
+   */
+  output: string | ToolResultContentPart[]
   /** Arbitrary metadata for TUI rendering (e.g. `{ diff: "..." }`) */
   metadata: Record<string, any>
 }

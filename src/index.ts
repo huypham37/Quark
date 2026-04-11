@@ -9,13 +9,13 @@ export { createSession, getSession } from "./session/session"
 export type { Session, SessionKind } from "./session/session"
 
 // Core operations
-export { prompt, cancel } from "./session/prompt"
+export { prompt, cancel, isActive } from "./session/prompt"
 export { compact } from "./session/compaction"
 
 // Tool system
 export { register, list as listTools, type ToolValidationError } from "./tool/registry"
 export { defineTool } from "./tool/tool"
-export type { ToolDef, ToolContext, ToolResult } from "./tool/tool"
+export type { ToolDef, ToolContext, ToolResult, ToolResultContentPart } from "./tool/tool"
 
 // Events
 export { bus } from "./session/events"

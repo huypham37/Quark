@@ -10,6 +10,7 @@
 import { generateId } from "ai"
 import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from "ai"
 import { appendEvents, replaySessionFile } from "../storage/session-jsonl"
+import type { ToolResultContentPart } from "../tool/tool"
 import type {
   MessageEvent,
   PartEvent,
@@ -29,6 +30,10 @@ export interface ToolPartData {
   input: Record<string, unknown>
   output?: string
   error?: string
+  /** Multi-modal content parts (text + images) for LLM replay.
+   *  When present, toModelMessages uses { type: "content", value: [...] }
+   *  instead of { type: "text", value: string }. */
+  contentParts?: ToolResultContentPart[]
   // Optional streaming content for long-running tool outputs (e.g. write).
   // Stored so the TUI can restore in-progress streaming views after reload.
   streamingContent?: string
@@ -401,7 +406,9 @@ export function toModelMessages(
       type: "tool-result"
       toolCallId: string
       toolName: string
-      output: { type: "text"; value: string }
+      output:
+        | { type: "text"; value: string }
+        | { type: "content"; value: ToolResultContentPart[] }
     }> = []
 
     for (const p of msgParts) {
@@ -424,15 +431,31 @@ export function toModelMessages(
         })
         // Add result if completed or error
         if (d.status === "completed" || d.status === "error") {
-          toolResults.push({
-            type: "tool-result",
-            toolCallId: d.callId,
-            toolName: d.tool,
-            output: {
-              type: "text",
-              value: d.error ? `Error: ${d.error}` : (d.output ?? ""),
-            },
-          })
+          // Errors always use plain text output
+          if (d.error) {
+            toolResults.push({
+              type: "tool-result",
+              toolCallId: d.callId,
+              toolName: d.tool,
+              output: { type: "text", value: `Error: ${d.error}` },
+            })
+          } else if (d.contentParts && d.contentParts.length > 0) {
+            // Multi-modal content parts (text + images) → use content-type output
+            toolResults.push({
+              type: "tool-result",
+              toolCallId: d.callId,
+              toolName: d.tool,
+              output: { type: "content", value: d.contentParts },
+            })
+          } else {
+            // Plain text output
+            toolResults.push({
+              type: "tool-result",
+              toolCallId: d.callId,
+              toolName: d.tool,
+              output: { type: "text", value: d.output ?? "" },
+            })
+          }
         }
       }
       // step-start, step-finish are metadata — skip for LLM context
