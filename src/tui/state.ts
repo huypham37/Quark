@@ -417,6 +417,19 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.error = action.error
             part.diff = action.diff
             part.streamingContent = undefined
+            // Cascade status to sub-agent: when the parent tool ends (error or
+            // completed), mark the sub-agent as done and transition any
+            // pending/running child tools to the parent's terminal status.
+            if (part.subAgent) {
+              part.subAgent.done = true
+              part.subAgent.textPreview = undefined
+              const childStatus = action.status === "error" ? "error" as const : "completed" as const
+              for (const child of part.subAgent.tools) {
+                if (child.status === "pending" || child.status === "running") {
+                  child.status = childStatus
+                }
+              }
+            }
           }
         }),
       )
@@ -580,8 +593,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
-      if (!existing) {
+      const tsPart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // Ignore late events if parent already reached a terminal state (abort/done)
+      if (tsPart.status === "error" || tsPart.status === "completed") break
+      if (!tsPart.subAgent) {
         // First sub-agent event — initialize subAgent via explicit path so SolidJS
         // registers the new property and notifies all Match/Show watchers.
         setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
@@ -608,7 +623,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const sa = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      const tiPart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // Ignore late events if parent already reached a terminal state (abort/done)
+      if (tiPart.status === "error" || tiPart.status === "completed") break
+      const sa = tiPart.subAgent
       if (!sa) break
       const childIdx = sa.tools.findIndex((t) => t.callId === action.callId)
       if (childIdx === -1) break
@@ -629,7 +647,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const sa = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
+      const tePart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // Ignore late events if parent already reached a terminal state (abort/done)
+      if (tePart.status === "error" || tePart.status === "completed") break
+      const sa = tePart.subAgent
       if (!sa) break
       const childIdx = sa.tools.findIndex((t) => t.callId === action.callId)
       if (childIdx === -1) break
@@ -650,8 +671,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
-      if (!existing) {
+      const sfPart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // Ignore late events if parent already reached a terminal state (abort/done)
+      if (sfPart.status === "error" || sfPart.status === "completed") break
+      if (!sfPart.subAgent) {
         setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
           profile: action.profile,
           tools: [],
@@ -677,8 +700,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
-      if (!existing) {
+      const tdPart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // Ignore late events if parent already reached a terminal state (abort/done)
+      if (tdPart.status === "error" || tdPart.status === "completed") break
+      if (!tdPart.subAgent) {
         setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
           profile: action.profile,
           tools: [],
@@ -702,8 +727,12 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
       )
       if (partIdx === -1) break
-      const existing = (state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>).subAgent
-      if (!existing) {
+      const parentPart = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      // If the parent tool already reached a terminal state (error/completed)
+      // via tool-end (e.g. abort), ignore late subagent-done events to prevent
+      // clobbering the error status back to completed.
+      if (parentPart.status === "error" || parentPart.status === "completed") break
+      if (!parentPart.subAgent) {
         setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
           profile: action.profile,
           tools: [],
