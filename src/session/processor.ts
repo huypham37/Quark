@@ -190,6 +190,11 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               // Extract output text from the tool result
               const out = event.output as any
               match.data.output = extractOutput(out)
+              // Store multi-modal content parts if the output is an array
+              const contentParts = extractContentParts(out)
+              if (contentParts) {
+                match.data.contentParts = contentParts
+              }
               // Extract diff from metadata if present
               const diff = extractDiff(out)
               updatePart(match.partId, match.data, sid, mid, "tool")
@@ -466,10 +471,26 @@ function extractOutput(out: unknown): string {
   if (out && typeof out === "object") {
     const o = out as any
     // AI SDK tool result shape: { output, title, metadata }
+    if (Array.isArray(o.output)) {
+      // Multi-modal content parts — extract text-only portions for the string field
+      return o.output
+        .filter((p: any) => p.type === "text" && typeof p.text === "string")
+        .map((p: any) => p.text)
+        .join(" ")
+    }
     if (typeof o.output === "string") return o.output
     // LanguageModelV3ToolResultOutput shape
     if (o.type === "text" && typeof o.value === "string") return o.value
     return JSON.stringify(out)
   }
   return String(out ?? "")
+}
+
+// Extract content parts array from tool result when output is multi-modal
+function extractContentParts(out: unknown): any[] | undefined {
+  if (out && typeof out === "object") {
+    const o = out as any
+    if (Array.isArray(o.output)) return o.output
+  }
+  return undefined
 }

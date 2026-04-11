@@ -19,7 +19,6 @@ import type {
   CompactResult,
 } from "../compact-resolver"
 import { loadConfig } from "../../config/config"
-import { shouldCompact } from "../compaction"
 import type { MessageRow, PartRow, ToolPartData, SummaryData } from "../message"
 
 // ---------------------------------------------------------------------------
@@ -96,15 +95,10 @@ export const anchored: CompactMethodDef = {
     const retainTurns = config.compact.retain_turns
     const prompt = DEFAULTS.prompt
 
-    // Step 1: Split messages into evicted and retained
-    let { evicted, retained } = splitMessages(ctx.messages, retainTurns)
-
-    // Context-override (issue #69): if turn-count gate blocked eviction but
-    // context usage exceeds 50%, re-split keeping only 1 turn so compaction
-    // can proceed.
-    if (evicted.length === 0 && shouldCompact(ctx.agentPrompt, ctx.modelMessages, ctx.budget, config.context_window, 0.50)) {
-      ;({ evicted, retained } = splitMessages(ctx.messages, 1))
-    }
+    // Step 1: Split messages into evicted and retained using cascade
+    // cascadeSplit tries retainTurns, retainTurns-1, …, 0 to always evict
+    // something when there are messages to evict.
+    const { evicted, retained } = cascadeSplit(ctx.messages, retainTurns)
 
     if (evicted.length === 0) {
       return { type: "new-session", newSessionId: ctx.sessionId, summary: "", evictedCount: 0 }
@@ -194,11 +188,14 @@ export const anchored: CompactMethodDef = {
           } else if (p.type === "tool") {
             // Prune tool output to reduce token count in retained messages
             const toolData = JSON.parse(p.data) as ToolPartData
+            const isPrunable = toolData.status === "completed" || toolData.status === "error"
             const prunedData: ToolPartData = {
               ...toolData,
-              output: toolData.status === "completed" || toolData.status === "error"
+              output: isPrunable
                 ? "[output pruned for compaction]"
                 : toolData.output,
+              // Clear content parts (images) to avoid carrying large blobs across compaction
+              contentParts: isPrunable ? undefined : toolData.contentParts,
             }
             ctx.persist.addPart({
               messageId: newMsg.id,
@@ -263,6 +260,25 @@ export function splitMessages(
     evicted: messages.slice(0, splitIdx),
     retained: messages.slice(splitIdx),
   }
+}
+
+// ---------------------------------------------------------------------------
+// cascadeSplit — try retainTurns, retainTurns-1, …, 0 until we can evict
+//
+// splitMessages returns evicted=[] when turns < retainTurns.  This wrapper
+// cascades downward so compaction always evicts something when there are
+// messages to evict.  Stops at the highest N that produces non-empty eviction.
+// ---------------------------------------------------------------------------
+
+export function cascadeSplit(
+  messages: MessageRow[],
+  retainTurns: number,
+): { evicted: MessageRow[]; retained: MessageRow[] } {
+  for (let n = retainTurns; n >= 0; n--) {
+    const result = splitMessages(messages, n)
+    if (result.evicted.length > 0) return result
+  }
+  return { evicted: [], retained: [] }
 }
 
 // ---------------------------------------------------------------------------

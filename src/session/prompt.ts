@@ -671,6 +671,13 @@ function toAITool(
       return toolResult;
     },
     toModelOutput(result: any) {
+      if (Array.isArray(result.output)) {
+        // Multi-modal content parts (text + images)
+        return {
+          type: "content" as const,
+          value: result.output,
+        };
+      }
       return {
         type: "text" as const,
         value: result.output as string,
