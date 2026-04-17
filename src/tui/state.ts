@@ -86,7 +86,7 @@ export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string | null }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
-  | { type: "add-user-message"; id: string; text: string; images?: { mime: string; label: string }[] }
+  | { type: "add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
   | { type: "text-delta"; messageId: string; delta: string; text: string }
@@ -289,6 +289,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             ...(action.images ?? []).map((img, i) => ({
               type: "image" as const,
               mime: img.mime,
+              data: img.data,
               label: img.label ?? `Image ${i + 1}`,
             })),
           ],

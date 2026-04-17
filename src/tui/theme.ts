@@ -46,6 +46,10 @@ export const colors = {
   // Notification panel background — solid dark to prevent text bleed-through
   notificationBg: RGBA.fromHex("#1c1c1c"),
 
+  // Mention chips (inline context references)
+  mentionChipBg: RGBA.fromHex("#3a3a3a"),   // dark gray background for chips
+  mentionChipFg: RGBA.fromHex("#00d7d7"),   // cyan text for chip labels
+
   // Scrollbar
   scrollbarTrack: RGBA.fromHex("#3a3a3a"),   // dark gray track
   scrollbarThumb: RGBA.fromHex("#666666"),   // lighter gray thumb

@@ -6,8 +6,14 @@ The server converts them to OpenAI SSE bytes using sse.py.
 
 Adding a new provider:
   1. Subclass WebProvider
-  2. Implement handles(), authenticate(), list_models(), stream()
-  3. Register in server.py: registry.register(MyProvider())
+  2. Implement handles(), authenticate(), list_models()
+  3. Implement _build_prompt(messages, tools) → str   (or override for custom format)
+  4. Implement _raw_stream(prompt, model, **kw) → Iterator[SSEEvent]
+     Yield only TextDelta / ReasoningDelta — never ToolCall/Done.
+  5. Register in server.py: registry.register(MyProvider())
+
+The base stream() method owns the full tool pipeline:
+  messages_to_prompt → _build_prompt → _raw_stream → ToolCallParser → ToolCall/Done
 """
 
 from __future__ import annotations
@@ -58,6 +64,10 @@ class WebProvider(ABC):
     Implementations live in web_proxy/providers/*.py.
     The server calls authenticate() once at startup, then routes requests
     based on handles(model).
+
+    Tool pipeline (owned here, not in providers):
+      stream() calls _build_prompt(), then _raw_stream(), feeds output through
+      ToolCallParser when tools are present, and emits ToolCall / Done events.
     """
 
     @property
@@ -85,7 +95,24 @@ class WebProvider(ABC):
         """Return OpenAI-format model objects for /v1/models."""
         ...
 
+    def _build_prompt(self, messages: list, tools: list | None) -> str:
+        """
+        Convert OpenAI messages + tools into a flat prompt string.
+        Override for provider-specific turn formats (e.g. Claude's Human:/Assistant:).
+        Default uses the generic messages_to_prompt from tools.py.
+        """
+        from web_proxy.tools import messages_to_prompt
+        return messages_to_prompt(messages, tools or None)
+
     @abstractmethod
+    def _raw_stream(self, prompt: str, model: str, **kw) -> Iterator[SSEEvent]:
+        """
+        Hit the provider HTTP endpoint and yield raw TextDelta / ReasoningDelta.
+        Must NOT yield ToolCall or Done — the base stream() handles those.
+        **kw carries provider-specific extras (e.g. has_tools flag).
+        """
+        ...
+
     def stream(
         self,
         messages: list,
@@ -93,14 +120,53 @@ class WebProvider(ABC):
         tools: list,
     ) -> Iterator[SSEEvent]:
         """
-        Yield SSEEvents for the given request.
+        Full tool pipeline — do not override in providers.
 
-        Args:
-            messages: OpenAI-format message list
-            model:    Model ID (provider prefix already stripped)
-            tools:    OpenAI-format tool list (may be empty)
+        1. Build prompt (with tool preamble injected when tools present)
+        2. Stream raw events from _raw_stream()
+        3. Feed TextDelta text through ToolCallParser when tools present
+        4. Emit ToolCall events for each detected <tool_call> block
+        5. Emit Done with correct finish_reason
         """
-        ...
+        from web_proxy.tools import ToolCallParser
+        has_tools = bool(tools)
+        prompt = self._build_prompt(messages, tools if has_tools else None)
+        parser = ToolCallParser() if has_tools else None
+        saw_tool_call = False
+
+        for event in self._raw_stream(prompt, model, has_tools=has_tools):
+            if isinstance(event, TextDelta):
+                if parser:
+                    for kind, value in parser.feed(event.text):
+                        if kind == "text" and value:
+                            yield TextDelta(text=value)
+                        elif kind == "tool_call":
+                            saw_tool_call = True
+                            yield ToolCall(
+                                name=value.get("name", ""),
+                                arguments=value.get("arguments", {}),
+                            )
+                else:
+                    yield event
+            elif isinstance(event, ReasoningDelta):
+                yield event
+            elif isinstance(event, ToolCall):
+                # Native tool call from provider (e.g. Qwen function_call delta)
+                saw_tool_call = True
+                yield event
+
+        if parser:
+            for kind, value in parser.flush():
+                if kind == "text" and value.strip():
+                    yield TextDelta(text=value)
+                elif kind == "tool_call":
+                    saw_tool_call = True
+                    yield ToolCall(
+                        name=value.get("name", ""),
+                        arguments=value.get("arguments", {}),
+                    )
+
+        yield Done(finish_reason="tool_calls" if saw_tool_call else "stop")
 
     def is_ready(self) -> bool:
         """Returns True if authenticate() succeeded."""

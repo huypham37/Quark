@@ -286,11 +286,6 @@ export function wireEvents(state: AppState) {
           lastInputTokens = total
           sessionTokens.set(sid, lastInputTokens)
           dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
-          // Auto-compact trigger: if usage hit the limit, emit context-full
-          const tokenLimit = state.store.status.tokenLimit
-          if (tokenLimit > 0 && lastInputTokens >= tokenLimit) {
-            bus.emit("context-full", { sessionId: sid })
-          }
         }
       }
     }))

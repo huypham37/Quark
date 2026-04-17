@@ -365,7 +365,7 @@ export async function startWebServer() {
       perMessageDeflate: false,
       // Keep connection alive — iOS Safari aggressively kills idle WS connections
       idleTimeout: 120,
-      sendPong: true,
+      sendPings: true,
       open(ws) {
         console.log("[ws] client connected")
         const handlers = (ws.data as WSData).handlers

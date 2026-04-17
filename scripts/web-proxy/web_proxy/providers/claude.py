@@ -22,8 +22,7 @@ from typing import Iterator
 from curl_cffi import requests as cffi_requests
 from Crypto.Cipher import AES
 
-from web_proxy.base import WebProvider, SSEEvent, TextDelta, ToolCall, Done
-from web_proxy.tools import ToolCallParser, messages_to_prompt as _generic_messages_to_prompt
+from web_proxy.base import WebProvider, SSEEvent, TextDelta, ReasoningDelta, ToolCall, Done
 
 CLAUDE_BASE = "https://claude.ai"
 ELECTRON_COOKIE_DB = Path.home() / "Library" / "Application Support" / "Claude" / "Cookies"
@@ -122,12 +121,12 @@ class ClaudeProvider(WebProvider):
             for m in CLAUDE_MODELS
         ]
 
-    def stream(self, messages: list, model: str, tools: list) -> Iterator[SSEEvent]:
-        model_id = model.split("/", 1)[-1] if "/" in model else model
-        has_tools = bool(tools)
-        prompt = _messages_to_claude_prompt(messages, tools if has_tools else None)
+    def _build_prompt(self, messages: list, tools: list | None) -> str:
+        return _messages_to_claude_prompt(messages, tools)
+
+    def _raw_stream(self, prompt: str, model: str, **kw) -> Iterator[SSEEvent]:
         conv = self._create_conversation()
-        yield from self._stream_completion(conv, prompt, model_id, has_tools)
+        yield from self._stream_completion(conv, prompt, model)
 
     # ------------------------------------------------------------------
     def _load_session_key(self) -> str:
@@ -239,7 +238,7 @@ class ClaudeProvider(WebProvider):
             raise RuntimeError(f"Failed to create conversation: {resp.status_code} {resp.text[:300]}")
         return resp.json()["uuid"]
 
-    def _raw_stream(self, conv: str, prompt: str, model: str):
+    def _raw_stream_http(self, conv: str, prompt: str, model: str):
         resp = cffi_requests.post(
             f"{CLAUDE_BASE}/api/organizations/{self._org_uuid}/chat_conversations/{conv}/completion",
             headers=self._headers(),
@@ -256,12 +255,9 @@ class ClaudeProvider(WebProvider):
             yield line
 
     def _stream_completion(
-        self, conv: str, prompt: str, model: str, has_tools: bool
+        self, conv: str, prompt: str, model: str
     ) -> Iterator[SSEEvent]:
-        parser = ToolCallParser() if has_tools else None
-        saw_tool_call = False
-
-        for line in self._raw_stream(conv, prompt, model):
+        for line in self._raw_stream_http(conv, prompt, model):
             if not line.startswith("data:"):
                 continue
             data_str = line[5:].strip()
@@ -278,33 +274,8 @@ class ClaudeProvider(WebProvider):
             text = data.get("completion", "")
             stop = data.get("stop_reason")
 
-            if text and parser:
-                for kind, value in parser.feed(text):
-                    if kind == "text" and value:
-                        yield TextDelta(text=value)
-                    elif kind == "tool_call":
-                        saw_tool_call = True
-                        yield ToolCall(name=value.get("name", ""), arguments=value.get("arguments", {}))
-            elif text:
+            if text:
                 yield TextDelta(text=text)
 
             if stop is not None:
-                if parser:
-                    for kind, value in parser.flush():
-                        if kind == "text" and value.strip():
-                            yield TextDelta(text=value)
-                        elif kind == "tool_call":
-                            saw_tool_call = True
-                            yield ToolCall(name=value.get("name", ""), arguments=value.get("arguments", {}))
-                yield Done(finish_reason="tool_calls" if saw_tool_call else "stop")
                 return
-
-        # Ended without stop_reason
-        if parser:
-            for kind, value in parser.flush():
-                if kind == "text" and value.strip():
-                    yield TextDelta(text=value)
-                elif kind == "tool_call":
-                    saw_tool_call = True
-                    yield ToolCall(name=value.get("name", ""), arguments=value.get("arguments", {}))
-        yield Done(finish_reason="tool_calls" if saw_tool_call else "stop")
