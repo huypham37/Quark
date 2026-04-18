@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from web_proxy.base import registry, TextDelta, ReasoningDelta, ToolCall, Done
 from web_proxy import sse
+from web_proxy.profiling import is_profiling, ProfilingContext, profiled_stream
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,6 +55,9 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, "application/json", b'{"error":"not found"}')
             return
 
+        profiling = is_profiling()
+        prof_ctx = None
+
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length))
@@ -65,7 +69,23 @@ class Handler(BaseHTTPRequestHandler):
         stream: bool = body.get("stream", False)
         tools: list = body.get("tools", [])
 
+        if profiling:
+            prof_ctx = ProfilingContext(provider="", model=model)
+            # Extract prompt preview from last user message
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        content = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+                    prof_ctx.prompt_preview = str(content)[:80]
+                    break
+
+        if profiling and prof_ctx:
+            prof_ctx.mark_resolve_start()
         provider = registry.resolve(model)
+        if profiling and prof_ctx:
+            prof_ctx.mark_resolve_end()
+
         if provider is None:
             return self._error(400, f"No provider found for model '{model}'")
 
@@ -75,19 +95,26 @@ class Handler(BaseHTTPRequestHandler):
         # Strip provider prefix for the provider itself
         model_id = model.split("/", 1)[-1] if "/" in model else model
 
+        if prof_ctx:
+            prof_ctx.provider = provider.name
+            prof_ctx.model = model_id
+
         print(f"[web-proxy] {provider.name} | model={model_id} | tools={len(tools)} | stream={stream}")
 
         try:
             if stream:
-                self._handle_stream(provider, messages, model_id, tools)
+                self._handle_stream(provider, messages, model_id, tools, prof_ctx)
             else:
-                self._handle_collect(provider, messages, model_id, tools)
+                self._handle_collect(provider, messages, model_id, tools, prof_ctx)
         except Exception as e:
             print(f"[web-proxy] Error: {e}")
             self._error(500, str(e))
+        finally:
+            if prof_ctx:
+                prof_ctx.finish()
 
     # ------------------------------------------------------------------
-    def _handle_stream(self, provider, messages, model_id, tools):
+    def _handle_stream(self, provider, messages, model_id, tools, prof_ctx=None):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -99,22 +126,47 @@ class Handler(BaseHTTPRequestHandler):
         saw_tool_call = False
 
         try:
-            for event in provider.stream(messages, model_id, tools):
+            raw_stream = provider.stream(messages, model_id, tools)
+            event_stream = profiled_stream(prof_ctx, raw_stream) if prof_ctx else raw_stream
+
+            for event in event_stream:
                 if isinstance(event, TextDelta):
-                    self.wfile.write(sse.sse_text(event.text, model_id, chunk_id))
+                    if prof_ctx:
+                        s = prof_ctx.mark_serialize_start()
+                    chunk = sse.sse_text(event.text, model_id, chunk_id)
+                    if prof_ctx:
+                        prof_ctx.mark_serialize_end(s)
+                        s = prof_ctx.mark_write_start()
+                    self.wfile.write(chunk)
                     self.wfile.flush()
+                    if prof_ctx:
+                        prof_ctx.mark_write_end(s)
+                        prof_ctx.add_bytes(len(chunk))
 
                 elif isinstance(event, ReasoningDelta):
-                    self.wfile.write(sse.sse_reasoning(event.text, model_id, chunk_id))
+                    if prof_ctx:
+                        s = prof_ctx.mark_serialize_start()
+                    chunk = sse.sse_reasoning(event.text, model_id, chunk_id)
+                    if prof_ctx:
+                        prof_ctx.mark_serialize_end(s)
+                        s = prof_ctx.mark_write_start()
+                    self.wfile.write(chunk)
                     self.wfile.flush()
+                    if prof_ctx:
+                        prof_ctx.mark_write_end(s)
+                        prof_ctx.add_bytes(len(chunk))
 
                 elif isinstance(event, ToolCall):
                     saw_tool_call = True
                     call_id = f"call_{uuid.uuid4().hex[:12]}"
                     args_json = json.dumps(event.arguments)
-                    self.wfile.write(sse.sse_tool_call_start(model_id, chunk_id, call_index, call_id, event.name))
-                    self.wfile.write(sse.sse_tool_call_args(model_id, chunk_id, call_index, args_json))
+                    chunk1 = sse.sse_tool_call_start(model_id, chunk_id, call_index, call_id, event.name)
+                    chunk2 = sse.sse_tool_call_args(model_id, chunk_id, call_index, args_json)
+                    self.wfile.write(chunk1)
+                    self.wfile.write(chunk2)
                     self.wfile.flush()
+                    if prof_ctx:
+                        prof_ctx.add_bytes(len(chunk1) + len(chunk2))
                     call_index += 1
 
                 elif isinstance(event, Done):
@@ -142,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     # ------------------------------------------------------------------
-    def _handle_collect(self, provider, messages, model_id, tools):
+    def _handle_collect(self, provider, messages, model_id, tools, prof_ctx=None):
         chunk_id = sse.make_id()
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
@@ -150,7 +202,9 @@ class Handler(BaseHTTPRequestHandler):
         call_index = 0
 
         try:
-            for event in provider.stream(messages, model_id, tools):
+            raw_stream = provider.stream(messages, model_id, tools)
+            event_stream = profiled_stream(prof_ctx, raw_stream) if prof_ctx else raw_stream
+            for event in event_stream:
                 if isinstance(event, TextDelta):
                     text_parts.append(event.text)
                 elif isinstance(event, ReasoningDelta):

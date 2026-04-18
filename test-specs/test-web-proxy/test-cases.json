@@ -1,0 +1,834 @@
+[
+  {
+    "id": "tc-web-provider-alibaba-returns-provider",
+    "title": "createAlibabaCompatibleProvider returns a provider object",
+    "category": "functional",
+    "subcategory": "provider-creation",
+    "preconditions": "@ai-sdk/alibaba installed in workspace",
+    "test_data": "baseURL: http://127.0.0.1:4320/v1, apiKey: web-proxy-key",
+    "steps": [
+      "Import createAlibabaCompatibleProvider from src/provider/provider.ts",
+      "Call createAlibabaCompatibleProvider({ baseURL, apiKey })",
+      "Assert the return value is defined"
+    ],
+    "expected_result": "Provider object is returned without error",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-web-provider-alibaba-callable",
+    "title": "createAlibabaCompatibleProvider returns a callable (function) provider",
+    "category": "functional",
+    "subcategory": "provider-creation",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "baseURL: http://127.0.0.1:4320/v1, apiKey: key",
+    "steps": [
+      "Call createAlibabaCompatibleProvider({ baseURL, apiKey })",
+      "Assert typeof provider === 'function'"
+    ],
+    "expected_result": "@ai-sdk/alibaba providers are callable functions",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "@ai-sdk/alibaba uses callable provider pattern unlike @ai-sdk/openai"
+  },
+  {
+    "id": "tc-web-provider-alibaba-model-id",
+    "title": "provider(modelId) returns a language model with correct modelId",
+    "category": "functional",
+    "subcategory": "provider-creation",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "modelId: web/qwen3",
+    "steps": [
+      "Create alibaba provider",
+      "Call provider('web/qwen3')",
+      "Assert model.modelId === 'web/qwen3'"
+    ],
+    "expected_result": "The language model object reflects the requested modelId",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-web-provider-alibaba-provider-string",
+    "title": "Model object has provider string containing 'alibaba'",
+    "category": "functional",
+    "subcategory": "provider-identity",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "modelId: web/qwen3-coder",
+    "steps": [
+      "Create alibaba provider",
+      "Create model via provider('web/qwen3-coder')",
+      "Assert model.provider contains 'alibaba'"
+    ],
+    "expected_result": "Provider identity confirms alibaba routing, not openai",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "Critical: ensures web models don't accidentally route through openai"
+  },
+  {
+    "id": "tc-web-provider-not-shared-with-openai",
+    "title": "Web provider instance is distinct from OpenAI-compatible provider",
+    "category": "functional",
+    "subcategory": "provider-isolation",
+    "preconditions": "Both @ai-sdk/alibaba and @ai-sdk/openai installed",
+    "test_data": "Same baseURL and apiKey for both providers",
+    "steps": [
+      "Create alibaba provider for web models",
+      "Create OpenAI-compatible provider",
+      "Create models from each",
+      "Assert model.provider values differ",
+      "Assert alibaba model provider contains 'alibaba'",
+      "Assert openai model provider contains 'openai'"
+    ],
+    "expected_result": "The two providers are completely independent; alibaba is used for web, openai for others",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-web-provider-fresh-instances",
+    "title": "createAlibabaCompatibleProvider returns a fresh instance per call (no caching)",
+    "category": "functional",
+    "subcategory": "provider-creation",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "Two calls with same options",
+    "steps": [
+      "Call createAlibabaCompatibleProvider twice with identical options",
+      "Assert p1 !== p2"
+    ],
+    "expected_result": "Unlike copilot provider, alibaba provider is not cached",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-web-provider-spec-version",
+    "title": "Model has specificationVersion === 'v1'",
+    "category": "functional",
+    "subcategory": "provider-creation",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "modelId: web/qwq",
+    "steps": [
+      "Create model from alibaba provider",
+      "Assert model.specificationVersion === 'v1'"
+    ],
+    "expected_result": "AI SDK v1 specification version confirmed",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "low",
+    "notes": ""
+  },
+  {
+    "id": "tc-web-provider-http-request",
+    "title": "Provider sends request to proxy with correct path and Authorization header",
+    "category": "functional",
+    "subcategory": "http-integration",
+    "preconditions": "Bun.serve available for local test server",
+    "test_data": "apiKey: proxy-api-key, fake SSE response from local server",
+    "steps": [
+      "Spin up a local Bun.serve server that responds with valid SSE chunks",
+      "Create alibaba provider pointing at the local server",
+      "Call generateText with the provider model",
+      "Assert the server received a request at /v1/chat/completions",
+      "Assert Authorization header is 'Bearer proxy-api-key'",
+      "Assert result.text contains the expected text from the fake response"
+    ],
+    "expected_result": "Provider correctly sends OpenAI-compatible chat completions request with Bearer auth",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "Also validates that delta.reasoning_content in SSE does not break text extraction"
+  },
+  {
+    "id": "tc-web-provider-various-model-ids",
+    "title": "Various web model IDs are passed through unchanged to alibaba provider",
+    "category": "functional",
+    "subcategory": "model-routing",
+    "preconditions": "@ai-sdk/alibaba installed",
+    "test_data": "Models: qwen3, claude-sonnet-4, meta-ai, qwq-32b",
+    "steps": [
+      "For each model ID, call provider(modelId)",
+      "Assert model.modelId === modelId"
+    ],
+    "expected_result": "Model IDs are not mutated by the provider creation",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-register",
+    "title": "ProviderRegistry.register adds provider to internal list",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "FakeProvider('alpha', 'alpha')",
+    "steps": [
+      "Create a ProviderRegistry",
+      "Register a FakeProvider",
+      "Assert provider is in registry._providers"
+    ],
+    "expected_result": "Provider is registered",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-authenticate-all-success",
+    "title": "authenticate_all sets _ready=True on successful provider",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "FakeProvider with auth_result=True",
+    "steps": [
+      "Create registry and register a provider that returns True from authenticate()",
+      "Call authenticate_all()",
+      "Assert provider._ready is True"
+    ],
+    "expected_result": "Ready flag is set",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-authenticate-all-failure",
+    "title": "authenticate_all sets _ready=False on failed provider",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "FakeProvider with auth_result=False",
+    "steps": [
+      "Register a provider that returns False from authenticate()",
+      "Call authenticate_all()",
+      "Assert provider._ready is False"
+    ],
+    "expected_result": "Provider is marked unavailable but server continues",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-authenticate-all-exception",
+    "title": "authenticate_all handles provider exceptions without crashing",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "FakeProvider that raises RuntimeError in authenticate()",
+    "steps": [
+      "Register a provider that raises an exception in authenticate()",
+      "Call authenticate_all()",
+      "Assert no exception propagates",
+      "Assert provider._ready is False"
+    ],
+    "expected_result": "Authentication failure is caught; other providers continue",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "Critical: one broken provider must not crash the proxy startup"
+  },
+  {
+    "id": "tc-base-registry-resolve-ready",
+    "title": "resolve() returns the first ready provider that handles the model",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "Ready provider handles 'qwen3-max'",
+    "steps": [
+      "Register a ready FakeProvider with handles_prefix='qwen'",
+      "Call registry.resolve('qwen3-max')",
+      "Assert result is the FakeProvider"
+    ],
+    "expected_result": "Correct provider is returned",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-resolve-none",
+    "title": "resolve() returns None when no provider handles the model",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "Ready qwen provider, querying for claude model",
+    "steps": [
+      "Register a ready qwen provider",
+      "Call registry.resolve('claude-sonnet')",
+      "Assert result is None"
+    ],
+    "expected_result": "None returned when no match",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-resolve-inactive-fallback",
+    "title": "resolve() falls back to inactive provider for better error messages",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "Inactive qwen provider (no credentials)",
+    "steps": [
+      "Register a provider with _ready=False that handles 'qwen3'",
+      "Call registry.resolve('qwen3')",
+      "Assert result is the inactive provider (not None)"
+    ],
+    "expected_result": "Inactive provider returned so server can give a clear 503 error",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-base-registry-all-models",
+    "title": "all_models() returns models from ready providers only",
+    "category": "functional",
+    "subcategory": "registry",
+    "preconditions": "web_proxy.base importable",
+    "test_data": "One ready + one inactive provider",
+    "steps": [
+      "Register ready and inactive FakeProviders",
+      "Call registry.all_models()",
+      "Assert only ready provider's models are included"
+    ],
+    "expected_result": "Inactive provider models excluded from /v1/models",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-text-structure",
+    "title": "sse_text produces valid SSE bytes with correct OpenAI chunk structure",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "content='hello', model='qwen3', chunk_id='test-id'",
+    "steps": [
+      "Call sse_text('hello', 'qwen3', 'test-id')",
+      "Assert return is bytes ending in \\n\\n",
+      "Parse the data line as JSON",
+      "Assert object='chat.completion.chunk'",
+      "Assert choices[0].delta.content == 'hello'",
+      "Assert choices[0].finish_reason is None"
+    ],
+    "expected_result": "Valid OpenAI SSE chunk with text delta",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-reasoning-structure",
+    "title": "sse_reasoning produces delta.reasoning_content field",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "reasoning='let me think', model='qwen3', chunk_id='test-id'",
+    "steps": [
+      "Call sse_reasoning('let me think', 'qwen3', 'test-id')",
+      "Parse the data line as JSON",
+      "Assert choices[0].delta.reasoning_content == 'let me think'",
+      "Assert 'content' NOT in choices[0].delta"
+    ],
+    "expected_result": "Reasoning chunk emits reasoning_content, not content",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "Critical: @ai-sdk/alibaba maps reasoning_content to reasoning events"
+  },
+  {
+    "id": "tc-sse-tool-call-start-structure",
+    "title": "sse_tool_call_start produces correct tool_calls array",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "model='qwen3', chunk_id='id', call_index=0, call_id='call_abc', name='read'",
+    "steps": [
+      "Call sse_tool_call_start with the given params",
+      "Parse the data line as JSON",
+      "Assert choices[0].delta.tool_calls[0].index == 0",
+      "Assert choices[0].delta.tool_calls[0].id == 'call_abc'",
+      "Assert choices[0].delta.tool_calls[0].type == 'function'",
+      "Assert choices[0].delta.tool_calls[0].function.name == 'read'",
+      "Assert choices[0].delta.tool_calls[0].function.arguments == ''"
+    ],
+    "expected_result": "Valid tool_call start chunk matching OpenAI streaming spec",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-tool-call-args-structure",
+    "title": "sse_tool_call_args produces incremental arguments chunk",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "model='qwen3', chunk_id='id', call_index=0, args_json='{\"path\":\"/tmp\"}'",
+    "steps": [
+      "Call sse_tool_call_args with args_json",
+      "Parse data line as JSON",
+      "Assert choices[0].delta.tool_calls[0].function.arguments == args_json",
+      "Assert 'id' NOT in tool_calls[0]",
+      "Assert 'type' NOT in tool_calls[0]"
+    ],
+    "expected_result": "Args-only chunk matches OpenAI incremental tool_calls spec",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-finish-structure",
+    "title": "sse_finish produces finish chunk with empty delta and correct reason",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "reason='stop' and reason='tool_calls'",
+    "steps": [
+      "Call sse_finish for each reason",
+      "Parse data line as JSON",
+      "Assert choices[0].delta == {}",
+      "Assert choices[0].finish_reason matches reason"
+    ],
+    "expected_result": "Valid finish chunk for both stop and tool_calls reasons",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-non-stream-response-text",
+    "title": "non_stream_response builds correct non-streaming response for text-only",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "text='hello world', no tools, no reasoning",
+    "steps": [
+      "Call non_stream_response('qwen3', 'id', 'hello world')",
+      "Assert object == 'chat.completion'",
+      "Assert choices[0].message.role == 'assistant'",
+      "Assert choices[0].message.content == 'hello world'",
+      "Assert choices[0].finish_reason == 'stop'",
+      "Assert 'tool_calls' NOT in message",
+      "Assert 'reasoning_content' NOT in message"
+    ],
+    "expected_result": "Clean text-only non-streaming response",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-non-stream-response-with-tools",
+    "title": "non_stream_response includes tool_calls and sets finish_reason=tool_calls",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "tool_calls=[{id, type, function}]",
+    "steps": [
+      "Call non_stream_response with tool_calls list",
+      "Assert choices[0].message.tool_calls equals the input list",
+      "Assert choices[0].finish_reason == 'tool_calls'"
+    ],
+    "expected_result": "Tool-calling response has correct finish_reason and tool_calls",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-sse-non-stream-response-reasoning",
+    "title": "non_stream_response includes reasoning_content when provided",
+    "category": "functional",
+    "subcategory": "sse-builders",
+    "preconditions": "web_proxy.sse importable",
+    "test_data": "text='answer', reasoning='step 1 → 2'",
+    "steps": [
+      "Call non_stream_response with reasoning='step 1 → 2'",
+      "Assert choices[0].message.reasoning_content == 'step 1 → 2'"
+    ],
+    "expected_result": "Reasoning content is preserved in non-streaming response",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-preamble-empty",
+    "title": "build_tool_preamble returns empty string for empty tools list",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "tools=[]",
+    "steps": [
+      "Call build_tool_preamble([])",
+      "Assert result == ''"
+    ],
+    "expected_result": "No preamble injected when no tools",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-preamble-function-tool",
+    "title": "build_tool_preamble includes tool name, description, and parameters",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "type=function tool with name, description, parameters",
+    "steps": [
+      "Call build_tool_preamble with an OpenAI-format function tool",
+      "Assert tool name appears in result",
+      "Assert description appears in result",
+      "Assert parameters JSON appears in result",
+      "Assert <tool_call> tag format instruction is present"
+    ],
+    "expected_result": "Preamble provides complete tool documentation",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-messages-to-prompt-roles",
+    "title": "messages_to_prompt correctly serialises all four message roles",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "Messages with system, user, assistant, tool roles",
+    "steps": [
+      "Build a message list with all four roles",
+      "Call messages_to_prompt",
+      "Assert 'system:' prefix present",
+      "Assert 'user:' prefix present",
+      "Assert 'assistant:' prefix present",
+      "Assert 'tool_result [call_id]:' prefix present"
+    ],
+    "expected_result": "All roles serialised with correct prefixes",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-messages-to-prompt-tool-calls",
+    "title": "messages_to_prompt serialises assistant tool_calls as <tool_call> XML",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "Assistant message with tool_calls list",
+    "steps": [
+      "Create assistant message with tool_calls=[{function:{name, arguments}}]",
+      "Call messages_to_prompt",
+      "Assert <tool_call> tag appears in output",
+      "Assert tool name appears in output"
+    ],
+    "expected_result": "Tool call history is correctly round-tripped into prompt",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-messages-to-prompt-preamble-injection",
+    "title": "messages_to_prompt injects tool preamble into system message",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "System message + tool list",
+    "steps": [
+      "Call messages_to_prompt with tools and a system message",
+      "Assert preamble appears before the system content in the output"
+    ],
+    "expected_result": "Tool preamble prepended to system message",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-parser-single-block",
+    "title": "ToolCallParser.feed parses a single complete <tool_call> block",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp\"}}</tool_call>",
+    "steps": [
+      "Create ToolCallParser",
+      "Feed the complete tool_call block",
+      "Collect events",
+      "Assert exactly one ('tool_call', ...) event",
+      "Assert event name == 'read'",
+      "Assert event arguments == {'path': '/tmp'}"
+    ],
+    "expected_result": "Tool call parsed correctly",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-parser-split-chunks",
+    "title": "ToolCallParser.feed correctly accumulates a tool_call split across multiple chunks",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "tool_call block split at midpoint into two feed() calls",
+    "steps": [
+      "Create ToolCallParser",
+      "Feed first half of the tool_call block",
+      "Feed second half",
+      "Collect all events from both calls",
+      "Assert exactly one ('tool_call', ...) event"
+    ],
+    "expected_result": "Streaming parser correctly reassembles split tool_call blocks",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": "Key scenario: LLM streams tokens one at a time"
+  },
+  {
+    "id": "tc-tools-parser-invalid-json",
+    "title": "ToolCallParser.feed emits text event for invalid JSON inside <tool_call>",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "<tool_call>not valid json</tool_call>",
+    "steps": [
+      "Feed invalid JSON in tool_call tags",
+      "Assert no ('tool_call', ...) event is emitted",
+      "Assert a ('text', ...) event is emitted with the raw content"
+    ],
+    "expected_result": "Invalid JSON gracefully falls back to text without crashing",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-parser-flush-partial-tag",
+    "title": "ToolCallParser.flush emits partial open tag as text",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "Feed '<tool_call>{\"name\":' without closing tag, then flush",
+    "steps": [
+      "Create ToolCallParser",
+      "Feed an incomplete tool_call block",
+      "Call flush()",
+      "Assert a text event is emitted containing <tool_call>"
+    ],
+    "expected_result": "Partial tag is recovered as text on stream end",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-tools-parser-flush-resets-state",
+    "title": "ToolCallParser.flush resets internal state for reuse",
+    "category": "functional",
+    "subcategory": "tools",
+    "preconditions": "web_proxy.tools importable",
+    "test_data": "Feed text, flush, then feed a complete tool_call",
+    "steps": [
+      "Feed some text",
+      "Call flush()",
+      "Feed a complete tool_call block",
+      "Assert tool_call event is emitted"
+    ],
+    "expected_result": "Parser state is clean after flush",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-env-var",
+    "title": "load_token_file returns token from environment variable",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "env MY_AUTH_TOKEN=env-secret",
+    "steps": [
+      "Set MY_AUTH_TOKEN in environment",
+      "Call load_token_file('irrelevant.json', 'token', 'MY_AUTH_TOKEN')",
+      "Assert result == 'env-secret'"
+    ],
+    "expected_result": "Env var takes priority, returns the token",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-env-var-priority",
+    "title": "Env var takes priority over token file when both are present",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "Token file with 'file-secret', env var with 'env-wins'",
+    "steps": [
+      "Write token file with 'file-secret'",
+      "Set env var with 'env-wins'",
+      "Call load_token_file",
+      "Assert result == 'env-wins'"
+    ],
+    "expected_result": "Env var wins over file",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-file-read",
+    "title": "load_token_file reads token from JSON file when env var absent",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "Token file: {\"token\": \"file-secret-abc\"}, no env var",
+    "steps": [
+      "Write token file in temp dir",
+      "Patch CONFIG_DIR to temp dir",
+      "Ensure env var is absent",
+      "Call load_token_file",
+      "Assert result == 'file-secret-abc'"
+    ],
+    "expected_result": "Token loaded from file",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-missing-raises",
+    "title": "load_token_file raises RuntimeError when neither env var nor file exists",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "No env var, no file",
+    "steps": [
+      "Ensure env var is absent",
+      "Point CONFIG_DIR to empty temp dir",
+      "Call load_token_file",
+      "Assert RuntimeError is raised",
+      "Assert error message mentions env var name"
+    ],
+    "expected_result": "Clear RuntimeError with guidance on how to fix",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "high",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-malformed-json",
+    "title": "load_token_file raises RuntimeError when token file contains invalid JSON",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "Token file with 'this is not json'",
+    "steps": [
+      "Write a file with invalid JSON content",
+      "Ensure env var absent",
+      "Call load_token_file",
+      "Assert RuntimeError raised"
+    ],
+    "expected_result": "Malformed file treated as missing",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-missing-key",
+    "title": "load_token_file raises RuntimeError when JSON file lacks the expected key",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "Token file: {\"other_key\": \"value\"}",
+    "steps": [
+      "Write token file without 'token' key",
+      "Call load_token_file(filename, 'token', env_var)",
+      "Assert RuntimeError raised"
+    ],
+    "expected_result": "Missing key treated as missing token",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  },
+  {
+    "id": "tc-auth-empty-value",
+    "title": "load_token_file raises RuntimeError when token file value is empty string",
+    "category": "functional",
+    "subcategory": "auth",
+    "preconditions": "web_proxy.auth importable",
+    "test_data": "Token file: {\"token\": \"\"}",
+    "steps": [
+      "Write token file with empty string value",
+      "Call load_token_file",
+      "Assert RuntimeError raised"
+    ],
+    "expected_result": "Empty string is not a valid token",
+    "actual_result": "",
+    "status": "not_run",
+    "evidence": "",
+    "priority": "medium",
+    "notes": ""
+  }
+]

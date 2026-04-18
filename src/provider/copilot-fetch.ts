@@ -166,11 +166,32 @@ export function createCopilotFetch(options: {
       headers.set("Copilot-Vision-Request", "true")
     }
 
-    return baseFetch(input, {
+    const response = await baseFetch(input, {
       ...init,
       body: bodyToSend,
       headers,
     })
+
+    // Patch: Copilot API omits choices[].index which @ai-sdk/openai requires.
+    // Intercept non-streaming JSON responses and add the missing field.
+    const contentType = response.headers.get("content-type") ?? ""
+    if (contentType.includes("application/json")) {
+      const text = await response.text()
+      let json: any
+      try { json = JSON.parse(text) } catch { return new Response(text, response) }
+      if (Array.isArray(json.choices)) {
+        for (let i = 0; i < json.choices.length; i++) {
+          if (json.choices[i].index === undefined) json.choices[i].index = i
+        }
+      }
+      return new Response(JSON.stringify(json), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    }
+
+    return response
   }
 
   // Attach runtime setters

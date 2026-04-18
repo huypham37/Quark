@@ -133,21 +133,25 @@ class ToolCallParser:
                     self._in_tag = True
                     self._tag_buf = ""
             else:
-                idx = self._buf.find(_CLOSE)
+                # Search the combined tag_buf + buf so we detect close
+                # tags that span the chunk boundary.
+                combined = self._tag_buf + self._buf
+                idx = combined.find(_CLOSE)
                 if idx == -1:
-                    self._tag_buf += self._buf
+                    self._tag_buf = combined
                     self._buf = ""
                     break
                 else:
-                    self._tag_buf += self._buf[:idx]
-                    self._buf = self._buf[idx + len(_CLOSE):]
+                    tag_content = combined[:idx]
+                    after = combined[idx + len(_CLOSE):]
+                    self._buf = after
+                    self._tag_buf = ""
                     self._in_tag = False
                     try:
-                        obj = json.loads(self._tag_buf.strip())
+                        obj = json.loads(tag_content.strip())
                         yield ("tool_call", obj)
                     except json.JSONDecodeError:
-                        yield ("text", _OPEN + self._tag_buf + _CLOSE)
-                    self._tag_buf = ""
+                        yield ("text", _OPEN + tag_content + _CLOSE)
 
     def flush(self):
         remaining = self._buf

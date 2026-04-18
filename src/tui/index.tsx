@@ -5,6 +5,8 @@
 // Usage: bun src/tui/index.tsx --profile researcher
 
 import { render } from "@opentui/solid"
+import { createCliRenderer } from "@opentui/core"
+import { stringify as stringifyYAML } from "yaml"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
@@ -13,12 +15,12 @@ import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishM
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
 import { getModelLimit } from "../provider/models"
-import { estimateTokens, getLastInputTokens, isContextFull } from "../session/compaction"
+import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig, getModelId, parseModelSpec, getProviderId } from "../config/config"
+import { loadConfig, getModelId, parseModelSpec, getProviderId, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
@@ -219,6 +221,29 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
+  // /settings — view or edit config (works without an active session)
+  if (command === "settings") {
+    const sub = args.trim()
+    if (sub === "" || sub === "view") {
+      const snapshot = stringifyYAML(loadConfig()).trimEnd()
+      bus.emit("user-message", {
+        sessionId: sid ?? "settings",
+        messageId: `settings-view-${Date.now()}`,
+        text: `Config (${CONFIG_PATH}):\n\n${snapshot}\n\nUse /settings edit to modify.`,
+      })
+      return { handled: true }
+    }
+    if (sub === "edit") {
+      await openEditor(sid)
+      return { handled: true }
+    }
+    bus.emit("error", {
+      sessionId: sid ?? "unknown",
+      error: new Error(`Unknown /settings arg "${sub}". Use /settings or /settings edit.`),
+    })
+    return { handled: true }
+  }
+
   // All other commands require an active session
   if (!sid) {
     bus.emit("error", { sessionId: "unknown", error: new Error("No active session — send a message first") })
@@ -266,7 +291,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           const feedbackText =
             result.evictedCount > 0
               ? `[compact] Done — evicted ${result.evictedCount} message${result.evictedCount !== 1 ? "s" : ""}, new session created.`
-              : `[compact] Nothing to compact — fewer than ${loadConfig().compact.retain_turns} turns available to evict.`
+              : `[compact] Nothing to compact — session has no messages to evict.`
           bus.emit("user-message", {
             sessionId: result.newSessionId,
             messageId: `compact-result-${Date.now()}`,
@@ -274,19 +299,10 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           })
         } else {
           // No new session (evictedCount === 0 — nothing to compact)
-          // Check if context is still full — if so, user is stuck and needs to /clear
-          const { messages: currentMsgs, parts: currentParts } = loadMessages(sid)
-          const currentModelMessages = toModelMessages(currentMsgs, currentParts)
-          const systemStr = Array.isArray(system) ? system.join("\n") : system
-          const cfg = loadConfig()
-          const contextStillFull = isContextFull(systemStr, currentModelMessages, budget, cfg.context_window)
-          const feedbackText = contextStillFull
-            ? `[compact] Context is full but there are too few turns to compact. Run /clear to start a new session.`
-            : `[compact] Nothing to compact — fewer than ${cfg.compact.retain_turns} turns available to evict.`
           bus.emit("user-message", {
             sessionId: sid,
             messageId: `compact-result-${Date.now()}`,
-            text: feedbackText,
+            text: `[compact] Nothing to compact — session has no messages to evict.`,
           })
         }
       }).catch((err) => {
@@ -299,6 +315,44 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     default:
       return { handled: false }
   }
+}
+
+// Suspend the TUI, spawn $EDITOR (default nvim) on the config file, then resume
+// and reload the config cache. The editor inherits the terminal directly, so it
+// renders in the same window like `git commit` opening vim.
+async function openEditor(sid: string | null): Promise<void> {
+  const editor = process.env.EDITOR ?? process.env.VISUAL ?? "nvim"
+
+  renderer.suspend()
+  try {
+    const proc = Bun.spawn([editor, CONFIG_PATH], {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    })
+    const code = await proc.exited
+    if (code !== 0) {
+      // Editor exited non-zero — surface once TUI is back
+      setImmediate(() => {
+        bus.emit("error", {
+          sessionId: sid ?? "unknown",
+          error: new Error(`${editor} exited with code ${code}`),
+        })
+      })
+    }
+  } catch (err) {
+    setImmediate(() => {
+      bus.emit("error", {
+        sessionId: sid ?? "unknown",
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+    })
+  } finally {
+    renderer.resume()
+  }
+
+  resetConfigCache()
+  notifyInfo("Settings", "Config reloaded — restart may be required for providers", 3000)
 }
 
 function handleGetSessions() {
@@ -314,7 +368,21 @@ function handleGetCurrentModel() {
   return modelOverride ?? loadConfig().main_model
 }
 
-// Render the OpenTUI/SolidJS app
+// Pre-create the renderer so module-level code (e.g. openEditor) can
+// suspend/resume it when shelling out to an external editor.
+const renderer = await createCliRenderer({
+  targetFps: 60,
+  exitOnCtrlC: false,
+  consoleOptions: {
+    keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
+    onCopySelection: (text) => {
+      writeClipboard(text).catch((err) => {
+        console.error(`Failed to copy console selection: ${err}`)
+      })
+    },
+  },
+})
+
 render(() => (
   <App
     onSubmit={handleSubmit}
@@ -327,15 +395,4 @@ render(() => (
     initialModelName={modelName}
     initialSkillCount={skills.length}
   />
-), {
-  targetFps: 60,
-  exitOnCtrlC: false,
-  consoleOptions: {
-    keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
-    onCopySelection: (text) => {
-      writeClipboard(text).catch((err) => {
-        console.error(`Failed to copy console selection: ${err}`)
-      })
-    },
-  },
-})
+), renderer)

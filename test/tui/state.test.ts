@@ -218,8 +218,8 @@ describe("dispatch: add-user-message deduplication (gh issue #36)", () => {
         id: "m1", 
         text: "look at this",
         images: [
-          { mime: "image/png", label: "Screenshot" },
-          { mime: "image/jpeg", label: "Photo" }
+          { mime: "image/png", data: "base64data1", label: "Screenshot" },
+          { mime: "image/jpeg", data: "base64data2", label: "Photo" }
         ]
       })
       

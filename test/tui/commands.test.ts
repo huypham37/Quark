@@ -74,10 +74,11 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBeUndefined()
   })
 
-  test("s prefix matches sessions only", () => {
+  test("s prefix matches sessions and settings", () => {
     const result = filterCommands("s")
-    expect(result.length).toBe(1)
-    expect(result[0]!.id).toBe("sessions")
+    expect(result.length).toBe(2)
+    expect(result.map((c) => c.id)).toContain("sessions")
+    expect(result.map((c) => c.id)).toContain("settings")
   })
 
   test("e prefix matches exit only", () => {

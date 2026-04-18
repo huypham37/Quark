@@ -30,6 +30,7 @@ Dependencies:
 
 import json
 import os
+import re
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -42,7 +43,7 @@ from curl_cffi import requests as cffi_requests
 # ---------------------------------------------------------------------------
 
 PPLX_BASE = "https://www.perplexity.ai"
-TOKEN_FILE = Path.home() / ".config" / "atom" / "perplexity-proxy-token.json"
+TOKEN_FILE = Path(os.environ.get("PERPLEXITY_TOKEN_FILE", Path.home() / ".config" / "quark" / "perplexity-proxy-token.json"))
 
 SAFARI_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -83,7 +84,7 @@ def load_session_token() -> str:
     raise RuntimeError(
         "No Perplexity session token found.\n"
         "Set PERPLEXITY_SESSION_TOKEN env var or save to "
-        "~/.config/atom/perplexity-proxy-token.json as:\n"
+        "~/.config/quark/perplexity-proxy-token.json as:\n"
         '  {"sessionToken": "<value of __Secure-next-auth.session-token cookie>"}\n\n'
         "How to get it:\n"
         "  1. Open perplexity.ai in Safari\n"
@@ -216,14 +217,45 @@ def extract_text_chunk(event: dict) -> str | None:
     """
     Extract answer text from a single SSE event dict.
 
-    Perplexity streams text in two ways depending on send_back_text_in_streaming_api:
-      True  → event["answer"] contains accumulated text; we diff it ourselves
-      False → text is inside diff_block patches (more complex)
+    Perplexity's current API streams text inside event["text"], which is a
+    JSON-encoded array of step objects. The answer lives in the FINAL step's
+    "answer" field, which is itself a JSON string containing an "answer" key.
 
-    We use send_back_text_in_streaming_api=True so text arrives in event["answer"].
-    We track the last seen length and emit only the new suffix each call.
+    Returns the accumulated answer text so far, or None if not found.
     """
-    return event.get("answer")  # full accumulated text so far, or None
+    # Legacy format: direct "answer" key
+    legacy = event.get("answer")
+    if legacy:
+        return legacy
+
+    # Current format: text is a JSON array of steps
+    text_raw = event.get("text")
+    if not text_raw or not isinstance(text_raw, str):
+        return None
+
+    try:
+        steps = json.loads(text_raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    # Find the last FINAL step with an answer
+    for step in reversed(steps):
+        if step.get("step_type") != "FINAL":
+            continue
+        content = step.get("content", {})
+        answer_raw = content.get("answer", "")
+        if not answer_raw:
+            continue
+        try:
+            answer_obj = json.loads(answer_raw)
+            answer_text = answer_obj.get("answer", "")
+            if answer_text:
+                # Strip Perplexity citation markers like [1], [2], etc.
+                return re.sub(r"\[\d+\]", "", answer_text).strip()
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return None
 
 
 def is_final(event: dict) -> bool:

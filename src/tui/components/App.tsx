@@ -137,14 +137,6 @@ export const App: Component<AppProps> = (props) => {
   // Wire event bus to state store
   wireEvents(state)
 
-  // Auto-compact when step-finish reports usage >= tokenLimit
-  bus.on("context-full", (data) => {
-    if (data.sessionId !== state.store.sessionId) return
-    if (state.store.compacting) return
-    notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
-    executeCommand("compact", "")
-  })
-
   // Question prompt key handler
   const questionHandler = createQuestionKeyHandler({
     request: () => state.store.question,
@@ -307,8 +299,9 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // If there's a space, the command part is done — dismiss dropdown
     const spaceIndex = newValue.indexOf(" ")
+
+    // If there's a space, the command part is done — dismiss dropdown
     if (spaceIndex !== -1) {
       setSlash(SLASH_INACTIVE)
       return
@@ -335,10 +328,31 @@ export const App: Component<AppProps> = (props) => {
     // Get the actual text from the textarea ref
     if (!inputRef) return
     const newValue = inputRef.plainText
-    
-    // When in picker mode (sessions/models), ignore input changes
+
     const s = slash()
-    if (s.mode !== "commands" && s.active) {
+
+    // Sessions picker: block all input changes (no filtering)
+    if (s.mode === "sessions" && s.active) {
+      return
+    }
+
+    // Models picker: filter the list by what the user types
+    if (s.mode === "models" && s.active && props.getModels) {
+      const query = newValue
+      const currentModel = props.getCurrentModel?.() ?? ""
+      const allModels = props.getModels()
+      const filtered = query
+        ? allModels.filter((m) => m.id.toLowerCase().includes(query.toLowerCase()) || m.name.toLowerCase().includes(query.toLowerCase()))
+        : allModels
+      const pickerItems: PickerItem[] = filtered.map((m) => ({
+        id: m.id,
+        label: m.name,
+        detail: "",
+        isCurrent: m.id === currentModel,
+      }))
+      pickerItems.sort((a, b) => (a.isCurrent ? -1 : b.isCurrent ? 1 : 0))
+      setSlash((prev) => ({ ...prev, query, pickerItems, selectedIndex: 0 }))
+      setInputValue(newValue)
       return
     }
 
@@ -482,8 +496,8 @@ export const App: Component<AppProps> = (props) => {
               return true
             }
 
-            // /model → transition to model picker
-            if (selected.id === "model" && isReturn && props.getModels) {
+            // /model → transition to model picker (Tab or Enter)
+            if (selected.id === "model" && (isReturn || isTab) && props.getModels) {
               const currentModel = props.getCurrentModel?.() ?? ""
               const models = props.getModels()
               const pickerItems: PickerItem[] = models.map((m) => ({
@@ -598,13 +612,6 @@ export const App: Component<AppProps> = (props) => {
         setInputText("")
         return
       }
-    }
-
-    // Guard: block send when context is full (auto-compact fires via context-full event)
-    const { tokensUsed, tokenLimit } = state.store.status
-    if (tokenLimit > 0 && tokensUsed >= tokenLimit) {
-      notifyWarn("Context Full", "Context window full — compacting automatically…", 4000)
-      return
     }
 
     // Extract @file and @directory mentions and read their content
@@ -933,6 +940,7 @@ export const App: Component<AppProps> = (props) => {
         flexBasis={0}
         minHeight={0}
         overflow="hidden"
+        paddingX={1}
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{
           trackOptions: {

@@ -25,19 +25,6 @@ SAFARI_UA = (
     "Version/26.3.1 Safari/605.1.15"
 )
 
-SUPPORTED_BLOCK_USE_CASES = [
-    "answer_modes", "media_items", "knowledge_cards", "inline_entity_cards",
-    "place_widgets", "finance_widgets", "prediction_market_widgets",
-    "sports_widgets", "flight_status_widgets", "news_widgets",
-    "shopping_widgets", "jobs_widgets", "search_result_widgets",
-    "inline_images", "inline_assets", "placeholder_cards", "diff_blocks",
-    "inline_knowledge_cards", "entity_group_v2", "refinement_filters",
-    "canvas_mode", "maps_preview", "answer_tabs", "price_comparison_widgets",
-    "preserve_latex", "generic_onboarding_widgets", "in_context_suggestions",
-    "pending_followups", "inline_claims", "unified_assets",
-    "workflow_steps", "background_agents",
-]
-
 MODEL_MAP = {
     "perplexity": "default",
     "perplexity-sonar": "default",
@@ -69,6 +56,10 @@ class PerplexityProvider(WebProvider):
             {"id": "web/perplexity", "object": "model", "created": 0, "owned_by": "perplexity"},
             {"id": "web/perplexity-sonar", "object": "model", "created": 0, "owned_by": "perplexity"},
         ]
+
+    def _raw_stream(self, prompt: str, model: str, **kw):
+        # Perplexity uses a stream() override directly (query extraction, not prompt injection)
+        raise NotImplementedError
 
     def stream(self, messages: list, model: str, tools: list) -> Iterator[SSEEvent]:
         m = model.split("/", 1)[-1] if "/" in model else model
@@ -103,14 +94,10 @@ class PerplexityProvider(WebProvider):
             "Cookie": f"__Secure-next-auth.session-token={self._token}",
             "x-app-apiversion": "2.18",
             "x-app-apiclient": "default",
-            "x-perplexity-request-reason": "perplexity-query-state-provider",
-            "x-perplexity-request-try-number": "1",
-            "x-perplexity-request-endpoint": f"{PPLX_BASE}/rest/sse/perplexity_ask",
         }
 
     def _stream_query(self, query: str, model_preference: str) -> Iterator[SSEEvent]:
         frontend_uuid = str(uuid.uuid4())
-        frontend_context_uuid = str(uuid.uuid4())
         payload = {
             "params": {
                 "attachments": [],
@@ -123,29 +110,13 @@ class PerplexityProvider(WebProvider):
                 "model_preference": model_preference,
                 "is_related_query": False,
                 "is_sponsored": False,
-                "frontend_context_uuid": frontend_context_uuid,
                 "prompt_source": "user",
                 "query_source": "home",
                 "is_incognito": False,
-                "time_from_first_type": 500,
-                "local_search_enabled": False,
                 "use_schematized_api": True,
                 "send_back_text_in_streaming_api": True,
-                "supported_block_use_cases": SUPPORTED_BLOCK_USE_CASES,
-                "client_coordinates": None,
-                "mentions": [],
                 "dsl_query": query,
-                "skip_search_enabled": True,
-                "is_nav_suggestions_disabled": False,
                 "source": "default",
-                "always_search_override": False,
-                "override_no_search": False,
-                "client_search_results_cache_key": frontend_uuid,
-                "should_ask_for_mcp_tool_confirmation": False,
-                "browser_agent_allow_once_from_toggle": False,
-                "force_enable_browser_agent": False,
-                "supported_features": [],
-                "extended_context": False,
                 "version": "2.18",
             },
             "query_str": query,
@@ -163,6 +134,8 @@ class PerplexityProvider(WebProvider):
             raise RuntimeError(f"Perplexity returned {resp.status_code}: {resp.text[:400]}")
 
         last_len = 0
+        using_blocks = False
+        saw_text_completed = False
         for raw_line in resp.iter_lines():
             if isinstance(raw_line, bytes):
                 raw_line = raw_line.decode("utf-8", errors="replace")
@@ -177,12 +150,41 @@ class PerplexityProvider(WebProvider):
             except json.JSONDecodeError:
                 continue
 
-            answer = event.get("answer")
-            if answer is not None and len(answer) > last_len:
-                yield TextDelta(text=answer[last_len:])
-                last_len = len(answer)
+            # Legacy format: top-level "answer" field (pre-2025 API)
+            if not using_blocks:
+                answer = event.get("answer")
+                if answer is not None and len(answer) > last_len:
+                    yield TextDelta(text=answer[last_len:])
+                    last_len = len(answer)
 
-            if event.get("text_completed") or event.get("final_sse_message"):
+            # New format (2025+): answer in blocks[].markdown_block.chunks
+            # Use "ask_text" to avoid duplicates with "ask_text_0_markdown".
+            if last_len == 0 or using_blocks:
+                for block in event.get("blocks", []):
+                    usage = block.get("intended_usage", "")
+                    if usage != "ask_text":
+                        continue
+                    mb = block.get("markdown_block", {})
+                    progress = mb.get("progress", "")
+                    if progress != "DONE":
+                        for chunk in mb.get("chunks", []):
+                            if chunk:
+                                using_blocks = True
+                                yield TextDelta(text=chunk)
+                                last_len += len(chunk)
+
+            if event.get("text_completed"):
+                saw_text_completed = True
+
+            # Only terminate on final_sse_message (the very last event)
+            # or on text_completed AFTER we've already emitted some content.
+            # text_completed can fire before blocks arrive, so we can't stop
+            # on it alone unless we have content from the legacy "answer" field.
+            if event.get("final_sse_message"):
+                yield Done()
+                return
+            if saw_text_completed and last_len > 0 and not using_blocks:
+                # Legacy path: got answer text + text_completed
                 yield Done()
                 return
 

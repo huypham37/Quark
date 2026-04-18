@@ -20,6 +20,7 @@ export const commands: SlashCommand[] = [
   { id: "clear", description: "Clear messages and start new session" },
   { id: "model", description: "Switch model", usage: "<model-name>" },
   { id: "profile", description: "Switch profile", usage: "<profile-name>" },
+  { id: "settings", description: "View or edit config", usage: "[edit]" },
   { id: "exit", description: "Exit Quark" },
 ]
 
