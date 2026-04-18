@@ -18,6 +18,8 @@ import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 const CONFIG_DIR = path.join(os.homedir(), ".config", "quark")
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
 
+export const CONFIG_PATH = CONFIG_FILE
+
 // ---------------------------------------------------------------------------
 // Compact config — nested under QuarkConfig
 // ---------------------------------------------------------------------------
