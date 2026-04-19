@@ -14,6 +14,7 @@ import { RGBA } from "@opentui/core"
 import { InlineSpinner } from "./inline-spinner"
 import { DiffView } from "./diff-view"
 import { WriteStreamView } from "./write-stream-view"
+import { ScrollableOutput } from "./scrollable-output"
 
 interface ToolResultLineProps {
   tool: string
@@ -130,6 +131,7 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
           filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
         />
       </Show>
+      <Show when={props.output && props.status !== "running" && props.status !== "pending" && props.tool !== "write"}>
+        <ScrollableOutput content={props.output!} />
+      </Show>
     </box>
-  )
-}
