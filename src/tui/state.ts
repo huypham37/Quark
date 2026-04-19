@@ -5,8 +5,8 @@
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
+import { getModelSpec, loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
-import { getModelId, loadConfig } from "../config/config"
 
 // ---------------------------------------------------------------------------
 // TUI data model types
@@ -116,6 +116,7 @@ export type TuiAction =
   | { type: "clear-question" }
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
+  | { type: "model-switched"; modelSpec: string }
 
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
@@ -226,7 +227,7 @@ export function createAppState(initial: {
     thinkingEnabled: false,
     status: {
       tokensUsed: 0,
-      tokenLimit: (() => { const lim = getModelLimit(getModelId("main")); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
+      tokenLimit: (() => { const s = getModelSpec("main"); const lim = getModelLimit(`${s.provider}/${s.model}`); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,
@@ -576,6 +577,14 @@ export function dispatch(state: AppState, action: TuiAction): void {
         }),
       )
       break
+
+    case "model-switched": {
+      const parsed = parseModelSpec(action.modelSpec)
+      const lim = getModelLimit(`${parsed.provider ?? "copilot"}/${parsed.model}`)
+      const newLimit = lim?.input ?? lim?.context ?? loadConfig().context_window
+      setStore("status", "tokenLimit", newLimit)
+      break
+    }
 
     // ------------------------------------------------------------------
     // Sub-agent observability — mutate the parent tool part's subAgent state

@@ -372,6 +372,11 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "reasoning-end", messageId: data.messageId })
     }))
 
+    // ----- Model switch — update token limit in status bar -----
+    unsubs.push(on("model-switched", (data) => {
+      dispatch(state, { type: "model-switched", modelSpec: data.modelSpec })
+    }))
+
     onCleanup(() => {
       for (const unsub of unsubs) unsub()
       for (const timer of writeStreamTimers.values()) clearInterval(timer)

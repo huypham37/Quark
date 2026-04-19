@@ -81,6 +81,9 @@ export interface BusEvents {
   // Session was lazily created (first message in a new conversation)
   "session-created": { sessionId: string }
 
+  // Model was switched (e.g. Tab/Shift+Tab cycling, /model command) — TUI should update token limit
+  "model-switched": { modelSpec: string } // e.g. "copilot/claude-sonnet-4.6" or "openai/gpt-4o"
+
   // Session was reset (e.g. /clear command — TUI should switch to new session)
   "session-reset": { sessionId: string | null }
 
