@@ -768,6 +768,9 @@ export const App: Component<AppProps> = (props) => {
         const models = props.getModels()
         const next = getNextModel(models, props.getCurrentModel())
         if (next) {
+          if (props.onCommand) {
+            props.onCommand("model", next, state.store.sessionId)
+          }
           state.setStore("status", "modelName", next)
           bus.emit("model-switched", { modelSpec: next })
         }
@@ -782,6 +785,9 @@ export const App: Component<AppProps> = (props) => {
         const models = props.getModels()
         const prev = getPrevModel(models, props.getCurrentModel())
         if (prev) {
+          if (props.onCommand) {
+            props.onCommand("model", prev, state.store.sessionId)
+          }
           state.setStore("status", "modelName", prev)
           bus.emit("model-switched", { modelSpec: prev })
         }
