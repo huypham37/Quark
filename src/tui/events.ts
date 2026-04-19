@@ -115,6 +115,14 @@ export function wireEvents(state: AppState) {
   }
   bus.on("session-switch", handleSwitch)
 
+  // model-switched: registered outside createComputed because it has no
+  // sessionId in its payload and the createComputed on() wrapper would
+  // filter it out (undefined !== sid).
+  const handleModelSwitched = (data: BusEvents["model-switched"]) => {
+    dispatch(state, { type: "model-switched", modelSpec: data.modelSpec })
+  }
+  bus.on("model-switched", handleModelSwitched)
+
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return

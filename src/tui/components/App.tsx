@@ -14,7 +14,7 @@ import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
-import { getModelId, loadConfig } from "../../config/config"
+import { getModelId, loadConfig, getModelSpec } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -168,7 +168,7 @@ export const App: Component<AppProps> = (props) => {
 
   // Update tokenLimit once models.dev data is available
   modelsReady.then(() => {
-    const lim = getModelLimit(getModelId("main"))
+    const lim = getModelLimit(getModelSpec("main").provider + "/" + getModelSpec("main").model)
     const limit = lim?.input ?? lim?.context
     if (limit) state.setStore("status", "tokenLimit", limit)
   })
@@ -772,6 +772,7 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
+          bus.emit("model-switched", { modelSpec: next })
         }
       }
       evt.preventDefault()
@@ -788,6 +789,7 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", prev, state.store.sessionId)
           }
           state.setStore("status", "modelName", prev)
+          bus.emit("model-switched", { modelSpec: prev })
         }
       }
       evt.preventDefault()
