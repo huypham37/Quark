@@ -105,6 +105,76 @@ export function hasVisionContent(body: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// rewriteCopilotResponsesStream — normalize rotated reasoning item IDs.
+// Copilot's /responses SSE emits a fresh item.id on every event, which breaks
+// @ai-sdk/openai's lookup-by-id in its streaming handler. We rewrite the id
+// on reasoning `output_item.done` events to match the first id seen for that
+// output_index on `output_item.added`.
+// ---------------------------------------------------------------------------
+function rewriteCopilotResponsesStream(
+  body: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  const canonicalIds = new Map<number, string>()
+  let buf = ""
+
+  const rewrite = (line: string): string => {
+    if (!line.startsWith("data: ")) return line
+    const payload = line.slice(6)
+    if (payload === "[DONE]") return line
+    let obj: any
+    try { obj = JSON.parse(payload) } catch { return line }
+
+    const t = obj?.type
+    const oi = obj?.output_index
+
+    if (t === "response.output_item.added" &&
+        obj.item?.type === "reasoning" &&
+        typeof oi === "number" &&
+        typeof obj.item?.id === "string") {
+      canonicalIds.set(oi, obj.item.id)
+      return line
+    }
+    if (t === "response.output_item.done" &&
+        obj.item?.type === "reasoning" &&
+        typeof oi === "number") {
+      const canonical = canonicalIds.get(oi)
+      if (canonical && obj.item?.id !== canonical) {
+        obj.item.id = canonical
+        return "data: " + JSON.stringify(obj)
+      }
+      return line
+    }
+    if (typeof t === "string" &&
+        t.startsWith("response.reasoning_summary_") &&
+        typeof oi === "number") {
+      const canonical = canonicalIds.get(oi)
+      if (canonical && obj.item_id !== canonical) {
+        obj.item_id = canonical
+        return "data: " + JSON.stringify(obj)
+      }
+    }
+    return line
+  }
+
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buf += decoder.decode(chunk, { stream: true })
+      let nl: number
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl)
+        buf = buf.slice(nl + 1)
+        controller.enqueue(encoder.encode(rewrite(line) + "\n"))
+      }
+    },
+    flush(controller) {
+      if (buf) controller.enqueue(encoder.encode(rewrite(buf)))
+    },
+  }))
+}
+
+// ---------------------------------------------------------------------------
 // createCopilotFetch — wraps fetch with Copilot headers
 // ---------------------------------------------------------------------------
 export function createCopilotFetch(options: {
@@ -172,9 +242,24 @@ export function createCopilotFetch(options: {
       headers,
     })
 
+    const contentType = response.headers.get("content-type") ?? ""
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL ? input.toString() : input.url
+
+    // Normalize Copilot's rotated reasoning item IDs on /responses SSE streams
+    if (contentType.includes("text/event-stream") &&
+        url.includes("/responses") &&
+        response.body) {
+      return new Response(rewriteCopilotResponsesStream(response.body), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    }
+
     // Patch: Copilot API omits choices[].index which @ai-sdk/openai requires.
     // Intercept non-streaming JSON responses and add the missing field.
-    const contentType = response.headers.get("content-type") ?? ""
     if (contentType.includes("application/json")) {
       const text = await response.text()
       let json: any
