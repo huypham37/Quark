@@ -15,7 +15,8 @@ import { getFiles, fuzzyFilter } from "../tui/filelist"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
-import { setCopilotThinking, getCopilotThinkingBudget } from "../provider/provider"
+import { setCopilotThinking } from "../provider/provider"
+import { getThinkingNormalizer, EFFORT_TO_BUDGET } from "../provider/thinking"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -242,12 +243,15 @@ function createRequestHandler(agent: AgentConfig) {
 
     if (req.method === "POST" && pathname === "/api/thinking") {
       const body = (await req.json()) as { enabled: boolean }
-      setCopilotThinking(body.enabled ? 10000 : 0)
-      return json({ enabled: getCopilotThinkingBudget() > 0 })
+      const effort = body.enabled ? "high" : "none"
+      const activeModel = modelOverride ?? getModelId("main")
+      getThinkingNormalizer(activeModel).configure({ enabled: body.enabled, effort })
+      setCopilotThinking(EFFORT_TO_BUDGET[effort] ?? 0)
+      return json({ enabled: body.enabled })
     }
 
     if (req.method === "GET" && pathname === "/api/thinking") {
-      return json({ enabled: getCopilotThinkingBudget() > 0 })
+      return json({ enabled: getThinkingNormalizer().getConfig().enabled })
     }
 
     if (req.method === "POST" && pathname === "/api/permission") {

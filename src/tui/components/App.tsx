@@ -35,6 +35,7 @@ import { writeClipboard } from "../clipboard"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { setCopilotThinking } from "../../provider/provider"
+import { getThinkingNormalizer, EFFORT_TO_BUDGET } from "../../provider/thinking"
 
 /** Command handler result */
 export type CommandResult =
@@ -902,11 +903,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Ctrl+T — toggle extended thinking (reasoning)
+    // Ctrl+T — cycle thinking effort (none → low → medium → high → xhigh → none)
     if (evt.ctrl && evt.name === "t") {
-      dispatch(state, { type: "toggle-thinking" })
-      // Read AFTER dispatch — thinkingEnabled now reflects the new value
-      setCopilotThinking(state.store.thinkingEnabled ? 10000 : 0)
+      dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
+      const effort = state.store.thinkingEffort
+      getThinkingNormalizer(state.store.status.modelName).configure({ enabled: effort !== "none", effort })
+      setCopilotThinking(EFFORT_TO_BUDGET[effort] ?? 0)
       evt.preventDefault()
       return
     }
@@ -991,7 +993,7 @@ export const App: Component<AppProps> = (props) => {
         images={pendingImages()}
         selectedImageIndex={selectedImageIndex()}
         onRemoveImage={removeImage}
-        thinkingEnabled={state.store.thinkingEnabled}
+        thinkingEffort={state.store.thinkingEffort}
       />
 
       {/* Notifications overlay */}

@@ -7,6 +7,7 @@ import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { getModelSpec, loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
+import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
 // TUI data model types
@@ -110,7 +111,7 @@ export type TuiAction =
   | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number }
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
-  | { type: "toggle-thinking" }
+  | { type: "cycle-thinking"; modelId: string }
   | { type: "reasoning-start"; messageId: string }
   | { type: "set-question"; request: QuestionRequest }
   | { type: "clear-question" }
@@ -200,7 +201,7 @@ export interface AppStore {
   messages: TuiMessage[]
   running: boolean
   compacting: boolean
-  thinkingEnabled: boolean
+  thinkingEffort: ThinkingEffort
   status: TuiStatus
   error?: string
   permission?: PermissionRequest
@@ -224,7 +225,7 @@ export function createAppState(initial: {
     messages: [],
     running: false,
     compacting: false,
-    thinkingEnabled: false,
+    thinkingEffort: "none",
     status: {
       tokensUsed: 0,
       tokenLimit: (() => { const s = getModelSpec("main"); const lim = getModelLimit(`${s.provider}/${s.model}`); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
@@ -535,9 +536,17 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore("compacting", action.compacting)
       break
 
-    case "toggle-thinking":
-      setStore("thinkingEnabled", (prev) => !prev)
+    case "cycle-thinking": {
+      const levels = getThinkingLevels(action.modelId)
+      if (!levels) {
+        // Model doesn't support thinking — force to "none"
+        setStore("thinkingEffort", "none")
+        break
+      }
+      const idx = levels.indexOf(state.store.thinkingEffort)
+      setStore("thinkingEffort", levels[(idx + 1) % levels.length] ?? "none")
       break
+    }
 
     case "reasoning-start":
       setStore(

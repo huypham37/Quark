@@ -56,6 +56,10 @@ const MODEL_CAPABILITIES: Record<string, ThinkingCapability> = {
   "qwen3-plus": { mode: "native" },
   "qwen3.6-plus": { mode: "native" },
   "qwen3.6": { mode: "native" },
+
+  // MiniMax / GLM — native reasoning via OpenAI-compatible endpoint
+  "minimax-m2.7": { mode: "native" },
+  "glm-5.1": { mode: "native" },
 }
 
 // Effort → budget mapping for models that use budget mode

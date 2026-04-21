@@ -135,3 +135,5 @@ export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
         <ScrollableOutput content={props.output!} />
       </Show>
     </box>
+  )
+}

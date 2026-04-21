@@ -39,9 +39,9 @@ import {
   createAlibabaCompatibleProvider,
   createCopilotAnthropicProvider,
   isClaude,
-  getCopilotThinkingBudget,
   setCopilotForceAgent,
 } from "../provider/provider";
+import { getThinkingNormalizer } from "../provider/thinking";
 import { loadToken } from "../provider/copilot-auth";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
@@ -62,7 +62,7 @@ import {
   RejectedError,
   CorrectedError,
 } from "../permission/permission";
-import type { JSONObject } from "@ai-sdk/provider";
+
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
 
@@ -382,18 +382,8 @@ async function loop(
     );
 
     // 6. Stream + process
-    // When thinking is enabled for a Copilot Claude model, pass providerOptions
-    // so @ai-sdk/anthropic forwards the thinking param to the Anthropic Messages API.
-    const thinkingBudget = getCopilotThinkingBudget();
     const providerId = modelOpt?.provider ?? "copilot";
-    const thinkingProviderOptions: Record<string, JSONObject> | undefined =
-      thinkingBudget > 0 && providerId === "copilot" && isClaude(effectiveModel)
-        ? {
-            anthropic: {
-              thinking: { type: "enabled", budgetTokens: thinkingBudget },
-            } as JSONObject,
-          }
-        : undefined;
+    const thinkingProviderOptions = getThinkingNormalizer(effectiveModel).normalize(providerId);
     const result = await processStream({
       model,
       system,
@@ -538,7 +528,7 @@ export async function resolveModel(
 
     // Use the native Anthropic Messages API (via @ai-sdk/anthropic) for Claude models
     // when thinking is enabled — this endpoint returns thinking_delta events.
-    if (isClaude(modelId) && getCopilotThinkingBudget() > 0) {
+    if (isClaude(modelId) && getThinkingNormalizer(modelId).getConfig().enabled) {
       const anthropicProvider = createCopilotAnthropicProvider({ getToken });
       return anthropicProvider(modelId);
     }
