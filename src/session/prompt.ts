@@ -204,14 +204,14 @@ async function loop(
 ) {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent.model > config main_model
-  const effectiveModel = parseModelSpec(
-    modelOpt?.model ?? agent.model ?? getModelId("main"),
-  ).model;
+  // When model string contains slashes, split at first slash to extract
+  // provider prefix. The remaining model string is used as-is (may contain
+  // additional slashes, e.g. "minimaxai/minimax-m2.7").
+  const rawModel = modelOpt?.model ?? agent.model ?? getModelId("main")
+  const effectiveModel = parseModelSpec(rawModel).model;
   const model = await resolveModel(
     modelOpt ??
-      (agent.model
-        ? { provider: getProviderId("main"), model: agent.model }
-        : undefined),
+      (agent.model ? { model: agent.model } : undefined),
   );
   const modelLimit = getModelLimit(effectiveModel);
 
@@ -484,7 +484,7 @@ async function loop(
 // If opt.model is explicitly provided, it always wins over config.
 // ---------------------------------------------------------------------------
 export async function resolveModel(
-  opt?: { provider: string; model: string },
+  opt?: { provider?: string; model: string },
   kind: "main" | "small" = "main",
 ) {
   // Parse namespaced model spec (e.g. "copilot/claude-sonnet-4.6")
@@ -494,8 +494,15 @@ export async function resolveModel(
 
   if (opt?.model) {
     const parsed = parseModelSpec(opt.model);
-    modelId = parsed.model;
-    providerId = parsed.provider ?? opt.provider ?? getProviderId(kind);
+    // If caller provided an explicit provider, use the full model string as-is.
+    // Otherwise, parse the model string for an embedded provider prefix.
+    if (opt.provider) {
+      providerId = opt.provider;
+      modelId = opt.model;
+    } else {
+      providerId = parsed.provider ?? getProviderId(kind);
+      modelId = parsed.model;
+    }
   } else {
     modelId = getModelId(kind);
     providerId = opt?.provider ?? getProviderId(kind);
