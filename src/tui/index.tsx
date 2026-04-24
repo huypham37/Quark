@@ -6,7 +6,6 @@
 
 import { render } from "@opentui/solid"
 import { createCliRenderer } from "@opentui/core"
-import { stringify as stringifyYAML } from "yaml"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
@@ -222,26 +221,16 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
-  // /settings — view or edit config (works without an active session)
+  // /settings — open config in $EDITOR (works without an active session)
   if (command === "settings") {
-    const sub = args.trim()
-    if (sub === "" || sub === "view") {
-      const snapshot = stringifyYAML(loadConfig()).trimEnd()
-      bus.emit("user-message", {
-        sessionId: sid ?? "settings",
-        messageId: `settings-view-${Date.now()}`,
-        text: `Config (${CONFIG_PATH}):\n\n${snapshot}\n\nUse /settings edit to modify.`,
-      })
-      return { handled: true }
-    }
-    if (sub === "edit") {
-      await openEditor(sid)
-      return { handled: true }
-    }
-    bus.emit("error", {
-      sessionId: sid ?? "unknown",
-      error: new Error(`Unknown /settings arg "${sub}". Use /settings or /settings edit.`),
-    })
+    await openEditor(sid)
+    return { handled: true }
+  }
+
+  // /reload-config — reload config without restarting (works without an active session)
+  if (command === "reload-config") {
+    resetConfigCache()
+    notifyInfo("Config", "Config reloaded", 3000)
     return { handled: true }
   }
 
@@ -352,9 +341,6 @@ async function openEditor(sid: string | null): Promise<void> {
   } finally {
     renderer.resume()
   }
-
-  resetConfigCache()
-  notifyInfo("Settings", "Config reloaded — restart may be required for providers", 3000)
 }
 
 function handleGetSessions() {
