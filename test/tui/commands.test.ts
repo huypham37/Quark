@@ -81,6 +81,12 @@ describe("filterCommands", () => {
     expect(result.map((c) => c.id)).toContain("settings")
   })
 
+  test("r prefix matches reload-config only", () => {
+    const result = filterCommands("r")
+    expect(result.length).toBe(1)
+    expect(result[0]!.id).toBe("reload-config")
+  })
+
   test("e prefix matches exit only", () => {
     const result = filterCommands("e")
     expect(result.length).toBe(1)

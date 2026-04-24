@@ -23,7 +23,7 @@ interface ScrollableOutputProps {
   maxHeight?: number // default: 10 rows
 }
 
-const DEFAULT_MAX_HEIGHT = 10
+const DEFAULT_MAX_HEIGHT = 5
 const COLOR_RULE = RGBA.fromHex("#2d3748")
 
 export const ScrollableOutput: Component<ScrollableOutputProps> = (props) => {
