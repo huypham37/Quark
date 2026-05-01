@@ -94,16 +94,27 @@ export async function refreshLMStudio(baseUrl = "http://localhost:1234"): Promis
       })
       return
     }
-    const data = await res.json() as { models: Array<{ key: string; type: string; max_context_length: number }> }
+    const data = await res.json() as {
+      models: Array<{
+        key: string
+        type: string
+        max_context_length: number
+        loaded_instances?: Array<{ config?: { context_length?: number } }>
+      }>
+    }
     const { models } = data
     lmStudioCache.clear()
     for (const m of models) {
-      if (m.type === "llm" && m.max_context_length > 0) {
-        const limit: ModelLimit = { context: m.max_context_length, output: 0 }
-        lmStudioCache.set(m.key, limit)
-        const short = m.key.split("/").pop()
-        if (short) lmStudioCache.set(short, limit)
-      }
+      if (m.type !== "llm") continue
+      // Prefer user-set context_length from loaded instance, fall back to max
+      const userSet = m.loaded_instances?.[0]?.config?.context_length
+      const max = m.max_context_length
+      const contextLen = userSet ?? max
+      if (contextLen <= 0) continue
+      const limit: ModelLimit = { context: contextLen, output: 0 }
+      lmStudioCache.set(m.key, limit)
+      const short = m.key.split("/").pop()
+      if (short) lmStudioCache.set(short, limit)
     }
   } catch (err) {
     bus.emit("error", {
