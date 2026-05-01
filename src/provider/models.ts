@@ -96,35 +96,59 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
 
   const data = getData()
   const providerId = PROVIDER_REMAP[parsed.provider] ?? parsed.provider
-  const remapped = providerId !== parsed.provider
+
+  // 1. Exact provider lookup
   const provider = data[providerId]
   const limit = provider?.models?.[parsed.model]?.limit
 
   if (limit) {
     console.log(
-      "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s%s)",
+      "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s)",
       modelSpec,
       limit.context,
       limit.input ?? "n/a",
       limit.output,
       providerId,
-      remapped ? `, remapped from ${parsed.provider}` : "",
     )
     return limit
   }
 
+  // 2. Provider not in models.dev (e.g. custom OpenAI-compatible) —
+  //    fall back to searching by model name across all providers.
+  if (!provider) {
+    for (const [pid, pdata] of Object.entries(data)) {
+      const model = pdata.models?.[parsed.model]
+      if (model?.limit) {
+        console.log(
+          "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s, model-name fallback)",
+          modelSpec,
+          model.limit.context,
+          model.limit.input ?? "n/a",
+          model.limit.output,
+          pid,
+        )
+        return model.limit
+      }
+    }
+  }
+
   console.log(
-    "[models] model %s not found in provider %s (available providers: %s)",
+    "[models] model %s not found in %s",
     parsed.model,
-    providerId,
-    Object.keys(data).join(", "),
+    provider ? `provider "${providerId}"` : "models.dev",
   )
-  bus.emit("error", {
-    sessionId: "",
-    error: new Error(
-      `Model "${parsed.model}" not found in provider "${providerId}"`,
-    ),
-  })
+  // Only emit bus error for providers that exist in models.dev but
+  // are missing the specific model (genuine misconfiguration).
+  // Custom OpenAI-compatible providers (not in models.dev) silently
+  // return null — their limits are unknown.
+  if (provider) {
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error(
+        `Model "${parsed.model}" not found in provider "${providerId}"`,
+      ),
+    })
+  }
   return null
 }
 
