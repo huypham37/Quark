@@ -6,7 +6,6 @@
 //   small_model: gpt-4o-mini                        # lightweight tasks (title generation, etc.)
 //
 // Provider is always embedded in the model string as "provider/model".
-// If no provider prefix is given, defaults to "copilot".
 //
 // Missing file or fields fall back to sensible defaults.
 
@@ -73,7 +72,6 @@ const DEFAULTS = {
   small_model: "gpt-4o-mini",
   main_model: "gpt-4o",
   max_steps: 100,
-  context_window: 128_000,
   compact: COMPACT_DEFAULTS,
   providers: {} as Record<string, ProviderConfig>,
 } as const
@@ -83,8 +81,6 @@ export interface QuarkConfig {
   small_model: string
   main_model: string
   max_steps: number
-  /** Fallback context window (tokens) when models.dev doesn't have the model. */
-  context_window: number
   compact: CompactConfig
   /** User-defined OpenAI-compatible providers (keyed by provider ID) */
   providers: Record<string, ProviderConfig>
@@ -173,8 +169,6 @@ export function loadConfig(): QuarkConfig {
         : DEFAULTS.main_model,
     max_steps:
       typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
-    context_window:
-      typeof raw.context_window === "number" ? raw.context_window : DEFAULTS.context_window,
     compact: parseCompactConfig(raw.compact),
     providers: parseProviders(raw.providers),
   }
@@ -190,34 +184,6 @@ export function parseModelSpec(spec: string): { provider?: string; model: string
   const idx = spec.indexOf("/")
   if (idx === -1) return { model: spec }
   return { provider: spec.slice(0, idx), model: spec.slice(idx + 1) }
-}
-
-/**
- * Get the model ID for a given purpose (strips provider prefix if present).
- */
-export function getModelId(kind: "main" | "small"): string {
-  const config = loadConfig()
-  const raw = kind === "small" ? config.small_model : config.main_model
-  return parseModelSpec(raw).model
-}
-
-/**
- * Get both provider and model for a given purpose.
- * Provider is embedded in the model string as "provider/model".
- * If no provider prefix, defaults to "copilot".
- */
-export function getModelSpec(kind: "main" | "small"): { provider: string; model: string } {
-  const config = loadConfig()
-  const raw = kind === "small" ? config.small_model : config.main_model
-  const parsed = parseModelSpec(raw)
-  return {
-    provider: parsed.provider ?? "copilot",
-    model: parsed.model,
-  }
-}
-
-export function getProviderId(kind: "main" | "small"): string {
-  return getModelSpec(kind).provider
 }
 
 /**

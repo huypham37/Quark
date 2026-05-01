@@ -13,13 +13,13 @@ import { createSession, listSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage } from "../session/message"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
-import { getModelLimit } from "../provider/models"
+import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig, getModelId, parseModelSpec, getProviderId, resetConfigCache, CONFIG_PATH, getModelSpec } from "../config/config"
+import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
@@ -68,6 +68,9 @@ bus.on("session-created", ({ sessionId }) => {
 const skills = discoverSkills()
 const modelName = loadConfig().main_model
 
+// Populate LM Studio model cache (non-blocking)
+refreshLMStudio()
+
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null
 
@@ -84,10 +87,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     sessionId: sid,
     parts,
     images,
-    model: modelOverride ? (() => {
-      const parsed = parseModelSpec(modelOverride)
-      return { provider: parsed.provider ?? getProviderId("main"), model: parsed.model }
-    })() : undefined,
+    model: modelOverride ?? undefined,
     agent: activeAgent,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid ?? "unknown", error: err })
@@ -230,6 +230,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /reload-config — reload config without restarting (works without an active session)
   if (command === "reload-config") {
     resetConfigCache()
+    const currentModel = modelOverride ?? loadConfig().main_model
+    bus.emit("model-switched", { modelSpec: currentModel })
+    refreshLMStudio()
     notifyInfo("Config", "Config reloaded", 3000)
     return { handled: true }
   }
@@ -245,8 +248,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       resolveModel().then(async (model) => {
         const { messages, parts } = loadMessages(sid)
         const modelMessages = toModelMessages(messages, parts)
-        const modelId = modelOverride ?? getModelId("main")
-        const modelSpec = modelOverride ?? (getModelSpec("main").provider + "/" + getModelSpec("main").model)
+        const modelSpec = modelOverride ?? loadConfig().main_model
         const budget = getModelLimit(modelSpec)
         const system = buildSystem(activeAgent)
 

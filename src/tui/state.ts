@@ -5,7 +5,7 @@
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
-import { getModelSpec, loadConfig, parseModelSpec } from "../config/config"
+import { loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
 
@@ -228,7 +228,7 @@ export function createAppState(initial: {
     thinkingEffort: "none",
     status: {
       tokensUsed: 0,
-      tokenLimit: (() => { const s = getModelSpec("main"); const lim = getModelLimit(`${s.provider}/${s.model}`); return lim?.input ?? lim?.context ?? loadConfig().context_window })(),
+      tokenLimit: (() => { const ms = loadConfig().main_model; const lim = getModelLimit(ms); return lim?.context ?? lim?.input ?? 0 })(),
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,
@@ -588,10 +588,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
       break
 
     case "model-switched": {
-      const parsed = parseModelSpec(action.modelSpec)
-      const lim = getModelLimit(`${parsed.provider ?? "copilot"}/${parsed.model}`)
-      const newLimit = lim?.input ?? lim?.context ?? loadConfig().context_window
+      const lim = getModelLimit(action.modelSpec)
+      const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
+      setStore("status", "modelName", action.modelSpec)
       break
     }
 

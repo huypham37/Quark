@@ -1,4 +1,4 @@
-// Tests for the config loader — loadConfig, getModelId, setConfigField, resetConfigCache
+// Tests for the config loader — loadConfig, setConfigField, resetConfigCache
 //
 // Strategy: mock os.homedir() to point at a temp directory so all file I/O
 // goes to a throwaway location. The config module computes CONFIG_DIR/FILE
@@ -25,7 +25,6 @@ mock.module("os", () => ({
 // Now import the config module — it will compute CONFIG_DIR using our mocked homedir
 const {
   loadConfig,
-  getModelId,
   setConfigField,
   resetConfigCache,
 } = await import("../../src/config/config")
@@ -199,24 +198,27 @@ describe("loadConfig caching", () => {
 })
 
 // ---------------------------------------------------------------------------
-// getModelId
+// model specs are always "provider/model" format
 // ---------------------------------------------------------------------------
-describe("getModelId", () => {
-  test("returns main_model for kind 'main'", () => {
-    writeConfig({ main_model: "gpt-5" })
-
-    expect(getModelId("main")).toBe("gpt-5")
+describe("model spec format", () => {
+  test("main_model defaults include provider prefix", () => {
+    const config = loadConfig()
+    expect(config.main_model).toBe("gpt-4o")
   })
 
-  test("returns small_model for kind 'small'", () => {
-    writeConfig({ small_model: "gpt-4o-mini" })
-
-    expect(getModelId("small")).toBe("gpt-4o-mini")
+  test("small_model defaults include provider prefix", () => {
+    const config = loadConfig()
+    expect(config.small_model).toBe("gpt-4o-mini")
   })
 
-  test("returns defaults when no config file", () => {
-    expect(getModelId("main")).toBe("gpt-4o")
-    expect(getModelId("small")).toBe("gpt-4o-mini")
+  test("reads model specs with provider prefix", () => {
+    writeConfig({
+      main_model: "copilot/gpt-5-mini",
+      small_model: "opencode/deepseek-v4-pro",
+    })
+    const config = loadConfig()
+    expect(config.main_model).toBe("copilot/gpt-5-mini")
+    expect(config.small_model).toBe("opencode/deepseek-v4-pro")
   })
 })
 

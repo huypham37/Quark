@@ -61,7 +61,7 @@ export const Prompt: Component<PromptProps> = (props) => {
 
   const leftStatus = () => {
     const used = props.tokensUsed ?? 0
-    const limit = props.tokenLimit ?? 168000
+    const limit = props.tokenLimit ?? 0
     const cost = props.cost ?? 0
     return `${formatPercent(used, limit)} · ${formatTokens(used)} of ${formatTokens(limit)}`
   }

@@ -57,9 +57,7 @@ When constructing the summary, try to stick to this template:
 // Uses chars/4 heuristic on system prompt + current modelMessages.
 // Triggers when estimated tokens >= threshold * context_window.
 //
-// threshold comes from config.compact.threshold (default 0.50).
-// context_window is resolved from models.dev (modelLimit) or
-// config.context_window as fallback.
+// context_window is resolved from models.dev via getModelLimit.
 // ---------------------------------------------------------------------------
 /**
  * Determine whether compaction should be triggered for the current session.
@@ -70,7 +68,6 @@ When constructing the summary, try to stick to this template:
  * @param system - The current system prompt (string or array of strings)
  * @param modelMessages - The current model message array
  * @param modelLimit - Per-model limits from `models.dev` (or `null` if unavailable)
- * @param contextWindow - Fallback context window size from config (tokens)
  * @param threshold - Trigger threshold fraction (default `0.50`)
  * @returns `true` if compaction should be triggered
  */
@@ -78,12 +75,12 @@ export function shouldCompact(
   system: string | string[],
   modelMessages: import("ai").ModelMessage[],
   modelLimit: { context: number; input?: number; output: number } | null,
-  contextWindow: number,
   threshold: number,
 ): boolean {
+  const limit = getContextWindow(modelLimit)
+  if (limit === 0) return false
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const estimated = estimateTokens(systemStr, modelMessages)
-  const limit = getContextWindow(modelLimit, contextWindow)
   return estimated >= limit * threshold
 }
 
@@ -94,21 +91,18 @@ export function shouldCompact(
  * this function checks if the context is completely full — used to block
  * new user messages when there is no room left.
  *
- * @param system - The current system prompt (string or array of strings)
- * @param modelMessages - The current model message array
- * @param modelLimit - Per-model limits from `models.dev` (or `null` if unavailable)
- * @param contextWindow - Fallback context window size from config (tokens)
- * @returns `true` if estimated tokens >= context window
+ * @returns `true` if estimated tokens >= context window. Returns `false`
+ *   if the context window is unknown (model limit not available).
  */
 export function isContextFull(
   system: string | string[],
   modelMessages: import("ai").ModelMessage[],
   modelLimit: { context: number; input?: number; output: number } | null,
-  contextWindow: number,
 ): boolean {
+  const limit = getContextWindow(modelLimit)
+  if (limit === 0) return false
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const estimated = estimateTokens(systemStr, modelMessages)
-  const limit = getContextWindow(modelLimit, contextWindow)
   return estimated >= limit
 }
 
@@ -152,19 +146,18 @@ export function estimateTokens(
 // ---------------------------------------------------------------------------
 // getContextWindow — resolve the context window size (tokens)
 //
-// Prefers the per-model limit from models.dev. Falls back to the
-// user-configured context_window from config.yaml.
+// Returns the model's context window from models.dev. Returns 0 if the
+// model limit is not available (unknown model / cache not loaded).
 // ---------------------------------------------------------------------------
 export function getContextWindow(
   modelLimit: { context: number; input?: number; output: number } | null,
-  fallback: number,
 ): number {
-  if (modelLimit) {
-    // Prefer `input` (max prompt tokens) over `context` (total window incl. output)
-    if (modelLimit.input && modelLimit.input > 0) return modelLimit.input
-    if (modelLimit.context > 0) return modelLimit.context
+  if (modelLimit && modelLimit.context > 0) {
+    console.log("[compaction] getContextWindow: %d (from models.dev)", modelLimit.context)
+    return modelLimit.context
   }
-  return fallback
+  console.log("[compaction] getContextWindow: 0 (model limit unavailable)")
+  return 0
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +224,6 @@ export function isOverContextThreshold(
  * @param system - Current system prompt
  * @param modelMessages - Current model message array
  * @param modelLimit - Per-model limits from models.dev (or null)
- * @param contextWindow - Fallback context window size from config
  * @param threshold - Trigger threshold fraction
  * @param parts - All part rows for the current session (to find step-finish)
  * @returns `true` if compaction should be triggered
@@ -240,17 +232,17 @@ export function shouldCompactWithRealTokens(
   system: string | string[],
   modelMessages: import("ai").ModelMessage[],
   modelLimit: { context: number; input?: number; output: number } | null,
-  contextWindow: number,
   threshold: number,
   parts: PartRow[],
 ): boolean {
+  const limit = getContextWindow(modelLimit)
+  if (limit === 0) return false
   const realTokens = getLastInputTokens(parts)
   if (realTokens > 0) {
-    const limit = getContextWindow(modelLimit, contextWindow)
     return isOverContextThreshold(realTokens, limit, threshold)
   }
   // No step-finish data yet — fall back to chars/4 estimate
-  return shouldCompact(system, modelMessages, modelLimit, contextWindow, threshold)
+  return shouldCompact(system, modelMessages, modelLimit, threshold)
 }
 
 // ---------------------------------------------------------------------------

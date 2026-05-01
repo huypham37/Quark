@@ -15,7 +15,7 @@ import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
 import { startEventWriter } from "./session/event-writer"
-import { getProviderId } from "./config/config"
+import { loadConfig } from "./config/config"
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -29,7 +29,7 @@ Options:
   -p, --profile <name>          Profile to use (default: from config)
   -m, --prompt <text>           Prompt text (alternative to positional)
   -s, --session <id>            Resume an existing session
-      --model <id>              Model to use for this run (e.g. claude-sonnet-4.5)
+      --model <id>              Model to use for this run (e.g. copilot/claude-sonnet-4.5)
       --parent-session <id>     Create a child session under this parent
       --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
       --no-store                Run an ephemeral session — never written to disk
@@ -40,7 +40,7 @@ Examples:
   quark --profile coder --prompt "fix the bug in main.ts"
   quark -p coder "fix the bug in main.ts"
   quark "quick question"
-  quark --model claude-sonnet-4.5 "use a specific model for this run"
+  quark --model copilot/claude-sonnet-4.5 "use a specific model for this run"
   quark --no-store "quick one-off question that should not be saved"
   quark --sub-agent --profile researcher --prompt "research auth flow"
   quark --parent-session sess_abc --profile researcher --prompt "research auth flow"
@@ -207,17 +207,15 @@ async function main() {
 
   // Run the prompt
   try {
-    const modelOverride = args.model
-      ? { provider: getProviderId("main"), model: args.model }
-      : undefined
+    const modelOverride = args.model ?? undefined
 
     const result = await prompt({
       sessionId: args.sessionId,
       parentSessionId: args.parentSessionId,
       ephemeral: args.noStore,
       parts: [{ type: "text", text: args.prompt }],
-      agent,
       model: modelOverride,
+      agent,
     })
 
     console.log(`\n[session: ${result.sessionId}]`)
