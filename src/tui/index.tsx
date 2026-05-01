@@ -13,7 +13,7 @@ import { createSession, listSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage } from "../session/message"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { buildSystem } from "../session/system"
-import { getModelLimit } from "../provider/models"
+import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { estimateTokens, getLastInputTokens } from "../session/compaction"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
@@ -67,6 +67,9 @@ bus.on("session-created", ({ sessionId }) => {
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
 const modelName = loadConfig().main_model
+
+// Populate LM Studio model cache (non-blocking)
+refreshLMStudio()
 
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null
@@ -229,6 +232,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     resetConfigCache()
     const currentModel = modelOverride ?? loadConfig().main_model
     bus.emit("model-switched", { modelSpec: currentModel })
+    refreshLMStudio()
     notifyInfo("Config", "Config reloaded", 3000)
     return { handled: true }
   }

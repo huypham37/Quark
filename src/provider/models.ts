@@ -7,6 +7,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 import { parseModelSpec } from "../config/config"
+import { bus } from "../session/events"
 
 const CACHE_DIR = path.join(os.homedir(), ".config", "quark")
 const CACHE_FILE = path.join(CACHE_DIR, "models.json")
@@ -75,17 +76,73 @@ const PROVIDER_REMAP: Record<string, string> = {
   opencode: "opencode-go",
 }
 
+// LM Studio — local model server.
+// Models are queried via GET /api/v1/models on startup and /reload-config.
+// max_context_length is a static property of the downloaded model (does not
+// require the model to be loaded).
+const lmStudioCache = new Map<string, ModelLimit>()
+
+export async function refreshLMStudio(baseUrl = "http://localhost:1234"): Promise<void> {
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/models`, {
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!res.ok) {
+      bus.emit("error", {
+        sessionId: "",
+        error: new Error(`LM Studio returned ${res.status}: ${res.statusText}`),
+      })
+      return
+    }
+    const data = await res.json() as { models: Array<{ key: string; type: string; max_context_length: number }> }
+    const { models } = data
+    lmStudioCache.clear()
+    for (const m of models) {
+      if (m.type === "llm" && m.max_context_length > 0) {
+        const limit: ModelLimit = { context: m.max_context_length, output: 0 }
+        lmStudioCache.set(m.key, limit)
+        const short = m.key.split("/").pop()
+        if (short) lmStudioCache.set(short, limit)
+      }
+    }
+  } catch (err) {
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error("LM Studio not reachable at " + baseUrl),
+    })
+  }
+}
+
 // ---------------------------------------------------------------------------
-// getModelLimit — look up token limits for a model via exact provider lookup
+// getModelLimit — look up token limits for a model.
 //
-// Takes a full "provider/model" string. Looks up the model in the specified
-// provider only — no cross-provider fallback.
+// Priority:
+//   1. lmstudio provider → lmStudioCache (async pre-filled)
+//   2. Exact provider lookup in models.dev
+//   3. Model-name fallback across all providers (for custom providers)
 // ---------------------------------------------------------------------------
 export function getModelLimit(modelSpec: string): ModelLimit | null {
   const parsed = parseModelSpec(modelSpec)
 
   if (!parsed.provider) {
-    console.log("[models] missing provider prefix:", modelSpec)
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error(`Model spec "${modelSpec}" missing provider prefix`),
+    })
+    return null
+  }
+
+  // 0. LM Studio — check local cache first
+  if (parsed.provider === "lmstudio") {
+    const cached = lmStudioCache.get(parsed.model) ?? lmStudioCache.get(modelSpec)
+    if (cached) {
+      console.log("[models] %s → context=%d (lmstudio)", modelSpec, cached.context)
+      return cached
+    }
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error(`Model "${modelSpec}" not found in LM Studio. Is it downloaded?`),
+    })
     return null
   }
 
@@ -124,6 +181,16 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
         return model.limit
       }
     }
+  }
+
+  // Only emit bus error for providers that exist in models.dev but are
+  // missing the specific model (genuine misconfiguration). Custom providers
+  // not in models.dev silently return null — their limits are unknown.
+  if (provider) {
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error(`Model "${parsed.model}" not found in provider "${providerId}"`),
+    })
   }
 
   console.log("[models] %s → not found (returns 0)", modelSpec)

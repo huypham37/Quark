@@ -115,6 +115,20 @@ export function wireEvents(state: AppState) {
   }
   bus.on("session-switch", handleSwitch)
 
+  // error: registered FIRST and outside createComputed so it catches
+  // errors emitted anywhere — during startup, model switching, or inside
+  // the loop — regardless of session state.
+  const handleError = (data: BusEvents["error"]) => {
+    const result = categorizeError(data.error)
+    if (result) {
+      const msg = result.message.length > 120
+        ? result.message.slice(0, 117) + "..."
+        : result.message
+      notifyError(result.title, msg, 8000)
+    }
+  }
+  bus.on("error", handleError)
+
   // model-switched: registered outside createComputed because it has no
   // sessionId in its payload and the createComputed on() wrapper would
   // filter it out (undefined !== sid).
@@ -239,17 +253,6 @@ export function wireEvents(state: AppState) {
       const result = categorizeError(data.error)
       const title = result?.title ?? "Provider Error"
       notifyWarn(`${title} — Retry ${data.attempt}`, `Retrying in ${delayStr}…`, data.delayMs + 1000)
-    }))
-
-    unsubs.push(on("error", (data) => {
-      const result = categorizeError(data.error)
-      if (result) {
-        // Truncate long messages to keep the notification readable
-        const msg = result.message.length > 120
-          ? result.message.slice(0, 117) + "..."
-          : result.message
-        notifyError(result.title, msg, 8000) // 8s for errors, then auto-dismiss
-      }
     }))
 
     unsubs.push(on("permission-request", (data) => {
