@@ -227,6 +227,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /reload-config — reload config without restarting (works without an active session)
   if (command === "reload-config") {
     resetConfigCache()
+    const currentModel = modelOverride ?? loadConfig().main_model
+    bus.emit("model-switched", { modelSpec: currentModel })
     notifyInfo("Config", "Config reloaded", 3000)
     return { handled: true }
   }
