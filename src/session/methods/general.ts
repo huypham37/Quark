@@ -103,8 +103,8 @@ export const general: CompactMethodDef = {
     // Step 4: Prune evicted text messages to fit the model's input budget.
     // Budget = model input window - output window - prompt overhead.
     // Drop oldest messages first until they fit.
-    const inputLimit = ctx.budget?.input ?? ctx.budget?.context ?? 128_000
-    const outputReserve = ctx.budget?.output ?? 64_000
+    const inputLimit = ctx.budget?.input ?? ctx.budget?.context ?? 0
+    const outputReserve = ctx.budget?.output ?? 0
     const promptOverhead = Math.ceil((DEFAULT_PROMPT.length + mergeInstruction.length) / 4) + 512
     const budget = Math.max(0, inputLimit - outputReserve - promptOverhead)
     const prunedMessages = pruneToTokenBudget(textMessages, budget)

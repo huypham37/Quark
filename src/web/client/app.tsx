@@ -429,7 +429,7 @@ export function App() {
     } catch {}
   }
   async function loadAppConfig() {
-    try { const c = await api('GET', '/api/config'); set({ tokenLimit: c.contextWindow || 200000 }) } catch {}
+    try { const c = await api('GET', '/api/config'); set({ tokenLimit: c.contextWindow || 0 }) } catch {}
   }
 
   // Initial health check — set connected immediately if server responds

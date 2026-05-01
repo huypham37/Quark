@@ -14,7 +14,7 @@ import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
-import { getModelId, loadConfig, getModelSpec } from "../../config/config"
+import { loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -169,8 +169,8 @@ export const App: Component<AppProps> = (props) => {
 
   // Update tokenLimit once models.dev data is available
   modelsReady.then(() => {
-    const lim = getModelLimit(getModelSpec("main").provider + "/" + getModelSpec("main").model)
-    const limit = lim?.input ?? lim?.context
+    const lim = getModelLimit(loadConfig().main_model)
+    const limit = lim?.context ?? lim?.input
     if (limit) state.setStore("status", "tokenLimit", limit)
   })
 
@@ -946,12 +946,7 @@ export const App: Component<AppProps> = (props) => {
         overflow="hidden"
         paddingX={1}
         scrollAcceleration={new MacOSScrollAccel()}
-        scrollbarOptions={{
-          trackOptions: {
-            backgroundColor: colors.scrollbarTrack,
-            foregroundColor: colors.scrollbarThumb,
-          },
-        }}
+        scrollbarOptions={{ visible: false }}
       >
         <For each={state.store.messages}>
           {(msg) => <MessageItem message={msg} />}

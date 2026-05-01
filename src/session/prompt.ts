@@ -37,17 +37,16 @@ import {
   createCopilotProvider,
   createOpenAICompatibleProvider,
   createAlibabaCompatibleProvider,
+  createReasoningCompatibleProvider,
   createCopilotAnthropicProvider,
   isClaude,
   setCopilotForceAgent,
 } from "../provider/provider";
-import { getThinkingNormalizer } from "../provider/thinking";
+import { getThinkingNormalizer, needsReasoningReplay } from "../provider/thinking";
 import { loadToken } from "../provider/copilot-auth";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
 import {
-  getModelId,
-  getProviderId,
   getProviderConfig,
   resolveApiKey,
   loadConfig,
@@ -101,7 +100,7 @@ export async function prompt(input: {
   ephemeral?: boolean;
   parts: { type: "text"; text: string }[];
   images?: { mime: string; data: string }[];
-  model?: { provider: string; model: string };
+  model?: string;
   agent?: AgentConfig;
 }) {
   const agent = input.agent ?? defaultAgent;
@@ -146,7 +145,7 @@ export async function prompt(input: {
     // Uses the small_model from config — cheap and fast
     const session = getSession(sessionId);
     if (!session.title) {
-      resolveModel(input.model, "small")
+      resolveModel(input.model ?? loadConfig().small_model, "small")
         .then((model) => {
           generateSessionTitle({ sessionId, message: text, model });
         })
@@ -200,20 +199,17 @@ async function loop(
   sessionId: string,
   abort: AbortSignal,
   agent: AgentConfig,
-  modelOpt?: { provider: string; model: string },
+  modelOpt?: string,
 ) {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent.model > config main_model
-  // When model string contains slashes, split at first slash to extract
-  // provider prefix. The remaining model string is used as-is (may contain
-  // additional slashes, e.g. "minimaxai/minimax-m2.7").
-  const rawModel = modelOpt?.model ?? agent.model ?? getModelId("main")
-  const effectiveModel = parseModelSpec(rawModel).model;
-  const model = await resolveModel(
-    modelOpt ??
-      (agent.model ? { model: agent.model } : undefined),
-  );
-  const modelLimit = getModelLimit(effectiveModel);
+  // Model is always in "provider/model" format.
+  const modelSpec = modelOpt ?? agent.model ?? loadConfig().main_model
+  const parsedModel = parseModelSpec(modelSpec)
+  const effectiveModel = parsedModel.model
+  const effectiveProvider = parsedModel.provider
+  const model = await resolveModel(modelSpec);
+  const modelLimit = getModelLimit(modelSpec);
 
   // mutable — may change when compaction creates a new session
   let currentSessionId = sessionId;
@@ -288,7 +284,6 @@ async function loop(
         system,
         modelMessages,
         modelLimit,
-        cfg.context_window,
         cfg.compact.threshold,
         parts,
       )
@@ -364,8 +359,7 @@ async function loop(
     // 4. Create assistant message row
     const assistantMsg = createAssistantMessage({
       sessionId: currentSessionId,
-      modelId: modelOpt?.model,
-      providerId: modelOpt?.provider ?? "copilot",
+      modelId: modelSpec,
     });
     bus.emit("assistant-message-start", {
       sessionId: currentSessionId,
@@ -382,8 +376,8 @@ async function loop(
     );
 
     // 6. Stream + process
-    const providerId = modelOpt?.provider ?? "copilot";
-    const thinkingProviderOptions = getThinkingNormalizer(effectiveModel).normalize(providerId);
+    const providerId = effectiveProvider;
+    const thinkingProviderOptions = getThinkingNormalizer(effectiveModel).normalize(providerId ?? "");
     const result = await processStream({
       model,
       system,
@@ -481,31 +475,24 @@ async function loop(
 // kind: "main" (default) uses main_model from config
 //        "small" uses small_model (for lightweight tasks like title generation)
 //
-// If opt.model is explicitly provided, it always wins over config.
+// modelSpec is always in "provider/model" format (e.g. "copilot/gpt-5-mini").
+// Falls back to config main_model or small_model if not provided.
 // ---------------------------------------------------------------------------
 export async function resolveModel(
-  opt?: { provider?: string; model: string },
+  modelSpec?: string,
   kind: "main" | "small" = "main",
 ) {
-  // Parse namespaced model spec (e.g. "copilot/claude-sonnet-4.6")
-  // Provider embedded in model spec wins over opt.provider and config default
-  let providerId: string;
-  let modelId: string;
+  const cfg = loadConfig()
+  const spec = modelSpec ?? (kind === "main" ? cfg.main_model : cfg.small_model)
+  const parsed = parseModelSpec(spec)
 
-  if (opt?.model) {
-    const parsed = parseModelSpec(opt.model);
-    // If caller provided an explicit provider, use the full model string as-is.
-    // Otherwise, parse the model string for an embedded provider prefix.
-    if (opt.provider) {
-      providerId = opt.provider;
-      modelId = opt.model;
-    } else {
-      providerId = parsed.provider ?? getProviderId(kind);
-      modelId = parsed.model;
-    }
-  } else {
-    modelId = getModelId(kind);
-    providerId = opt?.provider ?? getProviderId(kind);
+  let providerId = parsed.provider
+  let modelId = parsed.model
+
+  if (!providerId) {
+    throw new Error(
+      `Model spec "${spec}" must include a provider prefix (e.g. "copilot/gpt-4o").`,
+    )
   }
 
   let provider;
@@ -561,6 +548,19 @@ export async function resolveModel(
         apiKey: resolveApiKey(pc.apiKey),
       });
       return alibabaProvider(modelId);
+    }
+
+    // Models that always emit reasoning and require reasoning_content
+    // in replayed assistant messages (e.g. kimi-k2.6 via OpenRouter).
+    // The @ai-sdk/openai chat provider drops reasoning parts, so we use
+    // a fetch wrapper that injects the field before the request is sent.
+    if (needsReasoningReplay(modelId)) {
+      provider = createReasoningCompatibleProvider({
+        name: providerId,
+        baseURL: pc.baseURL,
+        apiKey: resolveApiKey(pc.apiKey),
+      });
+      return getModel(provider, modelId);
     }
 
     provider = createOpenAICompatibleProvider({

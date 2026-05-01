@@ -273,9 +273,9 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               const cfg = loadConfig()
               if (cfg.compact.auto) {
                 const modelLimit = getModelLimit(input.modelId ?? "")
-                const ctxWindow = getContextWindow(modelLimit, cfg.context_window)
+                const ctxWindow = getContextWindow(modelLimit)
 
-                if (isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.compact.threshold)) {
+                if (ctxWindow > 0 && isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.compact.threshold)) {
                   needsCompaction = true
                 }
               }

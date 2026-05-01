@@ -8,7 +8,7 @@ import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
 import { buildSystem } from "../session/system"
-import { loadConfig, parseModelSpec, getProviderId, getModelId } from "../config/config"
+import { loadConfig, parseModelSpec } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
 import { getFiles, fuzzyFilter } from "../tui/filelist"
@@ -62,8 +62,7 @@ function createRequestHandler(agent: AgentConfig) {
 
   function getModelOpt() {
     if (!modelOverride) return undefined
-    const parsed = parseModelSpec(modelOverride)
-    return { provider: parsed.provider ?? getProviderId("main"), model: parsed.model }
+    return modelOverride
   }
 
   return async function handleRequest(
@@ -161,9 +160,9 @@ function createRequestHandler(agent: AgentConfig) {
         messages = loaded.messages
         parts = loaded.parts
         modelMessages = toModelMessages(messages, parts)
-        const modelId = modelOverride ?? getModelId("main")
+        const modelId = modelOverride ?? loadConfig().main_model
         budget = getModelLimit(modelId)
-        model = await resolveModel(getModelOpt())
+        model = await resolveModel(modelId)
         system = buildSystem(agent)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -244,7 +243,7 @@ function createRequestHandler(agent: AgentConfig) {
     if (req.method === "POST" && pathname === "/api/thinking") {
       const body = (await req.json()) as { enabled: boolean }
       const effort = body.enabled ? "high" : "none"
-      const activeModel = modelOverride ?? getModelId("main")
+      const activeModel = parseModelSpec(modelOverride ?? loadConfig().main_model).model
       getThinkingNormalizer(activeModel).configure({ enabled: body.enabled, effort })
       setCopilotThinking(EFFORT_TO_BUDGET[effort] ?? 0)
       return json({ enabled: body.enabled })
@@ -286,9 +285,10 @@ function createRequestHandler(agent: AgentConfig) {
 
     if (req.method === "GET" && pathname === "/api/config") {
       const config = loadConfig()
+      const lim = getModelLimit(config.main_model)
       return json({
         mainModel: config.main_model,
-        contextWindow: config.context_window,
+        contextWindow: lim?.context ?? lim?.input ?? 0,
         maxSteps: config.max_steps,
       })
     }

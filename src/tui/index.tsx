@@ -19,7 +19,7 @@ import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig, getModelId, parseModelSpec, getProviderId, resetConfigCache, CONFIG_PATH, getModelSpec } from "../config/config"
+import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
 import { setTerminalBg } from "./theme"
@@ -84,10 +84,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     sessionId: sid,
     parts,
     images,
-    model: modelOverride ? (() => {
-      const parsed = parseModelSpec(modelOverride)
-      return { provider: parsed.provider ?? getProviderId("main"), model: parsed.model }
-    })() : undefined,
+    model: modelOverride ?? undefined,
     agent: activeAgent,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid ?? "unknown", error: err })
@@ -245,8 +242,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       resolveModel().then(async (model) => {
         const { messages, parts } = loadMessages(sid)
         const modelMessages = toModelMessages(messages, parts)
-        const modelId = modelOverride ?? getModelId("main")
-        const modelSpec = modelOverride ?? (getModelSpec("main").provider + "/" + getModelSpec("main").model)
+        const modelSpec = modelOverride ?? loadConfig().main_model
         const budget = getModelLimit(modelSpec)
         const system = buildSystem(activeAgent)
 

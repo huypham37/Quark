@@ -6,6 +6,8 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import { parseModelSpec } from "../config/config"
+import { bus } from "../session/events"
 
 const CACHE_DIR = path.join(os.homedir(), ".config", "quark")
 const CACHE_FILE = path.join(CACHE_DIR, "models.json")
@@ -68,27 +70,61 @@ function getData(): ModelsDevData {
   return cached
 }
 
+// Known renames between user-facing provider IDs and models.dev IDs
+const PROVIDER_REMAP: Record<string, string> = {
+  copilot: "github-copilot",
+  opencode: "opencode-go",
+}
+
 // ---------------------------------------------------------------------------
-// getModelLimit — look up token limits for a model across all providers
+// getModelLimit — look up token limits for a model via exact provider lookup
 //
-// Searches github-copilot provider first, then falls back to any provider
-// that has the model. Returns null if the model isn't found.
+// Takes a full "provider/model" string. Looks up the model in the specified
+// provider only — no cross-provider fallback.
 // ---------------------------------------------------------------------------
-export function getModelLimit(modelId: string): ModelLimit | null {
+export function getModelLimit(modelSpec: string): ModelLimit | null {
+  const parsed = parseModelSpec(modelSpec)
+
+  if (!parsed.provider) {
+    console.log("[models] missing provider prefix in model spec:", modelSpec)
+    bus.emit("error", {
+      sessionId: "",
+      error: new Error(`Model spec "${modelSpec}" missing provider prefix`),
+    })
+    return null
+  }
+
   const data = getData()
+  const providerId = PROVIDER_REMAP[parsed.provider] ?? parsed.provider
+  const remapped = providerId !== parsed.provider
+  const provider = data[providerId]
+  const limit = provider?.models?.[parsed.model]?.limit
 
-  // Check github-copilot first (our primary provider)
-  const copilot = data["github-copilot"]
-  if (copilot?.models[modelId]) {
-    return copilot.models[modelId].limit
+  if (limit) {
+    console.log(
+      "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s%s)",
+      modelSpec,
+      limit.context,
+      limit.input ?? "n/a",
+      limit.output,
+      providerId,
+      remapped ? `, remapped from ${parsed.provider}` : "",
+    )
+    return limit
   }
 
-  // Fall back to any provider that has this model
-  for (const provider of Object.values(data)) {
-    const model = provider.models?.[modelId]
-    if (model?.limit) return model.limit
-  }
-
+  console.log(
+    "[models] model %s not found in provider %s (available providers: %s)",
+    parsed.model,
+    providerId,
+    Object.keys(data).join(", "),
+  )
+  bus.emit("error", {
+    sessionId: "",
+    error: new Error(
+      `Model "${parsed.model}" not found in provider "${providerId}"`,
+    ),
+  })
   return null
 }
 

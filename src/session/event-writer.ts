@@ -9,7 +9,7 @@
 
 import { bus } from "./events"
 import { getModelLimit } from "../provider/models"
-import { getModelId, loadConfig } from "../config/config"
+import { loadConfig } from "../config/config"
 
 // Compact event shapes — keep wire size small
 export type SubAgentEvent =
@@ -66,9 +66,9 @@ export function startEventWriter(): () => void {
 
   on("step-finish", (data) => {
     // Include the model's token limit so the parent can show context window %
-    const modelId = getModelId("main")
-    const limit = getModelLimit(modelId)
-    const tokenLimit = limit?.input ?? limit?.context ?? loadConfig().context_window
+    const modelSpec = loadConfig().main_model
+    const limit = getModelLimit(modelSpec)
+    const tokenLimit = limit?.context ?? limit?.input ?? 0
     emit({ e: "step-finish", tokens: data.data.tokens, tokenLimit })
   })
 

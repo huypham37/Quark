@@ -10,7 +10,7 @@
 //   → modelId: "minimaxai/minimax-m2.7" (sent in the API request)
 
 import { describe, test, expect, spyOn, beforeEach, mock } from "bun:test"
-import { parseModelSpec, getModelId, getModelSpec } from "../../src/config/config"
+import { parseModelSpec } from "../../src/config/config"
 
 // ---------------------------------------------------------------------------
 // parseModelSpec — splits at first slash, returns { provider, model }
