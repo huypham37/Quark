@@ -591,6 +591,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       const lim = getModelLimit(action.modelSpec)
       const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
+      setStore("status", "modelName", action.modelSpec)
       break
     }
 
