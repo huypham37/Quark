@@ -7,7 +7,6 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 import { parseModelSpec } from "../config/config"
-import { bus } from "../session/events"
 
 const CACHE_DIR = path.join(os.homedir(), ".config", "quark")
 const CACHE_FILE = path.join(CACHE_DIR, "models.json")
@@ -86,11 +85,7 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
   const parsed = parseModelSpec(modelSpec)
 
   if (!parsed.provider) {
-    console.log("[models] missing provider prefix in model spec:", modelSpec)
-    bus.emit("error", {
-      sessionId: "",
-      error: new Error(`Model spec "${modelSpec}" missing provider prefix`),
-    })
+    console.log("[models] missing provider prefix:", modelSpec)
     return null
   }
 
@@ -103,7 +98,7 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
 
   if (limit) {
     console.log(
-      "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s)",
+      "[models] %s → context=%d input=%s output=%d (provider=%s)",
       modelSpec,
       limit.context,
       limit.input ?? "n/a",
@@ -113,14 +108,13 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     return limit
   }
 
-  // 2. Provider not in models.dev (e.g. custom OpenAI-compatible) —
-  //    fall back to searching by model name across all providers.
+  // 2. Provider not in models.dev — fall back to model-name search
   if (!provider) {
     for (const [pid, pdata] of Object.entries(data)) {
       const model = pdata.models?.[parsed.model]
       if (model?.limit) {
         console.log(
-          "[models] resolved limit for %s: context=%d input=%s output=%d (provider=%s, model-name fallback)",
+          "[models] %s → context=%d input=%s output=%d (fallback via %s)",
           modelSpec,
           model.limit.context,
           model.limit.input ?? "n/a",
@@ -132,23 +126,7 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     }
   }
 
-  console.log(
-    "[models] model %s not found in %s",
-    parsed.model,
-    provider ? `provider "${providerId}"` : "models.dev",
-  )
-  // Only emit bus error for providers that exist in models.dev but
-  // are missing the specific model (genuine misconfiguration).
-  // Custom OpenAI-compatible providers (not in models.dev) silently
-  // return null — their limits are unknown.
-  if (provider) {
-    bus.emit("error", {
-      sessionId: "",
-      error: new Error(
-        `Model "${parsed.model}" not found in provider "${providerId}"`,
-      ),
-    })
-  }
+  console.log("[models] %s → not found (returns 0)", modelSpec)
   return null
 }
 
