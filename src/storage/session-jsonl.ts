@@ -35,6 +35,14 @@ const ephemeralEvents = new Map<string, SessionLogEvent[]>()
 // ensureStorageRoot — create the top-level session directory
 // ---------------------------------------------------------------------------
 
+/**
+ * Ensure the top-level session storage directory exists
+ * (e.g. `~/.config/quark/session/`).
+ *
+ * Idempotent — safe to call repeatedly. Called once at startup before any
+ * session reads/writes so downstream `mkdirSync(dir, { recursive: true })`
+ * calls have a parent to land under.
+ */
 export function ensureStorageRoot(): void {
   mkdirSync(getSessionStorageRoot(), { recursive: true })
 }
@@ -43,6 +51,16 @@ export function ensureStorageRoot(): void {
 // createSessionLog — create dir + write first event + meta.json
 // ---------------------------------------------------------------------------
 
+/**
+ * Initialize a new session on disk.
+ *
+ * Creates `~/.config/quark/session/<id>/`, writes the first JSONL line
+ * (a `SessionEvent` carrying the full `Session` object), and seeds the
+ * `meta.json` cache so the session shows up in listings without a replay.
+ *
+ * Must be called exactly once per session before any `appendEvents()` calls.
+ * Ephemeral sessions skip this entirely (they live only in `ephemeralEvents`).
+ */
 export function createSessionLog(session: Session): void {
   const dir = getSessionDir(session.id)
   mkdirSync(dir, { recursive: true })
@@ -66,6 +84,22 @@ export function createSessionLog(session: Session): void {
 // applied to the current session object.
 // ---------------------------------------------------------------------------
 
+/**
+ * Append one or more events to a session's JSONL log.
+ *
+ * This is the **only** write path for session content — every message,
+ * part snapshot, and message-end goes through here. Writes are
+ * append-only (`appendFileSync` opens with `O_APPEND | O_WRONLY`), which
+ * is atomic on POSIX, so no locking is needed even with concurrent writers.
+ *
+ * - Ephemeral sessions: events are buffered in the in-memory
+ *   `ephemeralEvents` map and never touch disk.
+ * - `metaPatch`: optional shallow merge applied to the cached `Session`
+ *   object in `meta.json`. Used for things like title updates and
+ *   `timeUpdated` bumps so listings stay fresh without a full replay.
+ *
+ * No-op when `events` is empty.
+ */
 export function appendEvents(
   sessionId: string,
   events: SessionLogEvent[],
@@ -98,6 +132,17 @@ export function appendEvents(
 // readSessionMeta — read meta.json for a session
 // ---------------------------------------------------------------------------
 
+/**
+ * Read the cached `Session` object from `meta.json`.
+ *
+ * Fast path that avoids replaying the JSONL log — used by listings,
+ * `appendEvents`'s metaPatch merge, and anywhere only the session
+ * envelope is needed (title, timestamps, model preference).
+ *
+ * Returns `null` if the file is missing, unreadable, malformed JSON,
+ * or carries a different schema version. Callers can fall back to
+ * `rebuildSessionMeta()` to regenerate it from the JSONL.
+ */
 export function readSessionMeta(sessionId: string): Session | null {
   const path = getSessionMetaPath(sessionId)
   try {
@@ -114,6 +159,17 @@ export function readSessionMeta(sessionId: string): Session | null {
 // scanSessionMetas — scan all meta.json files for session listing
 // ---------------------------------------------------------------------------
 
+/**
+ * Enumerate every session by reading each subdirectory's `meta.json`.
+ *
+ * This powers the `/sessions` picker in the TUI and any "recent sessions"
+ * listing. It deliberately reads only the cached metadata — never replays
+ * a JSONL — so it stays O(N) in the number of sessions, not O(events).
+ *
+ * Corrupt or missing `meta.json` files are silently skipped; callers can
+ * trigger `rebuildSessionMeta()` to recover them. Returns an empty array
+ * if the storage root doesn't exist yet (fresh install).
+ */
 export function scanSessionMetas(): Session[] {
   const root = getSessionStorageRoot()
   let entries: string[]
@@ -147,6 +203,23 @@ export function scanSessionMetas(): Session[] {
 // Reads the entire file and materializes the final state.
 // ---------------------------------------------------------------------------
 
+/**
+ * Load and reconstruct a session's full state from disk.
+ *
+ * This is the **read counterpart** to `appendEvents`. It reads every line
+ * of `session.jsonl`, parses each into a `SessionLogEvent`, and folds them
+ * via `replayEvents()` into the materialized shape consumers expect:
+ * `{ session, messages: MessageRow[], parts: PartRow[] }`.
+ *
+ * - Ephemeral sessions: replay from the in-memory `ephemeralEvents` map.
+ * - Missing/unreadable file: returns empty state (used on first session open).
+ * - Malformed lines: silently skipped so a single bad write can't brick a
+ *   whole session.
+ *
+ * Cost is O(events). For very long sessions this is the most expensive
+ * read in the system — `meta.json` exists precisely to avoid calling it
+ * just to render a session list.
+ */
 export function replaySessionFile(sessionId: string): {
   session: Session | null
   messages: MessageRow[]
@@ -180,6 +253,29 @@ export function replaySessionFile(sessionId: string): {
   return replayEvents(events)
 }
 
+/**
+ * Fold an ordered list of `SessionLogEvent`s into materialized state.
+ *
+ * This is the heart of the event-sourcing design — the function that
+ * collapses many on-disk events into the in-memory rows consumers use:
+ *
+ *   - `SessionEvent`        → set the current `Session`
+ *   - `SessionUpdateEvent`  → patch fields on the current `Session`
+ *   - `MessageEvent`        → insert a new `MessageRow` (open envelope)
+ *   - `PartEvent`           → upsert a `PartRow` keyed by `partId`
+ *                             (later events with the same `partId`
+ *                             overwrite earlier ones — this is how
+ *                             streaming text deltas accumulate into a
+ *                             single final row)
+ *   - `MessageEndEvent`     → close the matching `MessageRow` with
+ *                             finish reason, tokens, cost, completion ts
+ *
+ * Both maps preserve insertion order (chronological), so the returned
+ * arrays are in the order messages/parts first appeared in the log.
+ *
+ * Pure / side-effect-free — used by both disk replay and ephemeral
+ * in-memory replay.
+ */
 function replayEvents(events: SessionLogEvent[]): {
   session: Session | null
   messages: MessageRow[]
@@ -261,6 +357,17 @@ function replayEvents(events: SessionLogEvent[]): {
 // rebuildSessionMeta — replay JSONL + rewrite meta.json
 // ---------------------------------------------------------------------------
 
+/**
+ * Recover a session's `meta.json` from the source-of-truth JSONL log.
+ *
+ * Used when the cache is missing, corrupt, or out of sync — for example
+ * after a crash mid-write, manual file deletion, or a schema migration.
+ * Replays the full log to extract the latest `Session` envelope, then
+ * atomically rewrites `meta.json`.
+ *
+ * Returns the rebuilt `Session`, or `null` if the JSONL has no
+ * `SessionEvent` (which would mean the session never existed).
+ */
 export function rebuildSessionMeta(sessionId: string): Session | null {
   const { session } = replaySessionFile(sessionId)
   if (session) {
@@ -273,6 +380,22 @@ export function rebuildSessionMeta(sessionId: string): Session | null {
 // Internal: atomic meta.json write (write .tmp + rename)
 // ---------------------------------------------------------------------------
 
+/**
+ * Write `meta.json` atomically using the write-temp-then-rename pattern.
+ *
+ * Steps:
+ *   1. Serialize `{ v: 1, session }` to `meta.json.tmp`
+ *   2. `rename()` the tmp file over `meta.json`
+ *
+ * `rename()` is atomic on POSIX filesystems, so readers (e.g.
+ * `scanSessionMetas` running in another process or thread) will only
+ * ever see the old complete file or the new complete file — never a
+ * half-written one. This guards against torn writes if the process is
+ * killed mid-flush.
+ *
+ * Internal helper — all callers go through `appendEvents` (with metaPatch),
+ * `createSessionLog`, or `rebuildSessionMeta`.
+ */
 function writeMetaAtomic(sessionId: string, session: Session): void {
   const metaPath = getSessionMetaPath(sessionId)
   const tmpPath = metaPath + ".tmp"

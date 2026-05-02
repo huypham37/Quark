@@ -1,5 +1,5 @@
 // @jsxImportSource @opentui/solid
-// ToolResultLine — shows completed/failed/pending tool call result
+// ToolResultView — shows completed/failed/pending tool call result
 //
 // Matches the style:
 //   ✓ Read package.json
@@ -84,7 +84,7 @@ function getToolDisplayName(tool: string): string {
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }
 
-export const ToolResultLine: Component<ToolResultLineProps> = (props) => {
+export const ToolResultView: Component<ToolResultLineProps> = (props) => {
   const displayName = getToolDisplayName(props.tool)
   const label = () => getToolLabel(props.tool, props.input)
   const isPending = () => props.status === "pending"

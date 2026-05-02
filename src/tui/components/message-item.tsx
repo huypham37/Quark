@@ -3,7 +3,7 @@
 //
 // Dispatches to the appropriate sub-component based on part type:
 // - text → AssistantMessage (or UserMessage for user role)
-// - tool → ToolResultLine (completed/error) or ToolInvocationBlock (running)
+// - tool → ToolResultView (completed/error) or ToolInvocationBlock (running)
 // - thinking → ThinkingIndicator
 
 import type { Component } from "solid-js"
@@ -11,7 +11,7 @@ import { Show, Switch, Match, For } from "solid-js"
 import { RGBA } from "@opentui/core"
 import { UserMessage } from "./user-message"
 import { AssistantMessage } from "./assistant-message"
-import { ToolResultLine } from "./tool-result"
+import { ToolResultView } from "./tool-result"
 import { ToolInvocationBlock } from "./tool-invocation"
 import { ThinkingIndicator } from "./thinking"
 import { SubAgentView } from "./sub-agent-view"
@@ -67,25 +67,16 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
       {/* Sub-agent: bash tool with subAgent state (running or completed) */}
       <Match when={props.part.type === "tool" && asTool().subAgent}>
         <box marginBottom={1} flexDirection="column">
-          {/* Show the Bash tool as parent wrapper */}
-          <box flexDirection="row">
-            <box flexShrink={0}>
-              <Show
-                when={asTool().status === "running"}
-                fallback={
-                  <Show
-                    when={asTool().status === "error"}
-                    fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
-                  >
-                    <text fg={RGBA.fromHex("#E06C75")}>✗ </text>
-                  </Show>
-                }
-              >
-                <InlineSpinner />
-              </Show>
-            </box>
-            <text bold>Bash</text>
-          </box>
+          {/* Use ToolResultView for consistent rendering with all other tools */}
+          <ToolResultView
+            tool={asTool().tool}
+            input={asTool().input}
+            status={asTool().status}
+            output={asTool().output}
+            error={asTool().error}
+            diff={asTool().diff}
+            streamingContent={asTool().streamingContent}
+          />
           {/* Nested sub-agent view with tree connector */}
           <box flexDirection="row">
             <text fg={colors.muted}>└─ </text>
@@ -108,7 +99,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
 
       <Match when={props.part.type === "tool"}>
         <box marginBottom={1}>
-          <ToolResultLine
+          <ToolResultView
             tool={asTool().tool}
             input={asTool().input}
             status={asTool().status}

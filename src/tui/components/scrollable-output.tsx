@@ -59,12 +59,7 @@ export const ScrollableOutput: Component<ScrollableOutputProps> = (props) => {
         <scrollbox
           ref={(r: ScrollBoxRenderable) => { scrollRef = r }}
           height={visibleHeight()}
-          scrollbarOptions={{
-            trackOptions: {
-              backgroundColor: colors.scrollbarTrack,
-              foregroundColor: colors.scrollbarThumb,
-            },
-          }}
+          scrollbarOptions={{ visible: false }}
         >
           <box flexDirection="column">
             <For each={lines()}>
