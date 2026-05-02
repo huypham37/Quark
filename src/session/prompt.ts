@@ -32,18 +32,12 @@ import {
 } from "./compact-resolver";
 import { generateSessionTitle } from "./title";
 import { list as listTools, resolve as resolveTools } from "../tool/registry";
-import {
-  getModel,
-  createCopilotProvider,
-  createOpenAICompatibleProvider,
-  createAlibabaCompatibleProvider,
-  createReasoningCompatibleProvider,
-  createCopilotAnthropicProvider,
-  isClaude,
-  setCopilotForceAgent,
-} from "../provider/provider";
-import { getThinkingNormalizer, needsReasoningReplay } from "../provider/thinking";
+import { getThinkingNormalizer } from "../provider/thinking";
+import { setForceAgent, getCustomFetch } from "../provider/custom-fetch";
 import { loadToken } from "../provider/copilot-auth";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
 import {
@@ -135,7 +129,7 @@ export async function prompt(input: {
 
   // Enter the loop
   const isSubAgent = !!input.parentSessionId;
-  if (isSubAgent) setCopilotForceAgent(true);
+  if (isSubAgent) setForceAgent(true);
 
   const controller = new AbortController();
   active.set(sessionId, controller);
@@ -156,7 +150,7 @@ export async function prompt(input: {
 
     await loop(sessionId, controller.signal, agent, input.model);
   } finally {
-    if (isSubAgent) setCopilotForceAgent(false);
+    if (isSubAgent) setForceAgent(false);
     active.delete(sessionId);
     bus.emit("loop-end", { sessionId });
     fireHook("session.idle", { sessionId }).catch(() => {});
@@ -230,7 +224,7 @@ async function loop(
     if (pendingReq) {
       console.log("[prompt] running pending compaction for session:", currentSessionId);
       bus.emit("compaction-start", { sessionId: currentSessionId });
-      setCopilotForceAgent(true);
+      setForceAgent(true);
       try {
         const result = await resolveCompaction({
           trigger: pendingReq.trigger,
@@ -265,7 +259,7 @@ async function loop(
           error: err,
         }).catch(() => {});
       } finally {
-        setCopilotForceAgent(false);
+        setForceAgent(false);
       }
     }
 
@@ -289,7 +283,7 @@ async function loop(
       )
     ) {
       bus.emit("compaction-start", { sessionId: currentSessionId });
-      setCopilotForceAgent(true);
+      setForceAgent(true);
       try {
         // Fire session.compacting hook — plugins can inject extra context
         const compactingOutput = await fireHook("session.compacting", {
@@ -352,7 +346,7 @@ async function loop(
         }).catch(() => {});
         // Continue with full context if compaction fails
       } finally {
-        setCopilotForceAgent(false);
+        setForceAgent(false);
       }
     }
 
@@ -386,7 +380,7 @@ async function loop(
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
-      modelId: effectiveModel,
+      modelId: modelSpec,
       ...(thinkingProviderOptions
         ? { providerOptions: thinkingProviderOptions }
         : {}),
@@ -404,7 +398,7 @@ async function loop(
     if (result === "compact") {
       // Provider returned context-too-long — force compaction and retry
       bus.emit("compaction-start", { sessionId: currentSessionId });
-      setCopilotForceAgent(true);
+      setForceAgent(true);
       try {
         const { messages: curMsgs, parts: curParts } = loadMessages(currentSessionId);
         const curModelMessages = toModelMessages(curMsgs, curParts);
@@ -462,7 +456,7 @@ async function loop(
         bus.emit("error", { sessionId: currentSessionId, error: err });
         break;
       } finally {
-        setCopilotForceAgent(false);
+        setForceAgent(false);
       }
     }
     break; // "stop"
@@ -495,7 +489,6 @@ export async function resolveModel(
     )
   }
 
-  let provider;
   // Plugin hook: allow plugins to intercept/modify provider+model before creating the AI SDK object
   const beforeOutput = await fireHook(
     "provider.request.before",
@@ -509,6 +502,7 @@ export async function resolveModel(
   providerId = beforeOutput.provider;
   modelId = beforeOutput.model;
 
+  // Branch 1: Copilot — OAuth auth, not config.yaml
   if (providerId === "copilot") {
     const getToken = async () => {
       const token = loadToken();
@@ -519,58 +513,39 @@ export async function resolveModel(
       }
       return token;
     };
-
-    // Use the native Anthropic Messages API (via @ai-sdk/anthropic) for Claude models
-    // when thinking is enabled — this endpoint returns thinking_delta events.
-    if (isClaude(modelId) && getThinkingNormalizer(modelId).getConfig().enabled) {
-      const anthropicProvider = createCopilotAnthropicProvider({ getToken });
-      return anthropicProvider(modelId);
-    }
-
-    // All other Copilot models use the OpenAI-compat Chat/Responses API
-    provider = createCopilotProvider({ getToken });
-  } else {
-    const pc = getProviderConfig(providerId);
-    if (!pc) {
-      throw new Error(
-        `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
-      );
-    }
-
-    // Route all "web" provider models through @ai-sdk/alibaba.
-    // The unified web-proxy normalises everything to OpenAI SSE with
-    // delta.reasoning_content for thinking tokens, so @ai-sdk/alibaba
-    // handles reasoning events (reasoning-start/delta/end) uniformly
-    // regardless of which underlying provider (Qwen, Claude, Meta, …) is used.
-    if (providerId === "web") {
-      const alibabaProvider = createAlibabaCompatibleProvider({
-        baseURL: pc.baseURL,
-        apiKey: resolveApiKey(pc.apiKey),
-      });
-      return alibabaProvider(modelId);
-    }
-
-    // Models that always emit reasoning and require reasoning_content
-    // in replayed assistant messages (e.g. kimi-k2.6 via OpenRouter).
-    // The @ai-sdk/openai chat provider drops reasoning parts, so we use
-    // a fetch wrapper that injects the field before the request is sent.
-    if (needsReasoningReplay(modelId)) {
-      provider = createReasoningCompatibleProvider({
-        name: providerId,
-        baseURL: pc.baseURL,
-        apiKey: resolveApiKey(pc.apiKey),
-      });
-      return getModel(provider, modelId);
-    }
-
-    provider = createOpenAICompatibleProvider({
-      name: providerId,
-      baseURL: pc.baseURL,
-      apiKey: resolveApiKey(pc.apiKey),
-    });
+    const fetch = getCustomFetch("copilot", { getToken });
+    return createOpenAICompatible({
+      name: "copilot",
+      baseURL: "https://api.githubcopilot.com",
+      apiKey: "copilot",
+      fetch,
+    })(modelId);
   }
 
-  return getModel(provider, modelId);
+  // Branch 2: User-configured providers from ~/.config/quark/config.yaml
+  const pc = getProviderConfig(providerId);
+  if (!pc) {
+    throw new Error(
+      `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
+    );
+  }
+
+  // Native SDK providers
+  if (providerId === "openai") {
+    return createOpenAI({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId);
+  }
+  if (providerId === "anthropic") {
+    return createAnthropic({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId);
+  }
+
+  // Branch 3: OpenAI-compatible (DeepSeek, Kimi, OpenRouter, OpenCode Go, …)
+  const customFetch = getCustomFetch(providerId);
+  return createOpenAICompatible({
+    name: providerId,
+    baseURL: pc.baseURL,
+    apiKey: resolveApiKey(pc.apiKey),
+    fetch: customFetch,
+  })(modelId);
 }
 
 // ---------------------------------------------------------------------------

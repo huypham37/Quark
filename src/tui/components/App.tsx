@@ -34,8 +34,7 @@ import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
-import { setCopilotThinking } from "../../provider/provider"
-import { getThinkingNormalizer, EFFORT_TO_BUDGET } from "../../provider/thinking"
+import { getThinkingNormalizer } from "../../provider/thinking"
 
 /** Command handler result */
 export type CommandResult =
@@ -908,7 +907,6 @@ export const App: Component<AppProps> = (props) => {
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
       getThinkingNormalizer(state.store.status.modelName).configure({ enabled: effort !== "none", effort })
-      setCopilotThinking(EFFORT_TO_BUDGET[effort] ?? 0)
       evt.preventDefault()
       return
     }

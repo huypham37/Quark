@@ -15,8 +15,7 @@ import { getFiles, fuzzyFilter } from "../tui/filelist"
 import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
-import { setCopilotThinking } from "../provider/provider"
-import { getThinkingNormalizer, EFFORT_TO_BUDGET } from "../provider/thinking"
+import { getThinkingNormalizer } from "../provider/thinking"
 import type { ServerWebSocket } from "bun"
 
 const ALL_EVENTS: BusEventName[] = [
@@ -245,7 +244,6 @@ function createRequestHandler(agent: AgentConfig) {
       const effort = body.enabled ? "high" : "none"
       const activeModel = parseModelSpec(modelOverride ?? loadConfig().main_model).model
       getThinkingNormalizer(activeModel).configure({ enabled: body.enabled, effort })
-      setCopilotThinking(EFFORT_TO_BUDGET[effort] ?? 0)
       return json({ enabled: body.enabled })
     }
 

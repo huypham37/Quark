@@ -17,7 +17,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { createCopilotFetch } from "../../src/provider/copilot-fetch"
-import { createCopilotProvider, getModel, shouldUseResponsesApi } from "../../src/provider/provider"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 
 const ENABLED = process.env.COPILOT_TEST === "1"
 const TOKEN = process.env.COPILOT_TOKEN ?? ""
@@ -80,39 +80,33 @@ describe.skipIf(skip)("integration: copilot-fetch", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Provider + AI SDK — real requests through @ai-sdk/openai
+// Provider + AI SDK — real requests through @ai-sdk/openai-compatible
 // ---------------------------------------------------------------------------
 describe.skipIf(skip)("integration: provider with AI SDK", () => {
-  test("creates a provider that can be used with getModel", () => {
-    const provider = createCopilotProvider({
+  function createCopilotProvider() {
+    const copilotFetch = createCopilotFetch({
       getToken: async () => TOKEN,
-      baseURL: BASE_URL,
     })
+    return createOpenAICompatible({
+      name: "copilot",
+      baseURL: BASE_URL,
+      apiKey: "copilot",
+      fetch: copilotFetch,
+    })
+  }
 
-    // Chat model
-    const chatModel = getModel(provider, "gpt-4o")
+  test("creates a provider that can be used for chat", () => {
+    const provider = createCopilotProvider()
+    const chatModel = provider.chat("gpt-4o")
     expect(chatModel).toBeDefined()
     expect(chatModel.modelId).toBe("gpt-4o")
-
-    // Responses model (if GPT-5 is available)
-    if (shouldUseResponsesApi("gpt-5")) {
-      const respModel = getModel(provider, "gpt-5")
-      expect(respModel).toBeDefined()
-      expect(respModel.modelId).toBe("gpt-5")
-    }
   })
 
   // This test actually calls the LLM through the AI SDK
   test("can call generateText with Copilot provider", async () => {
-    // Dynamic import to avoid issues if ai package isn't available
     const { generateText } = await import("ai")
-
-    const provider = createCopilotProvider({
-      getToken: async () => TOKEN,
-      baseURL: BASE_URL,
-    })
-
-    const model = getModel(provider, "gpt-4o")
+    const provider = createCopilotProvider()
+    const model = provider.chat("gpt-4o")
 
     const result = await generateText({
       model,

@@ -5,7 +5,7 @@
 //   adaptive  → { type: "adaptive", effort: "low" }   (Claude Opus 4.7+, Opus 4.6, Sonnet 4.6)
 //   budget    → { type: "enabled", budgetTokens: N }  (Claude Sonnet 3.7, 4.0, Haiku 4.5)
 //   effort    → { reasoning: { effort: "low" } }      (OpenAI GPT-5, o-series)
-//   native    → { reasoning: true }                   (Qwen via Alibaba SDK)
+//   native    → { enable_thinking: true }             (Qwen via OpenAI-compatible endpoint)
 
 import type { JSONObject } from "@ai-sdk/provider"
 
@@ -13,10 +13,10 @@ export type ThinkingEffort = "none" | "low" | "medium" | "high" | "xhigh"
 
 // Model thinking capability types
 export type ThinkingCapability =
-  | { mode: "adaptive"; efforts: ThinkingEffort[] }
-  | { mode: "budget"; minBudget: number; maxBudget: number }
-  | { mode: "effort"; efforts: ThinkingEffort[] }
-  | { mode: "native" }
+  | { mode: "adaptive"; efforts: ThinkingEffort[]; requiresReasoningReplay?: boolean }
+  | { mode: "budget"; minBudget: number; maxBudget: number; requiresReasoningReplay?: boolean }
+  | { mode: "effort"; efforts: ThinkingEffort[]; requiresReasoningReplay?: boolean }
+  | { mode: "native"; requiresReasoningReplay?: boolean }
   | null
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,15 @@ const MODEL_CAPABILITIES: Record<string, ThinkingCapability> = {
   // MiniMax / GLM — native reasoning via OpenAI-compatible endpoint
   "minimax-m2.7": { mode: "native" },
   "glm-5.1": { mode: "native" },
+
+  // Kimi — always emits reasoning and requires reasoning_content on replay.
+  // @ai-sdk/openai drops reasoning parts, so a fetch wrapper must inject the field.
+  "kimi-": { mode: "native", requiresReasoningReplay: true },
+
+  // DeepSeek — emits reasoning tokens and requires reasoning_content on replay
+  // when thinking mode is enabled. @ai-sdk/openai drops reasoning parts, so a
+  // fetch wrapper must inject the field.
+  "deepseek-": { mode: "native", requiresReasoningReplay: true },
 }
 
 // Effort → budget mapping for models that use budget mode
@@ -111,6 +120,15 @@ export function getModelCapability(modelId: string): ThinkingCapability {
   }
 
   return null
+}
+
+/**
+ * Check if a model requires `reasoning_content` on replayed assistant messages.
+ * Data-driven — uses the MODEL_CAPABILITIES dictionary.
+ */
+export function needsReasoningReplay(modelId: string): boolean {
+  const cap = getModelCapability(modelId)
+  return cap?.requiresReasoningReplay === true
 }
 
 /**
@@ -216,15 +234,6 @@ export class ThinkingNormalizer {
   }
 
   private normalizeNative(providerId: string): ProviderOptions | undefined {
-    // Qwen via Alibaba SDK — SDK handles reasoning events natively
-    // Qwen via OpenAI-compatible endpoint (opencode) — pass enable_thinking
-    if (providerId === "alibaba" || providerId === "dashscope") {
-      return {
-        alibaba: {
-          reasoning: true,
-        } as JSONObject,
-      }
-    }
     // OpenAI-compatible endpoint serving a Qwen model
     // @ai-sdk/openai spreads providerOptions.openai directly into the request body
     return {

@@ -399,6 +399,7 @@ export function toModelMessages(
 
     const assistantContent: Array<
       | { type: "text"; text: string }
+      | { type: "reasoning"; text: string }
       | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
     > = []
 
@@ -420,6 +421,11 @@ export function toModelMessages(
       } else if (p.type === "summary") {
         const d = JSON.parse(p.data) as SummaryData
         assistantContent.push({ type: "text", text: d.text })
+      } else if (p.type === "reasoning") {
+        const d = JSON.parse(p.data) as ReasoningPartData
+        if (d.text) {
+          assistantContent.push({ type: "reasoning", text: d.text })
+        }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
         // Always add the tool call to assistant content
