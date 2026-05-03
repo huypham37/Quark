@@ -1,25 +1,29 @@
 // @jsxImportSource @opentui/solid
-// ToolResultView — shows completed/failed/pending tool call result
+// ToolCard — unified tool rendering with header/body separation
+//
+// Header (always visible): status icon + tool name + args label
+// Body (polymorphic by tool): WriteStreamView / DiffView / ScrollableOutput / empty
 //
 // Matches the style:
-//   ✓ Read package.json
-//   ✗ Write failed.txt
-//   ⠋ Bash running...   (animated white spinner when running)
-//   … Bash             (muted ellipsis when pending/input streaming)
+//   ⠋ Bash  ~/deploy.sh          (running: animated spinner)
+//   ✓ Read  ~/package.json        (completed: green check)
+//   ✗ Write  ~/out.ts (EACCES)    (error: red cross)
+//   … Read  ~/src/tool.ts         (pending: muted ellipsis)
+//   ? Write  ~/out.ts             (awaiting_approval: question mark)
 
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
-import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
+import { colors } from "../theme"
 import { InlineSpinner } from "./inline-spinner"
 import { DiffView } from "./diff-view"
 import { WriteStreamView } from "./write-stream-view"
 import { ScrollableOutput } from "./scrollable-output"
 
-interface ToolResultLineProps {
+interface ToolCardProps {
   tool: string
+  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
   input: Record<string, unknown>
-  status: "completed" | "error" | "running" | "awaiting_approval" | "pending"
   output?: string
   error?: string
   diff?: string
@@ -80,12 +84,18 @@ function getToolDisplayName(tool: string): string {
     glob: "Glob",
     websearch: "WebSearch",
     question: "Question",
+    webfetch: "WebFetch",
+    "perplexity-search": "Perplexity",
   }
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }
 
-export const ToolResultView: Component<ToolResultLineProps> = (props) => {
-  const displayName = getToolDisplayName(props.tool)
+// ---------------------------------------------------------------------------
+// Header: status icon + tool name + args label
+// ---------------------------------------------------------------------------
+
+const ToolCardHeader: Component<ToolCardProps> = (props) => {
+  const displayName = () => getToolDisplayName(props.tool)
   const label = () => getToolLabel(props.tool, props.input)
   const isPending = () => props.status === "pending"
   const isAwaiting = () => props.status === "awaiting_approval"
@@ -93,48 +103,84 @@ export const ToolResultView: Component<ToolResultLineProps> = (props) => {
   const isError = () => props.status === "error"
 
   return (
-    <box flexDirection="column">
-      <box flexDirection="row">
-        <box flexShrink={0}>
-          <Show when={isRunning() || isPending() || isAwaiting()}>
-            <InlineSpinner />
-          </Show>
-          <Show
-            when={!isPending() && !isAwaiting() && !isRunning()}
-            fallback={null}
-          >
-            <Show
-              when={!isError()}
-              fallback={<text fg={colors.error}>✗ </text>}
-            >
-              <text fg={RGBA.fromHex("#98C379")}>✓ </text>
-            </Show>
-          </Show>
-        </box>
-        <text bold flexShrink={0}>{displayName} </text>
-        <Show when={label()}>
-          <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
+    <box flexDirection="row">
+      <box flexShrink={0}>
+        <Show when={isRunning()}>
+          <InlineSpinner />
         </Show>
-        <Show when={props.error}>
-          <text> </text>
-          <text fg={colors.error}>({props.error})</text>
+        <Show when={isPending()}>
+          <text fg={colors.muted}>… </text>
+        </Show>
+        <Show when={isAwaiting()}>
+          <text fg={colors.text}>⏸ </text>
+        </Show>
+        <Show when={!isRunning() && !isPending() && !isAwaiting()}>
+          <Show
+            when={isError()}
+            fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
+          >
+            <text fg={colors.error}>✗ </text>
+          </Show>
         </Show>
       </box>
+      <text bold flexShrink={0}>{displayName()} </text>
+      <Show when={label()}>
+        <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
+      </Show>
+      <Show when={props.error && isError()}>
+        <text> </text>
+        <text fg={colors.error}>({props.error})</text>
+      </Show>
+    </box>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Body: polymorphic by tool + status
+// ---------------------------------------------------------------------------
+
+const ToolCardBody: Component<ToolCardProps> = (props) => {
+  return (
+    <>
+      {/* Write tool streaming: progressive green lines */}
       <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
         <WriteStreamView
           content={props.streamingContent!}
           filePath={typeof (props.input.filePath ?? props.input.path) === "string" ? (props.input.filePath ?? props.input.path) as string : undefined}
         />
       </Show>
+
+      {/* Edit tool diff: unified diff view */}
       <Show when={props.diff && props.status === "completed"}>
         <DiffView
           diff={props.diff!}
           filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
         />
       </Show>
-      <Show when={props.output && props.status !== "awaiting_approval" && props.status !== "running" && props.status !== "pending" && props.tool !== "write"}>
+
+      {/* Output for terminal states (not write, not pending/running/awaiting) */}
+      <Show when={
+        props.output &&
+        props.status !== "awaiting_approval" &&
+        props.status !== "running" &&
+        props.status !== "pending" &&
+        props.tool !== "write"
+      }>
         <ScrollableOutput content={props.output!} />
       </Show>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ToolCard — composed header + body
+// ---------------------------------------------------------------------------
+
+export const ToolCard: Component<ToolCardProps> = (props) => {
+  return (
+    <box flexDirection="column">
+      <ToolCardHeader {...props} />
+      <ToolCardBody {...props} />
     </box>
   )
 }

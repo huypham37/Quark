@@ -3,39 +3,21 @@
 //
 // Dispatches to the appropriate sub-component based on part type:
 // - text → AssistantMessage (or UserMessage for user role)
-// - tool → ToolResultView (completed/error) or ToolInvocationBlock (running)
+// - tool → ToolCard (unified tool rendering)
 // - thinking → ThinkingIndicator
 
 import type { Component } from "solid-js"
 import { Show, Switch, Match, For } from "solid-js"
-import { RGBA } from "@opentui/core"
 import { UserMessage } from "./user-message"
 import { AssistantMessage } from "./assistant-message"
-import { ToolResultView } from "./tool-result"
-import { ToolInvocationBlock } from "./tool-invocation"
+import { ToolCard } from "./tool-card"
 import { ThinkingIndicator } from "./thinking"
 import { SubAgentView } from "./sub-agent-view"
-import { InlineSpinner } from "./inline-spinner"
 import { colors } from "../theme"
 import type { TuiMessage, TuiPart } from "../state"
 
 interface MessageItemProps {
   message: TuiMessage
-}
-
-// Extract a description for tool invocation display
-function getToolDescription(tool: string, input: Record<string, unknown>): string {
-  if (tool === "bash") {
-    const cmd = input.command ?? input.cmd
-    if (typeof cmd === "string") return cmd
-  }
-
-  if (tool === "skill") {
-    const desc = input.description
-    if (typeof desc === "string") return desc
-  }
-
-  return JSON.stringify(input, null, 2)
 }
 
 const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => {
@@ -55,23 +37,13 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
         )}
       </Match>
 
-      <Match when={props.part.type === "tool" && (props.part as Extract<TuiPart, { type: "tool" }>).status === "running" && (props.part as Extract<TuiPart, { type: "tool" }>).tool === "skill"}>
-        <box marginBottom={1}>
-          <ToolInvocationBlock
-            tool={asTool().tool}
-            description={getToolDescription(asTool().tool, asTool().input)}
-          />
-        </box>
-      </Match>
-
-      {/* Sub-agent: bash tool with subAgent state (running or completed) */}
+      {/* Sub-agent: bash tool with subAgent state */}
       <Match when={props.part.type === "tool" && asTool().subAgent}>
         <box marginBottom={1} flexDirection="column">
-          {/* Use ToolResultView for consistent rendering with all other tools */}
-          <ToolResultView
+          <ToolCard
             tool={asTool().tool}
-            input={asTool().input}
             status={asTool().status}
+            input={asTool().input}
             output={asTool().output}
             error={asTool().error}
             diff={asTool().diff}
@@ -87,22 +59,13 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
         </box>
       </Match>
 
-      {/* Regular bash tool (running, no sub-agent) */}
-      <Match when={props.part.type === "tool" && asTool().status === "running" && asTool().tool === "bash"}>
-        <box marginBottom={1}>
-          <ToolInvocationBlock
-            tool={asTool().tool}
-            description={getToolDescription(asTool().tool, asTool().input)}
-          />
-        </box>
-      </Match>
-
+      {/* All other tools — ToolCard handles everything */}
       <Match when={props.part.type === "tool"}>
         <box marginBottom={1}>
-          <ToolResultView
+          <ToolCard
             tool={asTool().tool}
-            input={asTool().input}
             status={asTool().status}
+            input={asTool().input}
             output={asTool().output}
             error={asTool().error}
             diff={asTool().diff}

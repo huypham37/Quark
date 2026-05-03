@@ -1,17 +1,19 @@
-// Regression tests for ToolResultLine -> ToolResultView rename + bash conformance
+// Tests for ToolCard — unified tool rendering
 //
 // Verifies:
-// - ToolResultView exists and ToolResultLine does not
-// - Bash sub-agent rendering uses ToolResultView (unified renderer)
-// - All tool results (bash, read, write, etc.) share the same render contract
+// - ToolCard exists and old components (ToolResultView, ToolInvocationBlock) are removed
+// - message-item.tsx uses ToolCard (collapsed Match cases)
+// - Bash sub-agent rendering uses ToolCard
+// - All tool parts share the same data shape compatible with ToolCard
 
 import { describe, test, expect } from "bun:test"
 import { readFileSync } from "fs"
+import { existsSync } from "fs"
 import { resolve } from "path"
 import { createRoot } from "solid-js"
 import { createAppState, dispatch } from "../../src/tui/state"
 
-const TOOL_RESULT_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/tool-result.tsx"), "utf8")
+const TOOL_CARD_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/tool-card.tsx"), "utf8")
 const MESSAGE_ITEM_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/message-item.tsx"), "utf8")
 
 function withRoot<T>(fn: () => T): T {
@@ -24,22 +26,34 @@ function withRoot<T>(fn: () => T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Component rename regression
+// Component migration regression
 // ---------------------------------------------------------------------------
 
-describe("ToolResultView rename (ToolResultLine -> ToolResultView)", () => {
-  test("ToolResultView is exported from tool-result.tsx", () => {
-    expect(TOOL_RESULT_SRC).toContain("export const ToolResultView")
+describe("ToolCard migration (ToolResultView + ToolInvocationBlock → ToolCard)", () => {
+  test("ToolCard is exported from tool-card.tsx", () => {
+    expect(TOOL_CARD_SRC).toContain("export const ToolCard")
   })
 
-  test("legacy ToolResultLine is no longer exported", () => {
-    // Should not have "export const ToolResultLine" anymore
-    expect(TOOL_RESULT_SRC).not.toMatch(/export const ToolResultLine/)
+  test("old ToolResultView file is deleted", () => {
+    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-result.tsx"))).toBe(false)
   })
 
-  test("message-item.tsx imports ToolResultView instead of ToolResultLine", () => {
-    expect(MESSAGE_ITEM_SRC).toContain('import { ToolResultView }')
-    expect(MESSAGE_ITEM_SRC).not.toContain('import { ToolResultLine }')
+  test("old ToolInvocationBlock file is deleted", () => {
+    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-invocation.tsx"))).toBe(false)
+  })
+
+  test("message-item.tsx imports ToolCard instead of old components", () => {
+    expect(MESSAGE_ITEM_SRC).toContain('import { ToolCard }')
+    expect(MESSAGE_ITEM_SRC).not.toContain('import { ToolResultView }')
+    expect(MESSAGE_ITEM_SRC).not.toContain('import { ToolInvocationBlock }')
+  })
+
+  test("message-item.tsx has only 2 tool-related Match cases", () => {
+    // Count <Match when={...type === "tool"}> occurrences
+    const toolMatches = MESSAGE_ITEM_SRC.match(/when=\{.*type\s*===\s*"tool"/g)
+    expect(toolMatches).not.toBeNull()
+    // 2 cases: sub-agent (with ToolCard + SubAgentView) and catch-all (ToolCard only)
+    expect(toolMatches!.length).toBe(2)
   })
 })
 
@@ -47,8 +61,8 @@ describe("ToolResultView rename (ToolResultLine -> ToolResultView)", () => {
 // Bash sub-agent rendering conformance
 // ---------------------------------------------------------------------------
 
-describe("bash sub-agent rendering uses ToolResultView", () => {
-  test("completed bash sub-agent part has status compatible with ToolResultView", () => {
+describe("bash sub-agent rendering uses ToolCard", () => {
+  test("completed bash sub-agent part has status compatible with ToolCard", () => {
     withRoot(() => {
       const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(state, { type: "add-assistant-message", id: "m1" })
@@ -78,7 +92,7 @@ describe("bash sub-agent rendering uses ToolResultView", () => {
     })
   })
 
-  test("errored bash sub-agent part has error status compatible with ToolResultView", () => {
+  test("errored bash sub-agent part has error status compatible with ToolCard", () => {
     withRoot(() => {
       const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(state, { type: "add-assistant-message", id: "m1" })
@@ -110,11 +124,11 @@ describe("bash sub-agent rendering uses ToolResultView", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Unified render contract: all tools share ToolResultView
+// Unified render contract: all tools share ToolCard shape
 // ---------------------------------------------------------------------------
 
 describe("unified render contract for completed/error tools", () => {
-  test("completed bash tool (non-sub-agent) has same shape as completed read tool", () => {
+  test("completed bash tool (non-sub-agent) has same shape as completed write tool", () => {
     withRoot(() => {
       const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(state, { type: "add-assistant-message", id: "m1" })
@@ -124,8 +138,8 @@ describe("unified render contract for completed/error tools", () => {
       dispatch(state, { type: "tool-input", messageId: "m1", callId: "c1", input: { command: "ls" } })
       dispatch(state, { type: "tool-end", messageId: "m1", callId: "c1", status: "completed", output: "file1\nfile2" })
 
-      // Read tool
-      dispatch(state, { type: "tool-start", messageId: "m1", tool: "read", callId: "c2" })
+      // Write tool
+      dispatch(state, { type: "tool-start", messageId: "m1", tool: "write", callId: "c2" })
       dispatch(state, { type: "tool-input", messageId: "m1", callId: "c2", input: { filePath: "/test.ts" } })
       dispatch(state, { type: "tool-end", messageId: "m1", callId: "c2", status: "completed", output: "export const x = 1" })
 
@@ -133,9 +147,9 @@ describe("unified render contract for completed/error tools", () => {
       expect(parts).toHaveLength(2)
 
       const bashPart = parts[0] as any
-      const readPart = parts[1] as any
+      const writePart = parts[1] as any
 
-      // Both should have the same structure compatible with ToolResultView
+      // Both should have the same structure compatible with ToolCard
       expect(bashPart.type).toBe("tool")
       expect(bashPart.status).toBe("completed")
       expect(typeof bashPart.tool).toBe("string")
@@ -143,12 +157,12 @@ describe("unified render contract for completed/error tools", () => {
       expect(typeof bashPart.output).toBe("string")
       expect(bashPart.subAgent).toBeUndefined()
 
-      expect(readPart.type).toBe("tool")
-      expect(readPart.status).toBe("completed")
-      expect(typeof readPart.tool).toBe("string")
-      expect(typeof readPart.input).toBe("object")
-      expect(typeof readPart.output).toBe("string")
-      expect(readPart.subAgent).toBeUndefined()
+      expect(writePart.type).toBe("tool")
+      expect(writePart.status).toBe("completed")
+      expect(typeof writePart.tool).toBe("string")
+      expect(typeof writePart.input).toBe("object")
+      expect(typeof writePart.output).toBe("string")
+      expect(writePart.subAgent).toBeUndefined()
     })
   })
 
@@ -177,5 +191,69 @@ describe("unified render contract for completed/error tools", () => {
         expect(typeof p.error).toBe("string")
       }
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ToolCard header state rendering
+// ---------------------------------------------------------------------------
+
+describe("ToolCard header states", () => {
+  test("ToolCard header renders pending state with muted ellipsis", () => {
+    expect(TOOL_CARD_SRC).toContain("… ")
+    expect(TOOL_CARD_SRC).toContain("isPending()")
+  })
+
+  test("ToolCard header renders awaiting_approval with pause symbol", () => {
+    expect(TOOL_CARD_SRC).toContain("⏸ ")
+    expect(TOOL_CARD_SRC).toContain("isAwaiting()")
+  })
+
+  test("ToolCard header renders running with InlineSpinner", () => {
+    expect(TOOL_CARD_SRC).toContain("InlineSpinner")
+    expect(TOOL_CARD_SRC).toContain("isRunning()")
+  })
+
+  test("ToolCard header renders completed with green check", () => {
+    expect(TOOL_CARD_SRC).toContain("✓ ")
+  })
+
+  test("ToolCard header renders error with red cross", () => {
+    expect(TOOL_CARD_SRC).toContain("✗ ")
+    expect(TOOL_CARD_SRC).toContain("isError()")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ToolCard body polymorphic rendering
+// ---------------------------------------------------------------------------
+
+describe("ToolCard body polymorphic rendering", () => {
+  test("write tool renders WriteStreamView for running + streamingContent", () => {
+    expect(TOOL_CARD_SRC).toContain("WriteStreamView")
+    expect(TOOL_CARD_SRC).toContain('tool === "write"')
+    expect(TOOL_CARD_SRC).toContain('status === "running"')
+    expect(TOOL_CARD_SRC).toContain("streamingContent")
+  })
+
+  test("edit tool renders DiffView for completed + diff", () => {
+    expect(TOOL_CARD_SRC).toContain("DiffView")
+    expect(TOOL_CARD_SRC).toContain("props.diff")
+    expect(TOOL_CARD_SRC).toContain('status === "completed"')
+  })
+
+  test("bash tool renders ScrollableOutput for terminal state with output", () => {
+    expect(TOOL_CARD_SRC).toContain("ScrollableOutput")
+    expect(TOOL_CARD_SRC).toContain("props.output")
+  })
+
+  test("todo/question/skill tools render empty body", () => {
+    // The body only shows WriteStreamView, DiffView, or ScrollableOutput
+    // — no special cases for todo/question/skill means empty body
+    const bodyLines = TOOL_CARD_SRC.split("ToolCardBody")[1] ?? ""
+    // Should NOT have todo-specific, question-specific, or skill-specific body rendering
+    expect(bodyLines).not.toContain('tool === "todo"')
+    expect(bodyLines).not.toContain('tool === "question"')
+    expect(bodyLines).not.toContain('tool === "skill"')
   })
 })

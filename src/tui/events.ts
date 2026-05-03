@@ -12,6 +12,7 @@ import { createComputed, onCleanup } from "solid-js"
 import { bus, type BusEventName, type BusEvents } from "../session/events"
 import { dispatch, type AppState } from "./state"
 import { error as notifyError, warn as notifyWarn } from "../notification/notification"
+import { READ_ONLY_TOOLS } from "../tool/tool"
 
 // Per-session last-known input token count — survives session switches so
 // returning to a session restores the correct context-window %.
@@ -175,6 +176,7 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("tool-start", (data) => {
+      if (READ_ONLY_TOOLS.has(data.tool)) return
       dispatch(state, { type: "tool-start", messageId: data.messageId, tool: data.tool, callId: data.callId })
     }))
 
@@ -187,6 +189,7 @@ export function wireEvents(state: AppState) {
     const deferredToolEnd = new Map<string, BusEvents["tool-end"]>()
 
     unsubs.push(on("tool-input", (data) => {
+      if (READ_ONLY_TOOLS.has(data.tool)) return
       dispatch(state, { type: "tool-input", messageId: data.messageId, callId: data.callId, input: data.input })
 
       // Start progressive streaming for write tool content
@@ -218,6 +221,7 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("tool-end", (data) => {
+      if (READ_ONLY_TOOLS.has(data.tool)) return
       // If a write-stream timer is still running, defer the tool-end dispatch
       // until the animation completes — otherwise the timer gets cancelled and
       // the user sees zero progressive frames.
@@ -263,6 +267,8 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("tool-running", (data) => {
+      // No tool filter needed — tool-start already filtered, so this is a no-op
+      // for read-only tools (the part was never created).
       dispatch(state, { type: "tool-running", messageId: data.messageId, callId: data.callId })
     }))
 
