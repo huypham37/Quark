@@ -126,7 +126,7 @@ const syntaxTheme: ThemeTokenStyle[] = [
     style: { foreground: "#569CD6", bold: true }
   },
   {
-    scope: ["markup.bold"],
+    scope: ["markup.bold", "markup.strong"],
     style: { bold: true }
   },
   {
