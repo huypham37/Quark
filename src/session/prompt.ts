@@ -64,6 +64,12 @@ import { fireHook } from "../plugin/registry";
 // ---------------------------------------------------------------------------
 const active = new Map<string, AbortController>();
 
+// When the user rejects a permission request, abort the entire agent step
+// so the model cannot call another tool.
+bus.on("permission-rejected", (data) => {
+  cancel(data.sessionId);
+});
+
 // ---------------------------------------------------------------------------
 // prompt() — public entry point
 // ---------------------------------------------------------------------------
@@ -366,7 +372,6 @@ async function loop(
       currentSessionId,
       assistantMsg.id,
       abort,
-      modelMessages,
     );
 
     // 6. Stream + process
@@ -555,14 +560,18 @@ function resolveToolSet(
   agent: AgentConfig,
   sessionId: string,
   messageId: string,
-  abort: AbortSignal, //Question: Why resolve toolsets requires abort?
-  messages: any[],
+  abort: AbortSignal,
 ): ToolSet {
   const defs = resolveTools(agent.tools);
+  const ruleset: Ruleset = (agent.permissions ?? []).map(r => ({
+    permission: r.tool,
+    pattern: "*",
+    action: r.action,
+  }));
   const result: ToolSet = {};
 
   for (const def of defs) {
-    result[def.id] = toAITool(def, sessionId, messageId, abort, messages);
+    result[def.id] = toAITool(def, sessionId, messageId, abort, ruleset);
   }
 
   return result;
@@ -594,14 +603,12 @@ function abortSignalToPromise(signal: AbortSignal): Promise<never> {
 // ---------------------------------------------------------------------------
 // toAITool — convert a single ToolDef to an AI SDK tool()
 // ---------------------------------------------------------------------------
-// Question: why do have to convert a single tooldef to AISDK tools()?
-// Question: What is ctx() and why do we add to that
 function toAITool(
   def: ToolDef,
   sessionId: string,
   messageId: string,
   abort: AbortSignal,
-  messages: any[],
+  ruleset: Ruleset,
 ) {
   const schema = z.toJSONSchema(def.parameters);
 
@@ -609,28 +616,55 @@ function toAITool(
     description: def.description,
     inputSchema: jsonSchema(schema as any),
     async execute(args: any, options: ToolExecutionOptions) {
+      const callId = options.toolCallId;
+      const abortSig = options.abortSignal ?? abort;
+
+      // 1. Permission gate BEFORE any tool execution
+      //    - "allow" → returns immediately
+      //    - "deny"  → throws DeniedError
+      //    - "ask"   → blocks on TUI permission prompt, uses respond() + once/always/reject
+      try {
+        await askPermission({
+          sessionId,
+          permission: def.id,
+          pattern: "*",
+          ruleset,
+        });
+      } catch (e) {
+        if (e instanceof RejectedError || e instanceof CorrectedError) {
+          // User rejected — abort the entire agent step so the model
+          // cannot call another tool
+          bus.emit("permission-rejected", { sessionId });
+        }
+        throw e;
+      }
+
+      // 2. Permission passed — signal TUI to transition awaiting_approval → running
+      bus.emit("tool-running", { sessionId, messageId, callId });
+
+      // 3. Build execution context for the tool
       const ctx = {
         sessionId,
         messageId,
-        callId: options.toolCallId,
-        abort: options.abortSignal ?? abort,
-        messages,
+        callId,
+        abort: abortSig,
+        // TODO: later support argument-level permission via ctx.ask()
         async ask(permission: string, pattern: string) {
           await askPermission({
             sessionId,
             permission,
             pattern,
-            ruleset: [], // TODO: load project/config rules when config system exists
+            ruleset,
           });
         },
       };
-      // Plugin hooks: before/after tool execution
+
+      // 4. Plugin hooks: before/after tool execution
       const beforeArgs = await fireHook(
         "tool.execute.before",
         { tool: def.id, args },
         { args },
       );
-      const abortSig = options.abortSignal ?? abort;
       const toolResult = await Promise.race([
         def.execute(beforeArgs.args as typeof args, ctx),
         abortSignalToPromise(abortSig),

@@ -17,9 +17,10 @@ export const compactTool = defineTool({
     "Use when you notice the context is getting large or you're told context is running low.",
   parameters: z.object({}),
   async execute(_args, ctx) {
-    const { sessionId, messages: modelMessages } = ctx
+    const { sessionId } = ctx
 
     const { messages, parts } = loadMessages(sessionId)
+    const modelMessages = toModelMessages(messages, parts)
     const model = await resolveModel()
 
     bus.emit("compaction-start", { sessionId })

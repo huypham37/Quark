@@ -5,10 +5,64 @@
 - When working on this project, prioritize code quality and test coverage
 - Always run tests after making changes to core functionality
 
+### Rules
+- When user asking for explanation, always start with brief explanation then example. 
+
+### Specs: YAML frontmatter required
+
+All spec files in `specs/` must start with YAML frontmatter:
+
+```yaml
+---
+title: Short descriptive title
+date_created: 2026-05-02
+date_modified: 2026-05-02
+revision: 1
+history:
+  - 2026-05-02: Initial draft
+status: draft  # draft | in-progress | done
+---
+```
+
+On each modification: bump `revision`, update `date_modified`, and append
+an entry to `history` (date + one-line description of what changed).
+Mark `status: done` when the implementation is complete and tests pass.
+
+Create a spec for any non-trivial feature addition or refactor. The spec
+should capture the problem, the proposed architecture, key decisions with
+rationale, and acceptance criteria. Keep it focused — a spec is a plan of
+record, not a living document. Implementation notes go in commit messages.
+
+### Testing: Verify end-to-end at integration boundaries
+
+
+When your code produces output consumed by a downstream system — an external
+SDK, a framework, an HTTP layer, a file system, a database — unit tests of your
+intermediate return values are not sufficient. The downstream system may rename
+fields, filter unrecognized keys, read from a different namespace than expected,
+or silently discard your data.
+
+**Write tests that verify the effect at the boundary where your output is consumed.**
+
+Common integration boundaries in this project:
+
+- **Data passes through an SDK to an HTTP request**: mock the SDK with a
+  capturing `fetch`, call the real SDK function, and assert the HTTP body
+- **Output is consumed by another module**: test the consuming module with
+  real input, not just mocks of the interface
+- **Output lands in a file or database**: test with real temp files / in-memory
+  stores, then read back and assert the content
+- **Output is serialized and sent over a wire protocol**: capture the raw
+  serialized form, not just the typed representation
+
+What this catches: SDK renames (e.g. `reasoningEffort` → `reasoning_effort`),
+SDK filters unknown keys, SDK reads from a different namespace than expected,
+silently broken passthrough where data never reaches the consumer.
+
 
 # Quark — Philosophy & Design
 
-> Built from scratch. Opencode as reference, not as fork.
+> Built from scratch.
 
 ---
 
@@ -49,65 +103,6 @@ Your context defines the agent's capabilities. Your tools define its behavior.
 ## What Makes an LLM an Agent
 
 One pattern: **the loop**.
-
-```
-while not done:
-    context  = assemble(messages, tools, system_prompt)
-    response = call_llm(context)
-    if response.has_tool_calls:
-        results = execute(response.tool_calls)
-        messages.append(results)
-    else:
-        done = true
-```
-
-A chatbot responds in a single pass. An agent persists, adapts, and acts
-across multiple steps.
-
-### Base Agent Kernel
-
-The irreducible core of any agent — before it becomes a coder, researcher,
-or anything specialized — is three components:
-
-1. **Agent Loop** — the control flow that iterates until the task is done
-2. **Provider Connection** — the LLM API call that produces reasoning
-3. **Message State** — the accumulating array of messages that gives
-   the loop continuity between iterations
-
-This is the skeleton. Without the loop, there is no iteration. Without the
-provider, there is no intelligence. Without message state, every call is
-stateless and there is no agent behavior — just a chatbot.
-
-### Capability Packaging
-
-Specialized agents are grown from the kernel by plugging in capabilities:
-
-| Capability | What It Adds |
-|---|---|
-| **Tools** | The ability to act on the world (read, write, execute) |
-| **Permissions** | Safety constraints on tool execution |
-| **Context Management** | Survival across long sessions (compaction or handoff) |
-| **Skills** | On-demand behaviors loaded into context |
-| **RAG / Memory** | Recall beyond the context window |
-| **Planning** | Explicit task decomposition and sequencing |
-
-Different combinations produce different agents. A coder agent gets tools +
-permissions + context management. A researcher agent gets search tools +
-RAG. The **profile** is the declaration of which capabilities to plug into
-the kernel.
-
-```
-Base Kernel: loop + provider + message state
-         │
-         ├── + tools           → can act on the world
-         ├── + permissions     → can be trusted to act safely
-         ├── + context mgmt   → can survive long sessions
-         ├── + skills          → can learn new behaviors on-demand
-         ├── + RAG / memory    → can recall beyond the context window
-         └── = Coder Agent, Researcher Agent, etc.
-```
-
----
 
 ## Design Principles
 
@@ -222,50 +217,6 @@ not a prompt to retry.
 
 ---
 
-## Loop Control
-
-The loop is the heart of the agent. It must be controlled.
-
-### Min-Step: Prevent Premature Stops
-
-The agent must take at least `minSteps` iterations before it is allowed to
-conclude. If the model returns "stop" before `minSteps`, the loop continues
-and nudges the agent to keep working.
-
-**Why:** Models often stop prematurely, declaring success before exploring
-the solution space adequately.
-
-### Max-Step: Prevent Doom Loops
-
-When `maxSteps` is reached, the agent receives a nudge:
-*"You reached the max step limit. Summarize your findings up until now."*
-Then one final LLM response is allowed before the loop terminates.
-
-**Why:** Silent breaks lose work. A forced summary preserves progress.
-
-### Context-Length Awareness
-
-The agent is informed of its context window usage at 25% intervals
-(±3% tolerance). Nudges are delivered at event boundaries — never
-mid-tool-call, never mid-stream.
-
-**Why:** An agent unaware of its context budget cannot plan for compaction,
-summarization, or wrap-up.
-
----
-
-## Profile Loading
-
-Profiles can be activated in two ways:
-
-### Deterministic (Explicit)
-
-```
-quark --profile coder
-```
-
-The profile is loaded at startup. No LLM call, no classification cost.
-The backend and SDK expose this as a parameter.
 
 ### Non-Deterministic (Agent-Selected)
 

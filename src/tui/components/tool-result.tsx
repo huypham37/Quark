@@ -19,7 +19,7 @@ import { ScrollableOutput } from "./scrollable-output"
 interface ToolResultLineProps {
   tool: string
   input: Record<string, unknown>
-  status: "completed" | "error" | "running" | "pending"
+  status: "completed" | "error" | "running" | "awaiting_approval" | "pending"
   output?: string
   error?: string
   diff?: string
@@ -88,6 +88,7 @@ export const ToolResultView: Component<ToolResultLineProps> = (props) => {
   const displayName = getToolDisplayName(props.tool)
   const label = () => getToolLabel(props.tool, props.input)
   const isPending = () => props.status === "pending"
+  const isAwaiting = () => props.status === "awaiting_approval"
   const isRunning = () => props.status === "running"
   const isError = () => props.status === "error"
 
@@ -95,11 +96,11 @@ export const ToolResultView: Component<ToolResultLineProps> = (props) => {
     <box flexDirection="column">
       <box flexDirection="row">
         <box flexShrink={0}>
-          <Show when={isRunning() || isPending()}>
+          <Show when={isRunning() || isPending() || isAwaiting()}>
             <InlineSpinner />
           </Show>
           <Show
-            when={!isPending() && !isRunning()}
+            when={!isPending() && !isAwaiting() && !isRunning()}
             fallback={null}
           >
             <Show
@@ -131,7 +132,7 @@ export const ToolResultView: Component<ToolResultLineProps> = (props) => {
           filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
         />
       </Show>
-      <Show when={props.output && props.status !== "running" && props.status !== "pending" && props.tool !== "write"}>
+      <Show when={props.output && props.status !== "awaiting_approval" && props.status !== "running" && props.status !== "pending" && props.tool !== "write"}>
         <ScrollableOutput content={props.output!} />
       </Show>
     </box>

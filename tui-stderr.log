@@ -1,1 +1,0 @@
-[claude-web-proxy] No API key found. Set CLAUDE_WEB_PROXY_API_KEY or create ~/.config/atom/claude-web-proxy-token.json. Plugin is inactive.

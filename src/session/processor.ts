@@ -166,7 +166,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
           case "tool-call": {
             const match = toolParts.get(event.toolCallId)
             if (match) {
-              match.data.status = "running"
+              match.data.status = "awaiting_approval"
               match.data.input = event.input as Record<string, unknown>
               match.data.tool = event.toolName
               updatePart(match.partId, match.data, sid, mid, "tool")
@@ -347,7 +347,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     } catch (e: any) {
       // Mark any in-flight tool parts as errored and notify the TUI via bus
       for (const [callId, entry] of toolParts) {
-        if (entry.data.status === "pending" || entry.data.status === "running") {
+        if (entry.data.status === "pending" || entry.data.status === "awaiting_approval" || entry.data.status === "running") {
           entry.data.status = "error"
           entry.data.error = "Tool execution aborted"
           updatePart(entry.partId, entry.data, sid, mid, "tool")

@@ -22,7 +22,7 @@ export interface TuiMessage {
 
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; data: string; label: string }
 
@@ -30,7 +30,7 @@ export type TuiPart =
 export interface SubAgentToolPart {
   tool: string
   callId: string
-  status: "pending" | "running" | "completed" | "error"
+  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
   input: Record<string, unknown>
   error?: string
 }
@@ -95,6 +95,7 @@ export type TuiAction =
   | { type: "tool-start"; messageId: string; tool: string; callId: string }
   | { type: "tool-input"; messageId: string; callId: string; input: Record<string, unknown> }
   | { type: "tool-end"; messageId: string; callId: string; status: "completed" | "error"; output?: string; error?: string; diff?: string }
+  | { type: "tool-running"; messageId: string; callId: string }
   | { type: "tool-stream-delta"; messageId: string; callId: string; content: string }
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
@@ -152,7 +153,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
           const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
           if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
             const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
-            subAgent = { profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status !== "running" }
+            subAgent = { profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status === "completed" || d.status === "error" }
           }
         }
         tuiParts.push({
@@ -383,7 +384,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       if (tiPartIdx === -1) break
       setStore("messages", tiMsgIdx, "parts", tiPartIdx, produce((part: TuiPart) => {
         if (part.type === "tool") {
-          part.status = "running"
+          part.status = "awaiting_approval"
           part.input = action.input
         }
       }))
@@ -422,17 +423,31 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.streamingContent = undefined
             // Cascade status to sub-agent: when the parent tool ends (error or
             // completed), mark the sub-agent as done and transition any
-            // pending/running child tools to the parent's terminal status.
+            // pending/awaiting_approval/running child tools to the parent's terminal status.
             if (part.subAgent) {
               part.subAgent.done = true
               part.subAgent.textPreview = undefined
               const childStatus = action.status === "error" ? "error" as const : "completed" as const
               for (const child of part.subAgent.tools) {
-                if (child.status === "pending" || child.status === "running") {
+                if (child.status === "pending" || child.status === "awaiting_approval" || child.status === "running") {
                   child.status = childStatus
                 }
               }
             }
+          }
+        }),
+      )
+      break
+
+    case "tool-running":
+      setStore(
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const part = parts.find((p) => p.type === "tool" && p.callId === action.callId)
+          if (part && part.type === "tool") {
+            part.status = "running"
           }
         }),
       )

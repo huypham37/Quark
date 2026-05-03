@@ -26,7 +26,7 @@ export interface TextPartData {
 export interface ToolPartData {
   tool: string
   callId: string
-  status: "pending" | "running" | "completed" | "error"
+  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
   input: Record<string, unknown>
   output?: string
   error?: string

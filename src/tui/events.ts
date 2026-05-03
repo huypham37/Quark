@@ -262,6 +262,10 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("tool-running", (data) => {
+      dispatch(state, { type: "tool-running", messageId: data.messageId, callId: data.callId })
+    }))
+
     unsubs.push(on("question-request", (data) => {
       dispatch(state, {
         type: "set-question",

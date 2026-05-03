@@ -4,6 +4,7 @@
 // It can be constructed from a ProfileDef (profile-driven) or directly.
 
 import type { ProfileDef } from "./profile/profile";
+import { type Action } from "./permission/permission";
 
 /**
  * Runtime configuration for an active agent instance.
@@ -24,6 +25,12 @@ export interface AgentConfig {
   subAgents?: string[];
   /** Model string to use for this agent (e.g. `"copilot/gpt-4o"`). Falls back to config `main_model` if omitted. */
   model?: string;
+  /** Permission rules for this agent's tools.
+   *  Each rule matches a tool ID and specifies whether to allow, deny, or ask.
+   *  Rules are evaluated with last-match-wins semantics.
+   *
+   *  TODO: later support argument-level permission via a `pattern` field. */
+  permissions?: Array<{ tool: string; action: Action }>;
 }
 
 /**
@@ -58,5 +65,6 @@ export function agentFromProfile(
     skills: profile.skills,
     subAgents: profile.subAgents,
     model: profile.model,
+    permissions: profile.permissions,
   };
 }

@@ -24,8 +24,6 @@ export interface ToolContext {
   callId: string
   /** AbortSignal — tool should respect cancellation */
   abort: AbortSignal
-  /** Full conversation history (model messages) for context-aware tools */
-  messages: any[]
   /**
    * Request permission before performing a sensitive operation.
    * Throws {@link DeniedError} or {@link RejectedError} if denied.

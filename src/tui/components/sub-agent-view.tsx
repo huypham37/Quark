@@ -22,7 +22,7 @@ import type { SubAgentState, SubAgentToolPart } from "../state"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
-  parentStatus: "pending" | "running" | "completed" | "error"
+  parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
 }
 
 // Map tool IDs to display names (same as tool-result.tsx)
@@ -82,7 +82,7 @@ function formatTokens(n: number): string {
 }
 
 // StatusIndicator - always renders a single text element to avoid DOM insertion issues
-const StatusIndicator: Component<{ status: "pending" | "running" | "completed" | "error" }> = (props) => {
+const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "running" | "completed" | "error" }> = (props) => {
   const [frameIndex, setFrameIndex] = createSignal(0)
 
   createEffect(() => {
@@ -98,6 +98,7 @@ const StatusIndicator: Component<{ status: "pending" | "running" | "completed" |
     switch (props.status) {
       case "running": return SPINNER_FRAMES[frameIndex()] + " "
       case "pending": return "… "
+      case "awaiting_approval": return "? "
       case "error": return icons.cross + " "
       default: return icons.checkmark + " "
     }
@@ -107,6 +108,7 @@ const StatusIndicator: Component<{ status: "pending" | "running" | "completed" |
     switch (props.status) {
       case "running": return colors.textBold
       case "pending": return colors.muted
+      case "awaiting_approval": return colors.muted
       case "error": return colors.error
       default: return RGBA.fromHex("#98C379")
     }

@@ -31,6 +31,7 @@ export interface BusEvents {
   // Tool lifecycle
   "tool-start": { sessionId: string; messageId: string; partId: string; tool: string; callId: string }
   "tool-input": { sessionId: string; messageId: string; partId: string; tool: string; callId: string; input: Record<string, unknown> }
+  "tool-running": { sessionId: string; messageId: string; callId: string }
   "tool-end": { sessionId: string; messageId: string; partId: string; tool: string; callId: string; status: "completed" | "error"; output?: string; error?: string; diff?: string }
 
   // Streaming reasoning/thinking deltas (extended thinking)
@@ -51,6 +52,9 @@ export interface BusEvents {
 
   // Permission request (TUI needs to prompt user)
   "permission-request": { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }
+
+  // Permission was rejected by the user — abort the agent loop
+  "permission-rejected": { sessionId: string }
 
   // Question request — agent asks user interactive questions, TUI displays picker
   "question-request": {

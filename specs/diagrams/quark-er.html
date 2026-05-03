@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quark · ER Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #eb6c36;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .frame { max-width: 1200px; width: 100%; }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.5rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 2rem;
+    }
+
+    svg { width: 100%; min-width: 960px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Data Model</p>
+    <h1>Quark entity-relationship diagram</h1>
+
+    <svg viewBox="0 0 1000 820" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#eb6c36"/>
+          </marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- Relationship lines -->
+        <!-- Session self-ref (parentSessionId) -->
+        <path d="M 400 120 Q 340 120, 340 160 T 400 200" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- Session - Message (1:N) -->
+        <line x1="520" y1="280" x2="520" y2="320" stroke="#4f5d75" stroke-width="1"/>
+
+        <!-- Message - Part (1:N) -->
+        <line x1="520" y1="580" x2="520" y2="620" stroke="#4f5d75" stroke-width="1"/>
+
+        <!-- Profile - Session (Conceptually linked via profile ID) -->
+        <line x1="260" y1="200" x2="400" y2="200" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,4"/>
+
+        <!-- Cardinality labels: Session (1) → Message (N) -->
+        <rect x="514" y="284" width="12" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="294" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="600">1</text>
+        <rect x="514" y="304" width="12" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="314" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="600">N</text>
+
+        <!-- Cardinality labels: Message (1) → Part (N) -->
+        <rect x="514" y="584" width="12" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="594" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="600">1</text>
+        <rect x="514" y="604" width="12" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="614" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="600">N</text>
+
+        <!-- Entity: Session (Focal) -->
+        <rect x="400" y="80" width="240" height="200" rx="6" fill="rgba(235,108,54,0.04)" stroke="#eb6c36" stroke-width="1.2"/>
+        <rect x="400" y="80" width="240" height="40" rx="6" fill="rgba(235,108,54,0.08)" stroke="none"/>
+        <rect x="400" y="112" width="240" height="8" fill="rgba(235,108,54,0.08)"/>
+        <line x1="400" y1="120" x2="640" y2="120" stroke="rgba(235,108,54,0.30)" stroke-width="1"/>
+        <text x="416" y="96" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · CORE</text>
+        <text x="416" y="112" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Session</text>
+        <text x="416" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># id</text>
+        <text x="624" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">title</text>
+        <text x="624" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string?</text>
+        <text x="416" y="180" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">directory</text>
+        <text x="624" y="180" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">path?</text>
+        <text x="416" y="200" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ parentSessionId</text>
+        <text x="624" y="200" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid?</text>
+        <text x="416" y="220" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">kind</text>
+        <text x="624" y="220" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">main|subagent|ephemeral</text>
+        <text x="416" y="240" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">timeCreated</text>
+        <text x="624" y="240" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">ms</text>
+        <text x="416" y="260" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">timeUpdated</text>
+        <text x="624" y="260" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">ms</text>
+
+        <!-- Entity: Message -->
+        <rect x="400" y="320" width="240" height="260" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="400" y="320" width="240" height="40" rx="6" fill="rgba(45,49,66,0.04)" stroke="none"/>
+        <rect x="400" y="352" width="240" height="8" fill="rgba(45,49,66,0.04)"/>
+        <line x1="400" y1="360" x2="640" y2="360" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="416" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+        <text x="416" y="352" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Message</text>
+        <text x="416" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># id</text>
+        <text x="624" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ sessionId</text>
+        <text x="624" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">role</text>
+        <text x="624" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">user|assistant</text>
+        <text x="416" y="440" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">modelId</text>
+        <text x="624" y="440" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string?</text>
+        <text x="416" y="460" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">providerId</text>
+        <text x="624" y="460" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string?</text>
+        <text x="416" y="480" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">finish</text>
+        <text x="624" y="480" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">stop|tool-calls|length?</text>
+        <text x="416" y="500" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">cost</text>
+        <text x="624" y="500" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">number?</text>
+        <text x="416" y="520" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">tokensIn / tokensOut</text>
+        <text x="624" y="520" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">int?</text>
+        <text x="416" y="540" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">timeCreated</text>
+        <text x="624" y="540" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">ms</text>
+        <text x="416" y="560" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">timeCompleted</text>
+        <text x="624" y="560" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">ms?</text>
+
+        <!-- Entity: Part -->
+        <rect x="400" y="620" width="240" height="160" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="400" y="620" width="240" height="40" rx="6" fill="rgba(45,49,66,0.04)" stroke="none"/>
+        <rect x="400" y="652" width="240" height="8" fill="rgba(45,49,66,0.04)"/>
+        <line x1="400" y1="660" x2="640" y2="660" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="416" y="636" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+        <text x="416" y="652" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Part</text>
+        <text x="416" y="680" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># id</text>
+        <text x="624" y="680" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="700" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ messageId</text>
+        <text x="624" y="700" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="720" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ sessionId</text>
+        <text x="624" y="720" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">nanoid</text>
+        <text x="416" y="740" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">type</text>
+        <text x="624" y="740" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="end">text|tool|step-*|summary|image|reasoning</text>
+        <text x="416" y="760" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">data</text>
+        <text x="624" y="760" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">json (per-type blob)</text>
+
+        <!-- Entity: Profile -->
+        <rect x="60" y="80" width="200" height="180" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="60" y="80" width="200" height="40" rx="6" fill="rgba(45,49,66,0.04)" stroke="none"/>
+        <rect x="60" y="112" width="200" height="8" fill="rgba(45,49,66,0.04)"/>
+        <line x1="60" y1="120" x2="260" y2="120" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="76" y="96" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CONFIG</text>
+        <text x="76" y="112" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Profile</text>
+        <text x="76" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># id</text>
+        <text x="244" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string</text>
+        <text x="76" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">promptFile</text>
+        <text x="244" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">path</text>
+        <text x="76" y="180" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">tools[]</text>
+        <text x="244" y="180" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string[]</text>
+        <text x="76" y="200" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">skills[]</text>
+        <text x="244" y="200" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string[]</text>
+        <text x="76" y="220" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">model</text>
+        <text x="244" y="220" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string?</text>
+
+        <!-- Entity: Tool -->
+        <rect x="740" y="80" width="200" height="100" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="740" y="80" width="200" height="40" rx="6" fill="rgba(45,49,66,0.04)" stroke="none"/>
+        <rect x="740" y="112" width="200" height="8" fill="rgba(45,49,66,0.04)"/>
+        <line x1="740" y1="120" x2="940" y2="120" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="756" y="96" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">RUNTIME</text>
+        <text x="756" y="112" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Tool</text>
+        <text x="756" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># id</text>
+        <text x="924" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string</text>
+        <text x="756" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">parameters</text>
+        <text x="924" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">zod</text>
+
+        <!-- Entity: Skill -->
+        <rect x="740" y="200" width="200" height="100" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="740" y="200" width="200" height="40" rx="6" fill="rgba(45,49,66,0.04)" stroke="none"/>
+        <rect x="740" y="232" width="200" height="8" fill="rgba(45,49,66,0.04)"/>
+        <line x1="740" y1="240" x2="940" y2="240" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="756" y="216" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">RUNTIME</text>
+        <text x="756" y="232" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Skill</text>
+        <text x="756" y="260" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># name</text>
+        <text x="924" y="260" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">string</text>
+        <text x="756" y="280" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">content</text>
+        <text x="924" y="280" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">md</text>
+
+        <!-- Annotation Callout -->
+        <path d="M 640 700 L 700 700" stroke="#eb6c36" stroke-width="1" fill="none" marker-end="url(#arrow-accent)"/>
+        <text x="710" y="696" fill="#eb6c36" font-size="12" font-family="'Instrument Serif', serif" font-style="italic">
+          Materialized rows derived
+        </text>
+        <text x="710" y="712" fill="#eb6c36" font-size="12" font-family="'Instrument Serif', serif" font-style="italic">
+          by replaying session.jsonl
+        </text>
+
+        <!-- Legend separator -->
+        <line x1="40" y1="810" x2="960" y2="810" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <!-- Adjusting viewBox to include legend -->
+    </svg>
+    
+    <div style="margin-top: 2rem; border-top: 1px solid rgba(45,49,66,0.1); padding-top: 1rem; display: flex; gap: 2rem;">
+      <div>
+        <span style="display: inline-block; width: 12px; height: 12px; background: rgba(235,108,54,0.04); border: 1px solid #eb6c36; border-radius: 2px;"></span>
+        <span style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono); margin-left: 0.5rem;">CORE ENTITY</span>
+      </div>
+      <div>
+        <span style="display: inline-block; width: 12px; height: 12px; background: #ffffff; border: 1px solid var(--color-ink); border-radius: 2px;"></span>
+        <span style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono); margin-left: 0.5rem;">PERSISTED / CONFIG</span>
+      </div>
+      <div>
+        <span style="font-size: 0.75rem; color: var(--color-ink); font-family: var(--font-mono); font-weight: 600;">#</span>
+        <span style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono); margin-left: 0.5rem;">PRIMARY KEY</span>
+      </div>
+      <div>
+        <span style="font-size: 0.75rem; color: var(--color-ink); font-family: var(--font-mono); font-weight: 600;">→</span>
+        <span style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono); margin-left: 0.5rem;">FOREIGN KEY</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -101,8 +101,12 @@ describe("wireEvents: tool lifecycle", () => {
     bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "read", callId: "c1", input: { path: "/a.ts" } })
 
     const part = s.store.messages[0]!.parts[0] as any
-    expect(part.status).toBe("running")
+    expect(part.status).toBe("awaiting_approval")
     expect(part.input).toEqual({ path: "/a.ts" })
+
+    // tool-running event transitions to running
+    bus.emit("tool-running", { sessionId: "s1", messageId: "m1", callId: "c1" })
+    expect(part.status).toBe("running")
   })
 
   test("tool-end completes tool", () => {
@@ -286,18 +290,17 @@ describe("wireEvents: session-reset and session-switch", () => {
 })
 
 describe("wireEvents: aborted tool state", () => {
-  test("running tool stays running if loop-end fires without tool-end (documents the gap)", () => {
+  test("tool stays awaiting_approval if loop-end fires without tool-running or tool-end", () => {
     const s = setup("s1")
     bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
     bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
     bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", input: { command: "sleep 10" } })
 
-    // Simulate abort: loop ends without tool-end
+    // Simulate abort: loop ends without tool-running or tool-end
     bus.emit("loop-end", { sessionId: "s1" })
 
     const part = s.store.messages[0]!.parts[0] as any
-    // Without the fix, the tool stays "running" — this documents the broken state
-    expect(part.status).toBe("running")
+    expect(part.status).toBe("awaiting_approval")
   })
 
   test("running tool transitions to error when tool-end with error is emitted before loop-end", () => {

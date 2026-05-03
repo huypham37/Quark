@@ -307,7 +307,7 @@ describe("dispatch: tool lifecycle", () => {
     })
   })
 
-  test("tool-input updates tool to running with input", () => {
+  test("tool-input sets tool to awaiting_approval with input", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(s, { type: "add-assistant-message", id: "m1" })
@@ -315,8 +315,12 @@ describe("dispatch: tool lifecycle", () => {
       dispatch(s, { type: "tool-input", messageId: "m1", callId: "c1", input: { path: "/foo.ts" } })
 
       const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
-      expect(part.status).toBe("running")
+      expect(part.status).toBe("awaiting_approval")
       expect(part.input).toEqual({ path: "/foo.ts" })
+
+      // tool-running transitions to running
+      dispatch(s, { type: "tool-running", messageId: "m1", callId: "c1" })
+      expect(part.status).toBe("running")
     })
   })
 
@@ -357,7 +361,7 @@ describe("dispatch: tool lifecycle", () => {
       const p0 = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
       const p1 = s.store.messages[0]!.parts[1]! as Extract<TuiPart, { type: "tool" }>
       expect(p0.status).toBe("pending") // c1 unchanged
-      expect(p1.status).toBe("running") // c2 updated
+      expect(p1.status).toBe("awaiting_approval") // c2 updated
       expect(p1.input).toEqual({ path: "/bar.ts" })
     })
   })
@@ -481,8 +485,12 @@ describe("dispatch: subagent-done marks parent tool completed", () => {
       dispatch(s, { type: "tool-start", messageId: "a1", tool: "bash", callId: "parent-1" })
       dispatch(s, { type: "tool-input", messageId: "a1", callId: "parent-1", input: { command: "quark --sub-agent --profile coder" } })
       
-      // Verify tool is running
+      // Verify tool is awaiting_approval
       let part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("awaiting_approval")
+
+      // tool-running transitions to running
+      dispatch(s, { type: "tool-running", messageId: "a1", callId: "parent-1" })
       expect(part.status).toBe("running")
       
       // Dispatch subagent-done
