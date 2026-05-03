@@ -5,8 +5,7 @@
 //   ✓ Thinking ▶  (done)
 //   ∷ Thinking ▶  (in-progress)
 //
-// When text is present, it is shown below the header in a dimmed/muted style,
-// capped at 8 lines to avoid overwhelming the conversation view.
+// When text is present, it is shown below the header in a dimmed/muted style.
 
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
@@ -17,17 +16,8 @@ interface ThinkingIndicatorProps {
   text?: string
 }
 
-const MAX_THINKING_LINES = 8
-
 export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
-  // Trim and cap the thinking text to avoid very long blocks
-  const displayText = () => {
-    const t = props.text?.trim()
-    if (!t) return ""
-    const lines = t.split("\n")
-    if (lines.length <= MAX_THINKING_LINES) return t
-    return lines.slice(0, MAX_THINKING_LINES).join("\n") + "\n…"
-  }
+  const displayText = () => props.text?.trim() ?? ""
 
   return (
     <box flexDirection="column">

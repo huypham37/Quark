@@ -17,8 +17,8 @@ function makeCtx(): ToolContext {
     messageId: "msg-1",
     abort: new AbortController().signal,
     messages: [],
-    async ask(permission: string, pattern: string) {
-      console.log(`  [Permission] ${permission}: ${pattern}`)
+    async ask(tool: string, pattern: string) {
+      console.log(`  [Permission] ${tool}: ${pattern}`)
     },
   }
 }

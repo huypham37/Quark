@@ -2,10 +2,11 @@
 title: Permission System — Pre-Execution Gate & Profile-Level Rules
 date_created: 2026-05-02
 date_modified: 2026-05-03
-revision: 2
+revision: 3
 history:
   - 2026-05-02: Initial draft
   - 2026-05-03: Implemented — awaiting_approval status, pre-execute gate, profile rules, rejection abort, E2E tests
+  - 2026-05-03: Clarified internal Rule fields (permission/pattern/action) — config `tool` maps to Rule `permission`
 status: done
 ---
 
@@ -74,8 +75,16 @@ profiles:
         action: "deny"
 ```
 
-Converted to internal `Ruleset` at `resolveToolSet()`:
-`{ tool → permission, pattern: "*" }`
+Converted to internal `Ruleset` at `resolveToolSet()` — each config entry becomes a `Rule`:
+```ts
+interface Rule {
+  tool: string           // ← matches config `tool` field directly (no rename)
+  pattern: string        // hardcoded to `"*"` (argument-level patterns TODO)
+  action: Action         // ← matches config `action` field directly
+}
+// Ruleset = Rule[] — evaluated with findLast() (last matching rule wins)
+```
+Call site in `toAITool()` passes `def.id` as `tool` → `evaluate()` matches against `rule.tool`.
 
 ### 4. Rejection abort
 

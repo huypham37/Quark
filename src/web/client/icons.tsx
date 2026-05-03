@@ -100,7 +100,7 @@ export function AgentDot() {
   return <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, display: 'inline-block', flexShrink: 0 }} />
 }
 
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const SPINNER_FRAMES = ['\u2800\u2800', '\u2840\u2800', '\u28C0\u2800', '\u28C0\u2840', '\u28E0\u2840', '\u28E0\u2844', '\u28E4\u2844', '\u28E6\u2844', '\u28E6\u2846', '\u28E7\u2846', '\u28F7\u2846', '\u28F7\u28C6', '\u28FF\u28C6', '\u28FF\u28D6', '\u28FF\u28D7', '\u28FF\u28F7', '\u28FF\u28FF']
 const SPINNER_INTERVAL = 80
 
 export function BrailleSpinner({ size = 14, color = T.accent }: { size?: number; color?: string }) {

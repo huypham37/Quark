@@ -74,6 +74,7 @@ const DEFAULTS = {
   max_steps: 100,
   compact: COMPACT_DEFAULTS,
   providers: {} as Record<string, ProviderConfig>,
+  hide_readonly_tools: false,
 } as const
 
 export interface QuarkConfig {
@@ -84,6 +85,8 @@ export interface QuarkConfig {
   compact: CompactConfig
   /** User-defined OpenAI-compatible providers (keyed by provider ID) */
   providers: Record<string, ProviderConfig>
+  /** Hide read-only tool calls (read, grep, glob, websearch, webfetch, etc.) from the conversation view */
+  hide_readonly_tools: boolean
 }
 
 // Cached config — loaded once, reused thereafter

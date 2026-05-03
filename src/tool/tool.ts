@@ -28,10 +28,10 @@ export interface ToolContext {
    * Request permission before performing a sensitive operation.
    * Throws {@link DeniedError} or {@link RejectedError} if denied.
    *
-   * @param permission - The permission category (typically the tool ID)
+   * @param tool - The tool ID being checked
    * @param pattern - The specific resource pattern being accessed (e.g. a file path)
    */
-  ask(permission: string, pattern: string): Promise<void>
+  ask(tool: string, pattern: string): Promise<void>
 }
 
 /**
@@ -95,3 +95,20 @@ export interface ToolDef<T extends z.ZodType = z.ZodType> {
 export function defineTool<T extends z.ZodType>(def: ToolDef<T>): ToolDef<T> {
   return def
 }
+
+/**
+ * Set of tool IDs that are read-only — they don't modify filesystem state,
+ * network state, or any persistent resource.
+ *
+ * Used by the TUI and web UI to optionally hide these tool calls from the
+ * conversation view (via the `hideReadOnlyTools` toggle / config option).
+ */
+export const READ_ONLY_TOOLS = new Set([
+  "read",
+  "grep",
+  "glob",
+  "websearch",
+  "webfetch",
+  "perplexity-search",
+  "skill",
+])

@@ -564,7 +564,7 @@ function resolveToolSet(
 ): ToolSet {
   const defs = resolveTools(agent.tools);
   const ruleset: Ruleset = (agent.permissions ?? []).map(r => ({
-    permission: r.tool,
+    tool: r.tool,
     pattern: "*",
     action: r.action,
   }));
@@ -626,7 +626,7 @@ function toAITool(
       try {
         await askPermission({
           sessionId,
-          permission: def.id,
+          tool: def.id,
           pattern: "*",
           ruleset,
         });
@@ -649,10 +649,10 @@ function toAITool(
         callId,
         abort: abortSig,
         // TODO: later support argument-level permission via ctx.ask()
-        async ask(permission: string, pattern: string) {
+        async ask(tool: string, pattern: string) {
           await askPermission({
             sessionId,
-            permission,
+            tool,
             pattern,
             ruleset,
           });

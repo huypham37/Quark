@@ -27,7 +27,7 @@ export type Action = "allow" | "deny" | "ask"
  */
 export interface Rule {
   /** Tool ID or category to match (supports `*` and `?` wildcards) */
-  permission: string
+  tool: string
   /** Glob pattern for the argument (e.g. a file path). Use `"*"` to match anything. */
   pattern: string
   /** The action to take when this rule matches */
@@ -57,8 +57,8 @@ export interface PendingRequest {
   id: string
   /** Session this request belongs to */
   sessionId: string
-  /** Permission category being requested (typically the tool ID) */
-  permission: string
+  /** Tool being requested */
+  tool: string
   /** The specific resource pattern (e.g. file path) */
   pattern: string
   /** Additional metadata for the TUI to display */
@@ -165,10 +165,10 @@ export function evaluate(
   const merged = rulesets.flat()
   const match = merged.findLast(
     (rule) =>
-      wildcardMatch(tool, rule.permission) &&
+      wildcardMatch(tool, rule.tool) &&
       wildcardMatch(pattern, expandPath(rule.pattern)),
   )
-  return match ?? { action: "ask", permission: tool, pattern: "*" }
+  return match ?? { action: "ask", tool, pattern: "*" }
 }
 
 /**
@@ -182,8 +182,8 @@ export function disabled(tools: string[], ruleset: Ruleset): Set<string> {
   const result = new Set<string>()
   const EDIT_TOOLS = ["edit", "write", "patch"]
   for (const t of tools) {
-    const permission = EDIT_TOOLS.includes(t) ? "edit" : t
-    const rule = ruleset.findLast((r) => wildcardMatch(permission, r.permission))
+    const toolId = EDIT_TOOLS.includes(t) ? "edit" : t
+    const rule = ruleset.findLast((r) => wildcardMatch(toolId, r.tool))
     if (rule && rule.pattern === "*" && rule.action === "deny") {
       result.add(t)
     }
@@ -228,7 +228,7 @@ export function listPendingForSession(sessionId: string): PendingRequest[] {
  *   resolves/rejects when {@link respond} is called by the TUI
  *
  * @param input.sessionId - The current session
- * @param input.permission - The permission category (typically the tool ID)
+ * @param input.tool - The tool ID being checked
  * @param input.pattern - The resource pattern (e.g. file path)
  * @param input.ruleset - Ruleset to evaluate
  * @param input.metadata - Extra data for the TUI prompt
@@ -239,14 +239,14 @@ export function listPendingForSession(sessionId: string): PendingRequest[] {
  */
 export async function ask(input: {
   sessionId: string
-  permission: string
+  tool: string
   pattern: string
   ruleset: Ruleset
   metadata?: Record<string, any>
 }): Promise<void> {
   const approved = sessionApproved.get(input.sessionId) ?? []
   const rule = evaluate(
-    input.permission,
+    input.tool,
     input.pattern,
     input.ruleset,
     approved,
@@ -255,7 +255,7 @@ export async function ask(input: {
   if (rule.action === "allow") return
   if (rule.action === "deny") {
     const relevant = input.ruleset.filter((r) =>
-      wildcardMatch(input.permission, r.permission),
+      wildcardMatch(input.tool, r.tool),
     )
     throw new DeniedError(relevant)
   }
@@ -266,7 +266,7 @@ export async function ask(input: {
     pending.set(id, {
       id,
       sessionId: input.sessionId,
-      permission: input.permission,
+      tool: input.tool,
       pattern: input.pattern,
       metadata: input.metadata ?? {},
       resolve,
@@ -276,7 +276,7 @@ export async function ask(input: {
     bus.emit("permission-request", {
       sessionId: input.sessionId,
       requestId: id,
-      tool: input.permission,
+      tool: input.tool,
       input: { pattern: input.pattern, ...input.metadata },
     })
   })
@@ -327,7 +327,7 @@ export function respond(input: {
     // Add an allow rule for this session
     const approved = sessionApproved.get(req.sessionId) ?? []
     approved.push({
-      permission: req.permission,
+      tool: req.tool,
       pattern: req.pattern,
       action: "allow",
     })
@@ -339,7 +339,7 @@ export function respond(input: {
     for (const [id, other] of pending) {
       if (other.sessionId !== req.sessionId) continue
       const rule = evaluate(
-        other.permission,
+        other.tool,
         other.pattern,
         approved,
       )

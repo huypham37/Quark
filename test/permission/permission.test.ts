@@ -85,7 +85,7 @@ describe("evaluate", () => {
 
   it("matches exact tool + pattern", () => {
     const rules: Ruleset = [
-      { permission: "read", pattern: "/src/*", action: "allow" },
+      { tool: "read", pattern: "/src/*", action: "allow" },
     ]
     expect(evaluate("read", "/src/file.ts", rules).action).toBe("allow")
     expect(evaluate("write", "/src/file.ts", rules).action).toBe("ask")
@@ -93,8 +93,8 @@ describe("evaluate", () => {
 
   it("last matching rule wins", () => {
     const rules: Ruleset = [
-      { permission: "read", pattern: "*", action: "allow" },
-      { permission: "read", pattern: "/secret/*", action: "deny" },
+      { tool: "read", pattern: "*", action: "allow" },
+      { tool: "read", pattern: "/secret/*", action: "deny" },
     ]
     expect(evaluate("read", "/src/file.ts", rules).action).toBe("allow")
     expect(evaluate("read", "/secret/keys.txt", rules).action).toBe("deny")
@@ -102,7 +102,7 @@ describe("evaluate", () => {
 
   it("supports wildcard on permission name", () => {
     const rules: Ruleset = [
-      { permission: "*", pattern: "*", action: "allow" },
+      { tool: "*", pattern: "*", action: "allow" },
     ]
     expect(evaluate("read", "/any/file.ts", rules).action).toBe("allow")
     expect(evaluate("bash", "ls -la", rules).action).toBe("allow")
@@ -110,10 +110,10 @@ describe("evaluate", () => {
 
   it("merges multiple rulesets", () => {
     const base: Ruleset = [
-      { permission: "*", pattern: "*", action: "ask" },
+      { tool: "*", pattern: "*", action: "ask" },
     ]
     const override: Ruleset = [
-      { permission: "read", pattern: "*", action: "allow" },
+      { tool: "read", pattern: "*", action: "allow" },
     ]
     expect(evaluate("read", "/foo.txt", base, override).action).toBe("allow")
     expect(evaluate("write", "/foo.txt", base, override).action).toBe("ask")
@@ -123,7 +123,7 @@ describe("evaluate", () => {
 describe("disabled", () => {
   it("returns tools disabled by deny * rules", () => {
     const rules: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     const result = disabled(["read", "write", "bash"], rules)
     expect(result.has("bash")).toBe(true)
@@ -132,7 +132,7 @@ describe("disabled", () => {
 
   it("maps edit-like tools to 'edit' permission", () => {
     const rules: Ruleset = [
-      { permission: "edit", pattern: "*", action: "deny" },
+      { tool: "edit", pattern: "*", action: "deny" },
     ]
     const result = disabled(["read", "write", "edit", "patch"], rules)
     expect(result.has("write")).toBe(true)
@@ -143,7 +143,7 @@ describe("disabled", () => {
 
   it("only disables for deny + pattern *", () => {
     const rules: Ruleset = [
-      { permission: "bash", pattern: "/usr/bin/*", action: "deny" },
+      { tool: "bash", pattern: "/usr/bin/*", action: "deny" },
     ]
     const result = disabled(["bash"], rules)
     expect(result.has("bash")).toBe(false) // not disabled because pattern isn't "*"
@@ -157,12 +157,12 @@ describe("ask / respond flow", () => {
 
   it("allow rule resolves immediately", async () => {
     const rules: Ruleset = [
-      { permission: "read", pattern: "*", action: "allow" },
+      { tool: "read", pattern: "*", action: "allow" },
     ]
     // Should not throw or hang
     await ask({
       sessionId: "s1",
-      permission: "read",
+      tool: "read",
       pattern: "/foo.txt",
       ruleset: rules,
     })
@@ -170,12 +170,12 @@ describe("ask / respond flow", () => {
 
   it("deny rule throws DeniedError", async () => {
     const rules: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     await expect(
       ask({
         sessionId: "s1",
-        permission: "bash",
+        tool: "bash",
         pattern: "rm -rf /",
         ruleset: rules,
       }),
@@ -186,14 +186,14 @@ describe("ask / respond flow", () => {
     const rules: Ruleset = [] // no rules → default "ask"
     const promise = ask({
       sessionId: "s1",
-      permission: "write",
+      tool: "write",
       pattern: "/foo.txt",
       ruleset: rules,
     })
 
     const pending = listPending()
     expect(pending).toHaveLength(1)
-    expect(pending[0].permission).toBe("write")
+    expect(pending[0].tool).toBe("write")
 
     respond({ requestId: pending[0].id, reply: "once" })
     await promise // should resolve
@@ -203,7 +203,7 @@ describe("ask / respond flow", () => {
     const rules: Ruleset = []
     const promise = ask({
       sessionId: "s1",
-      permission: "write",
+      tool: "write",
       pattern: "/foo.txt",
       ruleset: rules,
     })
@@ -217,7 +217,7 @@ describe("ask / respond flow", () => {
     const rules: Ruleset = []
     const promise = ask({
       sessionId: "s1",
-      permission: "write",
+      tool: "write",
       pattern: "/foo.txt",
       ruleset: rules,
     })
@@ -237,7 +237,7 @@ describe("ask / respond flow", () => {
     // First ask — needs manual approval
     const p1 = ask({
       sessionId: "s1",
-      permission: "read",
+      tool: "read",
       pattern: "/src/*",
       ruleset: rules,
     })
@@ -249,7 +249,7 @@ describe("ask / respond flow", () => {
     // Second ask — same pattern should be auto-approved
     await ask({
       sessionId: "s1",
-      permission: "read",
+      tool: "read",
       pattern: "/src/*",
       ruleset: rules,
     })
@@ -258,8 +258,8 @@ describe("ask / respond flow", () => {
 
   it("respond(reject) rejects all pending for session", async () => {
     const rules: Ruleset = []
-    const p1 = ask({ sessionId: "s1", permission: "write", pattern: "/a", ruleset: rules })
-    const p2 = ask({ sessionId: "s1", permission: "write", pattern: "/b", ruleset: rules })
+    const p1 = ask({ sessionId: "s1", tool: "write", pattern: "/a", ruleset: rules })
+    const p2 = ask({ sessionId: "s1", tool: "write", pattern: "/b", ruleset: rules })
 
     const pending = listPending()
     expect(pending).toHaveLength(2)
@@ -279,7 +279,7 @@ describe("ask / respond flow", () => {
 
   it("clearSession clears all state for session", async () => {
     const rules: Ruleset = []
-    const promise = ask({ sessionId: "s1", permission: "read", pattern: "/a", ruleset: rules })
+    const promise = ask({ sessionId: "s1", tool: "read", pattern: "/a", ruleset: rules })
 
     expect(listPending()).toHaveLength(1)
     clearSession("s1")

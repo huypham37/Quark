@@ -27,7 +27,7 @@ function makeAITool(def: ToolDef, ruleset: Ruleset) {
       try {
         await ask({
           sessionId,
-          permission: def.id,
+          tool: def.id,
           pattern: "*",
           ruleset,
         });
@@ -48,8 +48,8 @@ function makeAITool(def: ToolDef, ruleset: Ruleset) {
         messageId,
         callId: cid,
         abort: options?.abortSignal ?? new AbortController().signal,
-        async ask(permission: string, pattern: string) {
-          await ask({ sessionId, permission, pattern, ruleset })
+        async ask(tool: string, pattern: string) {
+          await ask({ sessionId, tool, pattern, ruleset })
         },
       })
 
@@ -103,7 +103,7 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("allow rule: tool executes immediately, no permission prompt", async () => {
     const ruleset: Ruleset = [
-      { permission: "read", pattern: "*", action: "allow" },
+      { tool: "read", pattern: "*", action: "allow" },
     ]
     const tool = makeAITool(readTool, ruleset)
 
@@ -119,7 +119,7 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("deny rule: throws DeniedError, tool execute() never runs", async () => {
     const ruleset: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     const tool = makeAITool(bashTool, ruleset)
 
@@ -132,7 +132,7 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("deny rule does NOT emit permission-rejected (hard deny, not user rejection)", async () => {
     const ruleset: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     const tool = makeAITool(bashTool, ruleset)
 
@@ -149,7 +149,7 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("deny * rule: throws DeniedError for any tool", async () => {
     const ruleset: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     const tool = makeAITool(bashTool, ruleset)
 
@@ -161,7 +161,7 @@ describe("E2E: pre-execute permission gate", () => {
   // -------------------------------------------------------------------
 
   it("ask rule: blocks until respond(once), then executes", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     // Start execution — it will block on ask()
@@ -171,7 +171,7 @@ describe("E2E: pre-execute permission gate", () => {
     await new Promise((r) => setTimeout(r, 10))
     const pending = listPending()
     expect(pending).toHaveLength(1)
-    expect(pending[0].permission).toBe("read")
+    expect(pending[0].tool).toBe("read")
 
     // User responds "once"
     respond({ requestId: pending[0].id, reply: "once" })
@@ -186,7 +186,7 @@ describe("E2E: pre-execute permission gate", () => {
   // -------------------------------------------------------------------
 
   it("ask rule: respond(always) adds session-scope allow, future calls skip prompt", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     // First call — blocked, user says "always"
@@ -211,7 +211,7 @@ describe("E2E: pre-execute permission gate", () => {
   // -------------------------------------------------------------------
 
   it("ask rule: respond(reject) throws RejectedError", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     const execPromise = tool.execute({ filePath: "/tmp/secret.txt" })
@@ -225,7 +225,7 @@ describe("E2E: pre-execute permission gate", () => {
   })
 
   it("ask rule: respond(reject) emits permission-rejected event", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     const rejectedCalls: string[] = []
@@ -240,7 +240,7 @@ describe("E2E: pre-execute permission gate", () => {
   })
 
   it("ask rule: respond(reject) with message emits permission-rejected", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     const rejectedCalls: string[] = []
@@ -260,8 +260,8 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("last-match-wins: later deny overrides earlier allow", async () => {
     const ruleset: Ruleset = [
-      { permission: "bash", pattern: "*", action: "allow" },
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "allow" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
     const tool = makeAITool(bashTool, ruleset)
 
@@ -270,8 +270,8 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("last-match-wins: later allow overrides earlier deny", async () => {
     const ruleset: Ruleset = [
-      { permission: "bash", pattern: "*", action: "deny" },
-      { permission: "bash", pattern: "*", action: "allow" },
+      { tool: "bash", pattern: "*", action: "deny" },
+      { tool: "bash", pattern: "*", action: "allow" },
     ]
     const tool = makeAITool(bashTool, ruleset)
 
@@ -285,8 +285,8 @@ describe("E2E: pre-execute permission gate", () => {
 
   it("different rules for different tools work independently", async () => {
     const ruleset: Ruleset = [
-      { permission: "read", pattern: "*", action: "allow" },
-      { permission: "bash", pattern: "*", action: "deny" },
+      { tool: "read", pattern: "*", action: "allow" },
+      { tool: "bash", pattern: "*", action: "deny" },
     ]
 
     const read = makeAITool(readTool, ruleset)
@@ -305,7 +305,7 @@ describe("E2E: pre-execute permission gate", () => {
   // -------------------------------------------------------------------
 
   it("emits tool-running event after permission passes", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "allow" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "allow" }]
     const tool = makeAITool(readTool, ruleset)
 
     const received: any[] = []
@@ -320,7 +320,7 @@ describe("E2E: pre-execute permission gate", () => {
   })
 
   it("does NOT emit tool-running when permission is denied", async () => {
-    const ruleset: Ruleset = [{ permission: "bash", pattern: "*", action: "deny" }]
+    const ruleset: Ruleset = [{ tool: "bash", pattern: "*", action: "deny" }]
     const tool = makeAITool(bashTool, ruleset)
 
     const received: any[] = []
@@ -353,7 +353,7 @@ describe("E2E: pre-execute permission gate", () => {
   // -------------------------------------------------------------------
 
   it("clearSession releases blocked permission request", async () => {
-    const ruleset: Ruleset = [{ permission: "read", pattern: "*", action: "ask" }]
+    const ruleset: Ruleset = [{ tool: "read", pattern: "*", action: "ask" }]
     const tool = makeAITool(readTool, ruleset)
 
     const execPromise = tool.execute({ filePath: "/tmp/z.txt" })
