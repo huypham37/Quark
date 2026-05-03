@@ -2,10 +2,12 @@
 title: Tool Rendering Unification & Read-Only Tool Hiding
 date_created: 2026-05-03
 date_modified: 2026-05-03
-revision: 2
+revision: 4
 history:
   - 2026-05-03: Initial draft
   - 2026-05-03: Implemented — ToolCard component, dispatch-level filtering, files deleted
+  - 2026-05-03: Removed "skill" from READ_ONLY_TOOLS — skill tool invocations now render in TUI (Issue #128)
+  - 2026-05-03: Removed event filtering entirely — read-only tools now render header-only (body suppressed via ToolCardBody), not filtered at dispatch (Issue #128)
 status: done
 ---
 
@@ -82,8 +84,8 @@ Three specific issues:
 | `bash` | terminal + `output` | `ScrollableOutput` |
 | `todo` | any | empty |
 | `question` | any | empty |
-| `skill` | any | empty |
-| read-only | — | **filtered at dispatch, never rendered** |
+| `skill` | any | empty body, **header renders "Skill" with label** |
+| read-only (`read`, `grep`, …) | — | **filtered at dispatch, never rendered** |
 
 ### `PartView` Simplification
 
@@ -112,26 +114,16 @@ The 4 Match cases for tools collapse to 2:
 </Switch>
 ```
 
-### Dispatch-Level Filtering
+### Dispatch-Level Filtering (REMOVED — Issue #128)
 
-`src/tui/events.ts` — skip `tool-start`, `tool-input`, `tool-running`, `tool-end`
-bus events for tools in `READ_ONLY_TOOLS`. Import the set from `src/tool/tool.ts`
-and add a guard at each event handler:
+Originally, `src/tui/events.ts` skipped `tool-start`, `tool-input`, `tool-end`
+bus events for tools in `READ_ONLY_TOOLS`. This was incorrect — it prevented
+the ToolCard header from rendering, making read-only tool invocations invisible.
 
-```ts
-import { READ_ONLY_TOOLS } from "../tool/tool"
-
-// In wireEvents(), before each tool event dispatch:
-unsubs.push(on("tool-start", (data) => {
-  if (READ_ONLY_TOOLS.has(data.tool)) return  // ← filter
-  dispatch(state, { type: "tool-start", ... })
-}))
-```
-
-This means read-only tool parts never enter the SolidJS store, never reach the
-renderer, and consume zero rendering cycles. Historical sessions loaded from DB
-via `dbToTuiMessages()` will still show read-only parts — acceptable for past
-sessions where the user may want to see what happened.
+**Current approach:** All tool events flow through dispatch. Instead,
+`ToolCardBody` suppresses the output body for read-only tools via
+`!READ_ONLY_TOOLS.has(props.tool)`, so they render as header-only:
+`✓ Read ~/file.ts` (no file content dump).
 
 ## Files Changed
 
@@ -161,11 +153,11 @@ sessions where the user may want to see what happened.
 ## Acceptance Criteria
 
 1. `ToolCard` renders a unified header (status icon + tool name + args) for all tools
-2. Body renders `WriteStreamView` for `write` (running), `DiffView` for `edit` (completed), `ScrollableOutput` for `bash` (terminal), empty for `todo`/`question`/`skill`
+2. Body renders `WriteStreamView` for `write` (running), `DiffView` for `edit` (completed), `ScrollableOutput` for `bash` (terminal), **empty for read-only tools** (`read`, `grep`, `glob`, `websearch`, `webfetch`, `perplexity-search`, `skill`), empty for `todo`/`question`
 3. `PartView` has only 2 tool-related `Match` cases (sub-agent + catch-all)
-4. `READ_ONLY_TOOLS` events are skipped in `wireEvents()` — no state mutations
+4. All tool events flow through dispatch — no filtering (body suppression happens in ToolCardBody)
 5. `tool-result.tsx` and `tool-invocation.tsx` are deleted
 6. Existing tests for tool rendering pass (updated for `ToolCard`)
-7. New tests assert read-only tool events don't mutate state
+7. New tests assert read-only tools create parts but body is suppressed
 8. TypeScript typecheck clean
 9. `bun test test/tui/` passes

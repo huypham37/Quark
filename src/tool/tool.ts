@@ -100,8 +100,10 @@ export function defineTool<T extends z.ZodType>(def: ToolDef<T>): ToolDef<T> {
  * Set of tool IDs that are read-only — they don't modify filesystem state,
  * network state, or any persistent resource.
  *
- * Used by the TUI and web UI to optionally hide these tool calls from the
- * conversation view (via the `hideReadOnlyTools` toggle / config option).
+ * Used by the TUI to render these tools as header-only (status + tool name
+ * + label) without the full output body. This keeps the conversation view
+ * clean for tools that produce large, repetitive output (file contents,
+ * search results, skill content).
  */
 export const READ_ONLY_TOOLS = new Set([
   "read",

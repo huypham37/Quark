@@ -8,17 +8,19 @@
 //   ⠋ Bash  ~/deploy.sh          (running: animated spinner)
 //   ✓ Read  ~/package.json        (completed: green check)
 //   ✗ Write  ~/out.ts (EACCES)    (error: red cross)
-//   … Read  ~/src/tool.ts         (pending: muted ellipsis)
+//   ⠋ Read  ~/src/tool.ts         (pending: braille cycle)
 //   ? Write  ~/out.ts             (awaiting_approval: question mark)
 
 import type { Component } from "solid-js"
-import { Show } from "solid-js"
+import { Show, createSignal, createEffect, onCleanup } from "solid-js"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
 import { InlineSpinner } from "./inline-spinner"
+import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
 import { DiffView } from "./diff-view"
 import { WriteStreamView } from "./write-stream-view"
 import { ScrollableOutput } from "./scrollable-output"
+import { READ_ONLY_TOOLS } from "../../tool/tool"
 
 interface ToolCardProps {
   tool: string
@@ -102,6 +104,17 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
   const isRunning = () => props.status === "running"
   const isError = () => props.status === "error"
 
+  // Braille cycle spinner for pending state (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+  const [pendingFrame, setPendingFrame] = createSignal(0)
+  createEffect(() => {
+    const id = setInterval(() => {
+      if (!isPending()) return
+      setPendingFrame((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
+    }, BRAILLE_CYCLE_INTERVAL_MS)
+    onCleanup(() => clearInterval(id))
+  })
+  const pendingChar = () => BRAILLE_CYCLE_FRAMES[pendingFrame()]
+
   return (
     <box flexDirection="row">
       <box flexShrink={0}>
@@ -109,7 +122,7 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
           <InlineSpinner />
         </Show>
         <Show when={isPending()}>
-          <text fg={colors.muted}>… </text>
+          <text fg={colors.textBold}>{pendingChar()} </text>
         </Show>
         <Show when={isAwaiting()}>
           <text fg={colors.text}>⏸ </text>
@@ -158,13 +171,14 @@ const ToolCardBody: Component<ToolCardProps> = (props) => {
         />
       </Show>
 
-      {/* Output for terminal states (not write, not pending/running/awaiting) */}
+      {/* Output for terminal states (not write, not read-only, not pending/running/awaiting) */}
       <Show when={
         props.output &&
         props.status !== "awaiting_approval" &&
         props.status !== "running" &&
         props.status !== "pending" &&
-        props.tool !== "write"
+        props.tool !== "write" &&
+        !READ_ONLY_TOOLS.has(props.tool)
       }>
         <ScrollableOutput content={props.output!} />
       </Show>

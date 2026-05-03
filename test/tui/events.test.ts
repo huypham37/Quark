@@ -413,42 +413,53 @@ describe("wireEvents: lazy session creation", () => {
 // Read-only tool filtering
 // ---------------------------------------------------------------------------
 
-describe("wireEvents: read-only tool filtering", () => {
-  test("read-only tools (from READ_ONLY_TOOLS) are skipped at tool-start — no part created", () => {
+describe("wireEvents: read-only tool body suppression (not event filtering)", () => {
+  test("read-only tools ARE dispatched and create parts (filtering removed, body suppressed at render)", () => {
     for (const tool of READ_ONLY_TOOLS) {
       const s = setup("s1")
       bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
       bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1" })
 
-      expect(s.store.messages[0]!.parts).toEqual([])
+      const parts = s.store.messages[0]!.parts
+      expect(parts.length).toBe(1)
+      const part = parts[0] as any
+      expect(part.type).toBe("tool")
+      expect(part.tool).toBe(tool)
+      expect(part.status).toBe("pending")
     }
   })
 
-  test("read-only tools are skipped at tool-input — no state change", () => {
+  test("read-only tools tool-input sets status and input", () => {
     for (const tool of READ_ONLY_TOOLS) {
       const s = setup("s1")
       bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
-      // tool-input without a preceding tool-start should still be filtered
+      bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1" })
       bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1", input: { path: "/a.ts" } })
 
-      expect(s.store.messages[0]!.parts).toEqual([])
+      const part = s.store.messages[0]!.parts[0] as any
+      expect(part.status).toBe("awaiting_approval")
+      expect(part.input).toEqual({ path: "/a.ts" })
     }
   })
 
-  test("read-only tools are skipped at tool-end — no state change", () => {
+  test("read-only tools tool-end completes with output stored", () => {
     for (const tool of READ_ONLY_TOOLS) {
       const s = setup("s1")
       bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
+      bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1" })
+      bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1", input: { path: "/a.ts" } })
       bus.emit("tool-end", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1", status: "completed", output: "ok" })
 
-      expect(s.store.messages[0]!.parts).toEqual([])
+      const part = s.store.messages[0]!.parts[0] as any
+      expect(part.status).toBe("completed")
+      expect(part.output).toBe("ok")
     }
   })
 
-  test("non-read-only tools ARE dispatched and create parts", () => {
-    const writableTools = ["bash", "write", "edit", "todo", "question"]
+  test("all tools (including read-only) are dispatched and create parts", () => {
+    const allTools = ["bash", "write", "edit", "todo", "question", "read", "skill", "grep", "websearch"]
 
-    for (const tool of writableTools) {
+    for (const tool of allTools) {
       const s = setup("s1")
       bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
       bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1" })

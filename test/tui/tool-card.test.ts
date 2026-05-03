@@ -199,8 +199,9 @@ describe("unified render contract for completed/error tools", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCard header states", () => {
-  test("ToolCard header renders pending state with muted ellipsis", () => {
-    expect(TOOL_CARD_SRC).toContain("… ")
+  test("ToolCard header renders pending state with braille cycle spinner", () => {
+    expect(TOOL_CARD_SRC).toContain("pendingFrame")
+    expect(TOOL_CARD_SRC).toContain("BRAILLE_CYCLE_FRAMES")
     expect(TOOL_CARD_SRC).toContain("isPending()")
   })
 
@@ -247,7 +248,7 @@ describe("ToolCard body polymorphic rendering", () => {
     expect(TOOL_CARD_SRC).toContain("props.output")
   })
 
-  test("todo/question/skill tools render empty body", () => {
+  test("todo/question/skill/read tools render empty body (read-only: header shown, body suppressed)", () => {
     // The body only shows WriteStreamView, DiffView, or ScrollableOutput
     // — no special cases for todo/question/skill means empty body
     const bodyLines = TOOL_CARD_SRC.split("ToolCardBody")[1] ?? ""
@@ -255,5 +256,76 @@ describe("ToolCard body polymorphic rendering", () => {
     expect(bodyLines).not.toContain('tool === "todo"')
     expect(bodyLines).not.toContain('tool === "question"')
     expect(bodyLines).not.toContain('tool === "skill"')
+    // Should suppress body for read-only tools
+    expect(TOOL_CARD_SRC).toContain("!READ_ONLY_TOOLS.has(props.tool)")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Skill tool rendering
+// ---------------------------------------------------------------------------
+
+describe("skill tool rendering", () => {
+  test("ToolCard maps skill to display name 'Skill'", () => {
+    expect(TOOL_CARD_SRC).toContain('skill: "Skill"')
+  })
+
+  test("getToolLabel extracts skill name from input.name", () => {
+    // The getToolLabel function falls back to input.name ?? input.skill
+    expect(TOOL_CARD_SRC).toContain("input.name ?? input.skill")
+  })
+
+  test("completed skill tool part has correct shape for ToolCard rendering", () => {
+    withRoot(() => {
+      const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 2 })
+      dispatch(state, { type: "add-assistant-message", id: "m1" })
+      dispatch(state, { type: "tool-start", messageId: "m1", tool: "skill", callId: "c1" })
+      dispatch(state, {
+        type: "tool-input",
+        messageId: "m1",
+        callId: "c1",
+        input: { name: "gh-issue" },
+      })
+      dispatch(state, {
+        type: "tool-end",
+        messageId: "m1",
+        callId: "c1",
+        status: "completed",
+        output: "Loaded skill: gh-issue",
+      })
+
+      const part = state.store.messages[0]!.parts[0] as any
+      expect(part.type).toBe("tool")
+      expect(part.tool).toBe("skill")
+      expect(part.status).toBe("completed")
+      expect(part.input).toEqual({ name: "gh-issue" })
+      expect(part.output).toBe("Loaded skill: gh-issue")
+    })
+  })
+
+  test("getToolLabel falls back to input.skill when input.name is absent", () => {
+    withRoot(() => {
+      const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 2 })
+      dispatch(state, { type: "add-assistant-message", id: "m1" })
+      dispatch(state, { type: "tool-start", messageId: "m1", tool: "skill", callId: "c1" })
+      dispatch(state, {
+        type: "tool-input",
+        messageId: "m1",
+        callId: "c1",
+        input: { skill: "code-review" },
+      })
+      dispatch(state, {
+        type: "tool-end",
+        messageId: "m1",
+        callId: "c1",
+        status: "completed",
+        output: "Loaded skill: code-review",
+      })
+
+      const part = state.store.messages[0]!.parts[0] as any
+      expect(part.type).toBe("tool")
+      expect(part.tool).toBe("skill")
+      expect(part.input).toEqual({ skill: "code-review" })
+    })
   })
 })
