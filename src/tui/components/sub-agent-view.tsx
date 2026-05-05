@@ -267,7 +267,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         {/* Prompt line — aligned with header text (after spinner) */}
         <Show when={hasPrompt()}>
           <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-            <text fg={colors.muted}>  Task: </text>
+            <text fg={colors.muted}>   Task: </text>
             <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
             <text fg={colors.muted}> [{toggleLabel()}]</text>
           </box>
