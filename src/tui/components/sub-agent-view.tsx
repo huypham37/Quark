@@ -264,12 +264,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
 
       {/* Body: prompt + tree as a single visual list with aligned connectors */}
       <box flexDirection="column">
-        {/* Prompt line — simple, no tree connector */}
+        {/* Prompt line — aligned with header text (after spinner) */}
         <Show when={hasPrompt()}>
           <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-            <text>  </text>
-            <text fg={colors.muted}>Task: </text>
-            <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
+            <text fg={colors.muted}>  Task: </text>
+            <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
             <text fg={colors.muted}> [{toggleLabel()}]</text>
           </box>
         </Show>
