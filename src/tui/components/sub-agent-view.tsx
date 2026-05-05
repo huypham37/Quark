@@ -264,22 +264,10 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
 
       {/* Body: prompt + tree as a single visual list with aligned connectors */}
       <box flexDirection="column">
-        {/*
-          Prompt line — rendered as the first tree item.
-          Uses ├ when there are more items below, └ when it's the only item.
-          This ensures perfect alignment with all ChildToolLine connectors.
-        */}
+        {/* Prompt line — simple, no tree connector */}
         <Show when={hasPrompt()}>
           <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
             <text>  </text>
-            <text fg={colors.muted}>
-              {showTree() && !hasTextPreview() && props.subAgent.tools.length === 0
-                ? icons.treeCorner
-                : showTree()
-                  ? icons.treeTee
-                  : icons.treeCorner}
-              {" "}
-            </text>
             <text fg={colors.muted}>Task: </text>
             <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
             <text fg={colors.muted}> [{toggleLabel()}]</text>
