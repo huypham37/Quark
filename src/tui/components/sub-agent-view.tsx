@@ -267,12 +267,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       */}
       <Show when={hasPrompt() || hasChildren()}>
         <box flexDirection="column" paddingLeft={2}>
-            {/* Prompt line */}
+            {/* Prompt line — toggle next to label, prompt wraps freely below */}
             <Show when={hasPrompt()}>
-              <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-                <text fg={colors.muted}>Task: </text>
-                <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
-                <text fg={colors.muted}> [{toggleLabel()}]</text>
+              <box flexDirection="column" onMouseUp={() => setExpanded((v) => !v)}>
+                <text fg={colors.muted}>Task: [{toggleLabel()}]</text>
+                <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
               </box>
             </Show>
 
