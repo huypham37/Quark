@@ -263,10 +263,10 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
 
       {/*
         Body "card" — shared left padding so Task, tree, and preview all align.
-        paddingLeft = 3 (matches spinner char + trailing space in header).
+        paddingLeft = 2 (matches spinner char + trailing space in header).
       */}
       <Show when={hasPrompt() || hasChildren()}>
-        <box flexDirection="column" paddingLeft={3}>
+        <box flexDirection="column" paddingLeft={2}>
             {/* Prompt line */}
             <Show when={hasPrompt()}>
               <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
