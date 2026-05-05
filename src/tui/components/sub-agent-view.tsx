@@ -159,6 +159,7 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
 
   return (
     <box flexDirection="row">
+      <text>  </text>
       <text fg={colors.muted}>{connector()} </text>
       <box flexShrink={0}>
         <StatusIndicator status={props.tool.status} />
@@ -259,24 +260,20 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         </Show>
       </box>
 
-      {/* Body: indented with left border for visual grouping */}
-      <box flexDirection="column" paddingLeft={2}>
-        {/* Prompt row: boxed with │ prefix, clickable toggle */}
+      {/* Body: prompt + tree as continuous indented block */}
+      <box flexDirection="column">
+        {/* Prompt row: │ prefix, clickable toggle */}
         <Show when={hasPrompt()}>
           <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-            <text fg={colors.muted}>{icons.treePipe} </text>
+            <text>  </text>
+            <text fg={colors.muted}>│ </text>
             <text fg={colors.muted}>Task: </text>
             <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
             <text fg={colors.muted}> [{toggleLabel()}]</text>
           </box>
         </Show>
 
-        {/* Spacer between prompt and tree */}
-        <Show when={hasPrompt() && showTree()}>
-          <text> </text>
-        </Show>
-
-        {/* Tool tree (visible when expanded) */}
+        {/* Tool tree (visible when expanded) — flows directly from prompt */}
         <Show when={showTree()}>
           <box flexDirection="column">
             <For each={props.subAgent.tools}>
@@ -290,6 +287,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
             {/* Streaming text preview with fun labels */}
             <Show when={hasTextPreview()}>
               <box flexDirection="row">
+                <text>  </text>
                 <text fg={colors.muted}>{icons.treeCorner} </text>
                 <FunStreamingLabel />
               </box>
