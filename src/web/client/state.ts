@@ -8,6 +8,8 @@ export interface SubAgentToolPart {
 
 export interface SubAgentState {
   profile: string
+  modelName?: string
+  prompt?: string
   tools: SubAgentToolPart[]
   tokensUsed: number
   tokenLimit: number

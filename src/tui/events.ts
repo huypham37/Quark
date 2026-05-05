@@ -353,6 +353,7 @@ export function wireEvents(state: AppState) {
         profile: data.profile,
         tokens: data.tokens,
         tokenLimit: data.tokenLimit,
+        modelName: data.modelName,
       })
     }))
 

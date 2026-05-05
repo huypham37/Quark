@@ -1,17 +1,21 @@
 // @jsxImportSource @opentui/solid
-// SubAgentView — renders sub-agent tool activity as a nested tree
+// SubAgentView — renders sub-agent tool activity as a unified card
 //
 // Shows:
-//   ⠋ Finder                        12.4k tokens (8%)
+//   ⠋ Summoning Finder · 12.4k tokens (8%) · claude-sonnet-4.5
+//   Task: "research auth flow and find the..." [expand]
 //   ├── ✓ WebSearch "what is AI"
 //   ├── ⠋ Read https://en.wikipedia...
-//   └── Streaming: "AI stands for..."
+//   └── ✨ Thinking out loud...
 //
 // When done:
-//   ✓ Finder                        24.1k tokens (16%)
-//   ├── ✓ WebSearch "what is AI"
-//   ├── ✓ Read https://en.wikipedia...
-//   └── ✓ WebSearch "AI techniques"
+//   ✓ Finder responded · 24.1k tokens (16%) · claude-sonnet-4.5
+//   Task: "research auth flow..." [expand]
+//
+// When error:
+//   ✗ Finder failed · claude-sonnet-4.5
+//   Task: "research auth flow..." [expand]
+//   (error message)
 
 import type { Component } from "solid-js"
 import { Show, For, createSignal, createEffect, onCleanup, onMount } from "solid-js"
@@ -25,7 +29,25 @@ interface SubAgentViewProps {
   parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
 }
 
+// ---------------------------------------------------------------------------
+// Fun streaming labels — cycle every 3s
+// ---------------------------------------------------------------------------
+
+const STREAMING_LABELS = [
+  "✨ Thinking out loud...",
+  "🧠 Processing vibes...",
+  "🔮 Divining answer...",
+  "💭 Having thoughts...",
+  "📡 Beaming back...",
+  "🌀 Spinning up...",
+] as const
+
+const STREAMING_LABEL_INTERVAL_MS = 3_000
+
+// ---------------------------------------------------------------------------
 // Map tool IDs to display names (same as tool-result.tsx)
+// ---------------------------------------------------------------------------
+
 function getToolDisplayName(tool: string): string {
   const names: Record<string, string> = {
     read: "Read",
@@ -41,7 +63,10 @@ function getToolDisplayName(tool: string): string {
   return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
 }
 
+// ---------------------------------------------------------------------------
 // Extract a short label from tool input
+// ---------------------------------------------------------------------------
+
 function getToolLabel(tool: string, input: Record<string, unknown>): string {
   const path = input.filePath ?? input.file_path ?? input.path
   if (typeof path === "string") {
@@ -74,14 +99,20 @@ function getToolLabel(tool: string, input: Record<string, unknown>): string {
   return ""
 }
 
+// ---------------------------------------------------------------------------
 // Format token count: 1234 → "1.2k", 123456 → "123.5k"
+// ---------------------------------------------------------------------------
+
 function formatTokens(n: number): string {
   if (n < 1000) return String(n)
   if (n < 10000) return (n / 1000).toFixed(1) + "k"
   return (n / 1000).toFixed(1) + "k"
 }
 
-// StatusIndicator - always renders a single text element to avoid DOM insertion issues
+// ---------------------------------------------------------------------------
+// StatusIndicator — spinner/check/cross
+// ---------------------------------------------------------------------------
+
 const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "running" | "completed" | "error" }> = (props) => {
   const [frameIndex, setFrameIndex] = createSignal(0)
 
@@ -117,21 +148,9 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
   return <text fg={color()}>{content()}</text>
 }
 
-const DOTS = [".", "..", "..."]
-const DOTS_INTERVAL_MS = 400
-
-const StreamingLabel: Component = () => {
-  const [dotIdx, setDotIdx] = createSignal(0)
-
-  onMount(() => {
-    const id = setInterval(() => {
-      setDotIdx((i) => (i + 1) % DOTS.length)
-    }, DOTS_INTERVAL_MS)
-    onCleanup(() => clearInterval(id))
-  })
-
-  return <text fg={colors.muted}>Streaming {DOTS[dotIdx()] ?? "."}</text>
-}
+// ---------------------------------------------------------------------------
+// ChildToolLine — single tool in the tree
+// ---------------------------------------------------------------------------
 
 const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (props) => {
   const displayName = getToolDisplayName(props.tool.tool)
@@ -157,17 +176,51 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
   )
 }
 
+// ---------------------------------------------------------------------------
+// FunStreamingLabel — cycles through quirky labels every 3s
+// ---------------------------------------------------------------------------
+
+const FunStreamingLabel: Component = () => {
+  const [labelIdx, setLabelIdx] = createSignal(0)
+
+  onMount(() => {
+    const id = setInterval(() => {
+      setLabelIdx((i) => (i + 1) % STREAMING_LABELS.length)
+    }, STREAMING_LABEL_INTERVAL_MS)
+    onCleanup(() => clearInterval(id))
+  })
+
+  return <text fg={colors.muted}>{STREAMING_LABELS[labelIdx()] ?? STREAMING_LABELS[0]}</text>
+}
+
+// ---------------------------------------------------------------------------
+// SubAgentView — main component
+// ---------------------------------------------------------------------------
+
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
+  const [expanded, setExpanded] = createSignal(false)
+
   const profileName = () => {
     const p = props.subAgent.profile
     return p.charAt(0).toUpperCase() + p.slice(1)
   }
+
   const isDone = () => props.subAgent.done
+  const isError = () => props.parentStatus === "error"
+
   const headerStatus = (): "running" | "completed" | "error" => {
-    if (props.parentStatus === "error") return "error"
+    if (isError()) return "error"
     if (!isDone()) return "running"
     return "completed"
   }
+
+  const headerLabel = () => {
+    const name = profileName()
+    if (isError()) return name + " failed"
+    if (isDone()) return name + " responded"
+    return "Summoning " + name
+  }
+
   const tokensUsed = () => props.subAgent.tokensUsed
   const tokenLimit = () => props.subAgent.tokenLimit
   const tokenPct = () => {
@@ -176,24 +229,47 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     return ` (${pct}%)`
   }
   const hasTokens = () => tokensUsed() > 0
+  const hasModel = () => !!props.subAgent.modelName
+
+  const hasPrompt = () => !!props.subAgent.prompt
+  const promptText = () => {
+    const p = props.subAgent.prompt ?? ""
+    if (expanded()) return p
+    return p.length > 80 ? p.slice(0, 77) + "..." : p
+  }
+  const toggleLabel = () => expanded() ? "collapse" : "expand"
+
   const hasTextPreview = () => !isDone() && !!props.subAgent.textPreview
   const hasChildren = () => props.subAgent.tools.length > 0 || hasTextPreview()
+  const showTree = () => expanded() && hasChildren()
 
   return (
     <box flexDirection="column">
-      {/* Header: spinner/check + profile name + token usage */}
+      {/* Header: status icon + verb + profile name + tokens + model */}
       <box flexDirection="row">
         <box flexShrink={0}>
           <StatusIndicator status={headerStatus()} />
         </box>
-        <text fg={colors.text}>{profileName()}</text>
+        <text fg={colors.text}>{headerLabel()}</text>
         <Show when={hasTokens()}>
-          <text fg={colors.muted}>  {formatTokens(tokensUsed())} tokens{tokenPct()}</text>
+          <text fg={colors.muted}>{" "}·{" "}{formatTokens(tokensUsed())} tokens{tokenPct()}</text>
+        </Show>
+        <Show when={hasModel()}>
+          <text fg={colors.muted}>{" "}·{" "}{props.subAgent.modelName}</text>
         </Show>
       </box>
 
-      {/* Child tool list */}
-      <Show when={hasChildren()}>
+      {/* Prompt row: Task: "..." [expand/collapse] — clickable toggle */}
+      <Show when={hasPrompt()}>
+        <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
+          <text fg={colors.muted}>{" "}Task: </text>
+          <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
+          <text fg={colors.muted}> [{toggleLabel()}]</text>
+        </box>
+      </Show>
+
+      {/* Tool tree (visible when expanded) */}
+      <Show when={showTree()}>
         <box flexDirection="column">
           <For each={props.subAgent.tools}>
             {(tool, i) => (
@@ -203,11 +279,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
               />
             )}
           </For>
-          {/* Streaming text preview */}
+          {/* Streaming text preview with fun labels */}
           <Show when={hasTextPreview()}>
             <box flexDirection="row">
               <text fg={colors.muted}>{icons.treeCorner} </text>
-              <StreamingLabel />
+              <FunStreamingLabel />
             </box>
           </Show>
         </box>

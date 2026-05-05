@@ -37,6 +37,8 @@ export interface SubAgentToolPart {
 
 export interface SubAgentState {
   profile: string
+  modelName?: string
+  prompt?: string
   tools: SubAgentToolPart[]
   // Token tracking for the sub-agent's context window
   tokensUsed: number
@@ -109,7 +111,7 @@ export type TuiAction =
   | { type: "subagent-tool-start"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string }
   | { type: "subagent-tool-input"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; input: Record<string, unknown> }
   | { type: "subagent-tool-end"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; status: "completed" | "error"; error?: string }
-  | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number }
+  | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number; modelName?: string }
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "cycle-thinking"; modelId: string }
@@ -119,6 +121,32 @@ export type TuiAction =
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string }
+
+// ---------------------------------------------------------------------------
+// Extract profile and prompt from a quark --sub-agent bash command
+// ---------------------------------------------------------------------------
+
+function parseSubAgentCommand(cmd: string): { profile: string; prompt?: string } {
+  const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
+  let prompt: string | undefined
+
+  // Quoted --prompt
+  const pm = cmd.match(/--prompt\s+(['"])(.*?)\1/)
+  if (pm) {
+    prompt = pm[2]
+  } else {
+    // Unquoted --prompt (word until next flag or end)
+    const m2 = cmd.match(/--prompt\s+([^\s-][^;|&><]*?)(?:\s+-|$)/)
+    prompt = m2?.[1]?.trim()
+  }
+  // Also try -m short form
+  if (!prompt) {
+    const m3 = cmd.match(/-m\s+(['"])(.*?)\1/)
+    prompt = m3?.[2] ?? cmd.match(/-m\s+([^\s-][^;|&><]*?)(?:\s+-|$)/)?.[1]?.trim()
+  }
+
+  return { profile, prompt: prompt?.slice(0, 200) }
+}
 
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
@@ -152,8 +180,8 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         if (d.tool === "bash") {
           const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
           if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
-            const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
-            subAgent = { profile, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status === "completed" || d.status === "error" }
+            const { profile, prompt } = parseSubAgentCommand(cmd)
+            subAgent = { profile, prompt, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status === "completed" || d.status === "error" }
           }
         }
         tuiParts.push({
@@ -395,9 +423,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
       if (tiPart.tool === "bash" && !tiPart.subAgent) {
         const cmd = action.input.command ?? action.input.cmd
         if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
-          const profile = cmd.match(/--profile\s+(\S+)/)?.[1] ?? "sub-agent"
+          const { profile, prompt } = parseSubAgentCommand(cmd)
           setStore("messages", tiMsgIdx, "parts", tiPartIdx, "subAgent" as any, {
             profile,
+            prompt,
             tools: [],
             tokensUsed: 0,
             tokenLimit: 0,
@@ -722,6 +751,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         produce((sa: SubAgentState) => {
           if (action.tokens?.input) sa.tokensUsed = action.tokens.input
           if (action.tokenLimit && action.tokenLimit > 0) sa.tokenLimit = action.tokenLimit
+          if (action.modelName) sa.modelName = action.modelName
         }),
       )
       break

@@ -126,6 +126,7 @@ export interface BusEvents {
     sessionId: string; messageId: string; parentCallId: string
     profile: string; tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
     tokenLimit?: number
+    modelName?: string
   }
 
   // Streaming text from the sub-agent

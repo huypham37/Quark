@@ -37,25 +37,10 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
         )}
       </Match>
 
-      {/* Sub-agent: bash tool with subAgent state */}
+      {/* Sub-agent: bash tool with subAgent state — render unified SubAgentView */}
       <Match when={props.part.type === "tool" && asTool().subAgent}>
-        <box marginBottom={1} flexDirection="column">
-          <ToolCard
-            tool={asTool().tool}
-            status={asTool().status}
-            input={asTool().input}
-            output={asTool().output}
-            error={asTool().error}
-            diff={asTool().diff}
-            streamingContent={asTool().streamingContent}
-          />
-          {/* Nested sub-agent view with tree connector */}
-          <box flexDirection="row">
-            <text fg={colors.muted}>└─ </text>
-            <box flexDirection="column" flexGrow={1}>
-              <SubAgentView subAgent={asTool().subAgent!} parentStatus={asTool().status} />
-            </box>
-          </box>
+        <box marginBottom={1}>
+          <SubAgentView subAgent={asTool().subAgent!} parentStatus={asTool().status} />
         </box>
       </Match>
 

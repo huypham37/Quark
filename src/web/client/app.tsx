@@ -396,6 +396,7 @@ export function App() {
         dispatch({ type: 'SUBAGENT_EVENT', messageId: d.messageId, parentCallId: d.parentCallId, updater: (sa) => {
           if (d.tokens?.input) sa.tokensUsed = d.tokens.input
           if (d.tokenLimit && d.tokenLimit > 0) sa.tokenLimit = d.tokenLimit
+          if (d.modelName) sa.modelName = d.modelName
         }, profile: d.profile })
         break
       case 'subagent-text-delta': {
