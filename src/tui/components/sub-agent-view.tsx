@@ -198,7 +198,7 @@ const FunStreamingLabel: Component = () => {
 // ---------------------------------------------------------------------------
 
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(false)
+  const [expanded, setExpanded] = createSignal(true)
 
   const profileName = () => {
     const p = props.subAgent.profile
