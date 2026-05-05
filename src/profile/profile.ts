@@ -381,6 +381,7 @@ export function resetProfileCache(): void {
 export const _internal = {
   parseProfilesFromYAML,
   parseProjectOverrides,
+  parsePermissions,
   validateSubAgents,
   BUILTIN_CODER,
   BUILTIN_PROMPT,

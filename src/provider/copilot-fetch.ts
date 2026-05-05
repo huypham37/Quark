@@ -7,6 +7,9 @@
 // Also removes x-api-key (Copilot uses Bearer auth, not API keys).
 
 import type { FetchFn } from "./copilot-auth"
+import { debug } from "../debug"
+
+const sseLog = debug("copilot-sse")
 
 // ---------------------------------------------------------------------------
 // CopilotFetchFn — FetchFn with a runtime force-agent setter
@@ -230,6 +233,29 @@ export function createCopilotFetch(options: {
     const url = typeof input === "string"
       ? input
       : input instanceof URL ? input.toString() : input.url
+
+    // Raw response logging — enable via QUARK_DEBUG=copilot-sse (or legacy DEBUG_RAW_RESPONSE=1)
+    if ((sseLog.enabled || process.env.DEBUG_RAW_RESPONSE) &&
+        response.body &&
+        contentType.includes("text/event-stream")) {
+      const [a, b] = response.body.tee()
+      const decoder = new TextDecoder()
+      ;(async () => {
+        const reader = a.getReader()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            process.stderr.write(`[copilot-sse] ${decoder.decode(value, { stream: true })}`)
+          }
+        } catch {}
+      })()
+      return new Response(b, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    }
 
     // Normalize Copilot's rotated reasoning item IDs on /responses SSE streams
     if (contentType.includes("text/event-stream") &&

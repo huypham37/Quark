@@ -16,6 +16,9 @@ import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
 import { startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
+import { setVerbose, debug } from "./debug"
+
+const dlog = debug("cli")
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -33,6 +36,8 @@ Options:
       --parent-session <id>     Create a child session under this parent
       --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
       --no-store                Run an ephemeral session — never written to disk
+      --verbose                 Enable all debug logs (alias for QUARK_DEBUG=*)
+                                Use QUARK_DEBUG=<ns1,ns2> to scope. See README.
   -l, --list-profiles           List available profiles
   -h, --help                    Show this help message
 
@@ -55,6 +60,7 @@ interface ParsedArgs {
   model?: string
   subAgent?: boolean
   noStore?: boolean
+  verbose?: boolean
   listProfiles?: boolean
   help?: boolean
 }
@@ -70,6 +76,7 @@ function parseArguments(): ParsedArgs {
         "parent-session": { type: "string" },
         "sub-agent": { type: "boolean" },
         "no-store": { type: "boolean" },
+        verbose: { type: "boolean" },
         "list-profiles": { type: "boolean", short: "l" },
         help: { type: "boolean", short: "h" },
       },
@@ -114,6 +121,7 @@ function parseArguments(): ParsedArgs {
       model: values.model,
       subAgent: values["sub-agent"],
       noStore: values["no-store"],
+      verbose: values.verbose,
       listProfiles: values["list-profiles"],
       help: values.help,
     }
@@ -129,6 +137,8 @@ function parseArguments(): ParsedArgs {
 
 async function main() {
   const args = parseArguments()
+
+  if (args.verbose) setVerbose(true)
 
   if (args.help) {
     printHelp()
@@ -179,22 +189,25 @@ async function main() {
   }
 
   // Wire up basic event output for CLI
+  bus.on("text-start", () => {
+    dlog("text-start")
+  })
+
   bus.on("text-delta", ({ delta }) => {
+    if (dlog.enabled) dlog(`text-delta len=${delta.length}`)
     process.stdout.write(delta)
   })
 
-  bus.on("tool-start", ({ tool }) => {
-    process.stdout.write(`\n[tool: ${tool}]\n`)
+  bus.on("text-end", () => {
+    dlog("text-end")
   })
 
-  bus.on("tool-end", (data) => {
-    if (data.output) {
-      const output = typeof data.output === "string" ? data.output : JSON.stringify(data.output)
-      // Truncate long outputs
-      const maxLen = 500
-      const display = output.length > maxLen ? output.slice(0, maxLen) + "..." : output
-      process.stdout.write(`${display}\n`)
-    }
+  bus.on("assistant-message-start", ({ messageId }) => {
+    dlog(`assistant-message-start id=${messageId}`)
+  })
+
+  bus.on("assistant-message-end", ({ messageId, finish }) => {
+    dlog(`assistant-message-end id=${messageId} finish=${finish}`)
   })
 
   bus.on("error", ({ error }) => {
@@ -218,7 +231,7 @@ async function main() {
       agent,
     })
 
-    console.log(`\n[session: ${result.sessionId}]`)
+    dlog(`session: ${result.sessionId}`)
     cleanupEventWriter?.()
     process.exit(0)
   } catch (err: any) {

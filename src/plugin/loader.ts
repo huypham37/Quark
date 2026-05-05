@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "url"
 import { registerHook } from "./registry"
 import { registerProvider } from "../config/config"
 import { error as notifyError } from "../notification/notification"
+import { isVerbose } from "../debug"
 import type { PluginFn, HookName } from "./plugin"
 
 const PLUGINS_DIR = path.join(os.homedir(), ".config", "quark", "plugins")
@@ -21,6 +22,27 @@ const PLUGINS_DIR = path.join(os.homedir(), ".config", "quark", "plugins")
 export interface PluginLoadResult {
   loaded: string[]
   errors: Array<{ file: string; error: string }>
+}
+
+function withSuppressedConsole<T>(fn: () => T): T {
+  if (isVerbose()) return fn()
+
+  const noop = () => {}
+  const log = console.log
+  const warn = console.warn
+  const error = console.error
+
+  console.log = noop
+  console.warn = noop
+  console.error = noop
+
+  try {
+    return fn()
+  } finally {
+    console.log = log
+    console.warn = warn
+    console.error = error
+  }
 }
 
 /**
@@ -72,7 +94,7 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
       // On Windows, bare absolute paths like "C:\..." are rejected by
       // Node's ESM loader which interprets "C:" as a URL protocol.
       const importURL = pathToFileURL(filePath).href
-      const mod = await import(importURL)
+      const mod = await withSuppressedConsole(() => import(importURL))
 
       // Support default export or named "plugin" export
       const pluginFn: PluginFn | undefined = mod.default ?? mod.plugin
@@ -85,7 +107,7 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
       }
 
       // Call the plugin function to get its hook map
-      const hooks = await pluginFn(ctx)
+      const hooks = await withSuppressedConsole(() => pluginFn(ctx))
 
       // Register each returned hook
       let hookCount = 0

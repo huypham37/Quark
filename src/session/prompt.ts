@@ -58,6 +58,9 @@ import {
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
+import { debug } from "../debug";
+
+const dlog = debug("loop");
 
 // ---------------------------------------------------------------------------
 // Active sessions — track abort controllers so we can cancel
@@ -219,8 +222,13 @@ async function loop(
     if (abort.aborted) break;
     step++;
 
+    dlog(`--- iteration ${step} starting (sessionId=${currentSessionId}) ---`);
+
     // Safety: prevent runaway loops
-    if (step > loadConfig().max_steps) break;
+    if (step > loadConfig().max_steps) {
+      dlog(`max_steps reached (${loadConfig().max_steps}), breaking`);
+      break;
+    }
 
     // Plugin hook: loop step beginning
     await fireHook("loop.step.before", { sessionId: currentSessionId, step });
@@ -272,6 +280,20 @@ async function loop(
     // 1. Load conversation history
     const { messages, parts } = loadMessages(currentSessionId);
     const modelMessages = toModelMessages(messages, parts);
+
+    if (dlog.enabled) {
+      dlog(`loaded ${messages.length} messages, ${parts.length} parts → ${modelMessages.length} model messages`);
+      const roles = modelMessages.map((m) => {
+        const c = m.content;
+        if (typeof c === "string") return `${m.role}(text:${c.length})`;
+        if (Array.isArray(c)) {
+          const types = c.map((p: any) => p.type).join(",");
+          return `${m.role}(${types})`;
+        }
+        return m.role;
+      });
+      dlog("messages roles:", roles.join(" | "));
+    }
 
     // 2. Build system prompt
     const system = buildSystem(agent);
@@ -390,6 +412,8 @@ async function loop(
         ? { providerOptions: thinkingProviderOptions }
         : {}),
     });
+
+    dlog(`processStream returned: ${result}`);
 
     // Plugin hook: loop step ending
     await fireHook("loop.step.after", {

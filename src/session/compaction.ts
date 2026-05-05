@@ -18,6 +18,9 @@ import {
   type StepFinishData,
   type PartRow,
 } from "./message"
+import { debug } from "../debug"
+
+const dlog = debug("compaction")
 
 const COMPACTION_PROMPT = `Provide a detailed summary of the conversation so far for continuing our work.
 Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next.
@@ -153,10 +156,10 @@ export function getContextWindow(
   modelLimit: { context: number; input?: number; output: number } | null,
 ): number {
   if (modelLimit && modelLimit.context > 0) {
-    console.log("[compaction] getContextWindow: %d (from models.dev)", modelLimit.context)
+    dlog("getContextWindow: %d (from models.dev)", modelLimit.context)
     return modelLimit.context
   }
-  console.log("[compaction] getContextWindow: 0 (model limit unavailable)")
+  dlog("getContextWindow: 0 (model limit unavailable)")
   return 0
 }
 

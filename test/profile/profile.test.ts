@@ -17,7 +17,7 @@ import {
 import { agentFromProfile } from "../../src/agent"
 import { getActive, dismiss } from "../../src/notification/notification"
 
-const { parseProfilesFromYAML, parseProjectOverrides, BUILTIN_CODER, BUILTIN_PROMPT } = _internal
+const { parseProfilesFromYAML, parseProjectOverrides, parsePermissions, BUILTIN_CODER, BUILTIN_PROMPT } = _internal
 
 
 // ---------------------------------------------------------------------------
@@ -805,6 +805,224 @@ describe("parseProfilesFromYAML: sub_agents", () => {
 })
 
 // ---------------------------------------------------------------------------
+// parsePermissions — permission rule parsing from YAML
+// ---------------------------------------------------------------------------
+
+describe("parsePermissions", () => {
+  test("parses tool: '*' with action: allow", () => {
+    const raw = [
+      { tool: "*", action: "allow" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "*", action: "allow" }])
+  })
+
+  test("parses tool: '*' with action: deny", () => {
+    const raw = [
+      { tool: "*", action: "deny" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "*", action: "deny" }])
+  })
+
+  test("parses tool: '*' with action: ask", () => {
+    const raw = [
+      { tool: "*", action: "ask" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "*", action: "ask" }])
+  })
+
+  test("parses mixed wildcard + specific rules in order", () => {
+    const raw = [
+      { tool: "*", action: "deny" },
+      { tool: "read", action: "allow" },
+      { tool: "bash", action: "ask" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([
+      { tool: "*", action: "deny" },
+      { tool: "read", action: "allow" },
+      { tool: "bash", action: "ask" },
+    ])
+  })
+
+  test("parses specific tool rules without wildcard", () => {
+    const raw = [
+      { tool: "read", action: "allow" },
+      { tool: "bash", action: "ask" },
+      { tool: "write", action: "deny" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toHaveLength(3)
+    expect(result[0]).toEqual({ tool: "read", action: "allow" })
+  })
+
+  test("returns undefined when raw is not an array", () => {
+    expect(parsePermissions("not-an-array")).toBeUndefined()
+    expect(parsePermissions(42)).toBeUndefined()
+    expect(parsePermissions(null)).toBeUndefined()
+    expect(parsePermissions(undefined)).toBeUndefined()
+  })
+
+  test("returns undefined when raw is an empty array", () => {
+    expect(parsePermissions([])).toBeUndefined()
+  })
+
+  test("returns undefined when all entries are invalid", () => {
+    const raw = [
+      { tool: "", action: "allow" },
+      { tool: "bash", action: "invalid" as any },
+      "not-an-object",
+      42,
+      null,
+    ]
+    expect(parsePermissions(raw)).toBeUndefined()
+  })
+
+  test("skips entries with missing tool field", () => {
+    const raw = [
+      { action: "allow" },
+      { tool: "read", action: "allow" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "read", action: "allow" }])
+  })
+
+  test("skips entries with empty string tool", () => {
+    const raw = [
+      { tool: "", action: "deny" },
+      { tool: "read", action: "allow" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "read", action: "allow" }])
+  })
+
+  test("skips entries with non-string tool", () => {
+    const raw = [
+      { tool: 42, action: "allow" },
+      { tool: true, action: "deny" },
+      { tool: "read", action: "allow" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "read", action: "allow" }])
+  })
+
+  test("skips entries with invalid action", () => {
+    const raw = [
+      { tool: "read", action: "maybe" },
+      { tool: "bash", action: "permit" },
+      { tool: "grep", action: "ask" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "grep", action: "ask" }])
+  })
+
+  test("skips non-object entries in the array", () => {
+    const raw = [
+      "just-a-string",
+      42,
+      null,
+      { tool: "read", action: "allow" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "read", action: "allow" }])
+  })
+
+  test("allows pattern field but silently ignores it (not yet wired)", () => {
+    // The parser only extracts tool + action; pattern is a TODO
+    const raw = [
+      { tool: "bash", action: "ask", pattern: "/usr/bin/*" },
+    ]
+    const result = parsePermissions(raw)
+    expect(result).toEqual([{ tool: "bash", action: "ask" }])
+    // pattern is dropped — verified by toEqual which does not include it
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseProfilesFromYAML: permissions integration
+// ---------------------------------------------------------------------------
+
+describe("parseProfilesFromYAML: permissions", () => {
+  test("parses permissions list from profile with tool: '*' ", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read", "bash"],
+          permissions: [
+            { tool: "*", action: "ask" },
+            { tool: "read", action: "allow" },
+          ],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.permissions).toEqual([
+      { tool: "*", action: "ask" },
+      { tool: "read", action: "allow" },
+    ])
+  })
+
+  test("permissions is undefined when not specified", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.permissions).toBeUndefined()
+  })
+
+  test("permissions is undefined when permissions is empty array", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+          permissions: [] as any[],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder!.permissions).toBeUndefined()
+  })
+
+  test("permissions is undefined when permissions is not an array", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+          permissions: "not-an-array",
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw as any, "/tmp")
+    expect(profiles.coder!.permissions).toBeUndefined()
+  })
+
+  test("filters out invalid entries but preserves valid ones", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          tools: ["read"],
+          permissions: [
+            { tool: "", action: "allow" },
+            { tool: "read", action: "allow" },
+            { tool: "bash", action: "invalid" },
+          ],
+        },
+      },
+    }
+    const profiles = parseProfilesFromYAML(raw as any, "/tmp")
+    expect(profiles.coder!.permissions).toEqual([
+      { tool: "read", action: "allow" },
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // validateSubAgents — pure validation function
 // ---------------------------------------------------------------------------
 
@@ -983,6 +1201,33 @@ describe("agentFromProfile: subAgents", () => {
     const profile = { ...BUILTIN_CODER }
     const agent = agentFromProfile(profile, "test prompt")
     expect(agent.subAgents).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// agentFromProfile: permissions passthrough
+// ---------------------------------------------------------------------------
+
+describe("agentFromProfile: permissions", () => {
+  test("copies permissions from profile to agent config", () => {
+    const profile = {
+      ...BUILTIN_CODER,
+      permissions: [
+        { tool: "*", action: "allow" },
+        { tool: "bash", action: "ask" },
+      ],
+    }
+    const agent = agentFromProfile(profile, "test prompt")
+    expect(agent.permissions).toEqual([
+      { tool: "*", action: "allow" },
+      { tool: "bash", action: "ask" },
+    ])
+  })
+
+  test("permissions is undefined when profile has none", () => {
+    const profile = { ...BUILTIN_CODER }
+    const agent = agentFromProfile(profile, "test prompt")
+    expect(agent.permissions).toBeUndefined()
   })
 })
 

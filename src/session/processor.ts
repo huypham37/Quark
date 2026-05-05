@@ -29,6 +29,9 @@ import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 import { loadConfig } from "../config/config"
 import { getModelLimit } from "../provider/models"
+import { debug } from "../debug"
+
+const dlog = debug("processor")
 
 export interface ProcessInput {
   model: LanguageModel
@@ -84,6 +87,10 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
       for await (const event of result.fullStream) {
         input.abort.throwIfAborted()
+
+        if (dlog.enabled) {
+          dlog("event:", event.type, event.type === "finish-step" ? `(reason=${(event as any).finishReason})` : "")
+        }
 
         switch (event.type) {
           case "start":
@@ -444,6 +451,8 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     // Accumulate total usage from step-finish parts
     finishMessage(mid, finish, undefined, sid)
     bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish })
+
+    dlog(`stream finished: lastFinish=${lastFinish} → returning ${finish === "tool-calls" ? "continue" : "stop"}`)
 
     if (finish === "tool-calls") return "continue"
     return "stop"

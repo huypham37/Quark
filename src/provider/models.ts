@@ -8,6 +8,9 @@ import * as path from "path";
 import * as os from "os";
 import { parseModelSpec } from "../config/config";
 import { bus } from "../session/events";
+import { debug } from "../debug";
+
+const dlog = debug("models");
 
 const CACHE_DIR = path.join(os.homedir(), ".config", "quark");
 const CACHE_FILE = path.join(CACHE_DIR, "models.json");
@@ -150,8 +153,8 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     const cached =
       lmStudioCache.get(parsed.model) ?? lmStudioCache.get(modelSpec);
     if (cached) {
-      console.log(
-        "[models] %s → context=%d (lmstudio)",
+      dlog(
+        "%s → context=%d (lmstudio)",
         modelSpec,
         cached.context,
       );
@@ -174,8 +177,8 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
   const limit = provider?.models?.[parsed.model]?.limit;
 
   if (limit) {
-    console.log(
-      "[models] %s → context=%d input=%s output=%d (provider=%s)",
+    dlog(
+      "%s → context=%d input=%s output=%d (provider=%s)",
       modelSpec,
       limit.context,
       limit.input ?? "n/a",
@@ -190,8 +193,8 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     for (const [pid, pdata] of Object.entries(data)) {
       const model = pdata.models?.[parsed.model];
       if (model?.limit) {
-        console.log(
-          "[models] %s → context=%d input=%s output=%d (fallback via %s)",
+        dlog(
+          "%s → context=%d input=%s output=%d (fallback via %s)",
           modelSpec,
           model.limit.context,
           model.limit.input ?? "n/a",
@@ -215,7 +218,7 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     });
   }
 
-  console.log("[models] %s → not found (returns 0)", modelSpec);
+  dlog("%s → not found (returns 0)", modelSpec);
   return null;
 }
 

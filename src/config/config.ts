@@ -157,7 +157,7 @@ export function loadConfig(): QuarkConfig {
 
   const raw = readRawConfig()
 
-  cached = {
+  const config: QuarkConfig = {
     models:
       Array.isArray(raw.models) && raw.models.every((m: unknown) => typeof m === "string")
         ? (raw.models as string[])
@@ -174,9 +174,14 @@ export function loadConfig(): QuarkConfig {
       typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
     compact: parseCompactConfig(raw.compact),
     providers: parseProviders(raw.providers),
+    hide_readonly_tools:
+      typeof raw.hide_readonly_tools === "boolean"
+        ? raw.hide_readonly_tools
+        : DEFAULTS.hide_readonly_tools,
   }
 
-  return cached
+  cached = config
+  return config
 }
 
 /**

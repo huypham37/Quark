@@ -1,0 +1,101 @@
+[claude-web-proxy] No API key found. Set CLAUDE_WEB_PROXY_API_KEY or create ~/.config/atom/claude-web-proxy-token.json. Plugin is inactive.
+[loop] --- iteration 1 starting (sessionId=NcsNv4U8lpFxuesU) ---
+[loop] loaded 1 messages, 1 parts → 1 model messages
+[loop] messages roles: user(text:79)
+[cli] assistant-message-start id=SLuWTzXIMqNCnBRm
+[processor] event: start 
+[processor] event: start-step 
+[processor] event: tool-input-start 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-delta 
+[processor] event: tool-input-end 
+[processor] event: tool-call 
+[processor] event: tool-result 
+[processor] event: finish-step (reason=tool-calls)
+[processor] event: finish 
+[cli] assistant-message-end id=SLuWTzXIMqNCnBRm finish=tool-calls
+[processor] stream finished: lastFinish=tool-calls → returning continue
+[loop] processStream returned: continue
+[loop] --- iteration 2 starting (sessionId=NcsNv4U8lpFxuesU) ---
+[loop] loaded 2 messages, 4 parts → 3 model messages
+[loop] messages roles: user(text:79) | assistant(tool-call) | tool(tool-result)
+[cli] assistant-message-start id=10Y7IqRcxqbyUMmT
+[processor] event: start 
+[processor] event: start-step 
+[processor] event: text-start 
+[cli] text-start
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=5
+[processor] event: text-delta 
+[cli] text-delta len=8
+[processor] event: text-delta 
+[cli] text-delta len=5
+[processor] event: text-delta 
+[cli] text-delta len=4
+[processor] event: text-delta 
+[cli] text-delta len=10
+[processor] event: text-delta 
+[cli] text-delta len=4
+[processor] event: text-delta 
+[cli] text-delta len=10
+[processor] event: text-delta 
+[cli] text-delta len=5
+[processor] event: text-delta 
+[cli] text-delta len=4
+[processor] event: text-delta 
+[cli] text-delta len=8
+[processor] event: text-delta 
+[cli] text-delta len=3
+[processor] event: text-delta 
+[cli] text-delta len=7
+[processor] event: text-delta 
+[cli] text-delta len=2
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=8
+[processor] event: text-delta 
+[cli] text-delta len=5
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=2
+[processor] event: text-delta 
+[cli] text-delta len=2
+[processor] event: text-delta 
+[cli] text-delta len=3
+[processor] event: text-delta 
+[cli] text-delta len=4
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=8
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-delta 
+[cli] text-delta len=1
+[processor] event: text-end 
+[cli] text-end
+[processor] event: finish-step (reason=stop)
+[processor] event: finish 
+[cli] assistant-message-end id=10Y7IqRcxqbyUMmT finish=stop
+[processor] stream finished: lastFinish=stop → returning stop
+[loop] processStream returned: stop

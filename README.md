@@ -55,8 +55,38 @@ quark
 | `--parent-session <id>` | | Create a child session under a parent |
 | `--sub-agent` | | Mark as a child agent (reads `QUARK_SESSION_ID` from env) |
 | `--no-store` | | Ephemeral session — never written to disk |
+| `--verbose` | | Enable all debug logs (alias for `QUARK_DEBUG=*`) |
 | `--list-profiles` | `-l` | List available profiles |
 | `--help` | `-h` | Show help |
+
+---
+
+## Debugging
+
+Quark uses **namespaced debug logs**. Logs are off by default and go to **stderr** (stdout stays clean for the assistant's reply). Enable per-subsystem with the `QUARK_DEBUG` env var:
+
+```bash
+QUARK_DEBUG=processor quark "..."             # only processor events
+QUARK_DEBUG=processor,loop quark "..."        # multiple namespaces
+QUARK_DEBUG='*' quark "..."                   # everything (or pass --verbose)
+QUARK_DEBUG='*,-copilot-sse' quark "..."      # everything except SSE dump
+```
+
+The env var inherits to child processes (sub-agents, bash tool) automatically.
+
+### Available namespaces
+
+| Namespace | What it logs |
+|---|---|
+| `processor` | Every `fullStream` event, finish-step reasons, and the `continue` / `stop` / `compact` return value |
+| `loop` | Each agent loop iteration, message/part counts, role+type summary of model messages, `processStream` result |
+| `cli` | `text-start` / `text-delta` / `text-end` and `assistant-message-start` / `assistant-message-end` events |
+| `models` | Context window resolution from models.dev (cache hit, fallback search, not-found) |
+| `compaction` | Context window calc and compaction trigger decisions |
+| `copilot-sse` | Raw Copilot SSE stream tee — very verbose; use to debug streaming bugs |
+| `plugin` | Plugin loader output (suppressed unless enabled) |
+
+To add a new namespace, just call `debug("my-ns")` from anywhere and document it in the table above and in the comment block at the top of [`src/debug.ts`](src/debug.ts).
 
 ---
 
