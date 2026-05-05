@@ -21,7 +21,7 @@ import type { Component } from "solid-js"
 import { Show, For, createSignal, createEffect, onCleanup, onMount } from "solid-js"
 import { colors, icons } from "../theme"
 import { RGBA } from "@opentui/core"
-import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../spinner"
+import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 
 interface SubAgentViewProps {
@@ -119,15 +119,15 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
   createEffect(() => {
     if (props.status === "running") {
       const id = setInterval(() => {
-        setFrameIndex((i) => (i + 1) % SPINNER_FRAMES.length)
-      }, SPINNER_INTERVAL_MS)
+        setFrameIndex((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
+      }, BRAILLE_CYCLE_INTERVAL_MS)
       onCleanup(() => clearInterval(id))
     }
   })
 
   const content = () => {
     switch (props.status) {
-      case "running": return SPINNER_FRAMES[frameIndex()] + " "
+      case "running": return BRAILLE_CYCLE_FRAMES[frameIndex()] + " "
       case "pending": return "… "
       case "awaiting_approval": return "? "
       case "error": return icons.cross + " "
@@ -267,7 +267,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         {/* Prompt line — aligned with header text (after spinner) */}
         <Show when={hasPrompt()}>
           <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-            <text fg={colors.muted}>   Task: </text>
+            <text fg={colors.muted}>  Task: </text>
             <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
             <text fg={colors.muted}> [{toggleLabel()}]</text>
           </box>
