@@ -9,7 +9,8 @@
 //   ✓ Read  ~/package.json        (completed: green check)
 //   ✗ Write  ~/out.ts (EACCES)    (error: red cross)
 //   ⠋ Read  ~/src/tool.ts         (pending: braille cycle)
-//   ? Write  ~/out.ts             (awaiting_approval: question mark)
+//   ⏸ Write  ~/out.ts             (awaiting_approval: pause)
+//   ⠋ Bash  rm -rf /              (bash awaiting_approval: braille cycle)
 
 import type { Component } from "solid-js"
 import { Show, createSignal, createEffect, onCleanup } from "solid-js"
@@ -103,12 +104,15 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
   const isAwaiting = () => props.status === "awaiting_approval"
   const isRunning = () => props.status === "running"
   const isError = () => props.status === "error"
+  const isBash = () => props.tool === "bash"
 
-  // Braille cycle spinner for pending state (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+  // Braille cycle spinner for pending state, and for bash awaiting_approval.
+  // Bash shows the braille spinner instead of ⏸ between tool-input and tool-run.
+  const shouldBraille = () => isPending() || (isAwaiting() && isBash())
   const [pendingFrame, setPendingFrame] = createSignal(0)
   createEffect(() => {
     const id = setInterval(() => {
-      if (!isPending()) return
+      if (!shouldBraille()) return
       setPendingFrame((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
     }, BRAILLE_CYCLE_INTERVAL_MS)
     onCleanup(() => clearInterval(id))
@@ -121,13 +125,13 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
         <Show when={isRunning()}>
           <InlineSpinner />
         </Show>
-        <Show when={isPending()}>
+        <Show when={shouldBraille()}>
           <text fg={colors.textBold}>{pendingChar()} </text>
         </Show>
-        <Show when={isAwaiting()}>
+        <Show when={isAwaiting() && !isBash()}>
           <text fg={colors.text}>⏸ </text>
         </Show>
-        <Show when={!isRunning() && !isPending() && !isAwaiting()}>
+        <Show when={!isRunning() && !shouldBraille() && !isAwaiting()}>
           <Show
             when={isError()}
             fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
