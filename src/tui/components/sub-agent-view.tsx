@@ -259,35 +259,44 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         </Show>
       </box>
 
-      {/* Prompt row: Task: "..." [expand/collapse] — clickable toggle */}
-      <Show when={hasPrompt()}>
-        <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-          <text fg={colors.muted}>{" "}Task: </text>
-          <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
-          <text fg={colors.muted}> [{toggleLabel()}]</text>
-        </box>
-      </Show>
+      {/* Body: indented with left border for visual grouping */}
+      <box flexDirection="column" paddingLeft={2}>
+        {/* Prompt row: boxed with │ prefix, clickable toggle */}
+        <Show when={hasPrompt()}>
+          <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
+            <text fg={colors.muted}>{icons.treePipe} </text>
+            <text fg={colors.muted}>Task: </text>
+            <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
+            <text fg={colors.muted}> [{toggleLabel()}]</text>
+          </box>
+        </Show>
 
-      {/* Tool tree (visible when expanded) */}
-      <Show when={showTree()}>
-        <box flexDirection="column">
-          <For each={props.subAgent.tools}>
-            {(tool, i) => (
-              <ChildToolLine
-                tool={tool}
-                isLast={!hasTextPreview() && i() === props.subAgent.tools.length - 1}
-              />
-            )}
-          </For>
-          {/* Streaming text preview with fun labels */}
-          <Show when={hasTextPreview()}>
-            <box flexDirection="row">
-              <text fg={colors.muted}>{icons.treeCorner} </text>
-              <FunStreamingLabel />
-            </box>
-          </Show>
-        </box>
-      </Show>
+        {/* Spacer between prompt and tree */}
+        <Show when={hasPrompt() && showTree()}>
+          <text> </text>
+        </Show>
+
+        {/* Tool tree (visible when expanded) */}
+        <Show when={showTree()}>
+          <box flexDirection="column">
+            <For each={props.subAgent.tools}>
+              {(tool, i) => (
+                <ChildToolLine
+                  tool={tool}
+                  isLast={!hasTextPreview() && i() === props.subAgent.tools.length - 1}
+                />
+              )}
+            </For>
+            {/* Streaming text preview with fun labels */}
+            <Show when={hasTextPreview()}>
+              <box flexDirection="row">
+                <text fg={colors.muted}>{icons.treeCorner} </text>
+                <FunStreamingLabel />
+              </box>
+            </Show>
+          </box>
+        </Show>
+      </box>
     </box>
   )
 }
