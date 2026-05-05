@@ -161,6 +161,9 @@ export const App: Component<AppProps> = (props) => {
     onReject: () => {
       const q = state.store.question
       if (!q) return
+      // Cancel the agent loop first — this triggers the AbortSignal
+      // which the question tool listens for to cleanly abort.
+      props.onCancel(q.sessionId)
       respondQuestion({ requestId: q.requestId, rejected: true })
       dispatch(state, { type: "clear-question" })
     },
