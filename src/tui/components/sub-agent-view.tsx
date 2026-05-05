@@ -262,13 +262,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       </box>
 
       {/*
-        Body "card" — shared left gutter so Task, tree, and preview all align.
-        Gutter width = 3 spaces (matches spinner char + trailing space in header).
+        Body "card" — shared left padding so Task, tree, and preview all align.
+        paddingLeft = 3 (matches spinner char + trailing space in header).
       */}
       <Show when={hasPrompt() || hasChildren()}>
-        <box flexDirection="row">
-          <text>   </text>
-          <box flexDirection="column">
+        <box flexDirection="column" paddingLeft={3}>
             {/* Prompt line */}
             <Show when={hasPrompt()}>
               <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
@@ -299,7 +297,6 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
               </box>
             </Show>
           </box>
-        </box>
       </Show>
     </box>
   )
