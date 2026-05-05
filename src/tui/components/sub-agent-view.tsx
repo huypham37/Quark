@@ -159,7 +159,6 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
 
   return (
     <box flexDirection="row">
-      <text>  </text>
       <text fg={colors.muted}>{connector()} </text>
       <box flexShrink={0}>
         <StatusIndicator status={props.tool.status} />
@@ -262,39 +261,46 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         </Show>
       </box>
 
-      {/* Body: prompt + tree as a single visual list with aligned connectors */}
-      <box flexDirection="column">
-        {/* Prompt line — aligned with header text (after spinner) */}
-        <Show when={hasPrompt()}>
-          <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
-            <text fg={colors.muted}>   Task: </text>
-            <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
-            <text fg={colors.muted}> [{toggleLabel()}]</text>
-          </box>
-        </Show>
-
-        {/* Tool tree (visible when expanded) */}
-        <Show when={showTree()}>
+      {/*
+        Body "card" — shared left gutter so Task, tree, and preview all align.
+        Gutter width = 3 spaces (matches spinner char + trailing space in header).
+      */}
+      <Show when={hasPrompt() || hasChildren()}>
+        <box flexDirection="row">
+          <text>   </text>
           <box flexDirection="column">
-            <For each={props.subAgent.tools}>
-              {(tool, i) => (
-                <ChildToolLine
-                  tool={tool}
-                  isLast={!hasTextPreview() && i() === props.subAgent.tools.length - 1}
-                />
-              )}
-            </For>
-            {/* Streaming text preview with fun labels */}
-            <Show when={hasTextPreview()}>
-              <box flexDirection="row">
-                <text>  </text>
-                <text fg={colors.muted}>{icons.treeCorner} </text>
-                <FunStreamingLabel />
+            {/* Prompt line */}
+            <Show when={hasPrompt()}>
+              <box flexDirection="row" onMouseUp={() => setExpanded((v) => !v)}>
+                <text fg={colors.muted}>Task: </text>
+                <text fg={RGBA.fromHex("#365A61")} wrap="nowrap">"{promptText()}"</text>
+                <text fg={colors.muted}> [{toggleLabel()}]</text>
+              </box>
+            </Show>
+
+            {/* Tool tree (visible when expanded) */}
+            <Show when={showTree()}>
+              <box flexDirection="column">
+                <For each={props.subAgent.tools}>
+                  {(tool, i) => (
+                    <ChildToolLine
+                      tool={tool}
+                      isLast={!hasTextPreview() && i() === props.subAgent.tools.length - 1}
+                    />
+                  )}
+                </For>
+                {/* Streaming text preview with fun labels */}
+                <Show when={hasTextPreview()}>
+                  <box flexDirection="row">
+                    <text fg={colors.muted}>{icons.treeCorner} </text>
+                    <FunStreamingLabel />
+                  </box>
+                </Show>
               </box>
             </Show>
           </box>
-        </Show>
-      </box>
+        </box>
+      </Show>
     </box>
   )
 }
