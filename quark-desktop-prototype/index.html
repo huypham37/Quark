@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QuarkAgent - Shared Context Canvas</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-panel-left" viewBox="0 0 24 24">
+        <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+        <path d="M9.5 5v14"></path>
+      </symbol>
+      <symbol id="icon-panel-right" viewBox="0 0 24 24">
+        <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+        <path d="M14.5 5v14"></path>
+      </symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path d="M15 6.5 9.5 12 15 17.5"></path>
+      </symbol>
+      <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+        <path d="m9 6.5 5.5 5.5L9 17.5"></path>
+      </symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path d="M4.5 8.5h5l1.8 2h8.2v6.8a2.2 2.2 0 0 1-2.2 2.2H6.7a2.2 2.2 0 0 1-2.2-2.2Z"></path>
+        <path d="M4.5 8.5V7a2 2 0 0 1 2-2H10l1.8 2h5.7a2 2 0 0 1 2 2v1.5"></path>
+      </symbol>
+      <symbol id="icon-list" viewBox="0 0 24 24">
+        <path d="M8.5 7h10"></path>
+        <path d="M8.5 12h10"></path>
+        <path d="M8.5 17h10"></path>
+        <path d="M5.5 7h.1"></path>
+        <path d="M5.5 12h.1"></path>
+        <path d="M5.5 17h.1"></path>
+      </symbol>
+      <symbol id="icon-table" viewBox="0 0 24 24">
+        <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+        <path d="M5 10h14"></path>
+        <path d="M10 5v14"></path>
+      </symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M18.2 13.4c.1-.45.1-.95 0-1.4l1.8-1.4-1.8-3.1-2.2.9a6.4 6.4 0 0 0-1.2-.7L14.5 5h-5l-.3 2.7c-.45.18-.85.42-1.2.7l-2.2-.9L4 10.6 5.8 12c-.1.45-.1.95 0 1.4L4 14.8l1.8 3.1 2.2-.9c.35.28.75.52 1.2.7l.3 2.7h5l.3-2.7c.45-.18.85-.42 1.2-.7l2.2.9 1.8-3.1Z"></path>
+      </symbol>
+      <symbol id="icon-more-h" viewBox="0 0 24 24">
+        <path d="M8 12h.1"></path>
+        <path d="M12 12h.1"></path>
+        <path d="M16 12h.1"></path>
+      </symbol>
+      <symbol id="icon-more-v" viewBox="0 0 24 24">
+        <path d="M12 8h.1"></path>
+        <path d="M12 12h.1"></path>
+        <path d="M12 16h.1"></path>
+      </symbol>
+      <symbol id="icon-file-plus" viewBox="0 0 24 24">
+        <rect x="5.5" y="4" width="13" height="16" rx="2.5"></rect>
+        <path d="M9 8h6"></path>
+        <path d="M12 5.5v5"></path>
+        <path d="M9 16h6"></path>
+      </symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="M3.5 12h17"></path>
+        <path d="M12 3.5c2.35 2.28 3.4 5.1 3.4 8.5s-1.05 6.22-3.4 8.5"></path>
+        <path d="M12 3.5C9.65 5.78 8.6 8.6 8.6 12s1.05 6.22 3.4 8.5"></path>
+      </symbol>
+      <symbol id="icon-terminal" viewBox="0 0 24 24">
+        <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+        <path d="m9 10 2.2 2L9 14"></path>
+        <path d="M13.5 14h3"></path>
+      </symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24">
+        <path d="m5 12 14-7-7 14-2-5Z"></path>
+        <path d="m10 14 9-9"></path>
+      </symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24">
+        <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+        <path d="M5 15.5H4a1.5 1.5 0 0 1-1.5-1.5V5A2.5 2.5 0 0 1 5 2.5h9a1.5 1.5 0 0 1 1.5 1.5v1"></path>
+      </symbol>
+      <symbol id="icon-pencil" viewBox="0 0 24 24">
+        <path d="m5 17.5-.5 2 2-.5L18.8 6.7a2 2 0 0 0-2.8-2.8Z"></path>
+        <path d="m15 5 4 4"></path>
+      </symbol>
+      <symbol id="icon-anchor" viewBox="0 0 24 24">
+        <circle cx="12" cy="5.5" r="2"></circle>
+        <path d="M12 7.5V19"></path>
+        <path d="M8 11h8"></path>
+        <path d="M5.5 14.5C6.5 18 8.6 19.5 12 19.5s5.5-1.5 6.5-5"></path>
+      </symbol>
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24">
+        <path d="m10 7 5 5-5 5"></path>
+      </symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24">
+        <path d="m7 10 5 5 5-5"></path>
+      </symbol>
+      <symbol id="icon-thumbs-up" viewBox="0 0 24 24">
+        <path d="M7 10v10"></path>
+        <path d="M10 10 12.5 4c.5-1.2 2.5-.8 2.5.6V9h3.5c1.1 0 1.9 1 1.6 2.1l-1.4 6.5A2 2 0 0 1 16.8 19H10a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3Z"></path>
+      </symbol>
+      <symbol id="icon-thumbs-down" viewBox="0 0 24 24">
+        <path d="M7 14V4"></path>
+        <path d="M10 14 12.5 20c.5 1.2 2.5.8 2.5-.6V15h3.5c1.1 0 1.9-1 1.6-2.1l-1.4-6.5A2 2 0 0 0 16.8 5H10a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3Z"></path>
+      </symbol>
+      <symbol id="icon-expand" viewBox="0 0 24 24">
+        <path d="M8 4H4v4"></path>
+        <path d="M4 4l6 6"></path>
+        <path d="M16 20h4v-4"></path>
+        <path d="m14 14 6 6"></path>
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14"></path>
+        <path d="M5 12h14"></path>
+      </symbol>
+      <symbol id="icon-arrow-up" viewBox="0 0 24 24">
+        <path d="M12 19V5"></path>
+        <path d="m6.5 10.5 5.5-5.5 5.5 5.5"></path>
+      </symbol>
+    </svg>
+
+    <main class="app">
+      <aside class="pane left-pane" aria-label="Command Matrix">
+        <div class="window-toolbar" aria-label="Window controls">
+          <span class="traffic red"></span>
+          <span class="traffic yellow"></span>
+          <span class="traffic green"></span>
+          <button aria-label="Toggle sidebar" title="Toggle sidebar">
+            <svg class="codex-icon"><use href="#icon-panel-left"></use></svg>
+          </button>
+          <button aria-label="Back" title="Back">
+            <svg class="codex-icon"><use href="#icon-arrow-left"></use></svg>
+          </button>
+          <button aria-label="Forward" title="Forward">
+            <svg class="codex-icon"><use href="#icon-arrow-right"></use></svg>
+          </button>
+        </div>
+
+        <header class="brand">
+          <span class="mark"></span>
+          <div>
+            <strong>QuarkAgent</strong>
+            <span>Shared Context</span>
+          </div>
+        </header>
+
+        <nav class="nav-section" aria-label="Workspace">
+          <p class="section-label">Workspace</p>
+          <button class="row active">
+            <svg class="codex-icon"><use href="#icon-folder"></use></svg>
+            Context Canvas
+          </button>
+          <button class="row">
+            <svg class="codex-icon"><use href="#icon-list"></use></svg>
+            Task Queue
+          </button>
+          <button class="row">
+            <svg class="codex-icon"><use href="#icon-table"></use></svg>
+            Source Map
+          </button>
+        </nav>
+
+        <section class="nav-section">
+          <p class="section-label">Files</p>
+          <button class="file-row depth-0">app</button>
+          <button class="file-row depth-1 selected">canvas.tsx</button>
+          <button class="file-row depth-1">agent.ts</button>
+          <button class="file-row depth-1">context.json</button>
+          <button class="file-row depth-0">prompts</button>
+          <button class="file-row depth-1">system.md</button>
+        </section>
+
+        <section class="nav-section">
+          <p class="section-label">Tasks</p>
+          <label class="task"><input type="checkbox" checked /> Normalize memory graph</label>
+          <label class="task"><input type="checkbox" /> Verify source citations</label>
+          <label class="task"><input type="checkbox" /> Publish handoff note</label>
+        </section>
+
+        <footer class="left-footer">
+          <button class="row">
+            <svg class="codex-icon"><use href="#icon-settings"></use></svg>
+            Settings
+          </button>
+        </footer>
+      </aside>
+
+      <header class="app-header" aria-label="Page header">
+        <div class="segment" role="tablist" aria-label="Editor mode">
+          <button class="segment-btn active" data-mode="visual" role="tab" aria-selected="true">Visual</button>
+          <button class="segment-btn" data-mode="source" role="tab" aria-selected="false">Source</button>
+        </div>
+        <div class="header-actions" aria-label="Header actions">
+          <button aria-label="New artifact" title="New artifact">
+            <svg class="codex-icon"><use href="#icon-file-plus"></use></svg>
+          </button>
+          <button aria-label="Open web" title="Open web">
+            <svg class="codex-icon"><use href="#icon-globe"></use></svg>
+          </button>
+          <button aria-label="Toggle panel" title="Toggle panel">
+            <svg class="codex-icon"><use href="#icon-panel-right"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="pane canvas-pane" aria-label="Mermaid editor">
+        <div class="canvas-shell">
+          <section class="canvas-view editor-view active" data-view="visual" aria-label="Mermaid visual preview">
+            <div class="editor-frame">
+              <header>
+                <span>Rendered preview</span>
+                <small>flowchart TD</small>
+              </header>
+              <svg class="mermaid-preview" viewBox="0 0 500 330" role="img" aria-label="Rendered Mermaid context flow">
+                <defs>
+                  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z"></path>
+                  </marker>
+                </defs>
+                <path class="link" d="M250 64v42"></path>
+                <path class="link" d="M190 164H105v52"></path>
+                <path class="link" d="M310 164h85v52"></path>
+                <path class="link" d="M105 268h95"></path>
+                <path class="link" d="M395 268h-95"></path>
+
+                <g class="node primary" transform="translate(160 22)">
+                  <rect width="180" height="42" rx="8"></rect>
+                  <text x="90" y="26" text-anchor="middle">User request</text>
+                </g>
+                <g class="node" transform="translate(180 106)">
+                  <rect width="140" height="58" rx="8"></rect>
+                  <text x="70" y="26" text-anchor="middle">QuarkAgent</text>
+                  <text x="70" y="44" text-anchor="middle">context parser</text>
+                </g>
+                <g class="node" transform="translate(40 216)">
+                  <rect width="130" height="52" rx="8"></rect>
+                  <text x="65" y="31" text-anchor="middle">Source view</text>
+                </g>
+                <g class="node" transform="translate(330 216)">
+                  <rect width="130" height="52" rx="8"></rect>
+                  <text x="65" y="31" text-anchor="middle">Visual preview</text>
+                </g>
+                <g class="node output" transform="translate(180 238)">
+                  <rect width="140" height="52" rx="8"></rect>
+                  <text x="70" y="31" text-anchor="middle">Shared output</text>
+                </g>
+              </svg>
+            </div>
+          </section>
+
+          <section class="canvas-view editor-view source-view" data-view="source" aria-label="Mermaid source editor">
+            <div class="code-editor">
+              <header class="code-path">
+                <span>src/diagrams/context-flow.mmd</span>
+                <div>
+                  <svg class="codex-icon"><use href="#icon-globe"></use></svg>
+                  <svg class="codex-icon"><use href="#icon-more-h"></use></svg>
+                </div>
+              </header>
+              <div class="code-body">
+                <ol class="line-numbers" aria-hidden="true">
+                  <li>1</li>
+                  <li>2</li>
+                  <li>3</li>
+                  <li>4</li>
+                  <li>5</li>
+                  <li>6</li>
+                  <li>7</li>
+                  <li>8</li>
+                  <li>9</li>
+                  <li>10</li>
+                </ol>
+                <textarea spellcheck="false" wrap="off" aria-label="Editable Mermaid source">flowchart TD
+  A[User request] --> B[QuarkAgent context parser]
+  B --> C[Source view]
+  B --> D[Visual preview]
+  C --> E[Shared output]
+  D --> E
+
+  classDef primary fill:#ede9ff,stroke:#5e4ecd,color:#111118
+  classDef default fill:#fff,stroke:#d8d8df,color:#111118
+  class A primary</textarea>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="pane right-pane" aria-label="Agent Intelligence">
+        <div class="agent-card">
+          <header class="agent-header">
+            <div>
+              <p class="eyebrow">Agent Intelligence</p>
+              <h2>Quark</h2>
+            </div>
+            <span class="status-dot"></span>
+          </header>
+
+          <section class="chat-thread" aria-label="Agent chat">
+            <div class="trace-line">
+              <svg class="codex-icon"><use href="#icon-anchor"></use></svg>
+              <span>Stop</span>
+            </div>
+            <div class="trace-line">
+              <svg class="codex-icon"><use href="#icon-anchor"></use></svg>
+              <span>UserPromptSubmit</span>
+            </div>
+
+            <article class="prompt-turn">
+              <p>move the chat input to the right sidebar</p>
+              <div class="message-actions">
+                <button aria-label="Copy prompt" title="Copy prompt"><svg class="codex-icon"><use href="#icon-copy"></use></svg></button>
+                <button aria-label="Edit prompt" title="Edit prompt"><svg class="codex-icon"><use href="#icon-pencil"></use></svg></button>
+              </div>
+            </article>
+
+            <article class="response-turn">
+              <button class="work-row">
+                <span>Worked for 1m 19s</span>
+                <svg class="codex-icon"><use href="#icon-chevron-right"></use></svg>
+              </button>
+              <p>Moved the chat input into the right sidebar.</p>
+              <p>It now sits near the bottom of the agent pane above the context meter, and the canvas no longer has the floating input overlay.</p>
+
+              <article class="artifact-card">
+                <div class="artifact-icon"><svg class="codex-icon"><use href="#icon-globe"></use></svg></div>
+                <div>
+                  <strong>QuarkAgent - Shared Context Canvas</strong>
+                  <span>Website</span>
+                </div>
+                <button>Open</button>
+              </article>
+
+              <article class="diff-card">
+                <header>
+                  <span>2 files changed <b class="add">+21</b> <b class="remove">-20</b></span>
+                  <button>Review</button>
+                </header>
+                <div class="diff-row">
+                  <span>index.html <b class="add">+8</b> <b class="remove">-8</b></span>
+                  <svg class="codex-icon"><use href="#icon-chevron-down"></use></svg>
+                </div>
+                <div class="diff-row">
+                  <span>styles.css <b class="add">+13</b> <b class="remove">-12</b></span>
+                  <svg class="codex-icon"><use href="#icon-chevron-down"></use></svg>
+                </div>
+              </article>
+
+              <div class="response-actions">
+                <button aria-label="Copy response" title="Copy response"><svg class="codex-icon"><use href="#icon-copy"></use></svg></button>
+                <button aria-label="Good response" title="Good response"><svg class="codex-icon"><use href="#icon-thumbs-up"></use></svg></button>
+                <button aria-label="Bad response" title="Bad response"><svg class="codex-icon"><use href="#icon-thumbs-down"></use></svg></button>
+                <button aria-label="Expand response" title="Expand response"><svg class="codex-icon"><use href="#icon-expand"></use></svg></button>
+              </div>
+
+              <div class="trace-line">
+                <svg class="codex-icon"><use href="#icon-anchor"></use></svg>
+                <span>Stop</span>
+              </div>
+            </article>
+          </section>
+
+          <form class="omnibar">
+            <input type="text" placeholder="Ask for follow-up changes" aria-label="Command input" />
+            <div class="composer-tools">
+              <button type="button" aria-label="Add context" title="Add context"><svg class="codex-icon"><use href="#icon-plus"></use></svg></button>
+              <span>Default permissions</span>
+              <button type="submit" class="send-button" aria-label="Send command" title="Send command">
+                <svg class="codex-icon"><use href="#icon-arrow-up"></use></svg>
+              </button>
+            </div>
+          </form>
+        </div>
+      </aside>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

@@ -1,10 +1,17 @@
-# Quark — Architecture & Design Reference
-
-> **Version:** 2.0
-> **Date:** April 16, 2026
-> **Status:** Reference document — not a requirements spec
-
 ---
+title: Quark — Architecture & Design Reference
+date_created: 2026-04-16
+date_modified: 2026-05-06
+revision: 4
+history:
+  - 2026-04-16: Initial architecture document (v2.0)
+  - 2026-05-06: Added YAML frontmatter, desktop surface, EPIC-17 to roadmap
+  - 2026-05-06: Added desktop section (5.4), Tauri+Vite to tech stack, quark-desktop/ to directory structure
+  - 2026-05-06: Added frontend⟷backend communication ASCII diagrams to section 5.4
+status: done
+---
+
+# Quark — Architecture & Design Reference
 
 ## 1. Vision & Philosophy
 
@@ -30,7 +37,7 @@ Users teach the agent their workflow through tools they define, skills they writ
 
 | Persona | Description | Primary Surface |
 |---|---|---|
-| Developer (daily driver) | Software engineer using Quark as their primary AI coding assistant | TUI |
+| Developer (daily driver) | Software engineer using Quark as their primary AI coding assistant | TUI, Desktop |
 | Platform engineer | Builds internal tooling, CI/CD integrations, custom agent workflows | SDK + CLI |
 | Power user | Extends Quark with custom tools, plugins, and skills for domain-specific workflows | All surfaces |
 | Casual user | Interacts with the agent via browser; minimal setup | Web UI |
@@ -45,6 +52,7 @@ Users teach the agent their workflow through tools they define, skills they writ
 ┌──────────────────────────────────────────────────────────────┐
 │                      Consumption Surfaces                     │
 │   TUI (OpenTUI + SolidJS)  │  CLI  │  Web UI (React 19)      │
+│                                       Desktop (Tauri 2)      │
 ├──────────────────────────────────────────────────────────────┤
 │                    SDK Public API (@quark/sdk)                │
 │    bootstrap · prompt · cancel · compact · bus · register     │
@@ -144,6 +152,24 @@ src/
       app.tsx
       api.ts
       components/
+
+  quark-desktop/              # Tauri 2 desktop app (macOS)
+    package.json              # React + Vite + Tauri deps
+    src/
+      App.tsx                 # Three-pane layout shell
+      state.ts                # DesktopState + WebSocket events
+      api.ts                  # REST client
+      components/
+        LeftPane.tsx          # File tree + commands
+        MiddlePane.tsx        # DiffReview / SourceEditor / HtmlPreview
+        DiffReview.tsx        # Permission-gated diff review
+        SourceEditor.tsx      # CodeMirror wrapper
+        HtmlPreview.tsx       # Sandboxed iframe
+        RightPane.tsx         # Chat panel (wraps web client)
+      chat/                   # Shared components from src/web/client/
+    src-tauri/
+      tauri.conf.json         # externalBin: quark-server sidecar
+      src/main.rs             # Spawns sidecar, waits for health
 ```
 
 ### 3.3 Tech Stack
@@ -156,6 +182,7 @@ src/
 | Schema Validation | Zod v4 |
 | TUI Framework | OpenTUI + SolidJS |
 | Web UI Framework | React 19 |
+| Desktop Framework | Tauri 2 + Vite + React 19 |
 | Build | tsup (ESM + CJS) |
 | Config Format | YAML |
 | Persistence | Append-only JSONL (filesystem) |
@@ -856,6 +883,207 @@ Bun HTTP + WebSocket server with React 19 SPA client.
 - `CommandPalette` — slash command picker (triggered by `/` key or button)
 - `MentionPicker` — file/directory picker (triggered by `@` key or button)
 
+### 5.4 Desktop (`quark-desktop/`)
+
+Tauri 2 + React 19 desktop app. Quark core runs as a **Tauri sidecar** — a Bun-compiled binary configured as `externalBin`. The React frontend connects to the sidecar's REST + WebSocket API, same as the web UI.
+
+**Layout:**
+
+```
+┌──────────┐  ┌──────────────────────────────┐  ┌────────────────┐
+│  Left    │  │         Middle Pane           │  │   Right Pane   │
+│  Pane    │  │                                │  │                │
+│          │  │  ┌────── Diff Review ────────┐ │  │  Agent Chat    │
+│ File     │  │  │  ▲ Edit Permission         │ │  │  (React SPA)  │
+│ Tree     │  │  │  context line              │ │  │                │
+│          │  │  │ - old line                  │ │  │  WebSocket    │
+│ Commands │  │  │ + new line                  │ │  │  events       │
+│          │  │  │  [Approve][Reject][Correct]│ │  │                │
+│          │  │  └───────────────────────────┘ │  │  REST API     │
+│          │  │  ┌────── Source (CodeMirror) ─┐│  │  calls        │
+│          │  │  └───────────────────────────┘ │  │                │
+│          │  │  ┌────── Preview (HTML) ──────┐│  │                │
+│          │  │  └───────────────────────────┘ │  │                │
+└──────────┘  └──────────────────────────────┘  └────────────────┘
+```
+
+**Sidecar startup:**
+1. Tauri spawns `quark-server` (Bun `--compile` binary) as `externalBin`
+2. Tauri polls `GET /api/health` until 200
+3. Passes backend URL to React via window or IPC
+4. React connects WebSocket + REST to sidecar
+
+**Communication flow (frontend ↔ backend):**
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Tauri Desktop (React)                                                    │
+│                                                                           │
+│  ┌──────────┐  ┌──────────────────┐  ┌────────────────────────────────┐  │
+│  │ LeftPane │  │   MiddlePane     │  │  RightPane (Chat)               │  │
+│  │          │  │                  │  │                                 │  │
+│  │ click    │  │  <DiffReview/>   │  │  <MessageList/>                 │  │
+│  │  │       │  │       │          │  │       ▲                         │  │
+│  │  ▼       │  │       ▼          │  │       │ WS: text-delta          │  │
+│  │ GET      │  │  POST            │  │       │ WS: tool-input          │  │
+│  │ /api/    │  │  /api/           │  │       │ WS: tool-end            │  │
+│  │ workspace│  │  permission      │  │       │ WS: permission-request  │  │
+│  │ /file    │  │       │          │  │       │                         │  │
+│  │  │       │  │       │          │  │  <Omnibar/>                     │  │
+│  │  │       │  │       │          │  │       │                         │  │
+│  │  │       │  │       │          │  │       ▼                         │  │
+│  │  │       │  │       │          │  │  POST /api/prompt               │  │
+│  └──┼───────┘  └───────┼──────────┘  └───────────────┼────────────────┘  │
+│     │                  │                             │                    │
+│     │    fetch()       │    fetch()       WebSocket  │   fetch()          │
+└─────┼──────────────────┼─────────────────┼──────────┼────────────────────┘
+      │                  │                 │          │
+      ▼                  ▼                 ▼          ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Quark Backend (Sidecar) · Bun HTTP + WebSocket server                    │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │                         REST API                                  │    │
+│  │  GET  /api/health              → { status: "ok" }                 │    │
+│  │  GET  /api/workspace/file      → { content, mtime, size }         │    │
+│  │  POST /api/workspace/file      → { ok: true }                     │    │
+│  │  POST /api/prompt              → runs agent loop, returns result  │    │
+│  │  POST /api/permission          → resolves pending request         │    │
+│  │  POST /api/cancel              → abort controller                 │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │                      WebSocket /ws                                │    │
+│  │                                                                    │    │
+│  │  server.ts subscribes to TypedBus                                  │    │
+│  │    │                                                               │    │
+│  │    ├─ "text-delta"          → WS frame: { event, data }           │    │
+│  │    ├─ "tool-input"          → WS frame: { tool, args, diff }      │    │
+│  │    ├─ "tool-end"            → WS frame: { tool, output }          │    │
+│  │    ├─ "permission-request"  → WS frame: { requestId, tool, ... }  │    │
+│  │    ├─ "assistant-message-*" → WS frame: { messageId, ... }        │    │
+│  │    └─ ... (all 35+ events)                                        │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │                    TypedBus (internal)                             │    │
+│  │                                                                    │    │
+│  │  Agent Loop ──→ emit ──→ TypedBus ──→ subscribers                 │    │
+│  │  Tool System ──→ emit       ▲  ▲        ├─ WebSocket relay        │    │
+│  │  Permission ───→ emit      │  │        ├─ Session persistence     │    │
+│  │  Compaction ───→ emit      │  │        └─ Plugins                 │    │
+│  │                             │  │                                   │    │
+│  │  Desktop never touches the bus directly — only via WebSocket      │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key: React → Backend (request/response):**
+
+```
+LeftPane.click("file.ts")
+  │
+  ▼
+fetch("GET /api/workspace/file?path=file.ts")
+  │
+  ▼
+Bun file read → { content, mtime, size }
+  │
+  ▼
+SourceEditor displays content
+
+────────────────────────────────────────────
+
+Omnibar.submit("fix the header")
+  │
+  ▼
+fetch("POST /api/prompt", { text: "fix the header", context: "..." })
+  │
+  ▼
+Backend runs agent loop → emits events to bus → WebSocket relays to React
+  │
+  ▼
+RightPane updates chat, MiddlePane may show diff review
+
+────────────────────────────────────────────
+
+DiffReview.userClicks("Approve")
+  │
+  ▼
+fetch("POST /api/permission", { requestId, reply: "once" })
+  │
+  ▼
+permission.respond() → resolves pending request → tool executes
+  │
+  ▼
+WebSocket emits "tool-end" → MiddlePane reloads source/preview
+```
+
+**Key: Backend → React (streaming events):**
+
+```
+Agent proposes edit(filePath, oldString, newString)
+  │
+  ▼
+toAITool.execute() → askPermission() → bus.emit("permission-request")
+  │
+  ▼
+server.ts WebSocket relay → JSON frame to desktop
+  │
+  ▼
+Desktop state → MiddlePane: DiffReview shows diff
+  │
+  ▼
+User approves → POST /api/permission
+  │
+  ▼
+permission.respond("once") → tool executes → file written
+  │
+  ▼
+bus.emit("tool-end") → WebSocket → desktop
+  │
+  ▼
+Desktop reloads file in SourceEditor + HtmlPreview
+```
+
+**Diff workflow (V1 proof):**
+1. Agent proposes `edit()`/`write()` → backend emits `tool-input` with `diff` metadata
+2. Desktop WebSocket receives event → middle pane switches to `DiffReview` mode
+3. User reviews unified diff, clicks Approve (once/always), Reject, or Correct
+4. Desktop calls `POST /api/permission` with the reply
+5. Approved → tool executes, file written → `tool-end` → source/preview reload
+6. Rejected → tool blocked, agent may retry
+
+**API extensions for desktop:**
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/workspace/file?path=...` | GET | Read file: `{ content, mtime, size }` |
+| `/api/workspace/file` | POST | Write file: `{ path, content }` → `{ ok: true }` |
+| `/api/prompt` (extended) | POST | New optional field: `context` — prepended to user message |
+
+**Desktop React state:**
+
+```ts
+interface DesktopState {
+  activeFile: string | null
+  activeDraft: string | null
+  activeView: "diff" | "source" | "preview"
+  activeReview: {
+    messageId: string; callId: string; tool: string
+    filePath: string; diff: string
+    input: Record<string, unknown>
+    permissionRequestId: string
+  } | null
+}
+```
+
+**Key design decisions:**
+- **Thin shell** — does not replace TUI or web UI; adds a shared workspace view
+- **File source is canonical** — human draft edits are ephemeral until explicit save
+- **Chat components shared** with `src/web/client/` — no fork of the chat UI
+- **macOS first** — Windows/Linux packaging deferred to V2
+- **V1 scope** — diff review + source editor (CodeMirror) + HTML preview only
+
 ---
 
 ## 6. Configuration
@@ -1042,6 +1270,7 @@ QuestionResponse
 | Epic | Title | Requirements |
 |---|---|---|
 | EPIC-16 | Web UI — Image Attachment Pipeline | FR-16 |
+| EPIC-17 | Quark Desktop V1 — Shared Diff Workspace | FR-17 |
 
 ---
 
@@ -1053,3 +1282,5 @@ QuestionResponse
 - [Agent Skills Open Standard](https://agentskills.io)
 - [PRD](./PRD.md)
 - [Epics](./epics.json)
+- [Quark Desktop Spec](./quark-desktop-tauri.md) — EPIC-17: Tauri 2 desktop app with shared diff workspace
+- [`quark-desktop/` prototype](../quark-desktop/) — existing static HTML/CSS mockup

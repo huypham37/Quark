@@ -5,6 +5,9 @@ node_modules
 out
 dist
 *.tgz
+quark-desktop/src-tauri/target/
+quark-desktop/src-tauri/binaries/quark-server-*
+quark-desktop/src/**/*.js
 
 # code coverage
 coverage

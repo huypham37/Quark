@@ -327,5 +327,127 @@
       "@ button and / button sit in the input toolbar alongside the attachment button",
       "Both pickers can be triggered by button click or keyboard (@ and / typed in textarea)"
     ]
+  },
+  {
+    "id": "EPIC-17",
+    "title": "Quark Desktop V1 — Shared Diff Workspace",
+    "requirements": ["FR-17.1", "FR-17.2", "FR-17.3", "FR-17.4", "FR-17.5", "FR-17.6", "FR-17.7", "FR-17.8", "FR-17.9", "FR-17.10", "FR-17.11", "FR-17.12", "FR-17.13", "FR-17.14"],
+    "description": "macOS-first Tauri 2 + React/TypeScript desktop app with Quark core as a sidecar binary. Three-pane layout (file tree, shared diff/source/preview workspace, agent chat) where human and agent share a middle-pane diff review before file writes happen. The first proof is the diff review loop: agent proposes edit, middle pane shows diff, user approves/rejects, only approval triggers the write.",
+    "business_goal": "Give users a rich desktop experience where they can see, review, and approve every file change the agent proposes before it touches disk — building trust and enabling real collaboration in a shared workspace.",
+    "owner": "UX / Frontend",
+    "priority": "Medium",
+    "status": "In Progress",
+    "user_stories": [
+      {
+        "id": "US-17-1",
+        "title": "Tauri shell + Quark sidecar startup",
+        "story": "As a macOS user, I want to open the Quark Desktop app and have it automatically start the Quark backend server so that the chat and workspace are ready without manual setup.",
+        "acceptance_criteria": [
+          "Tauri app compiles and opens a native macOS window",
+          "Quark core is compiled with Bun --compile and configured as a Tauri externalBin sidecar",
+          "On app launch, Tauri spawns the sidecar, waits for GET /api/health (200), then passes the backend URL to the React frontend",
+          "Sidecar shutdown is clean on app quit",
+          "The sidecar uses the same REST/WebSocket API as the existing web server"
+        ]
+      },
+      {
+        "id": "US-17-2",
+        "title": "Three-pane layout shell",
+        "story": "As a desktop user, I want a three-pane layout with a resizable file tree, a middle workspace, and a chat panel so that I can navigate files, review content, and talk to the agent in one window.",
+        "acceptance_criteria": [
+          "Left pane renders a file tree (project directory listing)",
+          "Middle pane supports mode switching between diff review, source editor, and HTML preview",
+          "Right pane renders the existing Quark chat UI (React SPA components from src/web/client)",
+          "Pane widths are resizable via drag handles",
+          "Layout is responsive and fills the Tauri window"
+        ]
+      },
+      {
+        "id": "US-17-3",
+        "title": "Diff review — agent edit preview before permission",
+        "story": "As a desktop user, I want to see exactly what the agent will change in a file before it writes, and choose to approve, always-approve, reject, or correct the change — all from the middle pane.",
+        "acceptance_criteria": [
+          "When the agent emits a tool-input event for edit or write with diff metadata, the middle pane switches to diff review mode",
+          "The diff review shows a unified diff with context lines, removals (-), and additions (+)",
+          "User can click Approve (once) → POST /api/permission { reply: 'once' } → tool executes",
+          "User can click Always Approve → POST /api/permission { reply: 'always' } → session rule created + tool executes",
+          "User can click Reject → POST /api/permission { reply: 'reject' } → tool blocked",
+          "User can edit the proposed code inline and click Correct → POST /api/permission { reply: 'correct', correction: '...' } → model receives feedback",
+          "After approval and tool execution (tool-end event), the file is reloaded in the source editor and HTML preview (if applicable)",
+          "Rejected tools do not write to disk"
+        ]
+      },
+      {
+        "id": "US-17-4",
+        "title": "Source editor with file tree navigation",
+        "story": "As a desktop user, I want to click a file in the left pane and see its content in a syntax-highlighted CodeMirror editor in the middle pane so that I can read and edit files alongside the agent conversation.",
+        "acceptance_criteria": [
+          "Left pane file tree lists files in the project workspace directory",
+          "Clicking a file loads its content into the middle pane CodeMirror editor via GET /api/workspace/file",
+          "Unsaved human edits are held in desktop draft state (not written to disk)",
+          "A Save button writes draft content to disk via POST /api/workspace/file",
+          "Syntax highlighting works for TypeScript, JavaScript, JSON, Markdown, HTML, and CSS"
+        ]
+      },
+      {
+        "id": "US-17-5",
+        "title": "HTML preview pane",
+        "story": "As a desktop user, I want to see a live preview of the HTML file I'm working on in the middle pane so that I can verify visual changes the agent makes without switching to a browser.",
+        "acceptance_criteria": [
+          "When an HTML file is selected in the file tree, the middle pane can switch to Preview mode",
+          "Preview mode renders the HTML file content in a sandboxed iframe",
+          "After an agent edit is approved and written to disk, the preview reloads automatically",
+          "Preview handles basic HTML + inline CSS + inline JS"
+        ]
+      },
+      {
+        "id": "US-17-6",
+        "title": "Workspace file API endpoints",
+        "story": "As a desktop client, I need REST endpoints to read and write files in the workspace so that the file tree, source editor, and human saves work without direct filesystem access from the frontend.",
+        "acceptance_criteria": [
+          "GET /api/workspace/file?path=... returns { content, mtime, size } for a valid file path",
+          "GET returns 404 for non-existent files and 403 for paths outside the workspace",
+          "POST /api/workspace/file with { path, content } writes content to disk and returns { ok: true }",
+          "POST validates the path is within the workspace directory",
+          "Both endpoints are served by the same Bun HTTP server as the existing REST API"
+        ]
+      },
+      {
+        "id": "US-17-7",
+        "title": "Chat context passing — agent aware of desktop state",
+        "story": "As a desktop user, I want the agent to know which file I'm looking at and any unsaved edits I've made so that it can give more relevant responses without me explaining the context manually.",
+        "acceptance_criteria": [
+          "When sending a chat prompt, the desktop includes an optional context field in POST /api/prompt",
+          "The context field contains: active file path, active view mode, and unsaved draft content (if any)",
+          "Backend prepends the context as a system-level message part before the user's text",
+          "Messages sent without context work exactly as before"
+        ]
+      },
+      {
+        "id": "US-17-8",
+        "title": "Existing web UI preserved",
+        "story": "As a developer, I want the existing Quark web UI (src/web/) to continue working without regressions so that browser-based users are not affected by the desktop app work.",
+        "acceptance_criteria": [
+          "`bun run src/web/server.ts` starts and serves the web UI exactly as before",
+          "All existing web UI tests pass unchanged",
+          "The desktop React app imports shared chat components from src/web/client without modifying their internals",
+          "REST API extensions (workspace file endpoints, context field) are additive — existing endpoints unchanged"
+        ]
+      }
+    ],
+    "acceptance_criteria": [
+      "Tauri app opens a native macOS window and starts the Quark sidecar automatically",
+      "Three-pane layout renders: file tree (left), diff/source/preview (middle), agent chat (right)",
+      "Agent edit/write tool calls show a diff in the middle pane before permission is granted",
+      "User can approve (once or always), reject, or correct the proposed diff from the middle pane",
+      "Only approved tool calls write to disk; rejected calls are blocked",
+      "Source editor (CodeMirror) loads files from the workspace with syntax highlighting",
+      "HTML preview renders selected HTML files in a sandboxed iframe and reloads after agent writes",
+      "Unsaved human edits are held in draft state; explicit save writes to disk",
+      "Chat context includes active file and draft state so the agent sees what the user sees",
+      "Existing web UI (src/web/) and TUI work without regressions",
+      "GET /api/workspace/file and POST /api/workspace/file work correctly with path validation",
+      "POST /api/prompt accepts optional context field and prepends it to the user message"
+    ]
   }
 ]

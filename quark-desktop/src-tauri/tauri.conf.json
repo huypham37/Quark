@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/schemas/main/tauri2/config.schema.json",
+  "productName": "Quark Desktop",
+  "version": "0.1.0",
+  "identifier": "dev.quark.desktop",
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Quark Desktop",
+        "width": 1400,
+        "height": 900,
+        "resizable": true,
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 14, "y": 24 }
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "externalBin": ["binaries/quark-server"],
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

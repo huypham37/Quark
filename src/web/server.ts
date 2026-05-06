@@ -17,6 +17,8 @@ import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
 import { getThinkingNormalizer } from "../provider/thinking"
 import type { ServerWebSocket } from "bun"
+import path from "path"
+import { mkdirSync } from "fs"
 
 const ALL_EVENTS: BusEventName[] = [
   "text-start", "text-delta", "text-end",
@@ -111,12 +113,19 @@ function createRequestHandler(agent: AgentConfig) {
         sessionId?: string
         text: string
         images?: { mime: string; data: string }[]
+        context?: string
       }
+
+      const parts: Array<{ type: "text"; text: string }> = []
+      if (body.context) {
+        parts.push({ type: "text", text: `[Desktop context]\n${body.context}` })
+      }
+      parts.push({ type: "text", text: body.text })
 
       if (body.sessionId) {
         prompt({
           sessionId: body.sessionId,
-          parts: [{ type: "text", text: body.text }],
+          parts,
           images: body.images,
           model: getModelOpt(),
           agent,
@@ -127,7 +136,7 @@ function createRequestHandler(agent: AgentConfig) {
       const sessionId = await new Promise<string>((resolve) => {
         bus.once("session-created", ({ sessionId }) => resolve(sessionId))
         prompt({
-          parts: [{ type: "text", text: body.text }],
+          parts,
           images: body.images,
           model: getModelOpt(),
           agent,
@@ -266,6 +275,23 @@ function createRequestHandler(agent: AgentConfig) {
       return json({ ok: true })
     }
 
+    if (req.method === "POST" && pathname === "/api/workspace/file") {
+      const body = (await req.json()) as { path: string; content: string }
+      if (!body.path) return json({ error: "Missing path" }, 400)
+
+      const cwd = process.cwd()
+      const resolved = path.resolve(cwd, body.path)
+      if (!resolved.startsWith(cwd + "/") && resolved !== cwd) {
+        return json({ error: "Path outside workspace" }, 403)
+      }
+
+      const dir = path.dirname(resolved)
+      mkdirSync(dir, { recursive: true })
+
+      await Bun.write(resolved, body.content)
+      return json({ ok: true })
+    }
+
     if (req.method === "GET" && pathname === "/api/profiles") {
       const ids = listProfiles()
       const profiles = ids.map((id) => {
@@ -296,6 +322,33 @@ function createRequestHandler(agent: AgentConfig) {
       const files = await getFiles()
       const filtered = fuzzyFilter(files, q, 20)
       return json(filtered)
+    }
+
+    if (req.method === "GET" && pathname === "/api/workspace/file") {
+      const filePath = url.searchParams.get("path")
+      if (!filePath) return json({ error: "Missing path parameter" }, 400)
+
+      const cwd = process.cwd()
+      const resolved = path.resolve(cwd, filePath)
+      if (!resolved.startsWith(cwd + "/") && resolved !== cwd) {
+        return json({ error: "Path outside workspace" }, 403)
+      }
+
+      const file = Bun.file(resolved)
+      if (!(await file.exists())) return json({ error: "File not found" }, 404)
+
+      const stat = await file.stat()
+      return json({
+        content: await file.text(),
+        mtime: stat.mtime.getTime(),
+        size: stat.size,
+      })
+    }
+
+    if (req.method === "GET" && pathname === "/api/workspace/tree") {
+      const cwd = process.cwd()
+      const files = await getFiles(cwd)
+      return json({ files })
     }
 
     // --- Static files ---
@@ -338,7 +391,7 @@ export async function startWebServer() {
 
   await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
 
-  const port = Number(process.env.QUARK_WEB_PORT) || 3000
+  const port = Number(process.env.QUARK_WEB_PORT ?? "3000")
   const handleRequest = createRequestHandler(agent)
 
   // Register a default error handler so bus.emit("error") never crashes the
