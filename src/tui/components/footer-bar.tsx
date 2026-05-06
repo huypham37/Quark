@@ -6,24 +6,30 @@
 // When idle: empty line
 // Right side shows git branch (if in a repo) and abbreviated cwd path.
 //
-// Streaming labels cycle every 1s: Streaming → Conjuring… → Brewing… → etc.
+// The right side adapts to terminal width: cwd shrinks first (full → ~/…/leaf →
+// …/leaf), then branch middle-truncates (fix/gh-135-…-redesign), then tail-
+// truncates (fix/…). The left zone (status + cancel hint) is never truncated.
+// Pure shrink helpers live in ./footer-bar-fit.ts so they can be unit-tested.
+//
+// Streaming labels cycle every 4s: Streaming → Conjuring… → Brewing… → etc.
 
 import type { Component } from "solid-js"
-import { Show, createSignal, createEffect, onCleanup } from "solid-js"
+import { Show, createSignal, createEffect, createMemo, onCleanup } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import { colors } from "../theme"
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS, STREAMING_LABELS, LABEL_CYCLE_INTERVAL_MS } from "../spinner"
+import {
+  APP_PADDING_X_TOTAL,
+  ZONE_GAP,
+  pickRightZone,
+  leftWidthRunning,
+  LEFT_WIDTH_COMPACTING,
+  LEFT_WIDTH_IDLE,
+} from "./footer-bar-fit"
 
 export interface FooterBarProps {
   running: boolean
   compacting?: boolean
-}
-
-function abbreviatePath(fullPath: string): string {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? ""
-  if (home && fullPath.startsWith(home)) {
-    return "~" + fullPath.slice(home.length)
-  }
-  return fullPath
 }
 
 function getGitBranch(): string {
@@ -42,7 +48,8 @@ function getGitBranch(): string {
 }
 
 export const FooterBar: Component<FooterBarProps> = (props) => {
-  const cwd = abbreviatePath(process.cwd())
+  const dims = useTerminalDimensions()
+  const cwd = process.cwd()
   const [branch, setBranch] = createSignal(getGitBranch())
   const [frameIndex, setFrameIndex] = createSignal(0)
   const [labelIndex, setLabelIndex] = createSignal(0)
@@ -81,6 +88,19 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   })
 
   const spinnerChar = () => SPINNER_FRAMES[frameIndex()]
+  const currentLabel = () => STREAMING_LABELS[labelIndex()]!
+
+  // Adaptive right zone — recomputes when terminal width, branch, running
+  // state, compacting state, or current label change.
+  const rightZone = createMemo(() => {
+    const leftWidth = props.compacting
+      ? LEFT_WIDTH_COMPACTING
+      : props.running
+        ? leftWidthRunning(currentLabel())
+        : LEFT_WIDTH_IDLE
+    const budget = dims().width - APP_PADDING_X_TOTAL - leftWidth - ZONE_GAP
+    return pickRightZone(branch(), cwd, budget)
+  })
 
   return (
     <box flexDirection="row" justifyContent="space-between" height={1}>
@@ -93,7 +113,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
           >
             <box flexDirection="row">
               <text fg={colors.primary} bold>{spinnerChar()} </text>
-              <text>{STREAMING_LABELS[labelIndex()]}</text>
+              <text>{currentLabel()}</text>
               <text>      </text>
               <text fg={colors.footerKey} bold>Esc</text>
               <text fg={colors.muted}> to cancel</text>
@@ -107,11 +127,15 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
         </box>
       </Show>
       <box flexDirection="row">
-        <Show when={branch()}>
-          <text fg={colors.success}> {branch()}</text>
-          <text fg={colors.muted}> · </text>
+        <Show when={rightZone().branch}>
+          <text fg={colors.success}> {rightZone().branch}</text>
+          <Show when={rightZone().cwd}>
+            <text fg={colors.muted}> · </text>
+          </Show>
         </Show>
-        <text fg={colors.muted}>{cwd}</text>
+        <Show when={rightZone().cwd}>
+          <text fg={colors.muted}>{rightZone().cwd}</text>
+        </Show>
       </box>
     </box>
   )
