@@ -9,7 +9,7 @@ import { $ } from "bun"
 let fileCache: string[] | null = null
 let cacheDir: string | null = null
 
-/** Get all tracked files and directories using git ls-files, fallback to directory walk */
+/** Get all tracked and untracked files using git ls-files, fallback to directory walk */
 export async function getFiles(cwd?: string): Promise<string[]> {
   const dir = cwd ?? process.cwd()
 
@@ -17,7 +17,7 @@ export async function getFiles(cwd?: string): Promise<string[]> {
   if (fileCache && cacheDir === dir) return fileCache
 
   try {
-    const result = await $`git ls-files -z`.cwd(dir).text()
+    const result = await $`git ls-files -z -co --exclude-standard`.cwd(dir).text()
     const files = result
       .split("\0")
       .filter((f) => f.length > 0)

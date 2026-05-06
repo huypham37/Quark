@@ -95,7 +95,7 @@ const SLASH_INACTIVE: SlashState = {
   selectedIndex: 0,
 }
 
-const MAX_FILE_ITEMS = 5
+const MAX_FILE_ITEMS = 50
 const MAX_DROPDOWN_ITEMS = 15
 const SCROLL_STEP = 3
 
