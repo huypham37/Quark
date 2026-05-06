@@ -167,8 +167,8 @@ const ToolCardBody: Component<ToolCardProps> = (props) => {
         />
       </Show>
 
-      {/* Edit tool diff: unified diff view */}
-      <Show when={props.diff && props.status === "completed"}>
+      {/* Edit tool diff: unified diff view — shows at awaiting_approval (preview) and completed (canonical) */}
+      <Show when={props.diff && (props.status === "completed" || props.status === "awaiting_approval")}>
         <DiffView
           diff={props.diff!}
           filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}

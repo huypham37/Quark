@@ -187,7 +187,7 @@ export function wireEvents(state: AppState) {
     const deferredToolEnd = new Map<string, BusEvents["tool-end"]>()
 
     unsubs.push(on("tool-input", (data) => {
-      dispatch(state, { type: "tool-input", messageId: data.messageId, callId: data.callId, input: data.input })
+      dispatch(state, { type: "tool-input", messageId: data.messageId, callId: data.callId, input: data.input, diff: data.diff })
 
       // Start progressive streaming for write tool content
       if (data.tool === "write") {

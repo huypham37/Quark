@@ -95,7 +95,7 @@ export type TuiAction =
   | { type: "text-delta"; messageId: string; delta: string; text: string }
   | { type: "text-end"; messageId: string; text: string }
   | { type: "tool-start"; messageId: string; tool: string; callId: string }
-  | { type: "tool-input"; messageId: string; callId: string; input: Record<string, unknown> }
+  | { type: "tool-input"; messageId: string; callId: string; input: Record<string, unknown>; diff?: string }
   | { type: "tool-end"; messageId: string; callId: string; status: "completed" | "error"; output?: string; error?: string; diff?: string }
   | { type: "tool-running"; messageId: string; callId: string }
   | { type: "tool-stream-delta"; messageId: string; callId: string; content: string }
@@ -414,6 +414,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         if (part.type === "tool") {
           part.status = "awaiting_approval"
           part.input = action.input
+          part.diff = action.diff
         }
       }))
       // Eagerly initialize subAgent when the bash command is a sub-agent invocation.
