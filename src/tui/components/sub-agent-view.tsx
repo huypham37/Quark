@@ -117,7 +117,7 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
   const [frameIndex, setFrameIndex] = createSignal(0)
 
   createEffect(() => {
-    if (props.status === "running") {
+    if (props.status === "running" || props.status === "pending") {
       const id = setInterval(() => {
         setFrameIndex((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
       }, BRAILLE_CYCLE_INTERVAL_MS)
@@ -127,8 +127,8 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
 
   const content = () => {
     switch (props.status) {
-      case "running": return BRAILLE_CYCLE_FRAMES[frameIndex()] + " "
-      case "pending": return "… "
+      case "running":
+      case "pending": return BRAILLE_CYCLE_FRAMES[frameIndex()] + " "
       case "awaiting_approval": return "? "
       case "error": return icons.cross + " "
       default: return icons.checkmark + " "
@@ -138,7 +138,7 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
   const color = () => {
     switch (props.status) {
       case "running": return colors.textBold
-      case "pending": return colors.muted
+      case "pending": return colors.textBold
       case "awaiting_approval": return colors.muted
       case "error": return colors.error
       default: return RGBA.fromHex("#98C379")

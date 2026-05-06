@@ -675,6 +675,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
         "messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((sa: SubAgentState) => {
           sa.tools.push({ tool: action.tool, callId: action.callId, status: "pending", input: {} })
+          // The model has stopped streaming text and committed to a tool call.
+          // Clear the stale textPreview so the "Thinking…" line doesn't linger
+          // below the tool list, lying about the agent's current activity.
+          sa.textPreview = undefined
         }),
       )
       break
