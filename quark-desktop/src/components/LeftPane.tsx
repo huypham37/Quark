@@ -77,9 +77,10 @@ const PLACEHOLDER_TASKS = [
 interface LeftPaneProps {
   backendUrl: string
   onSelectFile?: (path: string) => void
+  onTogglePanel?: () => void
 }
 
-export function LeftPane({ backendUrl, onSelectFile }: LeftPaneProps) {
+export function LeftPane({ backendUrl, onSelectFile, onTogglePanel }: LeftPaneProps) {
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -107,6 +108,16 @@ export function LeftPane({ backendUrl, onSelectFile }: LeftPaneProps) {
 
   return (
     <>
+      <div className="left-titlebar" data-tauri-drag-region>
+        <button
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+          onClick={onTogglePanel}
+        >
+          <svg className="codex-icon"><use href="#icon-panel-left" /></svg>
+        </button>
+      </div>
+
       {/* Brand */}
       <header className="brand">
         <span className="mark" />

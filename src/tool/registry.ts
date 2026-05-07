@@ -134,6 +134,17 @@ export function resolve(ids: string[]): ToolDef[] {
   })
 }
 
+/**
+ * Resolve tool IDs to their ToolDef objects, skipping unregistered tools.
+ * Use when some tools may not have loaded (e.g. compiled binary can't resolve
+ * dynamic imports for certain npm packages).
+ */
+export function resolveAvailable(ids: string[]): ToolDef[] {
+  return ids
+    .map((id) => registry.get(id))
+    .filter((t): t is ToolDef => t != null)
+}
+
 /** Clear all registered tools (for testing) */
 export function clear(): void {
   registry.clear()

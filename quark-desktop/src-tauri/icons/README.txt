@@ -1,1 +1,1 @@
-Placeholder icons — replace before release
+Icons generated from icon.svg.

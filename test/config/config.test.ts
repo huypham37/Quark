@@ -3,11 +3,46 @@
 // Strategy: mock os.homedir() to point at a temp directory so all file I/O
 // goes to a throwaway location. The config module computes CONFIG_DIR/FILE
 // at import time from os.homedir(), so the mock must be set up before import.
+//
+// Defense-in-depth: Bun's mock.module may fail to catch modules that were
+// already cached by the test runner. As a safety net, we back up and restore
+// the real ~/.config/quark/config.yaml around the entire suite.
 
-import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test"
+import { describe, test, expect, beforeEach, beforeAll, afterAll, mock } from "bun:test"
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+
+// ---------------------------------------------------------------------------
+// Defense-in-depth: back up the real config file before the test suite
+// ---------------------------------------------------------------------------
+const REAL_CONFIG_DIR = path.join(os.homedir(), ".config", "quark")
+const REAL_CONFIG_FILE = path.join(REAL_CONFIG_DIR, "config.yaml")
+let realConfigBackup: Buffer | null = null
+
+beforeAll(() => {
+  try {
+    if (fs.existsSync(REAL_CONFIG_FILE)) {
+      realConfigBackup = fs.readFileSync(REAL_CONFIG_FILE)
+    }
+  } catch {
+    // Config doesn't exist or can't be read — nothing to back up
+  }
+})
+
+afterAll(() => {
+  // Restore the real config file to its original state
+  try {
+    if (realConfigBackup) {
+      fs.mkdirSync(REAL_CONFIG_DIR, { recursive: true })
+      fs.writeFileSync(REAL_CONFIG_FILE, realConfigBackup)
+    }
+  } catch {
+    // Best-effort restore — don't fail the suite if we can't restore
+  }
+  // Clean up temp dir
+  try { fs.rmSync(tmpHome, { recursive: true, force: true }) } catch {}
+})
 
 // ---------------------------------------------------------------------------
 // Set up a temp directory that acts as $HOME for the config module
@@ -65,11 +100,6 @@ function readConfigFile(): Record<string, unknown> {
 beforeEach(() => {
   removeConfig()
   resetConfigCache()
-})
-
-afterAll(() => {
-  // Clean up temp dir
-  fs.rmSync(tmpHome, { recursive: true, force: true })
 })
 
 // ---------------------------------------------------------------------------

@@ -129,7 +129,9 @@ function createRequestHandler(agent: AgentConfig) {
           images: body.images,
           model: getModelOpt(),
           agent,
-        }).catch(() => {})
+        }).catch((err) => {
+          console.error("[web] prompt error:", err instanceof Error ? err.stack : String(err));
+        })
         return json({ sessionId: body.sessionId })
       }
 
@@ -140,7 +142,9 @@ function createRequestHandler(agent: AgentConfig) {
           images: body.images,
           model: getModelOpt(),
           agent,
-        }).catch(() => {})
+        }).catch((err) => {
+          console.error("[web] prompt error:", err instanceof Error ? err.stack : String(err));
+        })
       })
       return json({ sessionId })
     }
@@ -453,6 +457,10 @@ export async function startWebServer() {
     },
   })
 
+  // Stable handshake line for the Tauri desktop shell to discover the chosen
+  // port. When QUARK_WEB_PORT=0 (or unset and no conflict) Bun picks a free
+  // port; the shell parses this line on stdout to know where to connect.
+  console.log(`QUARK_BACKEND_PORT=${server.port}`)
   console.log(`Quark web server listening on http://0.0.0.0:${server.port}`)
   return server
 }

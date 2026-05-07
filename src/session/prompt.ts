@@ -31,7 +31,7 @@ import {
   type CompactMethodContext,
 } from "./compact-resolver";
 import { generateSessionTitle } from "./title";
-import { list as listTools, resolve as resolveTools } from "../tool/registry";
+import { list as listTools, resolve as resolveTools, resolveAvailable } from "../tool/registry";
 import { getThinkingNormalizer } from "../provider/thinking";
 import { setForceAgent, getCustomFetch } from "../provider/custom-fetch";
 import { loadToken } from "../provider/copilot-auth";
@@ -586,7 +586,7 @@ function resolveToolSet(
   messageId: string,
   abort: AbortSignal,
 ): ToolSet {
-  const defs = resolveTools(agent.tools);
+  const defs = resolveAvailable(agent.tools);
   const ruleset: Ruleset = (agent.permissions ?? []).map(r => ({
     tool: r.tool,
     pattern: "*",

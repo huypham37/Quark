@@ -6,26 +6,29 @@ interface AppHeaderProps {
   onViewChange: (view: MiddleView) => void
   onToggleLeftPanel?: () => void
   onToggleRightPanel?: () => void
+  showLeftToggle?: boolean
 }
 
 export function AppHeader({
   activeView,
-  hasReview,
   onViewChange,
   onToggleLeftPanel,
   onToggleRightPanel,
+  showLeftToggle = false,
 }: AppHeaderProps) {
   return (
     <header className="app-header" aria-label="Page header" data-tauri-drag-region>
-      <div className="header-sidebar-actions">
-        <button
-          aria-label="Toggle sidebar"
-          title="Toggle sidebar"
-          onClick={onToggleLeftPanel}
-        >
-          <svg className="codex-icon"><use href="#icon-panel-left" /></svg>
-        </button>
-      </div>
+      {showLeftToggle && (
+        <div className="header-sidebar-actions">
+          <button
+            aria-label="Show sidebar"
+            title="Show sidebar"
+            onClick={onToggleLeftPanel}
+          >
+            <svg className="codex-icon"><use href="#icon-panel-left" /></svg>
+          </button>
+        </div>
+      )}
 
       <div className="segment" role="tablist" aria-label="Editor mode">
         <button

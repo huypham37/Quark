@@ -84,7 +84,11 @@ export function App() {
       <main className={`app ${!leftPanelVisible ? "no-left" : ""} ${!rightPanelVisible ? "no-right" : ""}`}>
         {leftPanelVisible && (
           <aside className="pane left-pane">
-            <LeftPane backendUrl={backendUrl} onSelectFile={handleSelectFile} />
+            <LeftPane
+              backendUrl={backendUrl}
+              onSelectFile={handleSelectFile}
+              onTogglePanel={() => setLeftPanelVisible(false)}
+            />
           </aside>
         )}
 
@@ -95,6 +99,7 @@ export function App() {
           onViewChange={handleViewChange}
           onToggleLeftPanel={() => setLeftPanelVisible(v => !v)}
           onToggleRightPanel={() => setRightPanelVisible(v => !v)}
+          showLeftToggle={!leftPanelVisible}
         />
 
         {/* Middle Pane — Canvas */}
