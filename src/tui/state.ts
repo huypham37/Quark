@@ -121,6 +121,7 @@ export type TuiAction =
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string }
+  | { type: "truncate-messages"; upToMessageId: string }
 
 // ---------------------------------------------------------------------------
 // Extract profile and prompt from a quark --sub-agent bash command
@@ -639,6 +640,18 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore("status", "modelName", action.modelSpec)
       break
     }
+
+    case "truncate-messages":
+      setStore(
+        "messages",
+        produce((msgs: TuiMessage[]) => {
+          const idx = msgs.findIndex((m) => m.id === action.upToMessageId)
+          if (idx !== -1) {
+            msgs.splice(idx) // remove from this message onwards
+          }
+        }),
+      )
+      break
 
     // ------------------------------------------------------------------
     // Sub-agent observability — mutate the parent tool part's subAgent state

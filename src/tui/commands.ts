@@ -22,6 +22,7 @@ export const commands: SlashCommand[] = [
   { id: "profile", description: "Switch profile", usage: "<profile-name>" },
   { id: "settings", description: "Open config in editor" },
   { id: "reload-config", description: "Reload config without restarting" },
+  { id: "undo", description: "Undo last agent file changes" },
   { id: "exit", description: "Exit Quark" },
 ]
 

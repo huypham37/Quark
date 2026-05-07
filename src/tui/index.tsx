@@ -29,6 +29,7 @@ import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
+import { undoLatest } from "../commands/undo"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
 const termBg = await queryTerminalBackground()
@@ -244,6 +245,32 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   }
 
   switch (command) {
+    case "undo": {
+      const result = await undoLatest(sid)
+      if (!result) {
+        notifyInfo("Undo", "Nothing to undo — no tracked file changes", 3000)
+        return { handled: true }
+      }
+
+      const parts: string[] = []
+      if (result.restored.length > 0) {
+        parts.push(`${result.restored.length} file(s) restored`)
+      }
+      if (result.deleted.length > 0) {
+        parts.push(`${result.deleted.length} file(s) deleted`)
+      }
+
+      bus.emit("undo-applied", {
+        sessionId: sid,
+        keepMessagesUpTo: result.messageId,
+        restored: result.restored.length,
+        deleted: result.deleted.length,
+      })
+
+      notifyInfo("Undo", parts.join(", "), 3000)
+      return { handled: true }
+    }
+
     case "compact": {
       resolveModel().then(async (model) => {
         const { messages, parts } = loadMessages(sid)

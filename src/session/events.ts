@@ -96,6 +96,9 @@ export interface BusEvents {
   // updated immediately instead of showing 0 until the next step-finish.
   "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
 
+  // Undo — emitted when /undo is applied, TUI should truncate messages
+  "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
+
   // ---------------------------------------------------------------------------
   // Sub-agent observability — events forwarded from child `quark --sub-agent`
   // processes via stderr NDJSON. The parent Bash tool parses these and re-emits

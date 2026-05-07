@@ -390,6 +390,12 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "reasoning-end", messageId: data.messageId })
     }))
 
+    // ----- Undo -----
+
+    unsubs.push(on("undo-applied", (data) => {
+      dispatch(state, { type: "truncate-messages", upToMessageId: data.keepMessagesUpTo })
+    }))
+
     onCleanup(() => {
       for (const unsub of unsubs) unsub()
       for (const timer of writeStreamTimers.values()) clearInterval(timer)

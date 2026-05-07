@@ -59,6 +59,12 @@ import {
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
 import { debug } from "../debug";
+import {
+  setCurrentTurn,
+  preTurnSnapshot,
+  toolPreExecute,
+  extractFilePath,
+} from "../commands/undo";
 
 const dlog = debug("loop");
 
@@ -135,6 +141,12 @@ export async function prompt(input: {
   const text = input.parts.map((p) => p.text).join("\n");
   const userMsg = saveUserMessage({ sessionId, text, images: input.images });
   bus.emit("user-message", { sessionId, messageId: userMsg.id, text });
+
+  // Undo: set current turn and proactively snapshot files from the previous turn
+  setCurrentTurn(userMsg.id);
+  preTurnSnapshot(sessionId, userMsg.id).catch(() => {
+    // Pre-turn snapshot is best-effort — never fail the session
+  });
 
   // Enter the loop
   const isSubAgent = !!input.parentSessionId;
@@ -663,7 +675,17 @@ function toAITool(
         throw e;
       }
 
-      // 2. Permission passed — signal TUI to transition awaiting_approval → running
+      // 2. Undo: lazy snapshot file before write/edit modifies it
+      try {
+        const fp = extractFilePath(def.id, args);
+        if (fp) {
+          await toolPreExecute(sessionId, fp);
+        }
+      } catch {
+        // Snapshot failure is best-effort — never block tool execution
+      }
+
+      // 3. Permission passed — signal TUI to transition awaiting_approval → running
       bus.emit("tool-running", { sessionId, messageId, callId });
 
       // 3. Build execution context for the tool
