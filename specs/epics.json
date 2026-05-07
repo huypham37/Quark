@@ -96,37 +96,31 @@
   {
     "id": "EPIC-06",
     "title": "Context Compaction",
-    "requirements": ["FR-6.1", "FR-6.2", "FR-6.3", "FR-6.4", "FR-6.5", "FR-6.6", "FR-6.7", "FR-6.8", "FR-6.9"],
-    "description": "Auto and manual context compaction with pluggable methods. Includes shouldCompact() heuristic, deduplication guard, general (new-session) and anchored (in-session) compaction strategies, plugin hook for context injection, TUI/tool triggers, and a read_session tool to look back at compaction ancestors.",
-    "business_goal": "Enable agents to survive long sessions without losing work when the context window fills up. Compaction preserves continuity while resetting token budget. The read_session tool allows the agent to retrieve details from earlier session segments lost during compaction.",
+    "requirements": ["FR-6.1", "FR-6.2", "FR-6.3", "FR-6.4", "FR-6.5", "FR-6.6", "FR-6.7"],
+    "description": "Auto and manual context compaction with pluggable methods. Includes shouldCompact() heuristic, deduplication guard, general (new-session) and anchored (in-session) compaction strategies, plugin hook for context injection, and TUI/tool triggers.",
+    "business_goal": "Enable agents to survive long sessions without losing work when the context window fills up. Compaction preserves continuity while resetting token budget.",
     "owner": "Core Platform",
     "priority": "High",
     "status": "In Progress",
     "user_stories": [
       {
         "id": "US-6-1",
-        "title": "Compaction chain linking — store ancestor reference in new session",
-        "story": "As a developer, I want compaction to store the old session's ID and its summary in the new session's metadata so that the session tree preserves a discoverable compaction chain.",
+        "title": "Compaction chain linking",
+        "status": "Planned",
+        "story": "As a user, I want compaction to link the old session to the new session and store the summary so that the agent can look back at previous sessions in the compaction tree.",
         "acceptance_criteria": [
-          "When general or anchored compaction creates a new session, the new session's meta.json includes compacted_from: <oldSessionId>",
-          "The old session's meta.json includes compacted_to: <newSessionId> and summary:<text> for quick lookup",
-          "listCompactionChain(sessionId) returns the ordered chain of session IDs from root to leaf",
-          "Existing compaction methods (general, anchored) are updated without breaking current behaviour",
-          "Session replay and TUI display are unaffected by the new metadata fields"
+          "When compaction creates a new session, the summary and link back to the old session are stored somewhere discoverable",
+          "The agent can traverse the compaction chain to find previous session IDs"
         ]
       },
       {
         "id": "US-6-2",
-        "title": "read_session tool — agent reads previous sessions in the compaction tree",
-        "story": "As an agent, I want to call a read_session tool to retrieve the full conversation history of a previous session in my compaction chain so that I can recover details that were lost when context was summarized and moved to a new session.",
+        "title": "read_session tool",
+        "status": "Planned",
+        "story": "As a user, I want the agent to have a read_session tool so it can read previous sessions in the compaction chain and recover details lost during summarization.",
         "acceptance_criteria": [
-          "read_session is a built-in tool registered in bootstrap alongside read, compact, skill, question",
-          "Tool parameters: sessionId (string, required) — the ID of the session to read",
-          "Security: the tool only allows reading sessions in the current session's compaction ancestry (compacted_from chain), not arbitrary sessions",
-          "Returned output includes: session title, timestamps, text-only messages (user + assistant), and a reference to the compaction summary",
-          "Tool result is formatted as structured text with message roles and content, suitable for LLM context",
-          "Tool outputs are capped at ~50k chars to avoid re-bloating the current session's context",
-          "Attempting to read an unrelated session returns a clear error message"
+          "read_session(<sessionId>) returns the conversation history of a previous session in the compaction chain",
+          "The tool is scoped to the current session's compaction ancestry — not arbitrary sessions"
         ]
       }
     ],
@@ -137,9 +131,7 @@
       "Anchored method writes a summary anchor into the same session",
       "session.compacting plugin hook allows injection of extra context strings into summary",
       "/compact TUI command and compact tool both flow through compact-resolver",
-      "Auto-compaction can be disabled via config (auto: false)",
-      "Compaction stores compacted_from / compacted_to links in session metadata",
-      "read_session tool allows the agent to read previous sessions in the compaction chain"
+      "Auto-compaction can be disabled via config (auto: false)"
     ]
   },
   {
@@ -201,8 +193,8 @@
   {
     "id": "EPIC-10",
     "title": "Interactive TUI",
-    "requirements": ["FR-10.1", "FR-10.2", "FR-10.3", "FR-10.4", "FR-10.5", "FR-10.6", "FR-10.7", "FR-10.8", "FR-10.9", "FR-10.10", "FR-10.11", "FR-10.12", "FR-10.13"],
-    "description": "Full terminal UI built on OpenTUI + SolidJS with reactive rendering, slash commands, permission overlays, session/model pickers, @file mention autocomplete, image paste, diff view, token/cost display, and theme adaptation. Includes /undo command to revert agent file modifications.",
+    "requirements": ["FR-10.1", "FR-10.2", "FR-10.3", "FR-10.4", "FR-10.5", "FR-10.6", "FR-10.7", "FR-10.8", "FR-10.9", "FR-10.10", "FR-10.11"],
+    "description": "Full terminal UI built on OpenTUI + SolidJS with reactive rendering, slash commands, permission overlays, session/model pickers, @file mention autocomplete, image paste, diff view, token/cost display, and theme adaptation.",
     "business_goal": "Provide a rich, keyboard-driven interactive experience for power developers using Quark as a daily driver for complex coding tasks.",
     "owner": "UX / Frontend",
     "priority": "High",
@@ -211,35 +203,18 @@
       {
         "id": "US-10-1",
         "title": "/undo — revert LLM file changes",
-        "story": "As a user, I want to type /undo in the TUI to revert all file modifications made by the agent in the current session so that I can quickly recover from unwanted changes without manually checking git diff or hunting through files.",
+        "status": "Planned",
+        "story": "As a user, I want an /undo slash command that reverts file changes the agent made, so I can quickly recover from unwanted modifications.",
         "acceptance_criteria": [
-          "/undo is registered as a slash command alongside /help, /new, /sessions, /compact, etc.",
-          "The agent tracks which files are modified by tool calls (write, edit, bash) in a per-session modified-files set",
-          "Tracking is passive — file paths are recorded when tool-end events show a completed write/edit tool",
-          "/undo reverts each tracked file to its git HEAD state using git checkout -- <file>",
-          "If git is not available or the file is untracked, /undo deletes the file if it didn't exist before the session",
-          "/undo shows a summary in the TUI: number of files reverted and their paths",
-          "After /undo, the modified-files set is cleared so a second /undo is a no-op",
-          "/undo does NOT affect files modified by the user outside the agent session"
-        ]
-      },
-      {
-        "id": "US-10-2",
-        "title": "/undo — undo stack with per-tool granularity",
-        "story": "As a power user, I want to type /undo multiple times to revert the most recent agent tool change one-at-a-time, so I can selectively undo specific edits without losing all of them at once.",
-        "acceptance_criteria": [
-          "The modified-files tracker records each file modification with a timestamp and tool call ID (not just a set)",
-          "/undo without arguments reverts the most recent tool's file modifications",
-          "/undo N reverts the last N tool batches of file modifications",
-          "Each /undo reports which tool call(s) were reverted and which files were restored",
-          "The undo stack survives within a session but clears on session end",
-          "Reverting a file that was modified by multiple tool calls restores it to git HEAD (not to an intermediate state)"
+          "/undo is available as a slash command alongside /help, /new, /compact, etc.",
+          "/undo reverts files the agent modified back to their pre-session state (e.g. git HEAD)",
+          "/undo shows a summary of what was reverted"
         ]
       }
     ],
     "acceptance_criteria": [
       "TUI renders at 60fps with full-terminal scrollable message area and sticky-bottom auto-scroll",
-      "Slash commands (/help, /new, /sessions, /compact, /clear, /model, /profile, /exit, /undo) are functional",
+      "Slash commands (/help, /new, /sessions, /compact, /clear, /model, /profile, /exit) are functional",
       "@file mention triggers fuzzy autocomplete and inlines file content as context",
       "Image paste via Ctrl+V creates image chips with Tab navigation and Backspace removal",
       "Permission prompt overlay responds correctly to a (allow once), o (always), r (reject) keys",
@@ -249,8 +224,7 @@
       "Theme adapts automatically to terminal background (dark/light detection)",
       "Undo/redo in input (Ctrl+Z / Ctrl+Shift+Z) works correctly",
       "Up/Down arrow history navigation in chat input (session-scoped history with draft restore) — works like a terminal shell",
-      "Notification panel uses a solid background that fills the full panel and border area for improved readability",
-      "/undo reverts agent-modified files to git HEAD and reports the reverted paths in the TUI"
+      "Notification panel uses a solid background that fills the full panel and border area for improved readability"
     ]
   },
   {
