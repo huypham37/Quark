@@ -9,7 +9,7 @@ import { createCliRenderer } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
-import { createSession, listSessions, getSession } from "../session/session"
+import { createSession, listProjectSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -175,7 +175,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /sessions works even without an active session (picker can be opened any time)
   if (command === "sessions") {
     if (!args) {
-      const sessions = listSessions()
+      const sessions = listProjectSessions()
       const tasks = new Map(listTasks().map((task) => [task.id, task]))
       if (sessions.length === 0) {
         bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
@@ -199,7 +199,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    const sessions = listSessions()
+    const sessions = listProjectSessions()
     const match = sessions.find((s) => s.id.startsWith(args))
     if (!match) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
@@ -369,7 +369,7 @@ async function openEditor(sid: string | null): Promise<void> {
 
 function handleGetSessions() {
   const tasks = new Map(listTasks().map((task) => [task.id, task]))
-  return listSessions().map((session) => ({
+  return listProjectSessions().map((session) => ({
     ...session,
     taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
   }))

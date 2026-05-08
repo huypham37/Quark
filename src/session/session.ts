@@ -186,6 +186,14 @@ export function listSessions(): Session[] {
     .sort((a, b) => b.timeUpdated - a.timeUpdated)
 }
 
+/** List sessions scoped to the given directory (defaults to process.cwd()), most recently updated first */
+export function listProjectSessions(directory?: string): Session[] {
+  const dir = directory ?? process.cwd()
+  return scanSessionMetas()
+    .filter((s) => s.kind === "main" && s.directory === dir)
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
+}
+
 /** List all sessions including sub-agents, most recently updated first */
 export function listAllSessions(): Session[] {
   return scanSessionMetas()
