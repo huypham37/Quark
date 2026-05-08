@@ -12,7 +12,7 @@
 //   loop        — agent loop iterations, message counts, processStream result
 //   cli         — text-start/delta/end, assistant-message-start/end
 //   models      — context window resolution from models.dev
-//   compaction  — context window calc, compaction triggers
+//   context     — context window calc, branching triggers
 //   copilot-sse — raw SSE stream tee (very verbose)
 //   plugin      — plugin loader output
 //

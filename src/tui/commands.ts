@@ -16,13 +16,14 @@ export const commands: SlashCommand[] = [
   { id: "help", description: "Show available commands" },
   { id: "new", description: "Create a new session" },
   { id: "sessions", description: "List or switch sessions", usage: "[session-id]" },
-  { id: "compact", description: "Compact conversation context" },
+
   { id: "clear", description: "Clear messages and start new session" },
   { id: "model", description: "Switch model", usage: "<model-name>" },
   { id: "profile", description: "Switch profile", usage: "<profile-name>" },
   { id: "settings", description: "Open config in editor" },
   { id: "reload-config", description: "Reload config without restarting" },
   { id: "undo", description: "Undo last agent file changes" },
+  { id: "steer", description: "Branch to a new session with a goal", usage: "<goal>" },
   { id: "exit", description: "Exit Quark" },
 ]
 

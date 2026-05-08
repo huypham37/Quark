@@ -17,20 +17,14 @@ import { createSession, getSession, touchSession } from "./session";
 import {
   saveUserMessage,
   createAssistantMessage,
-  addPart,
-  finishMessage,
   loadMessages,
   toModelMessages,
 } from "./message";
 import { buildSystem } from "./system";
 import { processStream } from "./processor";
-import { shouldCompact, estimateTokens, shouldCompactWithRealTokens } from "./compaction";
-import {
-  resolve as resolveCompaction,
-  takePending,
-  type CompactMethodContext,
-} from "./compact-resolver";
-import { generateSessionTitle } from "./title";
+import { estimateTokens } from "./context";
+import { autoBranch, shouldBranchWithRealTokens } from "./branch";
+import { initializeSession, initializeSessionFromMessage } from "./initializer";
 import { list as listTools, resolve as resolveTools, resolveAvailable } from "../tool/registry";
 import { getThinkingNormalizer } from "../provider/thinking";
 import { setForceAgent, getCustomFetch } from "../provider/custom-fetch";
@@ -155,29 +149,40 @@ export async function prompt(input: {
   const controller = new AbortController();
   active.set(sessionId, controller);
   bus.emit("loop-start", { sessionId });
+  let finalSessionId = sessionId;
   try {
-    // Generate a title in the background if session is untitled
-    // Uses the small_model from config — cheap and fast
+    // Initialize title + task in the background.
     const session = getSession(sessionId);
-    if (!session.title) {
+    if (session.kind !== "ephemeral" && (!session.title || !session.taskId)) {
       resolveModel(input.model ?? loadConfig().small_model, "small")
         .then((model) => {
-          generateSessionTitle({ sessionId, message: text, model });
+          initializeSession({
+            sessionId,
+            message: text,
+            model,
+            profile: agent.id,
+          });
         })
         .catch(() => {
-          // Title generation is best-effort — never fail the session
+          initializeSessionFromMessage({
+            sessionId,
+            message: text,
+            profile: agent.id,
+          });
         });
     }
 
-    await loop(sessionId, controller.signal, agent, input.model);
+    finalSessionId = await loop(sessionId, controller.signal, agent, input.model);
   } finally {
     if (isSubAgent) setForceAgent(false);
-    active.delete(sessionId);
-    bus.emit("loop-end", { sessionId });
-    fireHook("session.idle", { sessionId }).catch(() => {});
+    for (const [id, activeController] of active) {
+      if (activeController === controller) active.delete(id);
+    }
+    bus.emit("loop-end", { sessionId: finalSessionId });
+    fireHook("session.idle", { sessionId: finalSessionId }).catch(() => {});
   }
 
-  return { sessionId };
+  return { sessionId: finalSessionId };
 }
 
 /**
@@ -207,6 +212,27 @@ export function isActive(sessionId: string): boolean {
   return active.has(sessionId);
 }
 
+function moveActiveSession(from: string, to: string): void {
+  if (from === to) return
+  const controller = active.get(from)
+  active.delete(from)
+  if (controller) active.set(to, controller)
+  process.env.QUARK_SESSION_ID = to
+}
+
+async function emitSessionSwitch(sessionId: string, agent: AgentConfig): Promise<void> {
+  const { messages, parts } = loadMessages(sessionId)
+  const { dbToTuiMessages } = await import("../tui/state")
+  const system = buildSystem(agent)
+  const modelMessages = toModelMessages(messages, parts)
+  const systemStr = Array.isArray(system) ? system.join("\n") : system
+  bus.emit("session-switch", {
+    sessionId,
+    messages: dbToTuiMessages(messages, parts),
+    estimatedTokens: estimateTokens(systemStr, modelMessages),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // loop() — the heart of the agent
 // ---------------------------------------------------------------------------
@@ -215,7 +241,7 @@ async function loop(
   abort: AbortSignal,
   agent: AgentConfig,
   modelOpt?: string,
-) {
+): Promise<string> {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent.model > config main_model
   // Model is always in "provider/model" format.
@@ -226,7 +252,7 @@ async function loop(
   const model = await resolveModel(modelSpec);
   const modelLimit = getModelLimit(modelSpec);
 
-  // mutable — may change when compaction creates a new session
+  // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
 
   let step = 0;
@@ -244,50 +270,6 @@ async function loop(
 
     // Plugin hook: loop step beginning
     await fireHook("loop.step.before", { sessionId: currentSessionId, step });
-
-    // 0. Run pending compaction (queued from previous iteration or tool call)
-    const pendingReq = takePending(currentSessionId);
-    if (pendingReq) {
-      console.log("[prompt] running pending compaction for session:", currentSessionId);
-      bus.emit("compaction-start", { sessionId: currentSessionId });
-      setForceAgent(true);
-      try {
-        const result = await resolveCompaction({
-          trigger: pendingReq.trigger,
-          ctx: pendingReq.ctx,
-          methodId: pendingReq.methodId,
-        });
-        console.log("[prompt] pending compaction result:", JSON.stringify(result));
-        bus.emit("compaction-end", { sessionId: currentSessionId, result });
-        if (result.type === "new-session") {
-          currentSessionId = result.newSessionId;
-          const { messages: newMsgs, parts: newParts } =
-            loadMessages(currentSessionId);
-          const { dbToTuiMessages } = await import("../tui/state");
-          const sys = buildSystem(agent);
-          const newModelMsgs = toModelMessages(newMsgs, newParts);
-          const sysStr = Array.isArray(sys) ? sys.join("\n") : sys;
-          bus.emit("session-switch", {
-            sessionId: currentSessionId,
-            messages: dbToTuiMessages(newMsgs, newParts),
-            estimatedTokens: estimateTokens(sysStr, newModelMsgs),
-          });
-        }
-      } catch (err) {
-        console.error("[prompt] pending compaction FAILED:", err instanceof Error ? err.stack : String(err));
-        bus.emit("compaction-end", {
-          sessionId: currentSessionId,
-          result: null,
-        });
-        bus.emit("error", { sessionId: currentSessionId, error: err });
-        fireHook("session.error", {
-          sessionId: currentSessionId,
-          error: err,
-        }).catch(() => {});
-      } finally {
-        setForceAgent(false);
-      }
-    }
 
     // 1. Load conversation history
     const { messages, parts } = loadMessages(currentSessionId);
@@ -310,81 +292,43 @@ async function loop(
     // 2. Build system prompt
     const system = buildSystem(agent);
 
-    // 3. Check if compaction is needed BEFORE the model call
+    // 3. Check if branching is needed BEFORE the model call
     const cfg = loadConfig();
     if (
-      cfg.compact.auto &&
-      shouldCompactWithRealTokens(
+      cfg.branching.auto &&
+      shouldBranchWithRealTokens(
         system,
         modelMessages,
         modelLimit,
-        cfg.compact.threshold,
+        cfg.branching.threshold,
         parts,
       )
     ) {
-      bus.emit("compaction-start", { sessionId: currentSessionId });
       setForceAgent(true);
       try {
-        // Fire session.compacting hook — plugins can inject extra context
-        const compactingOutput = await fireHook("session.compacting", {
-          sessionId: currentSessionId,
-        });
-        const compactCtx: CompactMethodContext = {
+        const branchResult = await autoBranch({
           sessionId: currentSessionId,
           messages,
           parts,
-          modelMessages,
           model,
-          agentPrompt: system,
-          budget: modelLimit,
-          persist: {
-            createMessage: createAssistantMessage,
-            addPart,
-            finishMessage,
-            saveUserMessage,
-          },
-          session: { create: createSession },
-          extraContext: compactingOutput.context,
-        };
-        const compactResult = await resolveCompaction({
-          trigger: "auto",
-          ctx: compactCtx,
-        });
-        bus.emit("compaction-end", {
-          sessionId: currentSessionId,
-          result: compactResult,
-        });
+          profile: agent.id,
+          abort,
+        })
+        const previousSessionId = currentSessionId
+        currentSessionId = branchResult.sessionId
+        moveActiveSession(previousSessionId, currentSessionId)
+        await emitSessionSwitch(currentSessionId, agent)
 
-        if (compactResult.type === "new-session") {
-          currentSessionId = compactResult.newSessionId;
-          // Load the new session's messages for the TUI
-          const { messages: newMsgs, parts: newParts } =
-            loadMessages(currentSessionId);
-          const { dbToTuiMessages } = await import("../tui/state");
-          const systemStr = Array.isArray(system) ? system.join("\n") : system;
-          const newModelMessages = toModelMessages(newMsgs, newParts);
-          const estimatedTokens = estimateTokens(systemStr, newModelMessages);
-          bus.emit("session-switch", {
-            sessionId: currentSessionId,
-            messages: dbToTuiMessages(newMsgs, newParts),
-            estimatedTokens,
-          });
-        }
-
-        // Re-load after compaction so the model sees the compacted context
+        // Re-load after branching so the model sees the task lineage context.
         continue;
       } catch (err) {
-        console.error("[prompt] auto-compaction FAILED:", err instanceof Error ? err.stack : String(err));
-        bus.emit("compaction-end", {
-          sessionId: currentSessionId,
-          result: null,
-        });
+        console.error("[prompt] auto-branch FAILED:", err instanceof Error ? err.stack : String(err));
         bus.emit("error", { sessionId: currentSessionId, error: err });
         fireHook("session.error", {
           sessionId: currentSessionId,
           error: err,
         }).catch(() => {});
-        // Continue with full context if compaction fails
+        // Continue with full context if branching fails.
       } finally {
         setForceAgent(false);
       }
@@ -436,64 +380,27 @@ async function loop(
 
     // 7. Decide next action
     if (result === "continue") continue;
-    if (result === "compact") {
-      // Provider returned context-too-long — force compaction and retry
-      bus.emit("compaction-start", { sessionId: currentSessionId });
+    if (result === "branch") {
+      // Provider returned context-too-long or mid-stream pressure exceeded.
       setForceAgent(true);
       try {
         const { messages: curMsgs, parts: curParts } = loadMessages(currentSessionId);
-        const curModelMessages = toModelMessages(curMsgs, curParts);
-        const compactingOutput = await fireHook("session.compacting", {
-          sessionId: currentSessionId,
-        });
-        const compactCtx: CompactMethodContext = {
+        const branchResult = await autoBranch({
           sessionId: currentSessionId,
           messages: curMsgs,
           parts: curParts,
-          modelMessages: curModelMessages,
           model,
-          agentPrompt: system,
-          budget: modelLimit,
-          persist: {
-            createMessage: createAssistantMessage,
-            addPart,
-            finishMessage,
-            saveUserMessage,
-          },
-          session: { create: createSession },
-          extraContext: compactingOutput.context,
-        };
-        const compactResult = await resolveCompaction({
-          trigger: "auto",
-          ctx: compactCtx,
-        });
-        bus.emit("compaction-end", {
-          sessionId: currentSessionId,
-          result: compactResult,
-        });
-
-        if (compactResult.type === "new-session") {
-          currentSessionId = compactResult.newSessionId;
-          const { messages: newMsgs, parts: newParts } =
-            loadMessages(currentSessionId);
-          const { dbToTuiMessages } = await import("../tui/state");
-          const systemStr = Array.isArray(system) ? system.join("\n") : system;
-          const newModelMessages = toModelMessages(newMsgs, newParts);
-          const estTokens = estimateTokens(systemStr, newModelMessages);
-          bus.emit("session-switch", {
-            sessionId: currentSessionId,
-            messages: dbToTuiMessages(newMsgs, newParts),
-            estimatedTokens: estTokens,
-          });
-        }
+          profile: agent.id,
+          abort,
+        })
+        const previousSessionId = currentSessionId
+        currentSessionId = branchResult.sessionId
+        moveActiveSession(previousSessionId, currentSessionId)
+        await emitSessionSwitch(currentSessionId, agent)
 
         continue;
       } catch (err) {
-        console.error("[prompt] context-too-long compaction FAILED:", err instanceof Error ? err.stack : String(err));
-        bus.emit("compaction-end", {
-          sessionId: currentSessionId,
-          result: null,
-        });
+        console.error("[prompt] context-too-long branch FAILED:", err instanceof Error ? err.stack : String(err));
         bus.emit("error", { sessionId: currentSessionId, error: err });
         break;
       } finally {
@@ -502,6 +409,7 @@ async function loop(
     }
     break; // "stop"
   }
+  return currentSessionId
 }
 
 // ---------------------------------------------------------------------------
@@ -598,7 +506,8 @@ function resolveToolSet(
   messageId: string,
   abort: AbortSignal,
 ): ToolSet {
-  const defs = resolveAvailable(agent.tools);
+  const toolIds = [...agent.tools]
+  const defs = resolveAvailable(toolIds);
   const ruleset: Ruleset = (agent.permissions ?? []).map(r => ({
     tool: r.tool,
     pattern: "*",
@@ -675,9 +584,23 @@ function toAITool(
         throw e;
       }
 
-      // 2. Undo: lazy snapshot file before write/edit modifies it
+      // 2. Validate args against the tool's Zod schema (defense-in-depth)
+      const parseResult = def.parameters.safeParse(args)
+      if (!parseResult.success) {
+        const msg = parseResult.error.issues
+          .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+          .join("\n")
+        return {
+          title: `Invalid arguments for ${def.id}`,
+          output: `Invalid arguments for tool "${def.id}":\n${msg}`,
+          metadata: { error: "invalid_arguments", issues: parseResult.error.issues },
+        }
+      }
+      const validatedArgs = parseResult.data as Record<string, unknown>
+
+      // 3. Undo: lazy snapshot file before write/edit modifies it
       try {
-        const fp = extractFilePath(def.id, args);
+        const fp = extractFilePath(def.id, validatedArgs);
         if (fp) {
           await toolPreExecute(sessionId, fp);
         }
@@ -708,11 +631,11 @@ function toAITool(
       // 4. Plugin hooks: before/after tool execution
       const beforeArgs = await fireHook(
         "tool.execute.before",
-        { tool: def.id, args },
-        { args },
+        { tool: def.id, args: validatedArgs },
+        { args: validatedArgs },
       );
       const toolResult = await Promise.race([
-        def.execute(beforeArgs.args as typeof args, ctx),
+        def.execute(beforeArgs.args as any, ctx),
         abortSignalToPromise(abortSig),
       ]);
       await fireHook("tool.execute.after", {

@@ -20,8 +20,6 @@ function defaultOutput(name: HookName): Record<string, unknown> {
       return { provider: "", model: "" }
     case "provider.request.error":
       return { retry: false }
-    case "session.compacting":
-      return { context: [] }
     case "tool.execute.before":
       // Will be seeded with actual args before firing
       return { args: {} }

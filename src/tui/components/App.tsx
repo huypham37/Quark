@@ -27,6 +27,13 @@ import { respond as respondPermission } from "../../permission/permission"
 import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter } from "../filelist"
 import { filterCommands, type SlashCommand } from "../commands"
+import {
+  buildSessionTreeRows,
+  firstSelectableSessionRow,
+  moveSessionRowSelection,
+  type SessionTreeInput,
+  type SessionTreeRow,
+} from "../session-tree-picker"
 import { generateId } from "ai"
 import * as fs from "fs"
 import * as path from "path"
@@ -45,7 +52,7 @@ interface AppProps {
   onSubmit: (text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) => void
   onCancel: (sessionId: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
-  getSessions?: () => { id: string; title: string | null; timeUpdated: number }[]
+  getSessions?: () => SessionTreeInput[]
   getModels?: () => { id: string; name: string }[]
   getCurrentModel?: () => string
   initialSessionId?: string
@@ -83,6 +90,7 @@ interface SlashState {
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
+  sessionRows: SessionTreeRow[]
   selectedIndex: number
 }
 
@@ -92,6 +100,7 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
+  sessionRows: [],
   selectedIndex: 0,
 }
 
@@ -319,6 +328,7 @@ export const App: Component<AppProps> = (props) => {
       query,
       items: filtered,
       pickerItems: [],
+      sessionRows: [],
       selectedIndex: 0,
     })
   }
@@ -387,6 +397,24 @@ export const App: Component<AppProps> = (props) => {
     setInputValue(text)
   }
 
+  const openSessionsPicker = (): boolean => {
+    if (!props.getSessions) return false
+    const sessions = props.getSessions()
+    const sid = state.store.sessionId
+    const sessionRows = buildSessionTreeRows(sessions, sid)
+    setSlash({
+      active: true,
+      mode: "sessions",
+      query: "",
+      items: [],
+      pickerItems: [],
+      sessionRows,
+      selectedIndex: firstSelectableSessionRow(sessionRows, sid),
+    })
+    setInputText("")
+    return true
+  }
+
   // ---------------------------------------------------------------------------
   // Execute a slash command
   // ---------------------------------------------------------------------------
@@ -410,6 +438,10 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    if (commandId === "sessions" && !args && openSessionsPicker()) {
+      return
+    }
+
     // Delegate to backend handler
     if (props.onCommand) {
       props.onCommand(commandId, args, state.store.sessionId)
@@ -428,18 +460,26 @@ export const App: Component<AppProps> = (props) => {
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
-          selectedIndex: Math.max(0, prev.selectedIndex - 1),
+          selectedIndex: prev.mode === "sessions"
+            ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, -1)
+            : Math.max(0, prev.selectedIndex - 1),
         }))
         return true
       }
 
       if (name === "down") {
-        const totalItems = s.mode === "commands" ? s.items.length : s.pickerItems.length
+        const totalItems = s.mode === "commands"
+          ? s.items.length
+          : s.mode === "sessions"
+            ? s.sessionRows.length
+            : s.pickerItems.length
         setSlash((prev) => {
           if (totalItems === 0) return prev
           return {
             ...prev,
-            selectedIndex: Math.min(totalItems - 1, prev.selectedIndex + 1),
+            selectedIndex: prev.mode === "sessions"
+              ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, 1)
+              : Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
         })
         return true
@@ -448,8 +488,8 @@ export const App: Component<AppProps> = (props) => {
       if (isTab || isReturn) {
         // --- Session picker mode ---
         if (s.mode === "sessions") {
-          const selected = s.pickerItems[s.selectedIndex]
-          if (selected) {
+          const selected = s.sessionRows[s.selectedIndex]
+          if (selected?.type === "session" || selected?.type === "orphan") {
             setSlash(SLASH_INACTIVE)
             setInputText("")
             if (props.onCommand) {
@@ -478,24 +518,7 @@ export const App: Component<AppProps> = (props) => {
           const selected = s.items[s.selectedIndex]
           if (selected) {
             // /sessions → transition to session picker
-            if (selected.id === "sessions" && isReturn && props.getSessions) {
-              const sessions = props.getSessions()
-              const sid = state.store.sessionId
-              const pickerItems: PickerItem[] = sessions.map((sess) => ({
-                id: sess.id,
-                label: sess.title ?? "(untitled)",
-                detail: new Date(sess.timeUpdated).toLocaleString(),
-                isCurrent: sess.id === sid,
-              }))
-              setSlash({
-                active: true,
-                mode: "sessions",
-                query: "",
-                items: [],
-                pickerItems,
-                selectedIndex: 0,
-              })
-              setInputText("")
+            if (selected.id === "sessions" && isReturn && openSessionsPicker()) {
               return true
             }
 
@@ -516,6 +539,7 @@ export const App: Component<AppProps> = (props) => {
                 query: "",
                 items: [],
                 pickerItems,
+                sessionRows: [],
                 selectedIndex: 0,
               })
               setInputText("")
@@ -678,7 +702,7 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
     if (s.active) {
       if (s.mode === "sessions") {
-        return { type: "sessions", items: s.pickerItems, selectedIndex: s.selectedIndex }
+        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
       }
       if (s.mode === "models") {
         return { type: "models", items: s.pickerItems, selectedIndex: s.selectedIndex }
@@ -996,7 +1020,7 @@ export const App: Component<AppProps> = (props) => {
       <Notifications />
 
       {/* Footer bar */}
-      <FooterBar running={state.store.running} compacting={state.store.compacting} />
+      <FooterBar running={state.store.running} steering={state.store.steering} />
     </box>
   )
 }

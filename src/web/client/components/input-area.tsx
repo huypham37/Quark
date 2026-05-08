@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { T } from '../tokens'
-import { SendIcon, StopIcon, PaperclipIcon, AtIcon, CompactIcon, XSmallIcon } from '../icons'
-import { BrailleSpinner } from '../icons'
+import { SendIcon, StopIcon, PaperclipIcon, AtIcon, XSmallIcon } from '../icons'
 import { CommandPalette } from './command-palette'
 import { MentionPicker } from './mention-picker'
 import type { SlashCommand } from '../../../tui/commands'
@@ -16,14 +15,12 @@ interface InputAreaProps {
   onSend: (text: string, images: Attachment[]) => void
   running: boolean
   onCancel: () => void
-  onCompact?: () => void
-  compacting?: boolean
   onToast?: (title: string, body: string, kind: 'error' | 'warn') => void
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
-export function InputArea({ onSend, running, onCancel, onCompact, compacting, onToast }: InputAreaProps) {
+export function InputArea({ onSend, running, onCancel, onToast }: InputAreaProps) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<Attachment[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -265,15 +262,6 @@ export function InputArea({ onSend, running, onCancel, onCompact, compacting, on
                 style={{ color: T.text3, cursor: running ? 'default' : 'pointer' }}
               >
                 <AtIcon />
-              </button>
-              <button
-                onClick={onCompact}
-                disabled={running || compacting || !onCompact}
-                className="input-btn input-btn--compact"
-                style={{ color: compacting ? T.accent : T.text3, cursor: (running || compacting || !onCompact) ? 'default' : 'pointer' }}
-                title="Compact context"
-              >
-                {compacting ? <BrailleSpinner size={18} /> : <CompactIcon />}
               </button>
 
             </div>

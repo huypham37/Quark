@@ -12,7 +12,6 @@ import { loadConfig, parseModelSpec } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
 import { getFiles, fuzzyFilter } from "../tui/filelist"
-import { resolve as resolveCompaction } from "../session/compact-resolver"
 import { resolveModel } from "../session/prompt"
 import { getModelLimit } from "../provider/models"
 import { getThinkingNormalizer } from "../provider/thinking"
@@ -28,7 +27,6 @@ const ALL_EVENTS: BusEventName[] = [
   "loop-start", "loop-end",
   "error", "session-created", "session-reset", "session-switch",
   "permission-request",
-  "compaction-start", "compaction-end",
   "retry",
   "reasoning-start", "reasoning-delta", "reasoning-end",
   "user-message",
@@ -153,91 +151,6 @@ function createRequestHandler(agent: AgentConfig) {
       const body = (await req.json()) as { sessionId: string }
       cancel(body.sessionId)
       return json({ ok: true })
-    }
-
-    if (req.method === "POST" && pathname === "/api/compact") {
-      const body = (await req.json()) as { sessionId: string }
-      const { sessionId } = body
-      try {
-        getSession(sessionId)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error("[compact] getSession failed:", msg, "sessionId:", sessionId)
-        return json({ error: msg }, 404)
-      }
-
-      let messages, parts, modelMessages, budget, model, system
-      try {
-        const loaded = loadMessages(sessionId)
-        messages = loaded.messages
-        parts = loaded.parts
-        modelMessages = toModelMessages(messages, parts)
-        const modelId = modelOverride ?? loadConfig().main_model
-        budget = getModelLimit(modelId)
-        model = await resolveModel(modelId)
-        system = buildSystem(agent)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        return json({ error: msg }, 500)
-      }
-
-      console.log("[compact] starting compaction for session:", sessionId)
-      console.log("[compact] messages:", messages.length, "parts:", parts.length, "modelMessages:", modelMessages.length)
-      console.log("[compact] budget:", JSON.stringify(budget))
-      bus.emit("compaction-start", { sessionId })
-      try {
-        const result = await resolveCompaction({
-          trigger: "command",
-          ctx: {
-            sessionId,
-            messages,
-            parts,
-            modelMessages,
-            model,
-            agentPrompt: system,
-            budget,
-            persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
-            session: { create: createSession },
-          },
-        })
-        console.log("[compact] compaction resolved:", JSON.stringify(result))
-        bus.emit("compaction-end", { sessionId, result })
-
-        let newSessionId: string | undefined
-        let switchMessages: ReturnType<typeof dbToTuiMessages> | undefined
-        let estimatedTokens: number | undefined
-
-        if (result.type === "new-session" && result.newSessionId !== sessionId) {
-          const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
-          const newModelMsgs = toModelMessages(newMsgs, newParts)
-          const sysStr = Array.isArray(system) ? system.join("\n") : system
-          const { estimateTokens } = await import("../session/compaction")
-          newSessionId = result.newSessionId
-          switchMessages = dbToTuiMessages(newMsgs, newParts)
-          estimatedTokens = estimateTokens(sysStr, newModelMsgs)
-          bus.emit("session-switch", {
-            sessionId: result.newSessionId,
-            messages: switchMessages,
-            estimatedTokens,
-          })
-        }
-
-        return json({
-          ok: true,
-          result: {
-            type: result.type,
-            evictedCount: "evictedCount" in result ? result.evictedCount : 0,
-            summary: "summary" in result ? result.summary : undefined,
-            newSessionId,
-            estimatedTokens,
-          },
-        })
-      } catch (err) {
-        console.error("[compact] compaction FAILED:", err instanceof Error ? err.stack : String(err))
-        bus.emit("compaction-end", { sessionId, result: null })
-        bus.emit("error", { sessionId, error: err instanceof Error ? err.message : String(err) })
-        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500)
-      }
     }
 
     if (req.method === "POST" && pathname === "/api/model") {

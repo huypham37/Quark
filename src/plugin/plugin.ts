@@ -54,7 +54,6 @@ export interface PluginContext {
  * | `session.created` | After a new session row is inserted |
  * | `session.idle` | After the agent loop exits (loop-end) |
  * | `session.error` | When an unhandled error occurs inside the loop |
- * | `session.compacting` | During compaction — can inject extra context strings into the summary |
  * | `tool.execute.before` | Before a tool's `execute()` is called — can mutate `args` |
  * | `tool.execute.after` | After a tool returns — receives the result string |
  * | `loop.step.before` | At the start of each loop iteration |
@@ -75,7 +74,6 @@ export interface PluginHooks {
   "session.created":    { input: { sessionId: string };                                   output?: never }
   "session.idle":       { input: { sessionId: string };                                   output?: never }
   "session.error":      { input: { sessionId: string; error: unknown };                   output?: never }
-  "session.compacting": { input: { sessionId: string }; output: { context: string[] } }
 
   // --- Tool hooks ---
   "tool.execute.before": {
@@ -89,7 +87,7 @@ export interface PluginHooks {
 
   // --- Loop hooks ---
   "loop.step.before": { input: { sessionId: string; step: number }; output?: never }
-  "loop.step.after":  { input: { sessionId: string; step: number; result: "continue" | "stop" | "compact" }; output?: never }
+  "loop.step.after":  { input: { sessionId: string; step: number; result: "continue" | "stop" | "branch" }; output?: never }
 }
 
 // ---------------------------------------------------------------------------

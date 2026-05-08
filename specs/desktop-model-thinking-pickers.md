@@ -2,10 +2,11 @@
 title: Desktop — Model picker & thinking level picker in composer
 date_created: 2026-05-07
 date_modified: 2026-05-07
-revision: 1
+revision: 2
 history:
   - 2026-05-07: Initial draft based on audit of EPIC-17 gaps
-status: draft
+  - 2026-05-07: Oracle review — fixed showThinking display issue, clarified API parse step, moved chat state out of DesktopState
+status: in-progress
 ---
 
 ## Problem
@@ -89,6 +90,12 @@ Click calls `POST /api/sessions` (create new), switches to it, clears messages.
 Removes the existing "T" toggle button from the header — thinking is now
 controlled via the composer pill exclusively.
 
+**Thinking display in chat:** The `showThinking` state in `ChatState` is
+retained but auto-derived. When `thinkingEffort !== "none"`, thinking parts
+in the message thread are displayed. When `thinkingEffort === "none"`, they
+are hidden. No separate show/hide toggle — display follows the effort level
+chosen in the composer pill.
+
 ### Dropdown styling
 
 ```
@@ -113,6 +120,11 @@ controlled via the composer pill exclusively.
 ## Backend API changes
 
 ### 1. New endpoint: `GET /api/thinking/levels?model=claude-sonnet-4.5`
+
+**This endpoint does not exist yet — it must be created.** The backend
+already has `getThinkingLevels()` from `src/provider/thinking.ts:151`
+(used in-process by the TUI), but no HTTP route exposes it. This endpoint
+wraps that function.
 
 Returns:
 ```json
@@ -147,33 +159,41 @@ New:
 
 ## Desktop state changes
 
-### `state.ts` — `DesktopState` additions
-
-```typescript
-interface DesktopState {
-  // ... existing fields ...
-  selectedModel: string | null       // model override, null = use config default
-  thinkingEffort: string             // current effort level, "none" = off
-  availableModels: ModelInfo[]       // cached from GET /api/models
-}
-
-interface ModelInfo {
-  id: string
-  name: string
-  provider: string
-}
-```
-
 ### `RightPane.tsx` — `ChatState` additions
+
+Model and thinking state lives in `ChatState` (RightPane's local reducer), not
+in `DesktopState`. `DesktopState` is for file/diff/preview concerns and should
+not carry chat metadata.
 
 ```typescript
 interface ChatState {
-  // ... existing fields ...
-  selectedModel: string | null
-  thinkingEffort: string
-  thinkingLevels: string[] | null    // levels for current model
+  // ... existing fields (messages, sessionId, connected, running, showThinking, errorMsg) ...
+  selectedModel: string | null       // model override, null = use config default
+  thinkingEffort: string             // current effort level, "none" = off
+  thinkingLevels: string[] | null    // levels for current model, from GET /api/thinking/levels
 }
 ```
+
+`showThinking` is retained but derived: the chat display logic uses
+`state.thinkingEffort !== "none"` to decide whether to render thinking parts
+(rather than a separate toggled boolean). The field stays for backward
+compatibility with the existing rendering code.
+
+### Model list conversion
+
+`GET /api/models` returns `{ models: string[], mainModel: string }` where
+`models` is a flat array of provider-prefixed IDs like
+`"anthropic:claude-sonnet-4.5"`. The desktop parses these client-side:
+
+```typescript
+type ModelInfo = { id: string; name: string }  // name is short-name (last segment after /)
+const models: ModelInfo[] = raw.models.map(id => ({
+  id,
+  name: id.includes("/") ? id.split("/").pop()! : id,
+}))
+```
+
+No API change needed — same pattern the TUI uses at `src/tui/index.tsx:381`.
 
 ## Acceptance criteria
 

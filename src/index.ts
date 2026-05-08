@@ -7,10 +7,25 @@ export { bootstrap, type BootstrapOptions } from "./bootstrap"
 // Session management
 export { createSession, getSession } from "./session/session"
 export type { Session, SessionKind } from "./session/session"
+export {
+  createTask,
+  getTask,
+  listTasks,
+  updateTask,
+  findTaskByDescription,
+} from "./task/task"
+export type { Task } from "./task/task"
 
 // Core operations
 export { prompt, cancel, isActive } from "./session/prompt"
-export { compact } from "./session/compaction"
+
+export {
+  createBranch,
+  autoBranch,
+  buildLineageContext,
+  getSessionLineage,
+  shouldBranchWithRealTokens,
+} from "./session/branch"
 
 // Tool system
 export { register, list as listTools, type ToolValidationError } from "./tool/registry"

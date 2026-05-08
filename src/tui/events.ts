@@ -245,6 +245,14 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "set-running", running: false })
     }))
 
+    unsubs.push(on("steer-start", () => {
+      dispatch(state, { type: "set-steering", steering: true })
+    }))
+
+    unsubs.push(on("steer-end", () => {
+      dispatch(state, { type: "set-steering", steering: false })
+    }))
+
     unsubs.push(on("retry", (data) => {
       const delaySec = Math.round(data.delayMs / 1000)
       const delayStr = delaySec >= 60
@@ -279,16 +287,8 @@ export function wireEvents(state: AppState) {
       })
     }))
 
-    unsubs.push(on("compaction-start", () => {
-      dispatch(state, { type: "set-compacting", compacting: true })
-    }))
-
-    unsubs.push(on("compaction-end", () => {
-      dispatch(state, { type: "set-compacting", compacting: false })
-    }))
-
     unsubs.push(on("context-too-long", () => {
-      notifyWarn("Context Too Long", "Provider rejected request — compacting context…", 5000)
+      notifyWarn("Context Too Long", "Provider rejected request — branching to a new session…", 5000)
     }))
 
     unsubs.push(on("step-finish", (data) => {

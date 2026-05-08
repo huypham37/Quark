@@ -31,6 +31,20 @@ import type { MessageRow, PartRow } from "../session/message"
 
 const ephemeralEvents = new Map<string, SessionLogEvent[]>()
 
+function normalizeSession(session: Session): Session {
+  return {
+    ...session,
+    title: session.title ?? null,
+    directory: session.directory ?? null,
+    parentSessionId: session.parentSessionId ?? null,
+    kind: session.kind ?? "main",
+    taskId: session.taskId ?? null,
+    summary: session.summary ?? null,
+    parentSummary: session.parentSummary ?? null,
+    filesModified: session.filesModified ?? null,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ensureStorageRoot — create the top-level session directory
 // ---------------------------------------------------------------------------
@@ -148,7 +162,7 @@ export function readSessionMeta(sessionId: string): Session | null {
   try {
     const raw = readFileSync(path, "utf-8")
     const parsed = JSON.parse(raw) as SessionMetaFile
-    if (parsed.v === 1 && parsed.session) return parsed.session
+    if (parsed.v === 1 && parsed.session) return normalizeSession(parsed.session)
     return null
   } catch {
     return null
@@ -186,7 +200,7 @@ export function scanSessionMetas(): Session[] {
       const raw = readFileSync(metaPath, "utf-8")
       const parsed = JSON.parse(raw) as SessionMetaFile
       if (parsed.v === 1 && parsed.session) {
-        sessions.push(parsed.session)
+        sessions.push(normalizeSession(parsed.session))
       }
     } catch {
       // Skip corrupt or missing meta.json — can be rebuilt from JSONL
@@ -288,13 +302,17 @@ function replayEvents(events: SessionLogEvent[]): {
   for (const event of events) {
     switch (event.type) {
       case "session": {
-        session = event.session
+        session = normalizeSession(event.session)
         break
       }
 
       case "session-update": {
         if (session) {
           if (event.patch.title !== undefined) session.title = event.patch.title
+          if (event.patch.taskId !== undefined) session.taskId = event.patch.taskId
+          if (event.patch.summary !== undefined) session.summary = event.patch.summary
+          if (event.patch.parentSummary !== undefined) session.parentSummary = event.patch.parentSummary
+          if (event.patch.filesModified !== undefined) session.filesModified = event.patch.filesModified
           if (event.patch.timeUpdated !== undefined) session.timeUpdated = event.patch.timeUpdated
         }
         break

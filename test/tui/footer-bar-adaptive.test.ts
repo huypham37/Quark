@@ -17,7 +17,7 @@ import {
   rightZoneWidth,
   pickRightZone,
   leftWidthRunning,
-  LEFT_WIDTH_COMPACTING,
+  LEFT_WIDTH_STEERING,
   LEFT_WIDTH_IDLE,
 } from "../../src/tui/components/footer-bar-fit"
 
@@ -262,9 +262,9 @@ describe("left zone widths", () => {
     expect(leftWidthRunning("Channelling…")).toBe(34)
   })
 
-  test("22. compacting and idle widths are constants matching the rendered text", () => {
-    // "<spinner(2)> Compacting context…" = 3 + 19
-    expect(LEFT_WIDTH_COMPACTING).toBe(3 + "Compacting context…".length)
+  test("22. steering and idle widths are constants matching the rendered text", () => {
+    // "<spinner(2)> Steering context…" = 3 + 17
+    expect(LEFT_WIDTH_STEERING).toBe(3 + "Steering context…".length)
     // Idle is a single space placeholder
     expect(LEFT_WIDTH_IDLE).toBe(1)
   })

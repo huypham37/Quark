@@ -3,6 +3,7 @@
 //
 // Always renders 1 row to keep layout stable (no height jumps).
 // When running: "⠋ Conjuring…      Esc to cancel"  (animated spinner + cycling label)
+// When steering: "⠋ Steering context…"
 // When idle: empty line
 // Right side shows git branch (if in a repo) and abbreviated cwd path.
 //
@@ -23,13 +24,13 @@ import {
   ZONE_GAP,
   pickRightZone,
   leftWidthRunning,
-  LEFT_WIDTH_COMPACTING,
+  LEFT_WIDTH_STEERING,
   LEFT_WIDTH_IDLE,
 } from "./footer-bar-fit"
 
 export interface FooterBarProps {
   running: boolean
-  compacting?: boolean
+  steering?: boolean
 }
 
 function getGitBranch(): string {
@@ -62,9 +63,9 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
     onCleanup(() => clearInterval(id))
   })
 
-  // Animate spinner when running or compacting
+  // Animate spinner when running or steering
   createEffect(() => {
-    if (!props.running && !props.compacting) {
+    if (!props.running && !props.steering) {
       setFrameIndex(0)
       setLabelIndex(0)
       return
@@ -77,7 +78,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
 
   // Cycle streaming label text
   createEffect(() => {
-    if (!props.running && !props.compacting) {
+    if (!props.running) {
       setLabelIndex(0)
       return
     }
@@ -91,10 +92,10 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   const currentLabel = () => STREAMING_LABELS[labelIndex()]!
 
   // Adaptive right zone — recomputes when terminal width, branch, running
-  // state, compacting state, or current label change.
+  // state, steering state, or current label change.
   const rightZone = createMemo(() => {
-    const leftWidth = props.compacting
-      ? LEFT_WIDTH_COMPACTING
+    const leftWidth = props.steering
+      ? LEFT_WIDTH_STEERING
       : props.running
         ? leftWidthRunning(currentLabel())
         : LEFT_WIDTH_IDLE
@@ -105,7 +106,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   return (
     <box flexDirection="row" justifyContent="space-between" height={1}>
       <Show
-        when={props.compacting}
+        when={props.steering}
         fallback={
           <Show
             when={props.running}
@@ -123,7 +124,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
       >
         <box flexDirection="row">
           <text fg={colors.warning} bold>{spinnerChar()} </text>
-          <text>Compacting context…</text>
+          <text>Steering context…</text>
         </box>
       </Show>
       <box flexDirection="row">

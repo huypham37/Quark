@@ -124,5 +124,5 @@ export function leftWidthRunning(label: string): number {
   // "<spinner(2)> " + label + "      " + "Esc" + " to cancel"
   return 3 + label.length + 6 + 3 + 10
 }
-export const LEFT_WIDTH_COMPACTING = 3 + "Compacting context…".length
+export const LEFT_WIDTH_STEERING = 3 + "Steering context…".length
 export const LEFT_WIDTH_IDLE = 1 // single " " placeholder text

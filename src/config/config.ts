@@ -19,29 +19,15 @@ const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
 
 export const CONFIG_PATH = CONFIG_FILE
 
-// ---------------------------------------------------------------------------
-// Compact config — nested under QuarkConfig
-// ---------------------------------------------------------------------------
-
-export interface CompactConfig {
-  /** Which compaction method to use. Default: "general" */
-  method: string
-  /** Number of recent user/assistant turn pairs to keep verbatim. Default: 5 */
-  retain_turns: number
-  /**
-   * Fraction of the model's context window at which auto-compaction triggers.
-   * e.g. 0.50 means compact when estimated tokens >= 50% of context_window.
-   * Default: 0.50
-   */
+export interface BranchingConfig {
+  /** Fraction of the model's context window at which auto-branching triggers. */
   threshold: number
-  /** Enable auto-compaction. Default: true */
+  /** Enable auto-branching on context pressure. */
   auto: boolean
 }
 
-const COMPACT_DEFAULTS: CompactConfig = {
-  method: "general",
-  retain_turns: 5,
-  threshold: 0.50,
+const BRANCHING_DEFAULTS: BranchingConfig = {
+  threshold: 0.90,
   auto: true,
 }
 
@@ -72,7 +58,7 @@ const DEFAULTS = {
   small_model: "gpt-4o-mini",
   main_model: "gpt-4o",
   max_steps: 100,
-  compact: COMPACT_DEFAULTS,
+  branching: BRANCHING_DEFAULTS,
   providers: {} as Record<string, ProviderConfig>,
   hide_readonly_tools: false,
 } as const
@@ -82,7 +68,7 @@ export interface QuarkConfig {
   small_model: string
   main_model: string
   max_steps: number
-  compact: CompactConfig
+  branching: BranchingConfig
   /** User-defined OpenAI-compatible providers (keyed by provider ID) */
   providers: Record<string, ProviderConfig>
   /** Hide read-only tool calls (read, grep, glob, websearch, webfetch, etc.) from the conversation view */
@@ -105,20 +91,15 @@ function readRawConfig(): Record<string, unknown> {
   }
 }
 
-function parseCompactConfig(raw: unknown): CompactConfig {
-  if (!raw || typeof raw !== "object") return { ...COMPACT_DEFAULTS }
+function parseBranchingConfig(raw: unknown): BranchingConfig {
+  if (!raw || typeof raw !== "object") return { ...BRANCHING_DEFAULTS }
   const r = raw as Record<string, unknown>
   return {
-    method: typeof r.method === "string" && r.method ? r.method : COMPACT_DEFAULTS.method,
-    retain_turns:
-      typeof r.retain_turns === "number" && r.retain_turns > 0
-        ? r.retain_turns
-        : COMPACT_DEFAULTS.retain_turns,
     threshold:
       typeof r.threshold === "number" && r.threshold > 0 && r.threshold <= 1
         ? r.threshold
-        : COMPACT_DEFAULTS.threshold,
-    auto: typeof r.auto === "boolean" ? r.auto : COMPACT_DEFAULTS.auto,
+        : BRANCHING_DEFAULTS.threshold,
+    auto: typeof r.auto === "boolean" ? r.auto : BRANCHING_DEFAULTS.auto,
   }
 }
 
@@ -172,7 +153,7 @@ export function loadConfig(): QuarkConfig {
         : DEFAULTS.main_model,
     max_steps:
       typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
-    compact: parseCompactConfig(raw.compact),
+    branching: parseBranchingConfig(raw.branching),
     providers: parseProviders(raw.providers),
     hide_readonly_tools:
       typeof raw.hide_readonly_tools === "boolean"

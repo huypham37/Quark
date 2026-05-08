@@ -7,15 +7,13 @@
 
 import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
-import { compactTool } from "./tool/compact"
 import { questionTool } from "./tool/question"
+import { findSessionTool } from "./tool/find_session"
+import { readSessionTool } from "./tool/read_session"
 import { buildSkillTool } from "./tool/skill"
 import { ensureStorageRoot } from "./storage/session-jsonl"
 import { loadProfileTools } from "./tool/loader"
 import { loadPlugins } from "./plugin/loader"
-import { registerMethod, setDefaultMethod } from "./session/compact-resolver"
-import { anchored } from "./session/methods/anchored"
-import { general } from "./session/methods/general"
 import { loadConfig } from "./config/config"
 
 let initialized = false
@@ -38,8 +36,7 @@ export interface BootstrapOptions {
  *
  * Responsibilities:
  * - Ensures the session storage directory exists (`~/.config/quark/session/`)
- * - Registers built-in tools: `read`, `compact`, `skill`
- * - Registers and sets the default compaction method from config
+ * - Registers built-in tools: `read`, `skill`, `find_session`, `read_session`
  * - Loads profile-declared external tools from `~/.config/quark/tools/{id}.ts`
  * - Loads plugins from `~/.config/quark/plugins/*.ts`
  *
@@ -62,14 +59,10 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 
   // Register built-in tools (always available)
   register(readTool)
-  register(compactTool)
+  register(findSessionTool)
+  register(readSessionTool)
   register(questionTool)
   register(buildSkillTool(opts?.boundSkills))
-
-  // Register compaction methods and set default from config
-  registerMethod(anchored)
-  registerMethod(general)
-  setDefaultMethod(loadConfig().compact.method)
 
   // Load profile-declared tools from ~/.config/quark/tools/
   // Missing or invalid tools are shown as notifications (non-blocking)

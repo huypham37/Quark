@@ -72,7 +72,7 @@ export const Prompt: Component<PromptProps> = (props) => {
     return `${skills} skill${skills !== 1 ? "s" : ""}`
   }
 
-  const borderColor = () => props.disabled ? colors.muted : colors.success
+  const borderColor = () => colors.outline
 
   const handleSubmit = () => {
     if (!textareaRef) return

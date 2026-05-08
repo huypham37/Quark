@@ -101,12 +101,12 @@ export type TuiAction =
   | { type: "tool-stream-delta"; messageId: string; callId: string; content: string }
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
+  | { type: "set-steering"; steering: boolean }
   | { type: "update-status"; partial: Partial<TuiStatus> }
   | { type: "set-error"; message: string }
   | { type: "clear-error" }
   | { type: "set-permission"; request: PermissionRequest }
   | { type: "clear-permission" }
-  | { type: "set-compacting"; compacting: boolean }
   // Sub-agent observability actions
   | { type: "subagent-tool-start"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string }
   | { type: "subagent-tool-input"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; input: Record<string, unknown> }
@@ -230,7 +230,7 @@ export interface AppStore {
   sessionId: string | null
   messages: TuiMessage[]
   running: boolean
-  compacting: boolean
+  steering: boolean
   thinkingEffort: ThinkingEffort
   status: TuiStatus
   error?: string
@@ -254,7 +254,7 @@ export function createAppState(initial: {
     sessionId: initial.sessionId,
     messages: [],
     running: false,
-    compacting: false,
+    steering: false,
     thinkingEffort: "none",
     status: {
       tokensUsed: 0,
@@ -506,6 +506,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore("running", action.running)
       break
 
+    case "set-steering":
+      setStore("steering", action.steering)
+      break
+
     case "update-status":
       setStore("status", (prev) => ({ ...prev, ...action.partial }))
       break
@@ -576,10 +580,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           }
         }),
       )
-      break
-
-    case "set-compacting":
-      setStore("compacting", action.compacting)
       break
 
     case "cycle-thinking": {

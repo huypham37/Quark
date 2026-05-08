@@ -69,10 +69,6 @@ export interface BusEvents {
     }>
   }
 
-  // Compaction lifecycle
-  "compaction-start": { sessionId: string }
-  "compaction-end": { sessionId: string; result: import("./compact-resolver").CompactResult | null }
-
   // Retry — emitted when a retryable error triggers a retry with backoff
   "retry": { sessionId: string; attempt: number; delayMs: number; error: unknown }
 
@@ -92,12 +88,17 @@ export interface BusEvents {
   "session-reset": { sessionId: string | null }
 
   // Session was switched (e.g. /sessions <id> — TUI loads existing session)
-  // estimatedTokens: if provided (e.g. post-compaction), the status bar is
+  // estimatedTokens: if provided (e.g. after branching), the status bar is
   // updated immediately instead of showing 0 until the next step-finish.
   "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
   "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
+
+  // Steer (branching) lifecycle — TUI shows a "Steering…" indicator while the
+  // parent session is being summarized for the new branch.
+  "steer-start": { sessionId: string }
+  "steer-end": { sessionId: string }
 
   // ---------------------------------------------------------------------------
   // Sub-agent observability — events forwarded from child `quark --sub-agent`

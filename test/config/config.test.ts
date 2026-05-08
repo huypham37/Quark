@@ -308,17 +308,17 @@ describe("setConfigField", () => {
 })
 
 // ---------------------------------------------------------------------------
-// loadConfig — compact defaults (issue #69)
+// loadConfig — branching defaults
 // ---------------------------------------------------------------------------
-describe("loadConfig — compact defaults", () => {
-  test("default compact threshold is 0.50", () => {
+describe("loadConfig — branching defaults", () => {
+  test("default branching threshold is 0.90", () => {
     const config = loadConfig()
-    expect(config.compact.threshold).toBe(0.50)
+    expect(config.branching.threshold).toBe(0.90)
   })
 
-  test("default compact auto is true", () => {
+  test("default branching auto is true", () => {
     const config = loadConfig()
-    expect(config.compact.auto).toBe(true)
+    expect(config.branching.auto).toBe(true)
   })
 })
 

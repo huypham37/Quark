@@ -8,7 +8,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 export const TOOL_LABELS: Record<string, string> = {
   read: 'Read', write: 'Write', edit: 'Edit', bash: 'Bash',
   skill: 'Skill', todo: 'Todo', grep: 'Search', glob: 'Glob',
-  websearch: 'Web Search', webfetch: 'Fetch', compact: 'Compact',
+  websearch: 'Web Search', webfetch: 'Fetch',
 }
 
 export function toolLabel(id: string) {

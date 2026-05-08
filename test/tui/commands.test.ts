@@ -32,13 +32,10 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("returns multiple matches for shared prefix", () => {
-    // "c" matches "compact" and "clear"
+  test("c prefix matches clear only", () => {
     const result = filterCommands("c")
-    expect(result.length).toBe(2)
-    const ids = result.map((c) => c.id)
-    expect(ids).toContain("compact")
-    expect(ids).toContain("clear")
+    expect(result.length).toBe(1)
+    expect(result[0]!.id).toBe("clear")
   })
 
   test("returns empty array when no commands match", () => {
@@ -74,11 +71,12 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBeUndefined()
   })
 
-  test("s prefix matches sessions and settings", () => {
+  test("s prefix matches sessions, settings, and steer", () => {
     const result = filterCommands("s")
-    expect(result.length).toBe(2)
+    expect(result.length).toBe(3)
     expect(result.map((c) => c.id)).toContain("sessions")
     expect(result.map((c) => c.id)).toContain("settings")
+    expect(result.map((c) => c.id)).toContain("steer")
   })
 
   test("r prefix matches reload-config only", () => {

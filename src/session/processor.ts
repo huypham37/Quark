@@ -24,7 +24,7 @@ import {
   type ReasoningPartData,
 } from "./message"
 import { isRetryable, isContextTooLong, retryDelay, extractRetryAfter, sleep } from "./retry"
-import { isOverContextThreshold, getContextWindow } from "./compaction"
+import { isOverContextThreshold, getContextWindow } from "./context"
 import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 import { loadConfig } from "../config/config"
@@ -57,13 +57,13 @@ export interface ProcessInput {
   rebuildModel?: (provider: string, model: string) => Promise<LanguageModel>
 }
 
-export async function processStream(input: ProcessInput): Promise<"stop" | "continue" | "compact"> {
+export async function processStream(input: ProcessInput): Promise<"stop" | "continue" | "branch"> {
   // Track tool parts by callId so we can update them as events arrive
   const toolParts = new Map<string, { partId: string; data: ToolPartData }>()
   let currentText: { partId: string; data: TextPartData } | undefined
   let currentReasoning: { partId: string; data: ReasoningPartData } | undefined
   let lastFinish: string | undefined
-  let needsCompaction = false
+  let needsBranch = false
   let attempt = 0
   const maxRetries = 5
 
@@ -280,17 +280,15 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             bus.emit("step-finish", { sessionId: sid, messageId: mid, data: stepData })
 
             // Mid-stream overflow check: if the input tokens from this step
-            // exceed the compaction threshold, signal that we need to stop
-            // the stream and compact. The for-await loop checks needsCompaction
-            // after each event and breaks out before the next tool round.
-            if (!needsCompaction && usage?.inputTokens) {
+            // exceed the branching threshold, stop before the next tool round.
+            if (!needsBranch && usage?.inputTokens) {
               const cfg = loadConfig()
-              if (cfg.compact.auto) {
+              if (cfg.branching.auto) {
                 const modelLimit = getModelLimit(input.modelId ?? "")
                 const ctxWindow = getContextWindow(modelLimit)
 
-                if (ctxWindow > 0 && isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.compact.threshold)) {
-                  needsCompaction = true
+                if (ctxWindow > 0 && isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.branching.threshold)) {
+                  needsBranch = true
                 }
               }
             }
@@ -354,9 +352,9 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             break
         }
 
-        // Mid-stream compaction: if finish-step set needsCompaction, stop
+        // Mid-stream branching: if finish-step set needsBranch, stop
         // consuming the stream before the next tool round begins.
-        if (needsCompaction) break
+        if (needsBranch) break
       }
     } catch (e: any) {
       // Mark any in-flight tool parts as errored and notify the TUI via bus
@@ -385,11 +383,11 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         currentText = undefined
       }
 
-      // Context-too-long: signal the loop to compact instead of crashing
+      // Context-too-long: signal the loop to branch instead of crashing
       if (isContextTooLong(e)) {
         finishMessage(mid, "stop", undefined, sid)
         bus.emit("context-too-long", { sessionId: sid, error: e })
-        return "compact"
+        return "branch"
       }
 
       if (isRetryable(e)) {
@@ -443,12 +441,12 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     }
 
     // Success path — finalize the message
-    // Mid-stream compaction: if we broke out of the stream because of overflow,
-    // finalize the current message and signal the loop to compact.
-    if (needsCompaction) {
+    // Mid-stream branching: if we broke out of the stream because of overflow,
+    // finalize the current message and signal the loop to branch.
+    if (needsBranch) {
       finishMessage(mid, "stop", undefined, sid)
       bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish: "stop" })
-      return "compact"
+      return "branch"
     }
 
     const finish = lastFinish === "tool-calls" ? "tool-calls" as const

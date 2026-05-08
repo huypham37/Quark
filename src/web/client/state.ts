@@ -83,7 +83,6 @@ export interface AppState {
   toasts: Toast[]
   sidebarOpen: boolean
   modelPickerOpen: boolean
-  compacting: boolean
   showThinking: boolean
   /** Optimistic IDs that were already reconciled — ADD_USER_MSG should skip these */
   _reconciledOptIds: Set<string>
@@ -103,7 +102,6 @@ export const initialState: AppState = {
   toasts: [],
   sidebarOpen: false,
   modelPickerOpen: false,
-  compacting: false,
   showThinking: false,
   _reconciledOptIds: new Set(),
 }

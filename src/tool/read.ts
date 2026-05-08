@@ -25,6 +25,14 @@ export const readTool = defineTool({
       .describe(`Maximum number of lines to read (default ${DEFAULT_LIMIT})`),
   }),
   async execute(args, _ctx) {
+    if (typeof args.path !== "string" || args.path.trim() === "") {
+      return {
+        title: "Read error",
+        output: "Error: path is required and must be a non-empty string",
+        metadata: { path: String(args.path ?? ""), error: "invalid_path" },
+      }
+    }
+
     const filePath = path.resolve(args.path)
 
     if (!fs.existsSync(filePath)) {

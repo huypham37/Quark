@@ -10,9 +10,13 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
+import type { SessionTreeRow } from "../session-tree-picker"
+import { CommandCard } from "./command-card"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
+const MAX_SESSION_VISIBLE_ROWS = 8
+const SESSION_CARD_INSET = 2
 
 export interface PickerItem {
   id: string
@@ -24,7 +28,7 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; items: PickerItem[]; selectedIndex: number }
+  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
 
 export interface AutocompleteProps {
@@ -49,6 +53,7 @@ export const Autocomplete: Component<AutocompleteProps> = (props) => {
 interface DropdownRow {
   label: string
   fg: ColorInput
+  bg: ColorInput
   bold: boolean
 }
 
@@ -65,17 +70,20 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   const dims = useTerminalDimensions()
   const m = () => props.mode
   let scrollRef: ScrollBoxRenderable | undefined
+  const maxVisibleRows = () => {
+    const isSession = m()?.type === "sessions"
+    const borderRows = isSession ? 2 : 0
+    const available = Math.max(1, dims().height - BOTTOM_OFFSET - borderRows)
+    return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
+  }
 
   // Scroll to keep selected item visible
   createEffect(() => {
     const mode = m()
     if (!mode || !scrollRef) return
     const selectedIndex = mode.selectedIndex
-    // Account for title row in sessions/models pickers
-    const hasTitle = mode.type === "sessions" || mode.type === "models"
-    const rowIndex = hasTitle ? selectedIndex + 1 : selectedIndex
-
-    const viewportHeight = MAX_VISIBLE_ROWS
+    const viewportHeight = maxVisibleRows()
+    const rowIndex = scrollAnchorIndex(mode, selectedIndex, viewportHeight)
     const scrollBottom = scrollRef.scrollTop + viewportHeight
     if (rowIndex < scrollRef.scrollTop) {
       scrollRef.scrollTo(rowIndex)
@@ -91,20 +99,20 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
     // Optional title row (sessions / models)
     if (mode.type === "sessions") {
-      result.push({ label: "Sessions — select and press Enter to switch", fg: colors.primary, bold: true })
+      // The sessions picker is a task tree; task headers are rendered below.
     } else if (mode.type === "models") {
-      result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bold: true })
+      result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     }
 
     // Empty-state row OR data rows (mutually exclusive)
     if (mode.type === "files" && mode.items.length === 0) {
-      result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bold: false })
+      result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands" && mode.items.length === 0) {
-      result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bold: false })
-    } else if (mode.type === "sessions" && mode.items.length === 0) {
-      result.push({ label: "No sessions found", fg: colors.muted, bold: false })
+      result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
+    } else if (mode.type === "sessions" && mode.rows.length === 0) {
+      result.push({ label: "No sessions found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "models" && mode.items.length === 0) {
-      result.push({ label: "No models available", fg: colors.muted, bold: false })
+      result.push({ label: "No models available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands") {
       for (let i = 0; i < mode.items.length; i++) {
         const cmd = mode.items[i]!
@@ -114,6 +122,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         result.push({
           label: `${prefix} /${cmd.id}${usage} — ${cmd.description}`,
           fg: sel ? colors.primary : colors.textDim,
+          bg: colors.dropdownBg,
           bold: sel,
         })
       }
@@ -124,16 +133,29 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         result.push({
           label: `${sel ? "❯ " : "  "}${item}`,
           fg: sel ? colors.primary : colors.textDim,
+          bg: colors.dropdownBg,
           bold: sel,
         })
       }
     } else if (mode.type === "sessions") {
-      for (let i = 0; i < mode.items.length; i++) {
-        const item = mode.items[i]!
-        const sel = i === mode.selectedIndex
+      for (let i = 0; i < mode.rows.length; i++) {
+        const item = mode.rows[i]!
+        if (item.type === "spacer") {
+          result.push({ label: "", fg: colors.textDim, bg: colors.commandCardBg, bold: false })
+          continue
+        }
+
+        const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
+        const indent = item.type === "session" ? `${"   ".repeat(item.depth)}╰─▶ ` : ""
+        const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
         result.push({
-          label: `${sel ? "❯ " : "  "}${item.label}${item.isCurrent ? "  ← current" : ""}`,
-          fg: sel ? colors.primary : colors.textDim,
+          label: item.type === "task"
+            ? `${prefix}${item.label}`
+            : item.type === "orphan"
+              ? `  ${item.label}`
+              : `  ${indent}${item.label}`,
+          fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
+          bg: colors.commandCardBg,
           bold: sel,
         })
       }
@@ -144,6 +166,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         result.push({
           label: `${sel ? "❯ " : "  "}${item.label}${item.isCurrent ? "  ← current" : ""}`,
           fg: sel ? colors.primary : colors.textDim,
+          bg: colors.dropdownBg,
           bold: sel,
         })
       }
@@ -153,41 +176,65 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   }
 
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
-  const visibleHeight = () => Math.min(rows().length, MAX_VISIBLE_ROWS)
+  const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
+  const isSessionCard = () => m()?.type === "sessions"
+  const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
+  const panelHeight = () => isSessionCard() && rows().length > 0 ? visibleHeight() + 2 : visibleHeight()
+
+  const content = () => (
+    <scrollbox
+      ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
+      height={visibleHeight()}
+      scrollbarOptions={{ visible: false }}
+      bg={panelBg()}
+    >
+      <For each={rows()}>
+        {(row) => {
+          // Pad label with spaces to fill the full row width so bg covers all cells.
+          // Keep the row background inside the picker shell, not under its border.
+          const padded = () => {
+            const w = dims().width - (isSessionCard() ? 10 : 6)
+            return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
+          }
+          return (
+            <box height={1} bg={row.bg}>
+              <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
+            </box>
+          )
+        }}
+      </For>
+    </scrollbox>
+  )
 
   return (
     <box
       flexDirection="column"
       paddingX={1}
-      height={visibleHeight()}
+      height={panelHeight()}
       position="absolute"
       bottom={BOTTOM_OFFSET}
-      left={0}
-      right={0}
-      bg={rows().length > 0 ? colors.dropdownBg : undefined}
+      left={isSessionCard() ? SESSION_CARD_INSET : 0}
+      right={isSessionCard() ? SESSION_CARD_INSET : 0}
+      bg={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
     >
-      <scrollbox
-        ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
-        height={visibleHeight()}
-        scrollbarOptions={{ visible: false }}
-        bg={colors.dropdownBg}
-      >
-        <For each={rows()}>
-          {(row) => {
-            // Pad label with spaces to fill the full row width so bg covers all cells.
-            // Outer box has paddingX={2} (App) + paddingX={1} (this box) = 6 cols used.
-            const padded = () => {
-              const w = dims().width - 6
-              return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
-            }
-            return (
-              <box height={1} bg={colors.dropdownBg}>
-                <text fg={row.fg} bg={colors.dropdownBg} bold={row.bold}>{padded()}</text>
-              </box>
-            )
-          }}
-        </For>
-      </scrollbox>
+      {isSessionCard() && rows().length > 0
+        ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
+        : content()}
     </box>
   )
+}
+
+function scrollAnchorIndex(mode: AutocompleteMode, selectedIndex: number, viewportHeight: number): number {
+  if (mode.type === "models") return selectedIndex + 1
+  if (mode.type !== "sessions") return selectedIndex
+
+  for (let i = selectedIndex - 1; i >= 0; i--) {
+    const row = mode.rows[i]
+    if (!row || row.type === "spacer") break
+    if (row.type === "task") {
+      return selectedIndex - i < viewportHeight ? i : selectedIndex
+    }
+  }
+
+  return selectedIndex
 }

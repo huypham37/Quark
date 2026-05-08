@@ -13,7 +13,7 @@ import { InputArea } from './components/input-area'
 import { PermissionDialog } from './components/permission-dialog'
 import { Toasts } from './components/toasts'
 
-const COMPACTION_TOAST_ID = -1
+
 
 export function App() {
   const vh = useViewportHeight()
@@ -322,11 +322,6 @@ export function App() {
       case 'step-finish':
         if (d.data?.tokens?.input) {
           set({ tokensUsed: d.data.tokens.input })
-          // Auto-compact when usage hits the limit
-          if (s.tokenLimit > 0 && d.data.tokens.input >= s.tokenLimit && !s.compacting) {
-            toast('Context Full', 'Context window full — compacting automatically…', 'warn')
-            compactContext()
-          }
         }
         break
       case 'loop-start': set({ running: true }); break
@@ -356,14 +351,6 @@ export function App() {
       case 'retry':
         toast('Retrying', `Attempt ${d.attempt} — ${Math.round((d.delayMs || 1000) / 1000)}s…`, 'warn')
         break
-      case 'compaction-start':
-        set({ compacting: true })
-        break
-      case 'compaction-end': {
-        set({ compacting: false })
-        dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
-        break
-      }
       case 'session-switch':
         set({ sessionId: d.sessionId })
         if (d.messages) dispatch({ type: 'LOAD_MESSAGES', messages: d.messages })
@@ -534,45 +521,6 @@ export function App() {
     } catch { toast('Error', 'Failed to toggle thinking', 'error') }
   }
 
-  async function compactContext() {
-    if (!s.sessionId) {
-      toast('Nothing to compact', 'No active session', 'warn')
-      return
-    }
-    try {
-      set({ compacting: true })
-      toast('Compacting', 'Compacting context…', 'warn', { id: COMPACTION_TOAST_ID, persistent: true })
-      const r = await api<{
-        ok?: boolean
-        error?: string
-        result?: { type: string; evictedCount?: number; newSessionId?: string; estimatedTokens?: number }
-      }>('POST', '/api/compact', { sessionId: s.sessionId })
-      set({ compacting: false })
-      dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
-      if (!r.ok || r.error) {
-        toast('Compaction failed', r.error || 'An error occurred during compaction', 'error')
-      } else if (!r.result || r.result.evictedCount === 0) {
-        toast('Nothing to compact', 'Not enough turns to compact — keep chatting', 'warn')
-      } else {
-        toast('Compacted', `Evicted ${r.result.evictedCount} messages`, 'warn')
-        if (r.result.newSessionId && r.result.newSessionId !== s.sessionId) {
-          set({ sessionId: r.result.newSessionId })
-          if (r.result.estimatedTokens) set({ tokensUsed: r.result.estimatedTokens })
-          // Reload messages for the new session
-          try {
-            const msgs = await api('GET', `/api/sessions/${r.result.newSessionId}/messages`)
-            if (Array.isArray(msgs)) dispatch({ type: 'LOAD_MESSAGES', messages: msgs })
-          } catch {}
-          refreshSessions()
-        }
-      }
-    } catch {
-      set({ compacting: false })
-      dispatch({ type: 'REMOVE_TOAST', id: COMPACTION_TOAST_ID })
-      toast('Error', 'Failed to compact', 'error')
-    }
-  }
-
   async function respondPerm(action: 'once' | 'always' | 'reject') {
     if (!s.permission) return
     set({ permission: null })
@@ -617,7 +565,7 @@ export function App() {
           )}
         </div>
 
-        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onCompact={compactContext} compacting={s.compacting} onToast={toast} />
+        <InputArea onSend={sendMessage} running={s.running} onCancel={cancelAgent} onToast={toast} />
       </div>
 
       {s.permission && <PermissionDialog perm={s.permission} onRespond={respondPerm} />}

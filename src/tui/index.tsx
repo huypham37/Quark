@@ -10,11 +10,11 @@ import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
 import { createSession, listSessions, getSession } from "../session/session"
-import { loadMessages, toModelMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage } from "../session/message"
-import { resolve as resolveCompaction } from "../session/compact-resolver"
+import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
-import { estimateTokens, getLastInputTokens } from "../session/compaction"
+import { estimateTokens, getLastInputTokens } from "../session/context"
+import { summarizeForBranch, createBranch } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
@@ -30,6 +30,7 @@ import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
 import { undoLatest } from "../commands/undo"
+import { listTasks } from "../task/task"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
 const termBg = await queryTerminalBackground()
@@ -175,6 +176,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "sessions") {
     if (!args) {
       const sessions = listSessions()
+      const tasks = new Map(listTasks().map((task) => [task.id, task]))
       if (sessions.length === 0) {
         bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
         return { handled: true }
@@ -184,8 +186,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         const isCurrent = s.id === sid
         const date = new Date(s.timeUpdated).toLocaleString()
         const title = s.title ?? "(untitled)"
+        const task = s.taskId ? tasks.get(s.taskId)?.title : undefined
         const marker = isCurrent ? " ← current" : ""
-        return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
+        return `  ${s.id.slice(0, 8)}  ${title}${task ? `  ·  ${task}` : ""}  ${date}${marker}`
       })
       const header = `Sessions (${sessions.length}):\n`
       bus.emit("user-message", {
@@ -271,64 +274,56 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    case "compact": {
-      resolveModel().then(async (model) => {
-        const { messages, parts } = loadMessages(sid)
-        const modelMessages = toModelMessages(messages, parts)
-        const modelSpec = modelOverride ?? loadConfig().main_model
-        const budget = getModelLimit(modelSpec)
-        const system = buildSystem(activeAgent)
+    case "steer": {
+      if (!args.trim()) {
+        bus.emit("error", { sessionId: sid, error: new Error("Usage: /steer <goal>") })
+        return { handled: true }
+      }
 
-        bus.emit("compaction-start", { sessionId: sid })
-
-        const result = await resolveCompaction({
-          trigger: "command",
-          ctx: {
-            sessionId: sid,
-            messages,
-            parts,
-            modelMessages,
-            model,
-            agentPrompt: system,
-            budget,
-            persist: { createMessage: createAssistantMessage, addPart, finishMessage, saveUserMessage },
-            session: { create: createSession },
-          },
+      bus.emit("steer-start", { sessionId: sid })
+      let steeringEnded = false
+      try {
+        // Frozen-snapshot semantics: only summarize the parent the first time
+        // it is branched. Subsequent steers reuse the already-frozen summary
+        // so siblings share the same parentSummary and we skip a redundant
+        // LLM call.
+        const parent = getSession(sid)
+        const existing = parent.summary?.trim()
+        let summary: string
+        if (existing && existing.length > 0) {
+          summary = existing
+        } else {
+          const { messages, parts } = loadMessages(sid)
+          const model = await resolveModel(loadConfig().small_model)
+          summary = await summarizeForBranch({ messages, parts, model })
+        }
+        const branch = createBranch({
+          sessionId: sid,
+          summary,
+          prompt: args.trim(),
+          profile: activeAgent.id,
         })
 
-        bus.emit("compaction-end", { sessionId: sid, result })
-
-        if (result.type === "new-session" && result.newSessionId !== sid) {
-          // Switch the TUI to the new compacted session
-          currentSession = { ...currentSession, id: result.newSessionId }
-          const { messages: newMsgs, parts: newParts } = loadMessages(result.newSessionId)
-          const tuiMessages = dbToTuiMessages(newMsgs, newParts)
-          const newModelMessages = toModelMessages(newMsgs, newParts)
-          const systemStr = Array.isArray(system) ? system.join("\n") : system
-          const estimatedTokens = estimateTokens(systemStr, newModelMessages)
-          bus.emit("session-switch", { sessionId: result.newSessionId, messages: tuiMessages, estimatedTokens })
-
-          const feedbackText =
-            result.evictedCount > 0
-              ? `[compact] Done — evicted ${result.evictedCount} message${result.evictedCount !== 1 ? "s" : ""}, new session created.`
-              : `[compact] Nothing to compact — session has no messages to evict.`
-          bus.emit("user-message", {
-            sessionId: result.newSessionId,
-            messageId: `compact-result-${Date.now()}`,
-            text: feedbackText,
-          })
-        } else {
-          // No new session (evictedCount === 0 — nothing to compact)
-          bus.emit("user-message", {
-            sessionId: sid,
-            messageId: `compact-result-${Date.now()}`,
-            text: `[compact] Nothing to compact — session has no messages to evict.`,
-          })
-        }
-      }).catch((err) => {
-        bus.emit("compaction-end", { sessionId: sid, result: null })
-        bus.emit("error", { sessionId: sid, error: err })
-      })
+        currentSession = { id: branch.sessionId }
+        process.env.QUARK_SESSION_ID = branch.sessionId
+        const { messages, parts } = loadMessages(branch.sessionId)
+        const tuiMessages = dbToTuiMessages(messages, parts)
+        const modelMessages = toModelMessages(messages, parts)
+        const system = buildSystem(activeAgent)
+        const systemStr = Array.isArray(system) ? system.join("\n") : system
+        const estimatedTokens = estimateTokens(systemStr, modelMessages)
+        bus.emit("steer-end", { sessionId: sid })
+        steeringEnded = true
+        bus.emit("session-switch", { sessionId: branch.sessionId, messages: tuiMessages, estimatedTokens })
+        notifyInfo("Steer", `Branched to new session`, 3000)
+      } catch (err) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      } finally {
+        if (!steeringEnded) bus.emit("steer-end", { sessionId: sid })
+      }
       return { handled: true }
     }
 
@@ -373,7 +368,11 @@ async function openEditor(sid: string | null): Promise<void> {
 }
 
 function handleGetSessions() {
-  return listSessions()
+  const tasks = new Map(listTasks().map((task) => [task.id, task]))
+  return listSessions().map((session) => ({
+    ...session,
+    taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
+  }))
 }
 
 function handleGetModels() {

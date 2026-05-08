@@ -36,11 +36,24 @@ export interface Session {
   parentSessionId: string | null
   /** Session kind: `"main"` for top-level sessions, `"subagent"` for spawned children */
   kind: SessionKind
+  /** Task this session belongs to */
+  taskId: string | null
+  /** Summary of work done in this session */
+  summary: string | null
+  /** Frozen parent summary captured when this session branches */
+  parentSummary: string | null
+  /** Workspace files modified during this session */
+  filesModified: string[] | null
   /** Unix timestamp (ms) when the session was created */
   timeCreated: number
   /** Unix timestamp (ms) of the last activity */
   timeUpdated: number
 }
+
+export type SessionPatch = Partial<Pick<
+  Session,
+  "title" | "taskId" | "summary" | "parentSummary" | "filesModified" | "timeUpdated"
+>>
 
 /**
  * Create a new session and persist it to JSONL storage.
@@ -56,6 +69,10 @@ export function createSession(opts?: {
   parentSessionId?: string
   kind?: SessionKind
   ephemeral?: boolean
+  taskId?: string | null
+  summary?: string | null
+  parentSummary?: string | null
+  filesModified?: string[] | null
 }): Session {
   const now = Date.now()
   const id = generateId()
@@ -70,6 +87,10 @@ export function createSession(opts?: {
     directory: opts?.directory ?? process.cwd(),
     parentSessionId: opts?.parentSessionId ?? null,
     kind,
+    taskId: opts?.taskId ?? null,
+    summary: opts?.summary ?? null,
+    parentSummary: opts?.parentSummary ?? null,
+    filesModified: opts?.filesModified ?? null,
     timeCreated: now,
     timeUpdated: now,
   }
@@ -131,29 +152,37 @@ export function touchSession(id: string): void {
   appendEvents(id, [event], { timeUpdated: now })
 }
 
-export function setSessionTitle(id: string, title: string): void {
-  // Update in-memory store for ephemeral sessions and return early
+export function updateSession(id: string, patch: SessionPatch): void {
+  const now = Date.now()
+  const fullPatch: SessionPatch = {
+    ...patch,
+    timeUpdated: patch.timeUpdated ?? now,
+  }
+
   const ephemeral = ephemeralStore.get(id)
   if (ephemeral) {
-    ephemeral.title = title
+    Object.assign(ephemeral, fullPatch)
     return
   }
 
-  const now = Date.now()
   const event: SessionUpdateEvent = {
     v: 1,
     ts: now,
     sessionId: id,
     type: "session-update",
-    patch: { title, timeUpdated: now },
+    patch: fullPatch,
   }
-  appendEvents(id, [event], { title, timeUpdated: now })
+  appendEvents(id, [event], fullPatch)
 }
 
-/** List top-level sessions only (no sub-agent children), most recently updated first */
+export function setSessionTitle(id: string, title: string): void {
+  updateSession(id, { title })
+}
+
+/** List user-facing sessions only (main sessions and branches), most recently updated first */
 export function listSessions(): Session[] {
   return scanSessionMetas()
-    .filter((s) => !s.parentSessionId)
+    .filter((s) => s.kind === "main")
     .sort((a, b) => b.timeUpdated - a.timeUpdated)
 }
 

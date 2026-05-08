@@ -23,6 +23,7 @@ export const colors = {
 
   // Borders
   border: RGBA.fromHex("#808080"),     // gray
+  outline: RGBA.fromHex("#ffffff"),    // white
   borderActive: RGBA.fromHex("#00d7d7"), // cyan
   borderSuccess: RGBA.fromHex("#00d75f"), // green
 
@@ -42,6 +43,7 @@ export const colors = {
 
   // Dropdown / autocomplete overlay — updated at runtime by setTerminalBg()
   dropdownBg: RGBA.fromHex("#61AFEF") as RGBA,
+  commandCardBg: RGBA.fromHex("#21252A"),
 
   // Notification panel background — solid dark to prevent text bleed-through
   notificationBg: RGBA.fromHex("#1c1c1c"),

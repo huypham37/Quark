@@ -15,7 +15,7 @@ import type { ToolDef } from "./tool"
 const TOOLS_DIR = path.join(os.homedir(), ".config", "quark", "tools")
 
 // Built-in tools (registered by bootstrap, not loaded from disk)
-const BUILTIN_TOOLS = new Set(["read", "skill", "compact", "question"])
+const BUILTIN_TOOLS = new Set(["read", "skill", "question"])
 
 export interface LoadResult {
   loaded: string[]

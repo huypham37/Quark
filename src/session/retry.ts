@@ -111,7 +111,7 @@ export function extractRetryAfter(error: unknown): number | undefined {
  * Detect context-too-long / prompt-too-long errors from providers.
  *
  * These are 400-class errors where the prompt exceeds the model's context
- * window. Unlike generic 400s they should trigger compaction instead of
+ * window. Unlike generic 400s they should trigger branching instead of
  * being treated as fatal.
  *
  * Matches common error patterns from OpenAI, Anthropic, and other providers:
