@@ -2,20 +2,17 @@ import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive } from "../session/prompt"
 import { bus, type BusEventName } from "../session/events"
 import { createSession, listSessions, getSession } from "../session/session"
-import { loadMessages, createAssistantMessage, addPart, finishMessage, saveUserMessage, toModelMessages } from "../session/message"
-import { dbToTuiMessages } from "../tui/state"
+import { loadMessages } from "../session/message"
+import { dbToConversationMessages } from "../shared/conversation-view"
 import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile"
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
-import { buildSystem } from "../session/system"
 import { loadConfig, parseModelSpec } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
-import { getFiles, fuzzyFilter } from "../tui/filelist"
-import { resolveModel } from "../session/prompt"
+import { getFiles, fuzzyFilter } from "../shared/filelist"
 import { getModelLimit } from "../provider/models"
 import { getThinkingNormalizer } from "../provider/thinking"
-import type { ServerWebSocket } from "bun"
 import path from "path"
 import { mkdirSync } from "fs"
 
@@ -93,7 +90,7 @@ function createRequestHandler(agent: AgentConfig) {
         return json({ error: "Session not found" }, 404)
       }
       const { messages, parts } = loadMessages(id)
-      return json(dbToTuiMessages(messages, parts))
+      return json(dbToConversationMessages(messages, parts))
     }
 
     if (req.method === "GET" && pathname.startsWith("/api/sessions/") && pathname.endsWith("/status")) {

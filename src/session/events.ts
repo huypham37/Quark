@@ -5,8 +5,8 @@
 // tool call progress, token usage, etc.
 
 import { EventEmitter } from "events"
-import type { TextPartData, ToolPartData, StepFinishData, MessageRow } from "./message"
-import type { TuiMessage } from "../tui/state"
+import type { StepFinishData } from "./message"
+import type { ConversationMessage } from "../shared/conversation-view"
 
 // ---- Event types ----
 
@@ -90,7 +90,7 @@ export interface BusEvents {
   // Session was switched (e.g. /sessions <id> — TUI loads existing session)
   // estimatedTokens: if provided (e.g. after branching), the status bar is
   // updated immediately instead of showing 0 until the next step-finish.
-  "session-switch": { sessionId: string; messages: TuiMessage[]; estimatedTokens?: number }
+  "session-switch": { sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
   "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }

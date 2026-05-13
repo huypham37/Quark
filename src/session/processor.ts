@@ -30,7 +30,7 @@ import { fireHook } from "../plugin/registry"
 import { loadConfig } from "../config/config"
 import { getModelLimit } from "../provider/models"
 import { debug } from "../debug"
-import { generateUnifiedDiff } from "../tui/diff-utils"
+import { generateUnifiedDiff } from "../shared/diff-utils"
 import * as fs from "fs"
 
 const dlog = debug("processor")

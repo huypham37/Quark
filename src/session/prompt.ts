@@ -11,8 +11,6 @@
 //    f. "continue" → next iteration (tool calls need follow-up)
 //    g. "stop" → break
 
-import { tool, jsonSchema, type ToolSet, type ToolExecutionOptions } from "ai";
-import { z } from "zod";
 import { createSession, getSession, touchSession } from "./session";
 import {
   saveUserMessage,
@@ -22,33 +20,19 @@ import {
 } from "./message";
 import { buildSystem } from "./system";
 import { processStream } from "./processor";
-import { estimateTokens } from "./context";
-import { autoBranch, shouldBranchWithRealTokens } from "./branch";
+import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
+import { emitSessionSwitch } from "./session-switch";
 import { initializeSession, initializeSessionFromMessage } from "./initializer";
-import { list as listTools, resolve as resolveTools, resolveAvailable } from "../tool/registry";
+import { resolveToolSet } from "../tool/ai-adapter";
 import { getThinkingNormalizer } from "../provider/thinking";
-import { setForceAgent, getCustomFetch } from "../provider/custom-fetch";
-import { loadToken } from "../provider/copilot-auth";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { setForceAgent } from "../provider/custom-fetch";
+import { resolveModel } from "../provider/resolver";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
 import {
-  getProviderConfig,
-  resolveApiKey,
   loadConfig,
   parseModelSpec,
 } from "../config/config";
-import type { ToolDef, ToolResult } from "../tool/tool";
-import {
-  ask as askPermission,
-  evaluate as evaluatePermission,
-  type Ruleset,
-  DeniedError,
-  RejectedError,
-  CorrectedError,
-} from "../permission/permission";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
@@ -56,11 +40,11 @@ import { debug } from "../debug";
 import {
   setCurrentTurn,
   preTurnSnapshot,
-  toolPreExecute,
-  extractFilePath,
 } from "../commands/undo";
 
 const dlog = debug("loop");
+
+export { resolveModel } from "../provider/resolver";
 
 // ---------------------------------------------------------------------------
 // Active sessions — track abort controllers so we can cancel
@@ -220,19 +204,6 @@ function moveActiveSession(from: string, to: string): void {
   process.env.QUARK_SESSION_ID = to
 }
 
-async function emitSessionSwitch(sessionId: string, agent: AgentConfig): Promise<void> {
-  const { messages, parts } = loadMessages(sessionId)
-  const { dbToTuiMessages } = await import("../tui/state")
-  const system = buildSystem(agent)
-  const modelMessages = toModelMessages(messages, parts)
-  const systemStr = Array.isArray(system) ? system.join("\n") : system
-  bus.emit("session-switch", {
-    sessionId,
-    messages: dbToTuiMessages(messages, parts),
-    estimatedTokens: estimateTokens(systemStr, modelMessages),
-  })
-}
-
 // ---------------------------------------------------------------------------
 // loop() — the heart of the agent
 // ---------------------------------------------------------------------------
@@ -293,20 +264,16 @@ async function loop(
     const system = buildSystem(agent);
 
     // 3. Check if branching is needed BEFORE the model call
-    const cfg = loadConfig();
     if (
-      cfg.branching.auto &&
-      shouldBranchWithRealTokens(
+      shouldAutoBranch({
         system,
         modelMessages,
         modelLimit,
-        cfg.branching.threshold,
         parts,
-      )
+      })
     ) {
-      setForceAgent(true);
       try {
-        const branchResult = await autoBranch({
+        const branchResult = await createAutoBranch({
           sessionId: currentSessionId,
           messages,
           parts,
@@ -329,8 +296,6 @@ async function loop(
           error: err,
         }).catch(() => {});
         // Continue with full context if branching fails.
-      } finally {
-        setForceAgent(false);
       }
     }
 
@@ -382,10 +347,9 @@ async function loop(
     if (result === "continue") continue;
     if (result === "branch") {
       // Provider returned context-too-long or mid-stream pressure exceeded.
-      setForceAgent(true);
       try {
         const { messages: curMsgs, parts: curParts } = loadMessages(currentSessionId);
-        const branchResult = await autoBranch({
+        const branchResult = await createAutoBranch({
           sessionId: currentSessionId,
           messages: curMsgs,
           parts: curParts,
@@ -403,260 +367,9 @@ async function loop(
         console.error("[prompt] context-too-long branch FAILED:", err instanceof Error ? err.stack : String(err));
         bus.emit("error", { sessionId: currentSessionId, error: err });
         break;
-      } finally {
-        setForceAgent(false);
       }
     }
     break; // "stop"
   }
   return currentSessionId
-}
-
-// ---------------------------------------------------------------------------
-// resolveModel — get the AI SDK LanguageModel
-//
-// kind: "main" (default) uses main_model from config
-//        "small" uses small_model (for lightweight tasks like title generation)
-//
-// modelSpec is always in "provider/model" format (e.g. "copilot/gpt-5-mini").
-// Falls back to config main_model or small_model if not provided.
-// ---------------------------------------------------------------------------
-export async function resolveModel(
-  modelSpec?: string,
-  kind: "main" | "small" = "main",
-) {
-  const cfg = loadConfig()
-  const spec = modelSpec ?? (kind === "main" ? cfg.main_model : cfg.small_model)
-  const parsed = parseModelSpec(spec)
-
-  let providerId = parsed.provider
-  let modelId = parsed.model
-
-  if (!providerId) {
-    throw new Error(
-      `Model spec "${spec}" must include a provider prefix (e.g. "copilot/gpt-4o").`,
-    )
-  }
-
-  // Plugin hook: allow plugins to intercept/modify provider+model before creating the AI SDK object
-  const beforeOutput = await fireHook(
-    "provider.request.before",
-    {
-      provider: providerId,
-      model: modelId,
-      messages: [],
-    },
-    { provider: providerId, model: modelId },
-  );
-  providerId = beforeOutput.provider;
-  modelId = beforeOutput.model;
-
-  // Branch 1: Copilot — OAuth auth, not config.yaml
-  if (providerId === "copilot") {
-    const getToken = async () => {
-      const token = loadToken();
-      if (!token) {
-        throw new Error(
-          "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
-        );
-      }
-      return token;
-    };
-    const fetch = getCustomFetch("copilot", { getToken });
-    return createOpenAICompatible({
-      name: "copilot",
-      baseURL: "https://api.githubcopilot.com",
-      apiKey: "copilot",
-      fetch,
-    })(modelId);
-  }
-
-  // Branch 2: User-configured providers from ~/.config/quark/config.yaml
-  const pc = getProviderConfig(providerId);
-  if (!pc) {
-    throw new Error(
-      `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
-    );
-  }
-
-  // Native SDK providers
-  if (providerId === "openai") {
-    return createOpenAI({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId);
-  }
-  if (providerId === "anthropic") {
-    return createAnthropic({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId);
-  }
-
-  // Branch 3: OpenAI-compatible (DeepSeek, Kimi, OpenRouter, OpenCode Go, …)
-  const customFetch = getCustomFetch(providerId);
-  return createOpenAICompatible({
-    name: providerId,
-    baseURL: pc.baseURL,
-    apiKey: resolveApiKey(pc.apiKey),
-    fetch: customFetch,
-  })(modelId);
-}
-
-// ---------------------------------------------------------------------------
-// resolveToolSet — convert our ToolDef[] to AI SDK ToolSet
-// ---------------------------------------------------------------------------
-function resolveToolSet(
-  agent: AgentConfig,
-  sessionId: string,
-  messageId: string,
-  abort: AbortSignal,
-): ToolSet {
-  const toolIds = [...agent.tools]
-  const defs = resolveAvailable(toolIds);
-  const ruleset: Ruleset = (agent.permissions ?? []).map(r => ({
-    tool: r.tool,
-    pattern: "*",
-    action: r.action,
-  }));
-  const result: ToolSet = {};
-
-  for (const def of defs) {
-    result[def.id] = toAITool(def, sessionId, messageId, abort, ruleset);
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// abortSignalToPromise — convert an AbortSignal to a rejecting promise
-// ---------------------------------------------------------------------------
-
-function abortSignalToPromise(signal: AbortSignal): Promise<never> {
-  if (signal.aborted) {
-    return Promise.reject(
-      Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-    );
-  }
-  return new Promise<never>((_, reject) => {
-    signal.addEventListener(
-      "abort",
-      () => {
-        reject(
-          Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-        );
-      },
-      { once: true },
-    );
-  });
-}
-
-// ---------------------------------------------------------------------------
-// toAITool — convert a single ToolDef to an AI SDK tool()
-// ---------------------------------------------------------------------------
-function toAITool(
-  def: ToolDef,
-  sessionId: string,
-  messageId: string,
-  abort: AbortSignal,
-  ruleset: Ruleset,
-) {
-  const schema = z.toJSONSchema(def.parameters);
-
-  return tool({
-    description: def.description,
-    inputSchema: jsonSchema(schema as any),
-    async execute(args: any, options: ToolExecutionOptions) {
-      const callId = options.toolCallId;
-      const abortSig = options.abortSignal ?? abort;
-
-      // 1. Permission gate BEFORE any tool execution
-      //    - "allow" → returns immediately
-      //    - "deny"  → throws DeniedError
-      //    - "ask"   → blocks on TUI permission prompt, uses respond() + once/always/reject
-      try {
-        await askPermission({
-          sessionId,
-          tool: def.id,
-          pattern: "*",
-          ruleset,
-        });
-      } catch (e) {
-        if (e instanceof RejectedError || e instanceof CorrectedError) {
-          // User rejected — abort the entire agent step so the model
-          // cannot call another tool
-          bus.emit("permission-rejected", { sessionId });
-        }
-        throw e;
-      }
-
-      // 2. Validate args against the tool's Zod schema (defense-in-depth)
-      const parseResult = def.parameters.safeParse(args)
-      if (!parseResult.success) {
-        const msg = parseResult.error.issues
-          .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-          .join("\n")
-        return {
-          title: `Invalid arguments for ${def.id}`,
-          output: `Invalid arguments for tool "${def.id}":\n${msg}`,
-          metadata: { error: "invalid_arguments", issues: parseResult.error.issues },
-        }
-      }
-      const validatedArgs = parseResult.data as Record<string, unknown>
-
-      // 3. Undo: lazy snapshot file before write/edit modifies it
-      try {
-        const fp = extractFilePath(def.id, validatedArgs);
-        if (fp) {
-          await toolPreExecute(sessionId, fp);
-        }
-      } catch {
-        // Snapshot failure is best-effort — never block tool execution
-      }
-
-      // 3. Permission passed — signal TUI to transition awaiting_approval → running
-      bus.emit("tool-running", { sessionId, messageId, callId });
-
-      // 3. Build execution context for the tool
-      const ctx = {
-        sessionId,
-        messageId,
-        callId,
-        abort: abortSig,
-        // TODO: later support argument-level permission via ctx.ask()
-        async ask(tool: string, pattern: string) {
-          await askPermission({
-            sessionId,
-            tool,
-            pattern,
-            ruleset,
-          });
-        },
-      };
-
-      // 4. Plugin hooks: before/after tool execution
-      const beforeArgs = await fireHook(
-        "tool.execute.before",
-        { tool: def.id, args: validatedArgs },
-        { args: validatedArgs },
-      );
-      const toolResult = await Promise.race([
-        def.execute(beforeArgs.args as any, ctx),
-        abortSignalToPromise(abortSig),
-      ]);
-      await fireHook("tool.execute.after", {
-        tool: def.id,
-        args: beforeArgs.args,
-        result: (toolResult as any).output ?? "",
-      });
-      return toolResult;
-    },
-    toModelOutput(result: any) {
-      if (Array.isArray(result.output)) {
-        // Multi-modal content parts (text + images)
-        return {
-          type: "content" as const,
-          value: result.output,
-        };
-      }
-      return {
-        type: "text" as const,
-        value: result.output as string,
-      };
-    },
-  });
 }
