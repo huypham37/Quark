@@ -5,6 +5,8 @@ I tried different coding agent from Codex, Claude Code or Opencode and Amp. They
 
 So I make Quark:
 
+The goal is deadly simple, I want Quark solving my problem of good tool is close-sourced, strictly tied to the providers, cannot easily to switch between model. Opensourced tool like opencode is not fun to use and not easily hackable, I want an agent that be able to plug to my research pipeline at work with minimal change on the existing codebase. So I made QUark. 
+
   - Quark is my experiment on agent harness, the harness that I believe can push LLM's performance far without needing to retrain the models.
   - Quark is feature-riched, full-packaged coding agent that allows remote control, cli tools if I need just a quick spinup to ask a random question or when I forget cli-command, quark ship with beautiful TUI and desktop environment, if we need.
   - with Quark, I owns my conversation, my conversation data which later on I can use for fine-tuning small-model, or RL to get better result from small-model. I dont like Ampcode approach where they store my conversation on their infrastrcuture, same as Anthropic and OpenAI. 

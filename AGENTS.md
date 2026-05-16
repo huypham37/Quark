@@ -44,20 +44,10 @@ or silently discard your data.
 
 **Write tests that verify the effect at the boundary where your output is consumed.**
 
-Common integration boundaries in this project:
-
-- **Data passes through an SDK to an HTTP request**: mock the SDK with a
-  capturing `fetch`, call the real SDK function, and assert the HTTP body
-- **Output is consumed by another module**: test the consuming module with
-  real input, not just mocks of the interface
-- **Output lands in a file or database**: test with real temp files / in-memory
-  stores, then read back and assert the content
-- **Output is serialized and sent over a wire protocol**: capture the raw
-  serialized form, not just the typed representation
-
-What this catches: SDK renames (e.g. `reasoningEffort` → `reasoning_effort`),
-SDK filters unknown keys, SDK reads from a different namespace than expected,
-silently broken passthrough where data never reaches the consumer.
+**For any change that crosses a system boundary (a new tool, a TUI feature,
+a session/event wiring change, a provider integration), run a manual end-to-end
+test through the TUI before declaring the task done. Automated unit tests verify
+the pieces; a manual test verifies the pieces actually fit together at runtime.**
 
 
 # Quark — Philosophy & Design
@@ -76,69 +66,9 @@ tool execution, memory, context management, state persistence, and guardrails.
 
 The model is a pluggable component. The harness is the product.
 
-### Adaptive by Design
-
-**The agent adapts to your system. Your system doesn't adapt to the agent.**
-
-Quark is built to be adaptive to any workflow, any stack, any environment.
-We provide the core agent loop and tool infrastructure. You provide the tools
-that make it yours.
-
-- Working with a custom deployment system? Build a `deploy` tool.
-- Have a project-specific test runner? Add it as a tool.
-- Need domain-specific validation? Write a tool for it.
-
-The agent doesn't dictate your workflow. It learns your workflow through the
-tools you give it. **You don't adapt to the system — the system is built to
-adapt to your flow.**
-
-This is why tools are external, declarative, and easy to write. The barrier
-to extending Quark is deliberately low. A tool is a TypeScript function with
-a schema. That's it.
-
-Your context defines the agent's capabilities. Your tools define its behavior.
-
----
-
 ## What Makes an LLM an Agent
 
 One pattern: **the loop**.
-
-## Design Principles
-
-### 0. Tool Extensibility First
-
-**The agent adapts to you. You don't adapt to the agent.**
-
-Quark is designed for any system, any workflow, any stack. The agent doesn't
-know about your CI/CD pipeline, your deployment system, your test framework,
-or your project structure — until you teach it with tools.
-
-Tools are the adaptation layer. They are:
-
-- **External** — not hardcoded into the agent
-- **Declarative** — defined with simple TypeScript + Zod schemas
-- **Context-specific** — each project can have its own tools in `~/.config/quark/tools/`
-
-A new tool takes 20 lines. That's the barrier to entry. Low friction by design.
-
-**Examples:**
-- Custom deployment? Write a `deploy` tool that wraps your scripts
-- Project-specific testing? Add a `test` tool that knows your test runner
-- Internal APIs? Create tools that interact with your systems
-
-The agent discovers your workflow through the tools you provide. The harness
-stays generic. Your tools make it specific.
-
-### 1. Minimal by Default
-
-Every token in the system prompt is a cost paid on every LLM call, every loop
-iteration, across every step of a session. We treat context as a scarce resource.
-
-- System prompts are small, carefully crafted, and task-specific
-- Tool descriptions are only loaded for tools the agent actually has
-- Skill content is only loaded when triggered, not at startup
-- No pool dumps, no kitchen-sink prompts
 
 ### 2. Profile-Driven Identity
 
@@ -263,45 +193,6 @@ available set. In the TUI, `/profile research` allows manual override.
 ### Permission System
 - `allow / deny / ask` rules evaluated before each tool execution
 - Profile-level and project-level permission overrides
-
----
-
-## File Structure
-
-```
-.quark/
-  config.yaml            — project-level config + profile overrides
-  profiles/
-    coder.md             — system prompt for coder profile
-    researcher.md        — system prompt for researcher profile
-  skills/
-    code-review/
-      SKILL.md
-    django-patterns/
-      SKILL.md
-      references/
-        model-guide.md
-
-~/.quark/
-  config.yaml            — global config + profile definitions
-  profiles/
-    coder.md
-    researcher.md
-  skills/
-    academic-research/
-      SKILL.md
-```
-
----
-
-## What We Don't Do
-
-- **No kitchen-sink system prompts.** If a profile doesn't need it, it's not there.
-- **No global skill pools.** Skills are bound to profiles, not dumped at startup.
-- **No framework abstractions.** We use the AI SDK directly. No extra layers.
-- **No speculative features.** We build what we need now, not what we might need.
-- **No verbal guardrails.** If it can be enforced mechanically, it must be.
-- **No opinionated workflows.** We provide the loop and tools. You provide the context and the tools that fit your system. The agent adapts to you, not the other way around.
 
 ---
 

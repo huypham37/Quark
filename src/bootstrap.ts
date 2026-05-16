@@ -7,6 +7,7 @@
 
 import { register } from "./tool/registry"
 import { readTool } from "./tool/read"
+import { lookTool } from "./tool/look"
 import { questionTool } from "./tool/question"
 import { findSessionTool } from "./tool/find_session"
 import { readSessionTool } from "./tool/read_session"
@@ -59,6 +60,7 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 
   // Register built-in tools (always available)
   register(readTool)
+  register(lookTool)
   register(findSessionTool)
   register(readSessionTool)
   register(questionTool)

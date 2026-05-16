@@ -22,7 +22,7 @@ import { buildSystem } from "./system";
 import { processStream } from "./processor";
 import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
-import { initializeSession, initializeSessionFromMessage } from "./initializer";
+import { initializeSessionFromMessage, upgradeSessionTitle } from "./initializer";
 import { resolveToolSet } from "../tool/ai-adapter";
 import { getThinkingNormalizer } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
@@ -135,24 +135,25 @@ export async function prompt(input: {
   bus.emit("loop-start", { sessionId });
   let finalSessionId = sessionId;
   try {
-    // Initialize title + task in the background.
+    // Initialize title + task. taskId is assigned synchronously here so it is
+    // guaranteed to exist before any subsequent action (e.g. /steer). The
+    // LLM-driven title upgrade then runs in the background; it never touches
+    // taskId.
     const session = getSession(sessionId);
-    if (session.kind !== "ephemeral" && (!session.title || !session.taskId)) {
+    if (session.kind !== "ephemeral") {
+      if (!session.taskId) {
+        initializeSessionFromMessage({
+          sessionId,
+          message: text,
+          profile: agent.id,
+        });
+      }
       resolveModel(input.model ?? loadConfig().small_model, "small")
-        .then((model) => {
-          initializeSession({
-            sessionId,
-            message: text,
-            model,
-            profile: agent.id,
-          });
-        })
+        .then((model) =>
+          upgradeSessionTitle({ sessionId, message: text, model }),
+        )
         .catch(() => {
-          initializeSessionFromMessage({
-            sessionId,
-            message: text,
-            profile: agent.id,
-          });
+          // best-effort upgrade — fallback title from sync init is kept
         });
     }
 

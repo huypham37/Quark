@@ -95,7 +95,12 @@ describe("session branching", () => {
   })
 
   test("walks lineage from root to child", () => {
-    const root = createSession()
+    const task = createTask({
+      title: "Lineage task",
+      description: "Lineage task",
+      profile: "coder",
+    })
+    const root = createSession({ taskId: task.id })
     const child = createBranch({
       sessionId: root.id,
       summary: "Root summary",
@@ -154,6 +159,39 @@ describe("session branching", () => {
     expect(childA.parentSummary).toBe(childB.parentSummary!)
     // BranchResult also reports the snapshot value, not the discarded input.
     expect(second.summary).toBe("First snapshot — written by initial steer")
+  })
+
+  test("throws when parent has no taskId — invariant violation", () => {
+    const parent = createSession()
+    expect(() =>
+      createBranch({
+        sessionId: parent.id,
+        summary: "Should fail",
+        prompt: "Anything",
+        profile: "coder",
+      }),
+    ).toThrow(/parent has no taskId/)
+  })
+
+  test("child taskId is immutable — branching never rewrites the parent's taskId", () => {
+    const task = createTask({
+      title: "Immutable taskId",
+      description: "Immutable taskId",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+
+    const result = createBranch({
+      sessionId: parent.id,
+      summary: "Snapshot",
+      prompt: "Continue",
+      profile: "coder",
+    })
+
+    // No extra task created — both parent and child share the original.
+    expect(listSessions().filter((s) => s.taskId === task.id).length).toBe(2)
+    expect(getSession(parent.id).taskId).toBe(task.id)
+    expect(getSession(result.sessionId).taskId).toBe(task.id)
   })
 
   test("detects branch pressure using real tokens before estimates", () => {

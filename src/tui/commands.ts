@@ -24,6 +24,8 @@ export const commands: SlashCommand[] = [
   { id: "reload-config", description: "Reload config without restarting" },
   { id: "undo", description: "Undo last agent file changes" },
   { id: "steer", description: "Branch to a new session with a goal", usage: "<goal>" },
+  { id: "goal", description: "Pursue a goal autonomously until done", usage: "<goal description>" },
+  { id: "statistics", description: "Show token usage statistics and charts" },
   { id: "exit", description: "Exit Quark" },
 ]
 

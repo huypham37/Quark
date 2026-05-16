@@ -77,10 +77,6 @@ export function getTask(id: string): Task | null {
   return readTasks().find((task) => task.id === id) ?? null
 }
 
-export function findTaskByDescription(description: string): Task | null {
-  return readTasks().find((task) => task.description === description) ?? null
-}
-
 export function createTask(input: {
   title: string
   description: string

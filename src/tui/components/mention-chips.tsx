@@ -26,9 +26,15 @@ export interface ContextItem {
 export function parseContextBlocks(text: string): { cleaned: string; items: ContextItem[] } {
   const items: ContextItem[] = []
 
-  // Extract <directory> blocks
-  const dirRegex = /<directory path="([^"]+)">([\s\S]*?)<\/directory>/g
+  // Extract self-closing <directory path="..." /> blocks
+  const dirSelfCloseRegex = /<directory path="([^"]+)"\s*\/>/g
   let match: RegExpExecArray | null
+  while ((match = dirSelfCloseRegex.exec(text)) !== null) {
+    items.push({ type: "directory", path: match[1]!, files: [] })
+  }
+
+  // Extract <directory> blocks with inner content (legacy: file listing)
+  const dirRegex = /<directory path="([^"]+)">([\s\S]*?)<\/directory>/g
   while ((match = dirRegex.exec(text)) !== null) {
     const path = match[1]!
     const body = match[2] ?? ""
@@ -66,6 +72,7 @@ export function parseContextBlocks(text: string): { cleaned: string; items: Cont
 
   // Clean up the text by removing all XML blocks
   const cleaned = text
+    .replace(/<directory[^>]*\/>/g, "")
     .replace(/<directory[^>]*>[\s\S]*?<\/directory>/g, "")
     .replace(/<file[^>]*>[\s\S]*?<\/file>/g, "")
     .replace(/<subdirectory[^>]*\/>/g, "")

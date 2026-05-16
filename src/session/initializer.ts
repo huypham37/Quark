@@ -1,8 +1,14 @@
 // SessionInitializer — generate a title and link the session to a task
+//
+// Invariants:
+//   - taskId is set exactly once, synchronously, on first user message
+//     (via initializeSessionFromMessage). It is never rewritten afterwards.
+//   - upgradeSessionTitle only refines the human-readable title; it must
+//     never touch taskId.
 
 import { generateText, type LanguageModel } from "ai"
 import { z } from "zod"
-import { createTask, findTaskByDescription, updateTask } from "../task/task"
+import { createTask, updateTask } from "../task/task"
 import { getSession, updateSession } from "./session"
 
 export const InitSchema = z.object({
@@ -46,46 +52,44 @@ function fallbackInit(message: string): InitResult {
   return { title, task }
 }
 
-function linkTask(input: {
-  sessionId: string
-  init: InitResult
-  profile: string
-}): void {
-  const existing = findTaskByDescription(input.init.task)
-  const task = existing
-    ? updateTask(existing.id, { timeUpdated: Date.now() })
-    : createTask({
-        title: input.init.task,
-        description: input.init.task,
-        profile: input.profile,
-      })
-
-  const session = getSession(input.sessionId)
-  updateSession(input.sessionId, {
-    ...(session.title ? {} : { title: input.init.title }),
-    taskId: task.id,
-  })
-}
-
+/**
+ * Synchronously create a task from the first user message and link the
+ * session to it. Idempotent — does nothing if the session already has a
+ * taskId. This is the only function that assigns taskId.
+ */
 export function initializeSessionFromMessage(input: {
   sessionId: string
   message: string
   profile: string
 }): void {
-  linkTask({
-    sessionId: input.sessionId,
-    init: fallbackInit(input.message),
+  const session = getSession(input.sessionId)
+  if (session.taskId) return
+
+  const { title, task: description } = fallbackInit(input.message)
+  const task = createTask({
+    title: description,
+    description,
     profile: input.profile,
+  })
+
+  updateSession(input.sessionId, {
+    ...(session.title ? {} : { title }),
+    taskId: task.id,
   })
 }
 
-export async function initializeSession(input: {
+/**
+ * Asynchronously refine the session title (and its task title/description)
+ * using the LLM. Never touches taskId — that invariant is enforced here.
+ * Requires initializeSessionFromMessage to have run first.
+ */
+export async function upgradeSessionTitle(input: {
   sessionId: string
   message: string
   model: LanguageModel
-  profile: string
 }): Promise<void> {
-  let init = fallbackInit(input.message)
+  const session = getSession(input.sessionId)
+  if (!session.taskId) return
 
   try {
     const result = await generateText({
@@ -93,14 +97,15 @@ export async function initializeSession(input: {
       messages: [{ role: "user", content: buildInitializerPrompt(input.message) }],
       maxRetries: 1,
     })
-    init = parseInitializerText(result.text) ?? init
-  } catch {
-    // Fallback still creates a task and title.
-  }
+    const init = parseInitializerText(result.text)
+    if (!init) return
 
-  linkTask({
-    sessionId: input.sessionId,
-    init,
-    profile: input.profile,
-  })
+    updateSession(input.sessionId, { title: init.title })
+    updateTask(session.taskId, {
+      title: init.task,
+      description: init.task,
+    })
+  } catch {
+    // Keep the fallback title — best-effort upgrade only.
+  }
 }

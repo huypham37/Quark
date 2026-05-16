@@ -1,10 +1,10 @@
 [
   {
-    "id": "task_owBrUcyCFuaEQjfN",
-    "title": "Understand the session branch/steer flow",
-    "description": "Understand the session branch/steer flow",
+    "id": "task_v0GMr2fPXDsffLtt",
+    "title": "Explore the codebase for the feature branch to identify its changes and purpose.",
+    "description": "Explore the codebase for the feature branch to identify its changes and purpose.",
     "profile": "coder",
-    "timeCreated": 1778240069159,
-    "timeUpdated": 1778240069159
+    "timeCreated": 1778936136269,
+    "timeUpdated": 1778936149964
   }
 ]

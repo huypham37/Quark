@@ -12,7 +12,6 @@ export {
   getTask,
   listTasks,
   updateTask,
-  findTaskByDescription,
 } from "./task/task"
 export type { Task } from "./task/task"
 

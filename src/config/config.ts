@@ -43,6 +43,24 @@ export interface ProviderConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Goal config — /goal command settings
+// ---------------------------------------------------------------------------
+
+export interface GoalConfig {
+  explore_budget: number
+  max_planned_tasks: number
+  judge_model?: string
+  planner_profile?: string
+  executor_profile?: string
+  verbose?: boolean
+}
+
+const GOAL_DEFAULTS: GoalConfig = {
+  explore_budget: 5,
+  max_planned_tasks: 20,
+}
+
+// ---------------------------------------------------------------------------
 // QuarkConfig — top-level config
 // ---------------------------------------------------------------------------
 
@@ -73,6 +91,8 @@ export interface QuarkConfig {
   providers: Record<string, ProviderConfig>
   /** Hide read-only tool calls (read, grep, glob, websearch, webfetch, etc.) from the conversation view */
   hide_readonly_tools: boolean
+  /** /goal command settings */
+  goal?: GoalConfig
 }
 
 // Cached config — loaded once, reused thereafter
@@ -88,6 +108,25 @@ function readRawConfig(): Record<string, unknown> {
     return raw && typeof raw === "object" ? raw : {}
   } catch {
     return {}
+  }
+}
+
+function parseGoalConfig(raw: unknown): GoalConfig | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const r = raw as Record<string, unknown>
+  return {
+    explore_budget:
+      typeof r.explore_budget === "number" && r.explore_budget > 0
+        ? r.explore_budget
+        : GOAL_DEFAULTS.explore_budget,
+    max_planned_tasks:
+      typeof r.max_planned_tasks === "number" && r.max_planned_tasks > 0
+        ? r.max_planned_tasks
+        : GOAL_DEFAULTS.max_planned_tasks,
+    judge_model: typeof r.judge_model === "string" ? r.judge_model : undefined,
+    planner_profile: typeof r.planner_profile === "string" ? r.planner_profile : undefined,
+    executor_profile: typeof r.executor_profile === "string" ? r.executor_profile : undefined,
+    verbose: typeof r.verbose === "boolean" ? r.verbose : undefined,
   }
 }
 
@@ -159,6 +198,7 @@ export function loadConfig(): QuarkConfig {
       typeof raw.hide_readonly_tools === "boolean"
         ? raw.hide_readonly_tools
         : DEFAULTS.hide_readonly_tools,
+    goal: parseGoalConfig(raw.goal),
   }
 
   cached = config

@@ -4,7 +4,6 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
   createTask,
-  findTaskByDescription,
   getTask,
   listTasks,
   setTaskStorageRoot,
@@ -34,17 +33,6 @@ describe("task CRUD", () => {
     expect(task.id.startsWith("task_")).toBe(true)
     expect(listTasks()).toHaveLength(1)
     expect(getTask(task.id)?.description).toBe("Add refresh token rotation")
-  })
-
-  test("finds task by exact description", () => {
-    const task = createTask({
-      title: "Existing task",
-      description: "Existing task",
-      profile: "coder",
-    })
-
-    expect(findTaskByDescription("Existing task")?.id).toBe(task.id)
-    expect(findTaskByDescription("existing task")).toBeNull()
   })
 
   test("updates task metadata atomically", () => {

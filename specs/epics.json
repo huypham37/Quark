@@ -2,7 +2,16 @@
   {
     "id": "EPIC-01",
     "title": "Core Agent Loop & Session Engine",
-    "requirements": ["FR-1.1", "FR-1.2", "FR-1.3", "FR-1.4", "FR-1.5", "FR-1.6", "FR-1.7", "FR-1.8"],
+    "requirements": [
+      "FR-1.1",
+      "FR-1.2",
+      "FR-1.3",
+      "FR-1.4",
+      "FR-1.5",
+      "FR-1.6",
+      "FR-1.7",
+      "FR-1.8"
+    ],
     "description": "The foundational agent loop, message persistence, and session lifecycle. Includes the prompt() entry point, loop() iteration, processStream() for AI SDK stream handling, session CRUD, message/part persistence, and AbortController propagation.",
     "business_goal": "Deliver the irreducible kernel of the agent — without this, nothing else works. Every other epic depends on the loop and session engine.",
     "owner": "Core Platform",
@@ -21,7 +30,15 @@
   {
     "id": "EPIC-02",
     "title": "Profile System",
-    "requirements": ["FR-2.1", "FR-2.2", "FR-2.3", "FR-2.4", "FR-2.5", "FR-2.6", "FR-2.7"],
+    "requirements": [
+      "FR-2.1",
+      "FR-2.2",
+      "FR-2.3",
+      "FR-2.4",
+      "FR-2.5",
+      "FR-2.6",
+      "FR-2.7"
+    ],
     "description": "Profile-driven agent identity — every session has exactly one active profile declared via YAML config. Profiles bind system prompt, tools, skills, and optionally a model override. Supports global → project config hierarchy and runtime switching.",
     "business_goal": "Enable noise reduction by ensuring agents only carry the tools and skills they need. Prevents context bloat and makes agent behaviour deterministic and auditable.",
     "owner": "Core Platform",
@@ -40,7 +57,15 @@
   {
     "id": "EPIC-03",
     "title": "Tool System",
-    "requirements": ["FR-3.1", "FR-3.2", "FR-3.3", "FR-3.4", "FR-3.5", "FR-3.6", "FR-3.7"],
+    "requirements": [
+      "FR-3.1",
+      "FR-3.2",
+      "FR-3.3",
+      "FR-3.4",
+      "FR-3.5",
+      "FR-3.6",
+      "FR-3.7"
+    ],
     "description": "Universal ToolDef interface, tool registry with validation, external tool loading from filesystem, built-in tools (read, compact, skill), and permission-gated execution via toAITool().",
     "business_goal": "Allow users to extend the agent with custom tools that adapt it to any workflow, stack, or system — without modifying the harness. The tool system is the primary extensibility surface.",
     "owner": "Core Platform",
@@ -58,7 +83,14 @@
   {
     "id": "EPIC-04",
     "title": "Skill System",
-    "requirements": ["FR-4.1", "FR-4.2", "FR-4.3", "FR-4.4", "FR-4.5", "FR-4.6"],
+    "requirements": [
+      "FR-4.1",
+      "FR-4.2",
+      "FR-4.3",
+      "FR-4.4",
+      "FR-4.5",
+      "FR-4.6"
+    ],
     "description": "Progressive 3-level skill disclosure (L1 metadata in prompt, L2 full instructions on demand, L3 filesystem resources never loaded). Skill discovery from project and global dirs, profile binding, and buildSkillTool() as a registered tool.",
     "business_goal": "Minimise token cost while enabling on-demand specialised behaviour. Skills let the agent learn domain-specific workflows without paying the full context cost at startup.",
     "owner": "Core Platform",
@@ -76,7 +108,17 @@
   {
     "id": "EPIC-05",
     "title": "Permission System",
-    "requirements": ["FR-5.1", "FR-5.2", "FR-5.3", "FR-5.4", "FR-5.5", "FR-5.6", "FR-5.7", "FR-5.8", "FR-5.9"],
+    "requirements": [
+      "FR-5.1",
+      "FR-5.2",
+      "FR-5.3",
+      "FR-5.4",
+      "FR-5.5",
+      "FR-5.6",
+      "FR-5.7",
+      "FR-5.8",
+      "FR-5.9"
+    ],
     "description": "Wildcard rule evaluation (allow/deny/ask) with async ask/respond lifecycle. Supports session-scope rules, CorrectedError/RejectedError feedback to model, and automatic cleanup.",
     "business_goal": "Allow the agent to operate safely and autonomously by gating tool execution through configurable rules — without requiring human confirmation for every action.",
     "owner": "Core Platform",
@@ -96,7 +138,15 @@
   {
     "id": "EPIC-06",
     "title": "Context Compaction",
-    "requirements": ["FR-6.1", "FR-6.2", "FR-6.3", "FR-6.4", "FR-6.5", "FR-6.6", "FR-6.7"],
+    "requirements": [
+      "FR-6.1",
+      "FR-6.2",
+      "FR-6.3",
+      "FR-6.4",
+      "FR-6.5",
+      "FR-6.6",
+      "FR-6.7"
+    ],
     "description": "Auto and manual context compaction with pluggable methods. Includes shouldCompact() heuristic, deduplication guard, general (new-session) and anchored (in-session) compaction strategies, plugin hook for context injection, and TUI/tool triggers.",
     "business_goal": "Enable agents to survive long sessions without losing work when the context window fills up. Compaction preserves continuity while resetting token budget.",
     "owner": "Core Platform",
@@ -137,7 +187,16 @@
   {
     "id": "EPIC-07",
     "title": "Provider & Model System",
-    "requirements": ["FR-7.1", "FR-7.2", "FR-7.3", "FR-7.4", "FR-7.5", "FR-7.6", "FR-7.7", "FR-7.8"],
+    "requirements": [
+      "FR-7.1",
+      "FR-7.2",
+      "FR-7.3",
+      "FR-7.4",
+      "FR-7.5",
+      "FR-7.6",
+      "FR-7.7",
+      "FR-7.8"
+    ],
     "description": "Multi-provider routing with GitHub Copilot as primary, native Anthropic API for Claude+thinking, and user-defined OpenAI-compatible providers. Includes model limit fetching from models.dev, Responses API routing for GPT-5+, and plugin-based runtime provider registration.",
     "business_goal": "Give users flexibility to run the agent on any supported LLM provider without changing the harness code. Copilot is the default; custom providers extend this without friction.",
     "owner": "Core Platform",
@@ -156,7 +215,14 @@
   {
     "id": "EPIC-08",
     "title": "Plugin System",
-    "requirements": ["FR-8.1", "FR-8.2", "FR-8.3", "FR-8.4", "FR-8.5", "FR-8.6"],
+    "requirements": [
+      "FR-8.1",
+      "FR-8.2",
+      "FR-8.3",
+      "FR-8.4",
+      "FR-8.5",
+      "FR-8.6"
+    ],
     "description": "Drop-in TypeScript plugins loaded from ~/.config/quark/plugins/*.ts with 10 typed hook points covering session, tool, provider, and loop lifecycle. Error-isolated loading with runtime provider registration support.",
     "business_goal": "Enable power users and platform engineers to extend or customise agent behaviour (telemetry, fallbacks, context injection) without forking the harness.",
     "owner": "Extensibility",
@@ -174,7 +240,15 @@
   {
     "id": "EPIC-09",
     "title": "Sub-Agent System",
-    "requirements": ["FR-9.1", "FR-9.2", "FR-9.3", "FR-9.4", "FR-9.5", "FR-9.6", "FR-9.7"],
+    "requirements": [
+      "FR-9.1",
+      "FR-9.2",
+      "FR-9.3",
+      "FR-9.4",
+      "FR-9.5",
+      "FR-9.6",
+      "FR-9.7"
+    ],
     "description": "Hierarchical session spawning via --sub-agent CLI flag, real-time event streaming from child to parent via stderr NDJSON, and TUI SubAgentView rendering nested tool activity inline.",
     "business_goal": "Enable the agent to delegate specialised tasks to child agents with separate profiles, maintaining observability of the full agent tree from the parent TUI.",
     "owner": "Core Platform",
@@ -193,7 +267,19 @@
   {
     "id": "EPIC-10",
     "title": "Interactive TUI",
-    "requirements": ["FR-10.1", "FR-10.2", "FR-10.3", "FR-10.4", "FR-10.5", "FR-10.6", "FR-10.7", "FR-10.8", "FR-10.9", "FR-10.10", "FR-10.11"],
+    "requirements": [
+      "FR-10.1",
+      "FR-10.2",
+      "FR-10.3",
+      "FR-10.4",
+      "FR-10.5",
+      "FR-10.6",
+      "FR-10.7",
+      "FR-10.8",
+      "FR-10.9",
+      "FR-10.10",
+      "FR-10.11"
+    ],
     "description": "Full terminal UI built on OpenTUI + SolidJS with reactive rendering, slash commands, permission overlays, session/model pickers, @file mention autocomplete, image paste, diff view, token/cost display, and theme adaptation.",
     "business_goal": "Provide a rich, keyboard-driven interactive experience for power developers using Quark as a daily driver for complex coding tasks.",
     "owner": "UX / Frontend",
@@ -230,7 +316,13 @@
   {
     "id": "EPIC-11",
     "title": "Extended Thinking (Reasoning)",
-    "requirements": ["FR-11.1", "FR-11.2", "FR-11.3", "FR-11.4", "FR-11.5"],
+    "requirements": [
+      "FR-11.1",
+      "FR-11.2",
+      "FR-11.3",
+      "FR-11.4",
+      "FR-11.5"
+    ],
     "description": "User-toggled extended thinking via Ctrl+T that routes to Anthropic Messages API for Claude models with a 10,000-token thinking budget. Reasoning parts are persisted and rendered in a collapsible TUI component.",
     "business_goal": "Give users access to deeper model reasoning for hard problems without paying the cost on every request — opt-in, not always-on.",
     "owner": "Core Platform",
@@ -247,7 +339,14 @@
   {
     "id": "EPIC-12",
     "title": "Retry & Error Recovery",
-    "requirements": ["FR-12.1", "FR-12.2", "FR-12.3", "FR-12.4", "FR-12.5", "FR-12.6"],
+    "requirements": [
+      "FR-12.1",
+      "FR-12.2",
+      "FR-12.3",
+      "FR-12.4",
+      "FR-12.5",
+      "FR-12.6"
+    ],
     "description": "Automatic retry with exponential backoff and jitter for HTTP 429, 5xx, network timeouts, and overload errors. Plugin hook for custom fallback logic. In-flight tool parts marked as errored on mid-stream abort.",
     "business_goal": "Ensure resilient operation in the face of transient provider failures without user intervention, protecting long-running tasks from being lost.",
     "owner": "Core Platform",
@@ -265,7 +364,13 @@
   {
     "id": "EPIC-13",
     "title": "SDK & CLI Distribution",
-    "requirements": ["FR-13.1", "FR-13.2", "FR-13.3", "FR-13.4", "FR-13.5"],
+    "requirements": [
+      "FR-13.1",
+      "FR-13.2",
+      "FR-13.3",
+      "FR-13.4",
+      "FR-13.5"
+    ],
     "description": "Quark as a publishable, embeddable SDK (@quark/sdk) and standalone CLI binary. Includes tsup bundle to ESM+CJS, full type exports, and CLI flags for all operational modes.",
     "business_goal": "Allow platform engineers and AI tool builders to embed Quark in their own systems, CI/CD pipelines, and automation scripts without running the TUI.",
     "owner": "Developer Experience",
@@ -283,7 +388,11 @@
   {
     "id": "EPIC-14",
     "title": "Session Title Generation",
-    "requirements": ["FR-14.1", "FR-14.2", "FR-14.3"],
+    "requirements": [
+      "FR-14.1",
+      "FR-14.2",
+      "FR-14.3"
+    ],
     "description": "Automatic, non-blocking session title generation using a small model (gpt-4o-mini) in the background. Never fails the session if title generation errors.",
     "business_goal": "Improve session discoverability in the TUI session picker without adding latency to the critical path.",
     "owner": "Core Platform",
@@ -298,7 +407,13 @@
   {
     "id": "EPIC-15",
     "title": "Event Bus",
-    "requirements": ["FR-15.1", "FR-15.2", "FR-15.3", "FR-15.4", "FR-15.5"],
+    "requirements": [
+      "FR-15.1",
+      "FR-15.2",
+      "FR-15.3",
+      "FR-15.4",
+      "FR-15.5"
+    ],
     "description": "Typed singleton event bus (TypedBus) with 30+ event types covering the full agent lifecycle — session, loop, tool, permission, compaction, and sub-agent events. TUI and CLI subscribe for real-time rendering and output.",
     "business_goal": "Decouple the agent core from all consumers (TUI, CLI, plugins, sub-agent parent) via a clean event-driven interface, enabling real-time observability without tight coupling.",
     "owner": "Core Platform",
@@ -315,7 +430,19 @@
   {
     "id": "EPIC-16",
     "title": "Web UI — Image Attachment Pipeline",
-    "requirements": ["FR-16.1", "FR-16.2", "FR-16.3", "FR-16.4", "FR-16.5", "FR-16.6", "FR-16.7", "FR-16.8", "FR-16.9", "FR-16.10", "FR-16.11"],
+    "requirements": [
+      "FR-16.1",
+      "FR-16.2",
+      "FR-16.3",
+      "FR-16.4",
+      "FR-16.5",
+      "FR-16.6",
+      "FR-16.7",
+      "FR-16.8",
+      "FR-16.9",
+      "FR-16.10",
+      "FR-16.11"
+    ],
     "description": "End-to-end image attachment for the Quark web chat UI. Users can pick one or more images via a file picker, preview and remove them before sending, and submit them alongside their message. Sent images are rendered as thumbnails inside the user chat bubble and survive session reload. The backend contract (images: { mime, data }[] in POST /api/prompt) already exists — all work is front-end.",
     "business_goal": "Enable users to share visual context (screenshots, diagrams, mockups) with the agent directly from the web UI, unlocking image-aware responses without any backend changes.",
     "owner": "UX / Frontend",
@@ -366,7 +493,22 @@
   {
     "id": "EPIC-17",
     "title": "Quark Desktop V1 — Shared Diff Workspace",
-    "requirements": ["FR-17.1", "FR-17.2", "FR-17.3", "FR-17.4", "FR-17.5", "FR-17.6", "FR-17.7", "FR-17.8", "FR-17.9", "FR-17.10", "FR-17.11", "FR-17.12", "FR-17.13", "FR-17.14"],
+    "requirements": [
+      "FR-17.1",
+      "FR-17.2",
+      "FR-17.3",
+      "FR-17.4",
+      "FR-17.5",
+      "FR-17.6",
+      "FR-17.7",
+      "FR-17.8",
+      "FR-17.9",
+      "FR-17.10",
+      "FR-17.11",
+      "FR-17.12",
+      "FR-17.13",
+      "FR-17.14"
+    ],
     "description": "macOS-first Tauri 2 + React/TypeScript desktop app with Quark core as a sidecar binary. Three-pane layout (file tree, shared diff/source/preview workspace, agent chat) where human and agent share a middle-pane diff review before file writes happen. The first proof is the diff review loop: agent proposes edit, middle pane shows diff, user approves/rejects, only approval triggers the write.",
     "business_goal": "Give users a rich desktop experience where they can see, review, and approve every file change the agent proposes before it touches disk — building trust and enabling real collaboration in a shared workspace.",
     "owner": "UX / Frontend",
@@ -483,6 +625,26 @@
       "Existing web UI (src/web/) and TUI work without regressions",
       "GET /api/workspace/file and POST /api/workspace/file work correctly with path validation",
       "POST /api/prompt accepts optional context field and prepends it to the user message"
+    ]
+  },
+  {
+    "id": "EPIC-18",
+    "title": "/goal Command — Autonomous Goal-Driven Agent Loop",
+    "description": "A /goal slash command that receives a user goal, generates a plan of atomic verifiable tasks, executes them one-by-one with fresh context per task, verifies deterministically, tracks progress in an append-only file, and enters explore mode with delta tasks if the plan is exhausted but the goal isn't met. Built on the Ralph Wiggum pattern — fresh context each iteration, progress on disk, no context compaction needed.",
+    "status": "Planned",
+    "priority": "High",
+    "owner": "Agent",
+    "business_goal": "Enable Quark to autonomously complete complex multi-step goals without human hand-holding between steps.",
+    "acceptance_criteria": [
+      "/goal command generates a plan with atomic verifiable tasks",
+      "Tasks execute sequentially with fresh context per task",
+      "Deterministic checks verify each task",
+      "Progress tracked in single append-only progress.md",
+      "Final judge + explore mode for gap handling",
+      "Auto-approve mode prevents permission prompts",
+      "Ctrl+C preserves state; /goal resume resumes",
+      "Debug traces in verbose mode",
+      "Existing agent loop unchanged"
     ]
   }
 ]

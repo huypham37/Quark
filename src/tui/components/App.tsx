@@ -39,6 +39,8 @@ import * as fs from "fs"
 import * as path from "path"
 import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
+import { collectStatistics, renderStatisticsChart } from "../../commands/statistics"
+import { StatisticsPanel } from "./statistics-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { getThinkingNormalizer } from "../../provider/thinking"
@@ -194,6 +196,8 @@ export const App: Component<AppProps> = (props) => {
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
+  // Statistics panel visibility and content
+  const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -248,8 +252,8 @@ export const App: Component<AppProps> = (props) => {
     return files
   }
 
-  // Whether any dropdown is active
-  const dropdownActive = () => mention().active || slash().active
+  // Whether any dropdown or overlay is active
+  const dropdownActive = () => mention().active || slash().active || statisticsContent() !== null
 
   // ---------------------------------------------------------------------------
   // Pending image removal
@@ -439,6 +443,13 @@ export const App: Component<AppProps> = (props) => {
     }
 
     if (commandId === "sessions" && !args && openSessionsPicker()) {
+      return
+    }
+
+    if (commandId === "statistics") {
+      const stats = collectStatistics()
+      const chart = renderStatisticsChart(stats)
+      setStatisticsContent(chart)
       return
     }
 
@@ -650,25 +661,8 @@ export const App: Component<AppProps> = (props) => {
         const absPath = path.resolve(process.cwd(), mentionPath)
         const stat = fs.statSync(absPath)
         if (stat.isDirectory()) {
-          // Read directory listing and include shallow file contents
-          const entries = fs.readdirSync(absPath)
-          context += `\n<directory path="${mentionPath}">\n`
-          for (const entry of entries) {
-            const entryPath = path.join(absPath, entry)
-            try {
-              const entryStat = fs.statSync(entryPath)
-              if (entryStat.isFile()) {
-                const content = fs.readFileSync(entryPath, "utf-8")
-                const relPath = path.join(mentionPath, entry)
-                context += `<file path="${relPath}">\n${content}\n</file>\n`
-              } else if (entryStat.isDirectory()) {
-                context += `<subdirectory name="${entry}/" />\n`
-              }
-            } catch {
-              // Entry not readable — skip
-            }
-          }
-          context += `</directory>\n`
+          // Directory mentions only reference the path — no content loaded
+          context += `\n<directory path="${mentionPath}" />\n`
         } else {
           const content = fs.readFileSync(absPath, "utf-8")
           context += `\n<file path="${mentionPath}">\n${content}\n</file>\n`
@@ -915,6 +909,13 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Esc closes statistics panel (highest priority)
+    if (evt.name === "escape" && statisticsContent() !== null) {
+      setStatisticsContent(null)
+      evt.preventDefault()
+      return
+    }
+
     // Esc clears any active selection (takes priority over agent cancel)
     if (evt.name === "escape" && renderer.getSelection()) {
       renderer.clearSelection()
@@ -1015,6 +1016,13 @@ export const App: Component<AppProps> = (props) => {
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
       />
+
+      {/* Statistics overlay */}
+      <Show when={statisticsContent()}>
+        {(content) => (
+          <StatisticsPanel content={content()} onClose={() => setStatisticsContent(null)} />
+        )}
+      </Show>
 
       {/* Notifications overlay */}
       <Notifications />

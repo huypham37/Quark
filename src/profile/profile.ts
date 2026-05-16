@@ -71,7 +71,7 @@ const BUILTIN_CODER: ProfileDef = {
   id: "coder",
   name: "Coder",
   promptFile: "",
-  tools: ["read", "write", "edit", "bash", "skill", "todo"],
+  tools: ["read", "look", "write", "edit", "bash", "skill", "todo"],
   skills: [],
 }
 

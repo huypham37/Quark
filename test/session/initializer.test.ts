@@ -10,7 +10,7 @@ import {
   initializeSessionFromMessage,
   parseInitializerText,
 } from "../../src/session/initializer"
-import { createTask, listTasks, setTaskStorageRoot } from "../../src/task/task"
+import { listTasks, setTaskStorageRoot } from "../../src/task/task"
 
 let sessionDir: string
 let taskDir: string
@@ -75,21 +75,23 @@ describe("SessionInitializer", () => {
     expect(updated.taskId).toBe(tasks[0]!.id)
   })
 
-  test("initializer reuses an existing task by description", () => {
-    const existing = createTask({
-      title: "Existing work",
-      description: "Existing work",
-      profile: "coder",
-    })
+  test("is idempotent — does not create a second task if session already has one", () => {
     const session = createSession()
 
     initializeSessionFromMessage({
       sessionId: session.id,
-      message: "Existing work",
+      message: "First message",
+      profile: "coder",
+    })
+    const firstTaskId = getSession(session.id).taskId
+
+    initializeSessionFromMessage({
+      sessionId: session.id,
+      message: "Second message — should be ignored",
       profile: "coder",
     })
 
     expect(listTasks()).toHaveLength(1)
-    expect(getSession(session.id).taskId).toBe(existing.id)
+    expect(getSession(session.id).taskId).toBe(firstTaskId)
   })
 })

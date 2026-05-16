@@ -1,13 +1,20 @@
 // Session branching — task-first replacement for automatic compaction
 
 import { generateText, type LanguageModel, type ModelMessage } from "ai"
-import { getTask, createTask } from "../task/task"
+import { getTask } from "../task/task"
 import { getContextWindow, getLastInputTokens, estimateTokens, isOverContextThreshold } from "./context"
 import { createSession, getSession, listAllSessions, updateSession, type Session } from "./session"
 import { saveUserMessage, type MessageRow, type PartRow } from "./message"
 
-const SUMMARY_PROMPT = `Summarize this session for a child branch.
-Be factual and concise. Include the goal, important decisions, files involved, completed work, and the next useful step.`
+const SUMMARY_PROMPT = `Analyze this conversation and produce a continuation context for a child branch session.
+
+1. Identify all relevant files that should be loaded into the next session's context. Include files that will be edited, dependencies being touched, relevant tests, configs, and key reference docs. Be generous—the cost of an extra file is low; missing a critical one means another archaeology dig. Target 8-15 files, up to 20 for complex work. List them under a "## Files" heading as bullet points with absolute paths when known, or relative paths from the project root.
+
+2. Draft the context and goal description under a "## Context" heading. Describe what we're working on and provide whatever context helps continue the work. Preserve: decisions, constraints, user preferences, technical patterns. Exclude: conversation back-and-forth, dead ends, meta-commentary. Structure it based on what fits—could be tasks, findings, a simple paragraph, or detailed steps.
+
+The user controls what context matters. If they mentioned something to preserve, include it—trust their judgment about their workflow.
+
+Be factual and concise. The output will be frozen and reused for every subsequent sibling branch, so make it self-contained and durable.`
 
 export interface BranchResult {
   sessionId: string
@@ -191,7 +198,13 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
  */
 export function createBranch(input: CreateBranchInput): BranchResult {
   const parent = getSession(input.sessionId)
-  const taskId = ensureTask(parent, input.profile)
+  const taskId = parent.taskId
+  if (!taskId) {
+    throw new Error(
+      `Cannot branch session ${parent.id}: parent has no taskId. ` +
+        `initializeSessionFromMessage must run before branching.`,
+    )
+  }
   const filesModified = input.filesModified ?? parent.filesModified
   // Frozen-snapshot semantics: once the parent's summary is set, reuse it for
   // every subsequent child branch. Siblings share the same parentSummary.
@@ -201,8 +214,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
       ? existingParentSummary
       : input.summary.trim() || "No session summary available."
 
-  const parentPatch: { taskId: string; summary?: string; filesModified?: string[] | null } = {
-    taskId,
+  const parentPatch: { summary?: string; filesModified?: string[] | null } = {
     filesModified,
   }
   // Only persist summary on the parent the first time it's frozen.
@@ -228,19 +240,6 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   }
 
   return { sessionId: child.id, created: true, summary }
-}
-
-function ensureTask(session: Session, profile: string): string {
-  if (session.taskId) return session.taskId
-
-  const title = session.title ?? "Untitled Task"
-  const task = createTask({
-    title,
-    description: title,
-    profile,
-  })
-  updateSession(session.id, { taskId: task.id })
-  return task.id
 }
 
 function fallbackSummary(messages: MessageRow[], parts: PartRow[]): string {

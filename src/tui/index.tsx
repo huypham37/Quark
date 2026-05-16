@@ -30,6 +30,7 @@ import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
 import { undoLatest } from "../commands/undo"
+import { runGoal } from "../commands/goal/orchestrator"
 import { listTasks } from "../task/task"
 
 // Detect terminal background BEFORE the TUI takes over stdin/stdout
@@ -323,6 +324,26 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         })
       } finally {
         if (!steeringEnded) bus.emit("steer-end", { sessionId: sid })
+      }
+      return { handled: true }
+    }
+
+    case "goal": {
+      if (!args.trim()) {
+        bus.emit("error", { sessionId: sid, error: new Error("Usage: /goal <goal description>") })
+        return { handled: true }
+      }
+
+      bus.emit("steer-start", { sessionId: sid })
+      try {
+        await runGoal({ goal: args.trim() })
+      } catch (err) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      } finally {
+        bus.emit("steer-end", { sessionId: sid })
       }
       return { handled: true }
     }
