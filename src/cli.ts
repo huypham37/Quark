@@ -7,6 +7,7 @@
 //   quark --sub-agent --profile researcher --prompt "research this topic"
 //   quark --parent-session <id> --profile researcher --prompt "research this topic"
 //   quark --model claude-sonnet-4.5 "one-off with a specific model"
+//   quark acp                       Start ACP agent (JSON-RPC over stdio)
 
 import { parseArgs } from "util"
 import { bootstrap } from "./bootstrap"
@@ -136,6 +137,13 @@ function parseArguments(): ParsedArgs {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  // Route "quark acp" subcommand to ACP agent entry point
+  if (process.argv[2] === "acp") {
+    const { runAcpEntry } = await import("./acp/entry")
+    await runAcpEntry()
+    process.exit(0)
+  }
+
   const args = parseArguments()
 
   if (args.verbose) setVerbose(true)

@@ -6,5 +6,141 @@
     "profile": "coder",
     "timeCreated": 1778936136269,
     "timeUpdated": 1778936149964
+  },
+  {
+    "id": "task_tGPt3YBGSOnVtWlv",
+    "title": "ACP Server Image Capability",
+    "description": "ACP Server Image Capability",
+    "profile": "coder",
+    "timeCreated": 1779027651280,
+    "timeUpdated": 1779101719571
+  },
+  {
+    "id": "task_h8M5TpTiNvXdLeKm",
+    "title": "Reply with exactly: hello from quark acp",
+    "description": "Reply with exactly: hello from quark acp",
+    "profile": "coder",
+    "timeCreated": 1779044671394,
+    "timeUpdated": 1779044671394
+  },
+  {
+    "id": "task_LKbo7mc2iSg7r7MG",
+    "title": "read /tmp/acp-test-file.txt and tell me what it says in one sentence",
+    "description": "read /tmp/acp-test-file.txt and tell me what it says in one sentence",
+    "profile": "coder",
+    "timeCreated": 1779044722850,
+    "timeUpdated": 1779044722850
+  },
+  {
+    "id": "task_aZhzCJt4DZ6RGz3k",
+    "title": "Reply with exactly: hello from quark acp",
+    "description": "Reply with exactly: hello from quark acp",
+    "profile": "coder",
+    "timeCreated": 1779044939920,
+    "timeUpdated": 1779044939920
+  },
+  {
+    "id": "task_3gFPAb0wCq2Xx5EB",
+    "title": "read /tmp/acp-test-file.txt and tell me what it says in one sentence",
+    "description": "read /tmp/acp-test-file.txt and tell me what it says in one sentence",
+    "profile": "coder",
+    "timeCreated": 1779044954477,
+    "timeUpdated": 1779044954477
+  },
+  {
+    "id": "task_9BQ59LTmAXWKQyRa",
+    "title": "Hello World Test",
+    "description": "Hello World Test",
+    "profile": "coder",
+    "timeCreated": 1779046487160,
+    "timeUpdated": 1779046499638
+  },
+  {
+    "id": "task_16FpNSIFiideGUqb",
+    "title": "Instruction Following",
+    "description": "Instruction Following",
+    "profile": "coder",
+    "timeCreated": 1779046874321,
+    "timeUpdated": 1779046883835
+  },
+  {
+    "id": "task_35ihfraUbxDfHNeZ",
+    "title": "Say hello in one word",
+    "description": "Say hello in one word",
+    "profile": "coder",
+    "timeCreated": 1779080329512,
+    "timeUpdated": 1779080329512
+  },
+  {
+    "id": "task_9MXgUHqLmOxyMpFD",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1779080576978,
+    "timeUpdated": 1779081171189
+  },
+  {
+    "id": "task_2900QIIntAk1WAZc",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1779081308315,
+    "timeUpdated": 1779087119811
+  },
+  {
+    "id": "task_XntDCWKKvwoHHBI1",
+    "title": "Working Directory Inquiry",
+    "description": "Working Directory Inquiry",
+    "profile": "coder",
+    "timeCreated": 1779087526667,
+    "timeUpdated": 1779087533366
+  },
+  {
+    "id": "task_mZZheBWYsVyvLxtm",
+    "title": "Casual Greeting",
+    "description": "Casual Greeting",
+    "profile": "coder",
+    "timeCreated": 1779087558748,
+    "timeUpdated": 1779087563281
+  },
+  {
+    "id": "task_U32KCO8bnvU2QTG5",
+    "title": "Casual Inquiry",
+    "description": "Casual Inquiry",
+    "profile": "coder",
+    "timeCreated": 1779087696574,
+    "timeUpdated": 1779087706186
+  },
+  {
+    "id": "task_cYaQzbb82tbdXMAy",
+    "title": "Working Directory Inquiry",
+    "description": "Working Directory Inquiry",
+    "profile": "coder",
+    "timeCreated": 1779088010263,
+    "timeUpdated": 1779088015754
+  },
+  {
+    "id": "task_kgVTVPpOCRGNvnsL",
+    "title": "Working Directory Inquiry",
+    "description": "Working Directory Inquiry",
+    "profile": "coder",
+    "timeCreated": 1779088099548,
+    "timeUpdated": 1779088105864
+  },
+  {
+    "id": "task_4DC91zWbbV50C5vq",
+    "title": "Visibility Issue",
+    "description": "Visibility Issue",
+    "profile": "coder",
+    "timeCreated": 1779127789310,
+    "timeUpdated": 1779176583152
+  },
+  {
+    "id": "task_jP8etPyhb0UqqM5a",
+    "title": "LM Studio configuration error",
+    "description": "LM Studio configuration error",
+    "profile": "coder",
+    "timeCreated": 1779257786979,
+    "timeUpdated": 1779258197397
   }
 ]
