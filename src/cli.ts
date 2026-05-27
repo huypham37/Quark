@@ -18,8 +18,15 @@ import { bus } from "./session/events"
 import { startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
 import { setVerbose, debug } from "./debug"
+import { formatArgs } from "./debug/format-tool-args"
 
 const dlog = debug("cli")
+// Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
+// `[TOOL-RESULT]`) for readability; we only use `debug()` here as the
+// on/off gate, then write to stderr ourselves with the standard prefix.
+const tlogCall = debug("tool-call")
+const tlogResult = debug("tool-result")
+const tlogRaw = debug("tool-call:raw")
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -37,8 +44,8 @@ Options:
       --parent-session <id>     Create a child session under this parent
       --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
       --no-store                Run an ephemeral session — never written to disk
-      --verbose                 Enable all debug logs (alias for QUARK_DEBUG=*)
-                                Use QUARK_DEBUG=<ns1,ns2> to scope. See README.
+      --verbose                 Print every tool call + result to stderr.
+                                For engine internals use QUARK_DEBUG=* (see README).
   -l, --list-profiles           List available profiles
   -h, --help                    Show this help message
 
@@ -216,6 +223,27 @@ async function main() {
 
   bus.on("assistant-message-end", ({ messageId, finish }) => {
     dlog(`assistant-message-end id=${messageId} finish=${finish}`)
+  })
+
+  // Verbose tool-call logging. `--verbose` (= QUARK_DEBUG=*) enables this;
+  // targeted use is `QUARK_DEBUG=tool-call,tool-result` for only tool
+  // activity, or `QUARK_DEBUG=tool-call:raw` for full untruncated JSON.
+  bus.on("tool-input", ({ tool, input }) => {
+    if (tlogCall.enabled) {
+      console.error(`[TOOL-CALL] ${tool}(${formatArgs(input)})`)
+    }
+    if (tlogRaw.enabled) {
+      console.error(`[TOOL-CALL:RAW] ${tool} ${JSON.stringify(input)}`)
+    }
+  })
+
+  bus.on("tool-end", ({ tool, status, output, error }) => {
+    if (!tlogResult.enabled) return
+    if (status === "error") {
+      console.error(`[TOOL-RESULT] ${tool} error: ${error ?? "(unknown)"}`)
+    } else {
+      console.error(`[TOOL-RESULT] ${tool} ok${output ? ` (${output.length}b)` : ""}`)
+    }
   })
 
   bus.on("error", ({ error }) => {

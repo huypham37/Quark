@@ -8,9 +8,17 @@
 
 import type { Component } from "solid-js"
 import { Show, For } from "solid-js"
-import type { TextareaRenderable } from "@opentui/core"
+import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
+
+// Paste-collapse thresholds: if pasted text exceeds either limit, replace
+// it with a `[Pasted #N +X lines]` placeholder and stash the real content
+// in a side buffer until submit. Keeps the input box readable and prevents
+// it from blowing past `maxHeight`.
+const PASTE_CHAR_THRESHOLD = 400
+const PASTE_LINE_THRESHOLD = 6
+const PASTE_TOKEN_RE = /\[Pasted #(\d+) \+\d+ lines\]/g
 
 function modelColor(name: string): RGBA {
   if (name.startsWith("claude")) return RGBA.fromHex("#d4a574") // warm orange for Anthropic
@@ -59,6 +67,12 @@ function formatPercent(used: number, limit: number): string {
 export const Prompt: Component<PromptProps> = (props) => {
   let textareaRef: TextareaRenderable | undefined
 
+  // Side-buffer for collapsed pastes. Keyed by the numeric id embedded in
+  // the placeholder token. Survives across edits; entries are dropped when
+  // the message is submitted (cleared in `handleSubmit`).
+  const pasteBuffer = new Map<number, string>()
+  let pasteCounter = 0
+
   const leftStatus = () => {
     const used = props.tokensUsed ?? 0
     const limit = props.tokenLimit ?? 0
@@ -74,19 +88,51 @@ export const Prompt: Component<PromptProps> = (props) => {
 
   const borderColor = () => colors.outline
 
+  // Replace every `[Pasted #N +X lines]` placeholder with its stashed text.
+  // Unknown ids (user typed the token by hand, or the entry was already
+  // consumed) are left in place verbatim.
+  const expandPastes = (text: string): string => {
+    return text.replace(PASTE_TOKEN_RE, (match, idStr) => {
+      const id = Number(idStr)
+      const stashed = pasteBuffer.get(id)
+      return stashed ?? match
+    })
+  }
+
   const handleSubmit = () => {
     if (!textareaRef) return
-    const text = textareaRef.plainText.trim()
-    if (!text) return
-    props.onSubmit(text)
+    const raw = textareaRef.plainText.trim()
+    if (!raw) return
+    const expanded = expandPastes(raw)
+    pasteBuffer.clear()
+    props.onSubmit(expanded)
   }
 
   const handleContentChange = () => {
     props.onContentChange()
   }
 
+  // Intercept paste events: if the payload exceeds either threshold, swap
+  // it for a short `[Pasted #N +X lines]` token and stash the real content.
+  // Small pastes fall through to the textarea's default insert behavior.
+  const handlePaste = (event: PasteEvent) => {
+    if (!textareaRef) return
+    const text = event.text
+    const lineCount = text.split("\n").length
+    const charCount = text.length
+    if (charCount <= PASTE_CHAR_THRESHOLD && lineCount <= PASTE_LINE_THRESHOLD) {
+      return // small paste — let default handler insert as-is
+    }
+    event.preventDefault()
+    const id = ++pasteCounter
+    pasteBuffer.set(id, text)
+    const token = `[Pasted #${id} +${lineCount} lines]`
+    textareaRef.insertText(token)
+  }
+
   const handleRef = (r: TextareaRenderable) => {
     textareaRef = r
+    r.onPaste = handlePaste
     props.onRef?.(r)
   }
 
@@ -113,6 +159,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         border={["left", "right", "bottom"]}
         paddingX={1}
         minHeight={4}
+        maxHeight={8}
       >
         {/* Image attachment chips — Tab to select, Backspace/Delete to remove */}
         <Show when={(props.images?.length ?? 0) > 0}>

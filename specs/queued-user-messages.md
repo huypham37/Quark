@@ -2,10 +2,11 @@
 title: Queued User Messages (Type-Ahead During Agent Run)
 date_created: 2026-05-21
 date_modified: 2026-05-21
-revision: 2
+revision: 3
 history:
   - 2026-05-21: Initial draft — terminal-native adaptation of the Cursor-style "queued follow-up" pattern.
   - 2026-05-21: Locked visual to opencode-style single-box layout (chip = inner row with divider, not floating bubble).
+  - 2026-05-21: Renamed "steer" action to "send now" (^N) to avoid collision with existing /steer slash command.
 status: draft
 ---
 
@@ -36,7 +37,7 @@ message.
 │ → can you also add tests                      queued │
 ├──────────────────────────────────────────────────────┤
 │ █                                                    │
-╰─ ⏵ running · ^S steer · ^D drop ── ~/02-UM/03_year ──╯
+╰─ ⏵ running · ^N send now · ^D drop ─ ~/02-UM/03_year ─╯
 ```
 
 **Idle state (no queued message — chip row absent, height collapses):**
@@ -51,7 +52,7 @@ Visual rules:
 - One outer rounded box (`╭╮╰╯`), no floating elements.
 - Chip row only mounted when `queuedMessage !== null`; separated from input by `├─…─┤` divider.
 - Right-aligned `queued` label on the chip row.
-- `^S steer · ^D drop` keybinding hints appear in the bottom border only while running.
+- `^N send now · ^D drop` keybinding hints appear in the bottom border only while running.
 - Chip text truncates with `…` if it exceeds box width minus label width.
 
 ## Architecture
@@ -151,13 +152,14 @@ Renders one-line chip above the prompt with truncated text + hint
    Multiple queued messages create UX ambiguity (which one runs first? can you
    reorder?). One slot matches the reference design and keeps mental model simple.
    Sending a second message while one is queued **replaces** the first (with a
-   one-line toast: "queued message replaced").
+   one-line toast: "queued message replaced"). 
+  
 
 2. **Flush on `loop-end`, never `assistant-message-end`.**
    Mid-loop injection would land between tool call and tool result, breaking
    the model's reasoning chain.
 
-3. **Steer = abort + send, not true injection.**
+3. **Send now = abort + send, not true injection.**
    True mid-stream injection requires custom provider-level support. Abort + send
    gives the user the same perceived outcome with existing primitives.
 

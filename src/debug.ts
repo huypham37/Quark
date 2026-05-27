@@ -5,12 +5,16 @@
 //   QUARK_DEBUG=*               (everything)
 //   QUARK_DEBUG=-loop           (exclude a namespace; combine with *)
 //
-// Or use the --verbose CLI flag (alias for QUARK_DEBUG=*).
+// Or use the --verbose CLI flag (enables tool-call + tool-result only).
+// For all engine internals use QUARK_DEBUG=* (or QUARK_VERBOSE=1).
 //
 // Known namespaces (grep `debug("` to find every call site):
 //   processor   — fullStream events, finish reasons, return values
 //   loop        — agent loop iterations, message counts, processStream result
 //   cli         — text-start/delta/end, assistant-message-start/end
+//   tool-call   — `[TOOL-CALL] <name>(<args>)` per invocation (args truncated, secrets redacted)
+//   tool-result — `[TOOL-RESULT] <name> ok|error …` per completion
+//   tool-call:raw — `[TOOL-CALL:RAW] <name> <json>` full untruncated input (no redaction)
 //   models      — context window resolution from models.dev
 //   context     — context window calc, branching triggers
 //   copilot-sse — raw SSE stream tee (very verbose)
@@ -76,19 +80,27 @@ export function debug(ns: string): Debugger {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy API — kept so existing callers keep working.
-// `--verbose` flag and `QUARK_VERBOSE=1` both map to QUARK_DEBUG=*.
+// `--verbose` flag — enables user-facing tool-call logging only.
+//
+// `--verbose` is intended for CLI users who want to see *what the agent is
+// doing* (tool name + arguments + result). It deliberately does NOT enable
+// engine internals like `processor`, `loop`, `cli`, `models`, `compaction`.
+//
+// To enable every namespace (engine debugging), set `QUARK_DEBUG=*` directly.
+// QUARK_VERBOSE=1 keeps the legacy meaning (everything on).
 // ---------------------------------------------------------------------------
+
+const VERBOSE_NAMESPACES = "tool-call,tool-result";
 
 export function setVerbose(v: boolean): void {
   if (v) {
-    process.env.QUARK_DEBUG = "*";
+    process.env.QUARK_DEBUG = VERBOSE_NAMESPACES;
     reload();
   }
 }
 
 export function isVerbose(): boolean {
-  return includes.has("*");
+  return includes.has("tool-call") || includes.has("*");
 }
 
 /** @deprecated Use `debug(ns)` instead. */

@@ -55,7 +55,7 @@ quark
 | `--parent-session <id>` | | Create a child session under a parent |
 | `--sub-agent` | | Mark as a child agent (reads `QUARK_SESSION_ID` from env) |
 | `--no-store` | | Ephemeral session — never written to disk |
-| `--verbose` | | Enable all debug logs (alias for `QUARK_DEBUG=*`) |
+| `--verbose` | | Print every tool call + result to stderr (`tool-call,tool-result` namespaces). For engine internals use `QUARK_DEBUG=*`. |
 | `--list-profiles` | `-l` | List available profiles |
 | `--help` | `-h` | Show help |
 
@@ -68,8 +68,9 @@ Quark uses **namespaced debug logs**. Logs are off by default and go to **stderr
 ```bash
 QUARK_DEBUG=processor quark "..."             # only processor events
 QUARK_DEBUG=processor,loop quark "..."        # multiple namespaces
-QUARK_DEBUG='*' quark "..."                   # everything (or pass --verbose)
+QUARK_DEBUG='*' quark "..."                   # everything (engine + tool)
 QUARK_DEBUG='*,-copilot-sse' quark "..."      # everything except SSE dump
+quark --verbose "..."                         # just tool-call + tool-result
 ```
 
 The env var inherits to child processes (sub-agents, bash tool) automatically.
@@ -81,6 +82,9 @@ The env var inherits to child processes (sub-agents, bash tool) automatically.
 | `processor` | Every `fullStream` event, finish-step reasons, and the `continue` / `stop` / `compact` return value |
 | `loop` | Each agent loop iteration, message/part counts, role+type summary of model messages, `processStream` result |
 | `cli` | `text-start` / `text-delta` / `text-end` and `assistant-message-start` / `assistant-message-end` events |
+| `tool-call` | `[TOOL-CALL] <name>(<args>)` per invocation — args truncated, secrets redacted |
+| `tool-result` | `[TOOL-RESULT] <name> ok\|error …` per completion (byte count for ok, error string for error) |
+| `tool-call:raw` | `[TOOL-CALL:RAW] <name> <json>` — full untruncated JSON of every tool input, no redaction |
 | `models` | Context window resolution from models.dev (cache hit, fallback search, not-found) |
 | `compaction` | Context window calc and compaction trigger decisions |
 | `copilot-sse` | Raw Copilot SSE stream tee — very verbose; use to debug streaming bugs |
