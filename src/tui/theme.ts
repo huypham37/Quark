@@ -55,14 +55,12 @@ export function pickThemeFor(bg: RGBA): Theme {
 }
 
 /**
- * Back-compat shim: older call sites used `setTerminalBg()` to override
- * `colors.dropdownBg` to match the terminal background. The unified
- * theme system replaces this with `applyTheme(pickThemeFor(bg))`, which
- * also swaps dropdownBg as part of the palette. Kept for any external
- * callers; prefer `applyTheme` going forward.
+ * Apply the readable theme for the detected terminal background, while
+ * keeping autocomplete overlays flush with the terminal itself.
  */
 export function setTerminalBg(bg: RGBA): void {
   applyTheme(pickThemeFor(bg))
+  colors.dropdownBg = bg
   colors.notificationBg = bg
 }
 

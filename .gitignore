@@ -45,6 +45,7 @@ src/web/public/styles.css
 docs/api/
 
 # Reference codebases (not part of this project)
+references-cache/
 opencode-reference/
 pi-mono/
 craft-agents-oss/

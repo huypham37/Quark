@@ -129,7 +129,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
       </Show>
       <box flexDirection="row">
         <Show when={rightZone().branch}>
-          <text fg={colors.success}> {rightZone().branch}</text>
+          <text fg={colors.muted}> {rightZone().branch}</text>
           <Show when={rightZone().cwd}>
             <text fg={colors.muted}> · </text>
           </Show>

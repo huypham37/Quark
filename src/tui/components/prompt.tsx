@@ -57,6 +57,7 @@ export interface PromptProps {
 }
 
 function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`
   if (n >= 1000) return `${Math.round(n / 1000)}k`
   return String(n)
 }
@@ -72,9 +73,8 @@ export const Prompt: Component<PromptProps> = (props) => {
 
   const tokenPercent = () => tokenPercentValue(props.tokensUsed ?? 0, props.tokenLimit ?? 0)
   const leftStatusRest = () => {
-    const used = props.tokensUsed ?? 0
     const limit = props.tokenLimit ?? 0
-    return ` · ${formatTokens(used)} of ${formatTokens(limit)}`
+    return ` of ${formatTokens(limit)}`
   }
 
   const modelName = () => props.modelName ?? "smart"

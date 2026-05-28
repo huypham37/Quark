@@ -35,7 +35,7 @@ export const lightTheme: Theme = {
 
     footerKey: RGBA.fromHex("#008833"),
 
-    dropdownBg: RGBA.fromHex("#e8e8e8"),
+    dropdownBg: RGBA.fromHex("#ffffff"),
     commandCardBg: RGBA.fromHex("#ebebeb"),
     notificationBg: RGBA.fromHex("#f0f0f0"),
 
@@ -70,10 +70,21 @@ export const lightTheme: Theme = {
     { scope: ["entity.name.tag", "meta.tag"], style: { foreground: "#800000" } },
     { scope: ["entity.other.attribute-name"], style: { foreground: "#ff0000" } },
     { scope: ["string.regexp"], style: { foreground: "#811f3f" } },
-    { scope: ["markup.heading", "entity.name.section"], style: { foreground: "#0000ff", bold: true } },
-    { scope: ["markup.bold", "markup.strong"], style: { foreground: "#996600", bold: true } },
-    { scope: ["markup.italic"], style: { italic: true } },
-    { scope: ["markup.inline.raw"], style: { foreground: "#a31515" } },
+    // Markdown — Atom One Light palette.
+    { scope: ["markup.heading", "markup.heading.1", "entity.name.section"], style: { foreground: "#e45649", bold: true } },
+    { scope: ["markup.heading.2"], style: { foreground: "#a626a4", bold: true } },
+    { scope: ["markup.heading.3"], style: { foreground: "#986801", bold: true } },
+    { scope: ["markup.heading.4"], style: { foreground: "#4078f2", bold: true } },
+    { scope: ["markup.heading.5"], style: { foreground: "#0184bc", bold: true } },
+    { scope: ["markup.heading.6"], style: { foreground: "#50a14f", bold: true } },
+    { scope: ["markup.bold", "markup.strong"], style: { foreground: "#986801", bold: true } },
+    { scope: ["markup.italic"], style: { foreground: "#a626a4", italic: true } },
+    { scope: ["markup.raw", "markup.inline.raw"], style: { foreground: "#50a14f" } },
+    { scope: ["markup.strikethrough"], style: { foreground: "#e45649" } },
+    { scope: ["markup.link", "markup.link.url"], style: { foreground: "#0184bc" } },
+    { scope: ["markup.link.label"], style: { foreground: "#4078f2" } },
+    { scope: ["markup.quote"], style: { foreground: "#a0a1a7", italic: true } },
+    { scope: ["markup.list", "markup.list.checked", "markup.list.unchecked"], style: { foreground: "#e45649" } },
     { scope: ["support.type.property-name"], style: { foreground: "#001080" } },
   ],
 }
