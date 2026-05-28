@@ -50,10 +50,8 @@ export const FlipPercent: Component<{ value: number }> = (props) => {
 
   onCleanup(stop)
 
-  const active = () => frame() !== FLIP_DONE_FRAME
-
   return (
-    <text fg={colors.statusLine} bold={active()} flexShrink={0}>
+    <text fg={colors.statusLine} flexShrink={0}>
       {flipPercentText(from(), to(), frame())}
     </text>
   )

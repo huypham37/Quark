@@ -17,6 +17,14 @@ export function tokenPercentText(value: number): string {
   return `${value}%`
 }
 
+const TOP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+const BOTTOM_DIGITS = "₀₁₂₃₄₅₆₇₈₉"
+
+function rollDigit(char: string, digits: string): string {
+  const n = char.charCodeAt(0) - 48
+  return n >= 0 && n <= 9 ? digits[n]! : char
+}
+
 export function flipPercentText(from: number, to: number, frame: number): string {
   if (frame >= FLIP_DONE_FRAME) return tokenPercentText(to)
 
@@ -28,10 +36,13 @@ export function flipPercentText(from: number, to: number, frame: number): string
 
   if (frame <= FLIP_OLD_FRAME) return a
 
-  const glyph = frame === FLIP_TOP_FRAME ? "▀" : "▄"
   let out = ""
   for (let i = 0; i < width; i++) {
-    out += a[i] === b[i] ? b[i] : glyph
+    if (a[i] === b[i]) {
+      out += b[i]
+    } else {
+      out += frame === FLIP_TOP_FRAME ? rollDigit(a[i]!, TOP_DIGITS) : rollDigit(b[i]!, BOTTOM_DIGITS)
+    }
   }
   return out
 }

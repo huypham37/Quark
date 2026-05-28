@@ -22,17 +22,17 @@ describe("flip percent frame helpers", () => {
     expect(shouldAnimateTokenPercent(3, 0)).toBe(false)
   })
 
-  test("renders flip frames for changed digits", () => {
+  test("rolls changed digits vertically", () => {
     expect(flipPercentText(42, 43, FLIP_OLD_FRAME)).toBe("42%")
-    expect(flipPercentText(42, 43, FLIP_TOP_FRAME)).toBe("4▀%")
-    expect(flipPercentText(42, 43, FLIP_BOTTOM_FRAME)).toBe("4▄%")
+    expect(flipPercentText(42, 43, FLIP_TOP_FRAME)).toBe("4²%")
+    expect(flipPercentText(42, 43, FLIP_BOTTOM_FRAME)).toBe("4₃%")
     expect(flipPercentText(42, 43, FLIP_DONE_FRAME)).toBe("43%")
   })
 
   test("keeps transition width stable when digit count grows", () => {
     expect(flipPercentText(9, 10, FLIP_OLD_FRAME)).toBe(" 9%")
-    expect(flipPercentText(9, 10, FLIP_TOP_FRAME)).toBe("▀▀%")
-    expect(flipPercentText(9, 10, FLIP_BOTTOM_FRAME)).toBe("▄▄%")
+    expect(flipPercentText(9, 10, FLIP_TOP_FRAME)).toBe(" ⁹%")
+    expect(flipPercentText(9, 10, FLIP_BOTTOM_FRAME)).toBe("₁₀%")
     expect(flipPercentText(9, 10, FLIP_DONE_FRAME)).toBe("10%")
   })
 })
