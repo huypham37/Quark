@@ -1,76 +1,71 @@
 // Theme colors and style tokens for the Quark TUI
-// Derived from Amp's dark-theme CLI aesthetic
+// Unified theme system: dark + light palettes, auto-selected from the
+// detected terminal background. Components keep importing `colors` —
+// only its property values change when `applyTheme()` runs at startup.
 //
-// Uses RGBA.fromHex() for optimal performance — avoids re-parsing color
-// strings on every render. OpenTUI accepts both string and RGBA for `fg`/`bg`,
-// but pre-parsed RGBA skips the internal parseColor() call.
+// Uses RGBA from @opentui/core for pre-parsed colors (no parseColor() at
+// render time). OpenTUI accepts both string and RGBA for `fg`/`bg`.
 
-import { RGBA } from "@opentui/core"
+import { RGBA, SyntaxStyle } from "@opentui/core"
 import type { ColorInput } from "@opentui/core"
+import { darkTheme } from "./themes/dark"
+import { lightTheme } from "./themes/light"
+import type { Palette, Theme } from "./themes/types"
 
-export const colors = {
-  // Primary accents
-  primary: RGBA.fromHex("#00d7d7"),    // cyan
-  success: RGBA.fromHex("#00d75f"),    // green
-  error: RGBA.fromHex("#ff5f5f"),      // red
-  warning: RGBA.fromHex("#d7d700"),    // yellow
-  muted: RGBA.fromHex("#808080"),      // gray
+// Mutable singleton — components import this reference once and keep it.
+// `applyTheme()` mutates the properties in-place so the live reference
+// always reflects the active palette.
+export const colors: Palette = { ...darkTheme.colors }
 
-  // Text
-  text: RGBA.fromHex("#e4e4e4"),       // white
-  textDim: RGBA.fromHex("#808080"),    // gray
-  textBold: RGBA.fromHex("#ffffff"),   // bright white
+// SyntaxStyle is rebuilt on theme change; consumers read the live binding.
+// Note: ES module `export let` provides live bindings to importers, so
+// reassigning here propagates to `import { syntaxStyle }` call sites as
+// long as the swap happens before they're evaluated (we apply theme at
+// TUI startup, before the first render).
+export let syntaxStyle: SyntaxStyle = SyntaxStyle.fromTheme(darkTheme.syntax)
 
-  // Borders
-  border: RGBA.fromHex("#808080"),     // gray
-  outline: RGBA.fromHex("#ffffff"),    // white
-  borderActive: RGBA.fromHex("#00d7d7"), // cyan
-  borderSuccess: RGBA.fromHex("#00d75f"), // green
+export type ColorName = keyof Palette
+export type { ColorInput, Theme }
 
-  // Message-specific
-  userBar: RGBA.fromHex("#00d7d7"),    // Left bar for user messages
-  toolPath: RGBA.fromHex("#5f87ff"),   // File paths in tool results
-  toolIcon: RGBA.fromHex("#00d75f"),   // Checkmark icon
-  thinkingIcon: RGBA.fromHex("#00d75f"), // Thinking indicator
+/** Active theme metadata (mostly for debugging / future settings UI). */
+export let activeTheme: Theme = darkTheme
 
-  // Status bar
-  statusLine: RGBA.fromHex("#808080"), // gray
-  statusModel: RGBA.fromHex("#d7d700"), // yellow
-  statusSkills: RGBA.fromHex("#00d7d7"), // cyan
-
-  // Footer
-  footerKey: RGBA.fromHex("#00d75f"),  // "Esc" highlighted
-
-  // Dropdown / autocomplete overlay — updated at runtime by setTerminalBg()
-  dropdownBg: RGBA.fromHex("#61AFEF") as RGBA,
-  commandCardBg: RGBA.fromHex("#21252A"),
-
-  // Notification panel background — solid dark to prevent text bleed-through
-  notificationBg: RGBA.fromHex("#1c1c1c"),
-
-  // Mention chips (inline context references)
-  mentionChipBg: RGBA.fromHex("#3a3a3a"),   // dark gray background for chips
-  mentionChipFg: RGBA.fromHex("#00d7d7"),   // cyan text for chip labels
-
-  // Scrollbar
-  scrollbarTrack: RGBA.fromHex("#3a3a3a"),   // dark gray track
-  scrollbarThumb: RGBA.fromHex("#666666"),   // lighter gray thumb
-
-  // Input cursor
-  cursorColor: RGBA.fromHex("#00d7d7"),      // cyan blinking cursor
-} as const
-
-export type ColorName = keyof typeof colors
-
-// Re-export ColorInput for components that accept color props
-export type { ColorInput }
-
-/** Set the dropdown background to match the detected terminal background */
-export function setTerminalBg(bg: RGBA): void {
-  ;(colors as { dropdownBg: RGBA }).dropdownBg = bg
+/**
+ * Swap the active theme. Mutates `colors` in place and rebuilds
+ * `syntaxStyle`. Safe to call multiple times; intended to be called once
+ * at TUI startup after detecting the terminal background.
+ */
+export function applyTheme(theme: Theme): void {
+  Object.assign(colors, theme.colors)
+  syntaxStyle = SyntaxStyle.fromTheme(theme.syntax)
+  activeTheme = theme
 }
 
-// Unicode icons used in the TUI
+/**
+ * Pick dark or light theme from a terminal background color.
+ * Uses ITU-R BT.601 luminance: L > 128 → light terminal.
+ */
+export function pickThemeFor(bg: RGBA): Theme {
+  // RGBA from @opentui/core stores channels in 0..1 floats — scale to 0..255.
+  const r = bg.r * 255
+  const g = bg.g * 255
+  const b = bg.b * 255
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+  return luminance > 128 ? lightTheme : darkTheme
+}
+
+/**
+ * Back-compat shim: older call sites used `setTerminalBg()` to override
+ * `colors.dropdownBg` to match the terminal background. The unified
+ * theme system replaces this with `applyTheme(pickThemeFor(bg))`, which
+ * also swaps dropdownBg as part of the palette. Kept for any external
+ * callers; prefer `applyTheme` going forward.
+ */
+export function setTerminalBg(bg: RGBA): void {
+  applyTheme(pickThemeFor(bg))
+}
+
+// Unicode icons used in the TUI (not theme-dependent).
 export const icons = {
   checkmark: "✓",
   cross: "✗",

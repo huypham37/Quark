@@ -184,6 +184,9 @@ export const Prompt: Component<PromptProps> = (props) => {
             ref={handleRef}
             focused={!props.disabled}
             placeholder={props.placeholder ?? "Type a message... (Enter to send)"}
+            textColor={colors.text}
+            focusedTextColor={colors.text}
+            placeholderColor={colors.textDim}
             cursorColor={colors.cursorColor}
             cursorStyle={{ style: "line", blinking: true }}
             onSubmit={handleSubmit}

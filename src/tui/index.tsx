@@ -22,7 +22,7 @@ import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { queryTerminalBackground } from "./terminal-bg"
-import { setTerminalBg } from "./theme"
+import { applyTheme, pickThemeFor } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
@@ -33,9 +33,10 @@ import { undoLatest } from "../commands/undo"
 import { runGoal } from "../commands/goal/orchestrator"
 import { listTasks } from "../task/task"
 
-// Detect terminal background BEFORE the TUI takes over stdin/stdout
+// Detect terminal background BEFORE the TUI takes over stdin/stdout,
+// then pick dark or light theme based on background luminance.
 const termBg = await queryTerminalBackground()
-setTerminalBg(termBg)
+applyTheme(pickThemeFor(termBg))
 
 // ---------------------------------------------------------------------------
 // Parse --profile flag from CLI args
