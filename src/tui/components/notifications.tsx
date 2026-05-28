@@ -6,7 +6,7 @@
 
 import type { Component } from "solid-js"
 import { For, createSignal, onMount, onCleanup, Show } from "solid-js"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useTerminalDimensions, useTimeline } from "@opentui/solid"
 import type { RGBA } from "@opentui/core"
 import {
   type Notification,
@@ -18,6 +18,57 @@ import { colors } from "../theme"
 
 const MAX_VISIBLE = 3
 const PANEL_WIDTH = 50
+const SLIDE_MS = 260
+
+function slideDistance(width: number): number {
+  return Math.max(1, width + 2)
+}
+
+type NotificationCardProps = {
+  notification: Notification
+  panelWidth: () => number
+  pad: (s: string) => string
+  getIcon: (type: Notification["type"]) => string
+  getColor: (type: Notification["type"]) => RGBA
+}
+
+const NotificationCard: Component<NotificationCardProps> = (props) => {
+  const slide = { x: slideDistance(props.panelWidth()) }
+  const [offset, setOffset] = createSignal(Math.round(slide.x))
+  const timeline = useTimeline({ duration: SLIDE_MS, loop: false })
+
+  timeline.add(slide, {
+    x: 0,
+    duration: SLIDE_MS,
+    ease: "outCirc",
+    onUpdate(values) {
+      setOffset(Math.max(0, Math.round(values.targets[0].x)))
+    },
+    onComplete() {
+      setOffset(0)
+    },
+  })
+
+  return (
+    <box flexDirection="column" width={props.panelWidth()} bg={colors.notificationBg} marginLeft={offset()}>
+      <box
+        flexDirection="column"
+        paddingX={1}
+        paddingY={0}
+        borderStyle="round"
+        borderColor={props.getColor(props.notification.type)}
+        bg={colors.notificationBg}
+      >
+        <text fg={props.getColor(props.notification.type)} bg={colors.notificationBg} bold>
+          {props.pad(`${props.getIcon(props.notification.type)} ${props.notification.title}`)}
+        </text>
+        <text fg={colors.textDim} bg={colors.notificationBg} wrap="wrap">
+          {props.pad(props.notification.message)}
+        </text>
+      </box>
+    </box>
+  )
+}
 
 export const Notifications: Component = () => {
   const dims = useTerminalDimensions()
@@ -67,7 +118,7 @@ export const Notifications: Component = () => {
     width: panelWidth(),
   })
 
-  const panelWidth = () => Math.min(PANEL_WIDTH, dims().width - 4)
+  const panelWidth = () => Math.max(1, Math.min(PANEL_WIDTH, dims().width - 4))
 
   // Pad a string to fill the full content width so bg covers every cell.
   // Border (2) + paddingX 1 each side (2) = 4 cols consumed from panel width.
@@ -81,21 +132,13 @@ export const Notifications: Component = () => {
       <box {...panelStyle()} flexDirection="column" gap={1}>
         <For each={notifications()}>
           {(n) => (
-            <box flexDirection="column" bg={colors.notificationBg}>
-              <box
-                flexDirection="column"
-                paddingX={1}
-                paddingY={0}
-                borderStyle="round"
-                borderColor={getColor(n.type)}
-                bg={colors.notificationBg}
-              >
-                {/* Header: icon + title */}
-                <text fg={getColor(n.type)} bg={colors.notificationBg} bold>{pad(`${getIcon(n.type)} ${n.title}`)}</text>
-                {/* Message body */}
-                <text fg={colors.textDim} bg={colors.notificationBg} wrap="wrap">{pad(n.message)}</text>
-              </box>
-            </box>
+            <NotificationCard
+              notification={n}
+              panelWidth={panelWidth}
+              pad={pad}
+              getIcon={getIcon}
+              getColor={getColor}
+            />
           )}
         </For>
       </box>
