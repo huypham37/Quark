@@ -63,6 +63,7 @@ export function pickThemeFor(bg: RGBA): Theme {
  */
 export function setTerminalBg(bg: RGBA): void {
   applyTheme(pickThemeFor(bg))
+  colors.notificationBg = bg
 }
 
 // Unicode icons used in the TUI (not theme-dependent).

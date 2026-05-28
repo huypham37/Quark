@@ -2,11 +2,16 @@
 // with a solid, opaque, dark background color that prevents text bleed-through
 // from underlying content.
 
-import { describe, test, expect } from "bun:test"
+import { beforeEach, describe, test, expect } from "bun:test"
 import { RGBA } from "@opentui/core"
-import { colors } from "../../src/tui/theme"
+import { applyTheme, colors, setTerminalBg } from "../../src/tui/theme"
+import { darkTheme } from "../../src/tui/themes/dark"
 
 describe("notification background", () => {
+  beforeEach(() => {
+    applyTheme(darkTheme)
+  })
+
   test("theme has a notificationBg color defined", () => {
     expect(colors.notificationBg).toBeDefined()
     expect(colors.notificationBg).toBeInstanceOf(RGBA)
@@ -34,5 +39,11 @@ describe("notification background", () => {
       bg.g !== text.g || 
       bg.b !== text.b
     expect(isDifferent).toBe(true)
+  })
+
+  test("setTerminalBg keeps notificationBg matched to detected terminal color", () => {
+    const detected = RGBA.fromHex("#2b2b3c")
+    setTerminalBg(detected)
+    expect(colors.notificationBg).toBe(detected)
   })
 })
