@@ -11,6 +11,8 @@ import { Show, For } from "solid-js"
 import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
+import { FlipPercent } from "./flip-percent"
+import { tokenPercentValue } from "./flip-percent-frame"
 
 // Paste-collapse thresholds: if pasted text exceeds either limit, replace
 // it with a `[Pasted #N +X lines]` placeholder and stash the real content
@@ -59,11 +61,6 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-function formatPercent(used: number, limit: number): string {
-  if (limit <= 0) return "0%"
-  return `${Math.round((used / limit) * 100)}%`
-}
-
 export const Prompt: Component<PromptProps> = (props) => {
   let textareaRef: TextareaRenderable | undefined
 
@@ -73,11 +70,11 @@ export const Prompt: Component<PromptProps> = (props) => {
   const pasteBuffer = new Map<number, string>()
   let pasteCounter = 0
 
-  const leftStatus = () => {
+  const tokenPercent = () => tokenPercentValue(props.tokensUsed ?? 0, props.tokenLimit ?? 0)
+  const leftStatusRest = () => {
     const used = props.tokensUsed ?? 0
     const limit = props.tokenLimit ?? 0
-    const cost = props.cost ?? 0
-    return `${formatPercent(used, limit)} · ${formatTokens(used)} of ${formatTokens(limit)}`
+    return ` · ${formatTokens(used)} of ${formatTokens(limit)}`
   }
 
   const modelName = () => props.modelName ?? "smart"
@@ -141,7 +138,8 @@ export const Prompt: Component<PromptProps> = (props) => {
       {/* Status line — single row, flex-based filler */}
       <box flexDirection="row" height={1} overflow="hidden">
         <text fg={borderColor()} flexShrink={0}>╭── </text>
-        <text fg={colors.statusLine} flexShrink={0}>{leftStatus()}</text>
+        <FlipPercent value={tokenPercent()} />
+        <text fg={colors.statusLine} flexShrink={0}>{leftStatusRest()}</text>
         <text fg={borderColor()} flexGrow={1} flexShrink={1} overflow="hidden" wrapMode="none">{" " + "─".repeat(300) + " "}</text>
         <Show when={props.thinkingEffort && props.thinkingEffort !== "none"}>
           <text fg={RGBA.fromHex("#a78bfa")} flexShrink={0}>[T:{props.thinkingEffort}]─</text>
