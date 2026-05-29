@@ -14,7 +14,7 @@ import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { estimateTokens, getLastInputTokens } from "../session/context"
-import { summarizeForBranch, createBranch } from "../session/branch"
+import { summarizeForBranch, createBranch, splitMessages } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills } from "../skill/skill"
@@ -291,11 +291,12 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         // LLM call.
         const parent = getSession(sid)
         const existing = parent.summary?.trim()
+        const { messages, parts } = loadMessages(sid)
+        const { recentMessages, recentParts } = splitMessages(messages, parts)
         let summary: string
         if (existing && existing.length > 0) {
           summary = existing
         } else {
-          const { messages, parts } = loadMessages(sid)
           const model = await resolveModel(loadConfig().small_model)
           summary = await summarizeForBranch({ messages, parts, model })
         }
@@ -304,13 +305,15 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           summary,
           prompt: args.trim(),
           profile: activeAgent.id,
+          recentMessages,
+          recentParts,
         })
 
         currentSession = { id: branch.sessionId }
         process.env.QUARK_SESSION_ID = branch.sessionId
-        const { messages, parts } = loadMessages(branch.sessionId)
-        const tuiMessages = dbToTuiMessages(messages, parts)
-        const modelMessages = toModelMessages(messages, parts)
+        const child = loadMessages(branch.sessionId)
+        const tuiMessages = dbToTuiMessages(child.messages, child.parts)
+        const modelMessages = toModelMessages(child.messages, child.parts)
         const system = buildSystem(activeAgent)
         const systemStr = Array.isArray(system) ? system.join("\n") : system
         const estimatedTokens = estimateTokens(systemStr, modelMessages)

@@ -1,13 +1,14 @@
 ---
 title: Task-First Architecture — Replacing Compaction with Session Branching
 date_created: 2026-05-07
-date_modified: 2026-05-08
-revision: 4
+date_modified: 2026-05-29
+revision: 5
 history:
   - 2026-05-07: Initial draft
   - 2026-05-08: Started Phase 1 task entity and session initializer implementation
   - 2026-05-08: Added Phase 2 branch creation, lineage context, and auto-branch loop wiring
   - 2026-05-08: Removed steer_session as agent tool; steer is TUI-only (human command)
+  - 2026-05-29: Clarified branch compaction strips tool/runtime parts before splitting and preserves recent text context
 status: in-progress
 ---
 
@@ -83,11 +84,20 @@ its tree.
 
 When context is exhausted, the agent creates a **child branch** of the current
 session. The parent session is finalized (summary persisted), its summary is
-frozen, and the child inherits that summary as `parentSummary`. The child starts
-with a clean context window containing only:
+frozen, and the child inherits that summary as `parentSummary`.
+
+The branch input is first stripped to text conversation content (`text` and
+`summary` parts). Tool calls, tool results, images, step metadata, and reasoning parts
+are excluded before splitting. The stripped conversation is split into old
+history and the last three messages. Old history is summarized; recent messages
+are replayed into the child session without tool/runtime parts.
+
+The child starts with a clean context window containing only:
 - Task description
 - Lineage summaries (walk up `parentSessionId`)
-- The current prompt
+- The old-history summary
+- The stripped recent messages
+- The steering prompt, only for explicit `/steer <goal>` branches
 
 ### 3.4 Full autonomy
 

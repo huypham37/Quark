@@ -24,6 +24,7 @@ export {
   buildLineageContext,
   getSessionLineage,
   shouldBranchWithRealTokens,
+  splitMessages,
 } from "./session/branch"
 
 // Tool system
