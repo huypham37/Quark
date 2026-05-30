@@ -44,6 +44,7 @@ import { StatisticsPanel } from "./statistics-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { getThinkingNormalizer } from "../../provider/thinking"
+import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 
 /** Command handler result */
 export type CommandResult =
@@ -57,6 +58,8 @@ interface AppProps {
   getSessions?: () => SessionTreeInput[]
   getModels?: () => { id: string; name: string }[]
   getCurrentModel?: () => string
+  getProfiles?: () => { id: string; name: string }[]
+  getCurrentProfile?: () => string
   initialSessionId?: string
   initialModelName?: string
   initialSkillCount?: number
@@ -88,7 +91,7 @@ const MENTION_INACTIVE: MentionState = {
 
 interface SlashState {
   active: boolean
-  mode: "commands" | "sessions" | "models"
+  mode: "commands" | "sessions" | ChoicePickerMode
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
@@ -353,21 +356,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Models picker: filter the list by what the user types
-    if (s.mode === "models" && s.active && props.getModels) {
+    // Choice pickers: filter the list by what the user types
+    if ((s.mode === "models" || s.mode === "profiles") && s.active) {
+      const options = getChoiceOptions(s.mode)
+      if (!options) return
       const query = newValue
-      const currentModel = props.getCurrentModel?.() ?? ""
-      const allModels = props.getModels()
-      const filtered = query
-        ? allModels.filter((m) => m.id.toLowerCase().includes(query.toLowerCase()) || m.name.toLowerCase().includes(query.toLowerCase()))
-        : allModels
-      const pickerItems: PickerItem[] = filtered.map((m) => ({
-        id: m.id,
-        label: m.name,
-        detail: "",
-        isCurrent: m.id === currentModel,
-      }))
-      pickerItems.sort((a, b) => (a.isCurrent ? -1 : b.isCurrent ? 1 : 0))
+      const pickerItems = buildPickerItems(options, getCurrentChoice(s.mode), query)
       setSlash((prev) => ({ ...prev, query, pickerItems, selectedIndex: 0 }))
       setInputValue(newValue)
       return
@@ -414,6 +408,28 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionRows,
       selectedIndex: firstSelectableSessionRow(sessionRows, sid),
+    })
+    setInputText("")
+    return true
+  }
+
+  const getChoiceOptions = (mode: ChoicePickerMode) =>
+    mode === "models" ? props.getModels?.() : props.getProfiles?.()
+
+  const getCurrentChoice = (mode: ChoicePickerMode) =>
+    mode === "models" ? props.getCurrentModel?.() ?? "" : props.getCurrentProfile?.() ?? ""
+
+  const openChoicePicker = (mode: ChoicePickerMode): boolean => {
+    const options = getChoiceOptions(mode)
+    if (!options) return false
+    setSlash({
+      active: true,
+      mode,
+      query: "",
+      items: [],
+      pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
+      sessionRows: [],
+      selectedIndex: 0,
     })
     setInputText("")
     return true
@@ -510,16 +526,19 @@ export const App: Component<AppProps> = (props) => {
           return true
         }
 
-        // --- Model picker mode ---
-        if (s.mode === "models") {
+        // --- Choice picker mode ---
+        if (s.mode === "models" || s.mode === "profiles") {
           const selected = s.pickerItems[s.selectedIndex]
           if (selected) {
             setSlash(SLASH_INACTIVE)
             setInputText("")
+            const command = s.mode === "models" ? "model" : "profile"
             if (props.onCommand) {
-              props.onCommand("model", selected.id, state.store.sessionId)
+              props.onCommand(command, selected.id, state.store.sessionId)
             }
-            state.setStore("status", "modelName", selected.id)
+            if (s.mode === "models") {
+              state.setStore("status", "modelName", selected.id)
+            }
           }
           return true
         }
@@ -533,27 +552,9 @@ export const App: Component<AppProps> = (props) => {
               return true
             }
 
-            // /model → transition to model picker (Tab or Enter)
-            if (selected.id === "model" && (isReturn || isTab) && props.getModels) {
-              const currentModel = props.getCurrentModel?.() ?? ""
-              const models = props.getModels()
-              const pickerItems: PickerItem[] = models.map((m) => ({
-                id: m.id,
-                label: m.name,
-                detail: "",
-                isCurrent: m.id === currentModel,
-              }))
-              pickerItems.sort((a, b) => (a.isCurrent ? -1 : b.isCurrent ? 1 : 0))
-              setSlash({
-                active: true,
-                mode: "models",
-                query: "",
-                items: [],
-                pickerItems,
-                sessionRows: [],
-                selectedIndex: 0,
-              })
-              setInputText("")
+            // /model and /profile → transition to picker (Tab or Enter)
+            const pickerMode = pickerModeForCommand(selected.id)
+            if (pickerMode && (isReturn || isTab) && openChoicePicker(pickerMode)) {
               return true
             }
 
@@ -698,8 +699,8 @@ export const App: Component<AppProps> = (props) => {
       if (s.mode === "sessions") {
         return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
       }
-      if (s.mode === "models") {
-        return { type: "models", items: s.pickerItems, selectedIndex: s.selectedIndex }
+      if (s.mode === "models" || s.mode === "profiles") {
+        return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
       return { type: "commands", items: s.items, selectedIndex: s.selectedIndex, query: s.query }
     }

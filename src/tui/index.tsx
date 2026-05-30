@@ -409,6 +409,14 @@ function handleGetCurrentModel() {
   return modelOverride ?? loadConfig().main_model
 }
 
+function handleGetProfiles() {
+  return listProfiles().map((id) => ({ id, name: id }))
+}
+
+function handleGetCurrentProfile() {
+  return activeAgent.id
+}
+
 // Pre-create the renderer so module-level code (e.g. openEditor) can
 // suspend/resume it when shelling out to an external editor.
 const renderer = await createCliRenderer({
@@ -432,6 +440,8 @@ render(() => (
     getSessions={handleGetSessions}
     getModels={handleGetModels}
     getCurrentModel={handleGetCurrentModel}
+    getProfiles={handleGetProfiles}
+    getCurrentProfile={handleGetCurrentProfile}
     initialSessionId={currentSession?.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}

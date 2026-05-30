@@ -66,17 +66,24 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBe("<model-name>")
   })
 
+  test("profile command has usage hint", () => {
+    const result = filterCommands("profile")
+    expect(result.length).toBe(1)
+    expect(result[0]!.usage).toBe("<profile-name>")
+  })
+
   test("help command has no usage hint", () => {
     const result = filterCommands("help")
     expect(result[0]!.usage).toBeUndefined()
   })
 
-  test("s prefix matches sessions, settings, and steer", () => {
+  test("s prefix matches sessions, settings, steer, and statistics", () => {
     const result = filterCommands("s")
-    expect(result.length).toBe(3)
+    expect(result.length).toBe(4)
     expect(result.map((c) => c.id)).toContain("sessions")
     expect(result.map((c) => c.id)).toContain("settings")
     expect(result.map((c) => c.id)).toContain("steer")
+    expect(result.map((c) => c.id)).toContain("statistics")
   })
 
   test("r prefix matches reload-config only", () => {
