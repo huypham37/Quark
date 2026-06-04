@@ -77,11 +77,12 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBeUndefined()
   })
 
-  test("s prefix matches sessions, settings, steer, and statistics", () => {
+  test("s prefix matches sessions, settings, skills, steer, and statistics", () => {
     const result = filterCommands("s")
-    expect(result.length).toBe(4)
+    expect(result.length).toBe(5)
     expect(result.map((c) => c.id)).toContain("sessions")
     expect(result.map((c) => c.id)).toContain("settings")
+    expect(result.map((c) => c.id)).toContain("skills")
     expect(result.map((c) => c.id)).toContain("steer")
     expect(result.map((c) => c.id)).toContain("statistics")
   })
@@ -102,5 +103,39 @@ describe("filterCommands", () => {
     const result = filterCommands("h")
     expect(result.length).toBe(1)
     expect(result[0]!.id).toBe("help")
+  })
+
+  // --- /skills slash command registration and filtering ---
+
+  test("skills command exists in commands list", () => {
+    const skillsCmd = commands.find((c) => c.id === "skills")
+    expect(skillsCmd).toBeDefined()
+    expect(skillsCmd!.description).toMatch(/skill/i)
+  })
+
+  test("sk prefix matches skills", () => {
+    const result = filterCommands("sk")
+    expect(result.length).toBeGreaterThanOrEqual(1)
+    const ids = result.map((c) => c.id)
+    expect(ids).toContain("skills")
+  })
+
+  test("ski prefix matches skills exclusively", () => {
+    const result = filterCommands("ski")
+    expect(result.length).toBe(1)
+    expect(result[0]!.id).toBe("skills")
+  })
+
+  test("skills is case-insensitive in filter", () => {
+    const result = filterCommands("SKILLS")
+    expect(result.length).toBe(1)
+    expect(result[0]!.id).toBe("skills")
+  })
+
+  test("skills command does not require a usage hint", () => {
+    const result = filterCommands("skills")
+    expect(result.length).toBe(1)
+    // /skills opens a picker — no argument syntax needed
+    expect(result[0]!.usage).toBeUndefined()
   })
 })

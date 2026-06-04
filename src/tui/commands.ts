@@ -20,6 +20,7 @@ export const commands: SlashCommand[] = [
   { id: "clear", description: "Clear messages and start new session" },
   { id: "model", description: "Switch model", usage: "<model-name>" },
   { id: "profile", description: "Switch profile", usage: "<profile-name>" },
+  { id: "skills", description: "Add a skill" },
   { id: "settings", description: "Open config in editor" },
   { id: "reload-config", description: "Reload config without restarting" },
   { id: "undo", description: "Undo last agent file changes" },

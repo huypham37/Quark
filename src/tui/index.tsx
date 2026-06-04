@@ -17,7 +17,7 @@ import { estimateTokens, getLastInputTokens } from "../session/context"
 import { summarizeForBranch, createBranch, splitMessages } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
-import { discoverSkills } from "../skill/skill"
+import { discoverSkills, loadSkill } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
@@ -171,6 +171,38 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     // Show toast notification for profile switch (no message in conversation)
     notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)
 
+    return { handled: true }
+  }
+
+  // /skills works even without an active session
+  if (command === "skills") {
+    if (!args) {
+      notifyInfo("Skills", "Use /skills to open the skill picker", 3000)
+      return { handled: true }
+    }
+
+    const skillName = args.trim()
+
+    if (activeAgent.skills.includes(skillName)) {
+      notifyInfo("Skills", `Skill "${skillName}" is already active`, 3000)
+      return { handled: true }
+    }
+
+    const skill = loadSkill(skillName)
+    if (!skill) {
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`Skill "${skillName}" not found`) })
+      return { handled: true }
+    }
+
+    // Temporarily add the skill to the current agent's skill list
+    activeAgent.skills = [...activeAgent.skills, skillName]
+
+    // Re-register the skill tool with expanded boundSkills so the agent can load it
+    clearRegistry()
+    resetBootstrap()
+    await bootstrap({ profileTools: activeAgent.tools, boundSkills: activeAgent.skills })
+
+    notifyInfo("Skills", `Added skill: ${skillName}`, 3000)
     return { handled: true }
   }
 
@@ -417,6 +449,14 @@ function handleGetCurrentProfile() {
   return activeAgent.id
 }
 
+function handleGetSkills() {
+  return discoverSkills().map((s) => ({ id: s.name, name: s.name }))
+}
+
+function handleGetCurrentSkill() {
+  return ""
+}
+
 // Pre-create the renderer so module-level code (e.g. openEditor) can
 // suspend/resume it when shelling out to an external editor.
 const renderer = await createCliRenderer({
@@ -442,6 +482,8 @@ render(() => (
     getCurrentModel={handleGetCurrentModel}
     getProfiles={handleGetProfiles}
     getCurrentProfile={handleGetCurrentProfile}
+    getSkills={handleGetSkills}
+    getCurrentSkill={handleGetCurrentSkill}
     initialSessionId={currentSession?.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}

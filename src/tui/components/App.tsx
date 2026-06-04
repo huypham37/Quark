@@ -60,6 +60,8 @@ interface AppProps {
   getCurrentModel?: () => string
   getProfiles?: () => { id: string; name: string }[]
   getCurrentProfile?: () => string
+  getSkills?: () => { id: string; name: string }[]
+  getCurrentSkill?: () => string
   initialSessionId?: string
   initialModelName?: string
   initialSkillCount?: number
@@ -357,7 +359,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     // Choice pickers: filter the list by what the user types
-    if ((s.mode === "models" || s.mode === "profiles") && s.active) {
+    if ((s.mode === "models" || s.mode === "profiles" || s.mode === "skills") && s.active) {
       const options = getChoiceOptions(s.mode)
       if (!options) return
       const query = newValue
@@ -414,10 +416,10 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const getChoiceOptions = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getModels?.() : props.getProfiles?.()
+    mode === "models" ? props.getModels?.() : mode === "profiles" ? props.getProfiles?.() : props.getSkills?.()
 
   const getCurrentChoice = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getCurrentModel?.() ?? "" : props.getCurrentProfile?.() ?? ""
+    mode === "models" ? props.getCurrentModel?.() ?? "" : mode === "profiles" ? props.getCurrentProfile?.() ?? "" : props.getCurrentSkill?.() ?? ""
 
   const openChoicePicker = (mode: ChoicePickerMode): boolean => {
     const options = getChoiceOptions(mode)
@@ -527,12 +529,12 @@ export const App: Component<AppProps> = (props) => {
         }
 
         // --- Choice picker mode ---
-        if (s.mode === "models" || s.mode === "profiles") {
+        if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
           const selected = s.pickerItems[s.selectedIndex]
           if (selected) {
             setSlash(SLASH_INACTIVE)
             setInputText("")
-            const command = s.mode === "models" ? "model" : "profile"
+            const command = s.mode === "models" ? "model" : s.mode === "profiles" ? "profile" : "skills"
             if (props.onCommand) {
               props.onCommand(command, selected.id, state.store.sessionId)
             }
@@ -699,7 +701,7 @@ export const App: Component<AppProps> = (props) => {
       if (s.mode === "sessions") {
         return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
       }
-      if (s.mode === "models" || s.mode === "profiles") {
+      if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
       return { type: "commands", items: s.items, selectedIndex: s.selectedIndex, query: s.query }

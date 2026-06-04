@@ -31,6 +31,7 @@ export type AutocompleteMode =
   | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
+  | { type: "skills"; items: PickerItem[]; selectedIndex: number }
 
 export interface AutocompleteProps {
   mode: AutocompleteMode | null
@@ -105,6 +106,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "profiles") {
       result.push({ label: "Profiles — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
+    } else if (mode.type === "skills") {
+      result.push({ label: "Skills — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     }
 
     // Empty-state row OR data rows (mutually exclusive)
@@ -118,6 +121,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "No models available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "profiles" && mode.items.length === 0) {
       result.push({ label: "No profiles available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
+    } else if (mode.type === "skills" && mode.items.length === 0) {
+      result.push({ label: "No skills found", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands") {
       for (let i = 0; i < mode.items.length; i++) {
         const cmd = mode.items[i]!
@@ -164,7 +169,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
-    } else if (mode.type === "models" || mode.type === "profiles") {
+    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills") {
       for (let i = 0; i < mode.items.length; i++) {
         const item = mode.items[i]!
         const sel = i === mode.selectedIndex
@@ -230,7 +235,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 }
 
 function scrollAnchorIndex(mode: AutocompleteMode, selectedIndex: number, viewportHeight: number): number {
-  if (mode.type === "models" || mode.type === "profiles") return selectedIndex + 1
+  if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills") return selectedIndex + 1
   if (mode.type !== "sessions") return selectedIndex
 
   for (let i = selectedIndex - 1; i >= 0; i--) {
