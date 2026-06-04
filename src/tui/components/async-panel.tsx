@@ -35,16 +35,23 @@ const CondensedMessage: Component<{ message: TuiMessage }> = (props) => {
     return part?.text ?? ""
   }
 
+  // Hide assistant messages that have no visible text (e.g. reasoning-only
+  // or tool-call-only turns). The "● Working…" indicator is shown separately.
+  const isVisible = () =>
+    props.message.role === "user" || textPart().trim().length > 0
+
   return (
-    <box flexDirection="column" marginBottom={1} backgroundColor={PANEL_BG()}>
-      <Show when={props.message.role === "user"}>
-        <text fg={colors.primary} bg={PANEL_BG()} bold>You:</text>
-      </Show>
-      <Show when={props.message.role === "assistant"}>
-        <text fg={colors.primary} bg={PANEL_BG()} bold>Assistant:</text>
-      </Show>
-      <text fg={colors.text} bg={PANEL_BG()} wrap="wrap">{textPart()}</text>
-    </box>
+    <Show when={isVisible()}>
+      <box flexDirection="column" marginBottom={1} backgroundColor={PANEL_BG()}>
+        <Show when={props.message.role === "user"}>
+          <text fg={colors.primary} bg={PANEL_BG()} bold>You:</text>
+        </Show>
+        <Show when={props.message.role === "assistant"}>
+          <text fg={colors.primary} bg={PANEL_BG()} bold>Assistant:</text>
+        </Show>
+        <text fg={colors.text} bg={PANEL_BG()} wrap="wrap">{textPart()}</text>
+      </box>
+    </Show>
   )
 }
 
