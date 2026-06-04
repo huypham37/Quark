@@ -30,15 +30,19 @@ const PANEL_BORDER = RGBA.fromHex("#3d4147")
 const PANEL_BG = () => terminalBg
 
 const CondensedMessage: Component<{ message: TuiMessage }> = (props) => {
-  const textPart = () => {
-    const part = props.message.parts.find((p): p is Extract<TuiPart, { type: "text" }> => p.type === "text")
-    return part?.text ?? ""
+  // Collect ALL text parts — the model may emit text → tool → text in one turn.
+  const allText = () => {
+    const texts: string[] = []
+    for (const p of props.message.parts) {
+      if (p.type === "text" && p.text) texts.push(p.text)
+    }
+    return texts.join("\n")
   }
 
   // Hide assistant messages that have no visible text (e.g. reasoning-only
   // or tool-call-only turns). The "● Working…" indicator is shown separately.
   const isVisible = () =>
-    props.message.role === "user" || textPart().trim().length > 0
+    props.message.role === "user" || allText().trim().length > 0
 
   return (
     <Show when={isVisible()}>
@@ -49,7 +53,7 @@ const CondensedMessage: Component<{ message: TuiMessage }> = (props) => {
         <Show when={props.message.role === "assistant"}>
           <text fg={colors.primary} bg={PANEL_BG()} bold>Assistant:</text>
         </Show>
-        <text fg={colors.text} bg={PANEL_BG()} wrap="wrap">{textPart()}</text>
+        <text fg={colors.text} bg={PANEL_BG()} wrap="wrap">{allText()}</text>
       </box>
     </Show>
   )
@@ -89,6 +93,22 @@ export const AsyncPanel: Component<AsyncPanelProps> = (props) => {
 
   const hasContent = () => props.panel.messages.length > 0 || !!workingLabel()
 
+  // Merge consecutive assistant messages into a single display block.
+  // The agent loop creates a new assistant message per turn (text → tools → text).
+  // In the panel we want one coherent "Assistant:" block, not one per turn.
+  const mergedMessages = (): TuiMessage[] => {
+    const out: TuiMessage[] = []
+    for (const msg of props.panel.messages) {
+      const last = out[out.length - 1]
+      if (msg.role === "assistant" && last && last.role === "assistant") {
+        out[out.length - 1] = { ...last, parts: [...last.parts, ...msg.parts] }
+      } else {
+        out.push({ ...msg, parts: [...msg.parts] })
+      }
+    }
+    return out
+  }
+
   // Inner width for separators (total minus left/right border chars)
   const innerWidth = () => PANEL_WIDTH - 2
 
@@ -118,7 +138,7 @@ export const AsyncPanel: Component<AsyncPanelProps> = (props) => {
       >
         <box flexDirection="column" backgroundColor={PANEL_BG()}>
           <Show when={hasContent()} fallback={<box height={1} backgroundColor={PANEL_BG()} />}>
-            <For each={props.panel.messages}>
+            <For each={mergedMessages()}>
               {(msg) => <CondensedMessage message={msg} />}
             </For>
             <Show when={workingLabel()}>
