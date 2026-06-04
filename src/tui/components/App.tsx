@@ -41,6 +41,7 @@ import { readClipboard } from "../clipboard"
 import { writeClipboard } from "../clipboard"
 import { collectStatistics, renderStatisticsChart } from "../../commands/statistics"
 import { StatisticsPanel } from "./statistics-panel"
+import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { getThinkingNormalizer } from "../../provider/thinking"
@@ -55,6 +56,7 @@ interface AppProps {
   onSubmit: (text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) => void
   onCancel: (sessionId: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
+  onCreateAsyncSession?: () => string
   getSessions?: () => SessionTreeInput[]
   getModels?: () => { id: string; name: string }[]
   getCurrentModel?: () => string
@@ -203,6 +205,8 @@ export const App: Component<AppProps> = (props) => {
   const [inputValue, setInputValue] = createSignal("")
   // Statistics panel visibility and content
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
+  // Async panel side-session ID (created lazily on first panel submit)
+  const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -468,6 +472,11 @@ export const App: Component<AppProps> = (props) => {
       const stats = collectStatistics()
       const chart = renderStatisticsChart(stats)
       setStatisticsContent(chart)
+      return
+    }
+
+    if (commandId === "async-msg") {
+      dispatch(state, { type: "open-async-panel", sessionId: null, title: "msg" })
       return
     }
 
@@ -919,6 +928,22 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    // Esc closes async panel (takes priority over selection / agent cancel)
+    if (evt.name === "escape" && state.store.asyncPanel) {
+      const sideId = asyncSessionId()
+      dispatch(state, { type: "close-async-panel" })
+      if (sideId) props.onCancel(sideId)
+      setAsyncSessionId(null)
+      evt.preventDefault()
+      return
+    }
+
+    // When async panel is open, let all other keys pass through to the panel's
+    // focused textarea. Only Escape (above) is handled globally.
+    if (state.store.asyncPanel) {
+      return
+    }
+
     // Esc clears any active selection (takes priority over agent cancel)
     if (evt.name === "escape" && renderer.getSelection()) {
       renderer.clearSelection()
@@ -1024,6 +1049,32 @@ export const App: Component<AppProps> = (props) => {
       <Show when={statisticsContent()}>
         {(content) => (
           <StatisticsPanel content={content()} onClose={() => setStatisticsContent(null)} />
+        )}
+      </Show>
+
+      {/* Async panel overlay */}
+      <Show when={state.store.asyncPanel}>
+        {(panel) => (
+          <AsyncPanel
+            panel={panel()}
+            onClose={() => {
+              const sideId = asyncSessionId()
+              dispatch(state, { type: "close-async-panel" })
+              if (sideId) props.onCancel(sideId)
+              setAsyncSessionId(null)
+            }}
+            onToggleCollapse={() => dispatch(state, { type: "toggle-async-collapse" })}
+            onSubmit={(text: string) => {
+              if (!text.trim()) return
+              let sid = asyncSessionId()
+              if (!sid) {
+                sid = props.onCreateAsyncSession!()
+                setAsyncSessionId(sid)
+                dispatch(state, { type: "set-async-session-id", sessionId: sid })
+              }
+              props.onSubmit(text, sid)
+            }}
+          />
         )}
       </Show>
 

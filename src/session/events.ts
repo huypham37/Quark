@@ -100,6 +100,9 @@ export interface BusEvents {
   "steer-start": { sessionId: string }
   "steer-end": { sessionId: string }
 
+  // Async panel opened — TUI should show the side panel
+  "async-panel-open": { sessionId?: string; title: string }
+
   // ---------------------------------------------------------------------------
   // Sub-agent observability — events forwarded from child `quark --sub-agent`
   // processes via stderr NDJSON. The parent Bash tool parses these and re-emits

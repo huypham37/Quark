@@ -457,6 +457,11 @@ function handleGetCurrentSkill() {
   return ""
 }
 
+function handleCreateAsyncSession(): string {
+  const sess = createSession({ ephemeral: true })
+  return sess.id
+}
+
 // Pre-create the renderer so module-level code (e.g. openEditor) can
 // suspend/resume it when shelling out to an external editor.
 const renderer = await createCliRenderer({
@@ -477,6 +482,7 @@ render(() => (
     onSubmit={handleSubmit}
     onCancel={handleCancel}
     onCommand={handleCommand}
+    onCreateAsyncSession={handleCreateAsyncSession}
     getSessions={handleGetSessions}
     getModels={handleGetModels}
     getCurrentModel={handleGetCurrentModel}

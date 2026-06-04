@@ -48,6 +48,18 @@ export interface SubAgentState {
   done: boolean
 }
 
+// Async message panel state — side ephemeral session displayed in overlay
+export interface AsyncPanel {
+  sessionId: string | null
+  title: string
+  collapsed: boolean
+  messages: TuiMessage[]
+  running: boolean
+  done: boolean
+  toolsUsed: number
+  unread: number
+}
+
 export interface TuiStatus {
   tokensUsed: number
   tokenLimit: number
@@ -122,6 +134,19 @@ export type TuiAction =
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string }
   | { type: "truncate-messages"; upToMessageId: string }
+  // Async panel actions
+  | { type: "open-async-panel"; sessionId: string | null; title: string }
+  | { type: "set-async-session-id"; sessionId: string }
+  | { type: "close-async-panel" }
+  | { type: "async-add-user-message"; id: string; text: string }
+  | { type: "async-add-assistant-message"; id: string }
+  | { type: "async-text-start"; messageId: string }
+  | { type: "async-text-delta"; messageId: string; delta: string; text: string }
+  | { type: "async-text-end"; messageId: string; text: string }
+  | { type: "async-tool-start"; messageId: string; tool: string; callId: string }
+  | { type: "async-assistant-done"; messageId: string }
+  | { type: "async-set-running"; running: boolean }
+  | { type: "toggle-async-collapse" }
 
 // ---------------------------------------------------------------------------
 // Extract profile and prompt from a quark --sub-agent bash command
@@ -238,6 +263,7 @@ export interface AppStore {
   permissionQueue: PermissionRequest[]
   question?: QuestionRequest
   questionQueue: QuestionRequest[]
+  asyncPanel: AsyncPanel | null
 }
 
 export interface AppState {
@@ -268,6 +294,7 @@ export function createAppState(initial: {
     permissionQueue: [],
     question: undefined,
     questionQueue: [],
+    asyncPanel: null,
   })
   return { store, setStore }
 }
@@ -832,6 +859,145 @@ export function dispatch(state: AppState, action: TuiAction): void {
       // Mark the parent tool part as completed so the InlineSpinner stops animating.
       setStore("messages", msgIdx, "parts", partIdx, produce((part: TuiPart) => {
         if (part.type === "tool") part.status = "completed"
+      }))
+      break
+    }
+
+    // ------------------------------------------------------------------
+    // Async panel actions
+    // ------------------------------------------------------------------
+
+    case "open-async-panel": {
+      setStore("asyncPanel", {
+        sessionId: action.sessionId,
+        title: action.title,
+        collapsed: false,
+        messages: [],
+        running: false,
+        done: false,
+        toolsUsed: 0,
+        unread: 0,
+      })
+      break
+    }
+
+    case "set-async-session-id": {
+      setStore("asyncPanel", produce((panel: AsyncPanel | null) => {
+        if (panel) panel.sessionId = action.sessionId
+      }))
+      break
+    }
+
+    case "close-async-panel": {
+      setStore("asyncPanel", null)
+      break
+    }
+
+    case "async-add-user-message": {
+      setStore(
+        "asyncPanel",
+        "messages",
+        (state.store.asyncPanel?.messages.length ?? 0),
+        {
+          id: action.id,
+          role: "user",
+          parts: [{ type: "text", text: action.text }],
+        },
+      )
+      break
+    }
+
+    case "async-add-assistant-message": {
+      setStore(
+        "asyncPanel",
+        "messages",
+        (state.store.asyncPanel?.messages.length ?? 0),
+        {
+          id: action.id,
+          role: "assistant",
+          parts: [],
+          streaming: true,
+        },
+      )
+      break
+    }
+
+    case "async-text-start": {
+      setStore(
+        "asyncPanel",
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          parts.push({ type: "text", text: "", streaming: true })
+        }),
+      )
+      break
+    }
+
+    case "async-text-delta": {
+      setStore(
+        "asyncPanel",
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const last = parts[parts.length - 1]
+          if (last && last.type === "text") {
+            last.text = action.text
+          }
+        }),
+      )
+      break
+    }
+
+    case "async-text-end": {
+      setStore(
+        "asyncPanel",
+        "messages",
+        (m) => m.id === action.messageId,
+        "parts",
+        produce((parts: TuiPart[]) => {
+          const last = parts[parts.length - 1]
+          if (last && last.type === "text") {
+            last.text = action.text
+            last.streaming = false
+          }
+        }),
+      )
+      break
+    }
+
+    case "async-tool-start": {
+      setStore("asyncPanel", produce((panel: AsyncPanel | null) => {
+        if (panel) panel.toolsUsed += 1
+      }))
+      break
+    }
+
+    case "async-assistant-done": {
+      setStore(
+        "asyncPanel",
+        produce((panel: AsyncPanel | null) => {
+          if (panel) {
+            panel.done = true
+            panel.running = false
+          }
+        }),
+      )
+      break
+    }
+
+    case "async-set-running": {
+      setStore("asyncPanel", produce((panel: AsyncPanel | null) => {
+        if (panel) panel.running = action.running
+      }))
+      break
+    }
+
+    case "toggle-async-collapse": {
+      setStore("asyncPanel", produce((panel: AsyncPanel | null) => {
+        if (panel) panel.collapsed = !panel.collapsed
       }))
       break
     }
