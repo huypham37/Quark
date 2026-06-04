@@ -2,12 +2,13 @@
 title: Async Message Panel (/async-msg)
 date_created: 2026-06-04
 date_modified: 2026-06-04
-revision: 4
+revision: 5
 history:
   - 2026-06-04: Initial draft
   - 2026-06-04: Implementation complete — state, events, command, component, backend handler
   - 2026-06-04: Redesigned to interactive panel — lazy session creation, mini textarea input, no title/prompt args needed
   - 2026-06-04: Visual polish — single-line border, title on border line, solid background, footer hint
+  - 2026-06-04: Switched to rounded corners, "You:" / "Assistant:" message labels, title on border line
 status: done
 ---
 
@@ -190,22 +191,25 @@ interface AsyncPanel {
 
 ### Visual style
 
-Single-line rectangular border (`borderStyle="single"`), title rendered **on
-the top border line** via OpenTUI's `title` prop (not as a separate header
-row). Every text element carries the panel background to prevent see-through
-holes.
+Rounded border (`borderStyle="rounded"`), title rendered **on the top border
+line** via OpenTUI's `title` prop. Solid dark background (`#1a1d21`) so the
+panel pops over the main TUI. Messages carry "You:" and "Assistant:" labels
+in the accent color.
 
 ```
-┌─ msg ──────────────────────┐
-│ You:                       │
-│ fix auth bug               │
-│                            │
-│ ✓ Done                     │
-│                            │
-│────────────────────────────│
-│ > _                        │
-│      Enter submit · Esc can│
-└────────────────────────────┘
+╭─ msg ────────────────────╮
+│ You:                     │
+│ fix auth bug             │
+│                          │
+│ Assistant:               │
+│ Hello!                   │
+│                          │
+│ ✓ Done                   │
+│                          │
+├──────────────────────────┤
+│ > _                      │
+│   Enter submit · Esc can │
+╰──────────────────────────╯
 ```
 
 ---

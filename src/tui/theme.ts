@@ -30,6 +30,10 @@ export type { ColorInput, Theme }
 /** Active theme metadata (mostly for debugging / future settings UI). */
 export let activeTheme: Theme = darkTheme
 
+// Terminal background color detected at startup via OSC 11.
+// Set by `setTerminalBg()` before the first render.
+export let terminalBg: RGBA = RGBA.fromHex("#000000")
+
 /**
  * Swap the active theme. Mutates `colors` in place and rebuilds
  * `syntaxStyle`. Safe to call multiple times; intended to be called once
@@ -60,6 +64,7 @@ export function pickThemeFor(bg: RGBA): Theme {
  */
 export function setTerminalBg(bg: RGBA): void {
   applyTheme(pickThemeFor(bg))
+  terminalBg = bg
   colors.dropdownBg = bg
   colors.notificationBg = bg
 }
