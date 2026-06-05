@@ -145,8 +145,8 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
         <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
       </Show>
       <Show when={props.error && isError()}>
-        <text> </text>
-        <text fg={colors.error}>({props.error})</text>
+        <text flexShrink={0}> </text>
+        <text fg={colors.error} wrap="wrap" flexShrink={1}>({props.error})</text>
       </Show>
     </box>
   )

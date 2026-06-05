@@ -23,6 +23,7 @@ import { colors, icons } from "../theme"
 import { RGBA } from "@opentui/core"
 import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
 import type { SubAgentState, SubAgentToolPart } from "../state"
+import { ToolCard } from "./tool-card"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
@@ -43,61 +44,6 @@ const STREAMING_LABELS = [
 ] as const
 
 const STREAMING_LABEL_INTERVAL_MS = 3_000
-
-// ---------------------------------------------------------------------------
-// Map tool IDs to display names (same as tool-result.tsx)
-// ---------------------------------------------------------------------------
-
-function getToolDisplayName(tool: string): string {
-  const names: Record<string, string> = {
-    read: "Read",
-    write: "Write",
-    edit: "Edit",
-    bash: "Bash",
-    skill: "Skill",
-    todo: "Todo",
-    grep: "Grep",
-    glob: "Glob",
-    websearch: "WebSearch",
-  }
-  return names[tool] ?? tool.charAt(0).toUpperCase() + tool.slice(1)
-}
-
-// ---------------------------------------------------------------------------
-// Extract a short label from tool input
-// ---------------------------------------------------------------------------
-
-function getToolLabel(tool: string, input: Record<string, unknown>): string {
-  const path = input.filePath ?? input.file_path ?? input.path
-  if (typeof path === "string") {
-    return path.replace(/^\/Users\/[^/]+\//, "~/")
-  }
-
-  const cmd = input.command ?? input.cmd
-  if (typeof cmd === "string") {
-    return cmd.length > 50 ? cmd.slice(0, 47) + "..." : cmd
-  }
-
-  const pattern = input.pattern
-  if (typeof pattern === "string") {
-    return pattern.length > 50 ? pattern.slice(0, 47) + "..." : pattern
-  }
-
-  const query = input.query
-  if (typeof query === "string") {
-    return query.length > 50 ? query.slice(0, 47) + "..." : query
-  }
-
-  const url = input.url
-  if (typeof url === "string") {
-    return url.length > 50 ? url.slice(0, 47) + "..." : url
-  }
-
-  const name = input.name ?? input.skill
-  if (typeof name === "string") return name
-
-  return ""
-}
 
 // ---------------------------------------------------------------------------
 // Format token count: 1234 → "1.2k", 123456 → "123.5k"
@@ -153,25 +99,19 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
 // ---------------------------------------------------------------------------
 
 const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (props) => {
-  const displayName = getToolDisplayName(props.tool.tool)
-  const label = () => getToolLabel(props.tool.tool, props.tool.input)
   const connector = () => props.isLast ? icons.treeCorner : icons.treeTee
 
   return (
     <box flexDirection="row">
-      <text fg={colors.muted}>{connector()} </text>
-      <box flexShrink={0}>
-        <StatusIndicator status={props.tool.status} />
+      <text fg={colors.muted} flexShrink={0}>{connector()} </text>
+      <box flexDirection="column" flexShrink={1}>
+        <ToolCard
+          tool={props.tool.tool}
+          status={props.tool.status}
+          input={props.tool.input}
+          error={props.tool.error}
+        />
       </box>
-      <text>{displayName}</text>
-      <text> </text>
-      <Show when={label()}>
-        <text fg={RGBA.fromHex("#365A61")}>{label()}</text>
-      </Show>
-      <Show when={props.tool.error}>
-        <text> </text>
-        <text fg={colors.error}>({props.tool.error})</text>
-      </Show>
     </box>
   )
 }
@@ -230,6 +170,12 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   }
   const hasTokens = () => tokensUsed() > 0
   const hasModel = () => !!props.subAgent.modelName
+  const headerMeta = () => {
+    const items = []
+    if (hasTokens()) items.push(`${formatTokens(tokensUsed())} tokens${tokenPct()}`)
+    if (hasModel()) items.push(props.subAgent.modelName)
+    return items.join(" · ")
+  }
 
   const hasPrompt = () => !!props.subAgent.prompt
   const promptText = () => {
@@ -252,12 +198,9 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         <box flexShrink={0}>
           <StatusIndicator status={headerStatus()} />
         </box>
-        <text fg={colors.text}>{headerLabel()}</text>
-        <Show when={hasTokens()}>
-          <text fg={colors.muted}>{" "}·{" "}{formatTokens(tokensUsed())} tokens{tokenPct()}</text>
-        </Show>
-        <Show when={hasModel()}>
-          <text fg={colors.muted}>{" "}·{" "}{props.subAgent.modelName}</text>
+        <text fg={colors.text} flexShrink={0}>{headerLabel()}</text>
+        <Show when={headerMeta()}>
+          <text fg={colors.muted} wrap="wrap" flexShrink={1}>{" "}·{" "}{headerMeta()}</text>
         </Show>
       </box>
 
