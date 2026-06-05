@@ -983,6 +983,7 @@ export const App: Component<AppProps> = (props) => {
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{ visible: false }}
       >
+        <box flexGrow={1} minHeight={0} />
         <For each={state.store.messages}>
           {(msg) => <MessageItem message={msg} showThinking={state.store.showThinking} />}
         </For>
