@@ -48,6 +48,7 @@ status: done
 | [prompt-paste-collapse.md](tui/prompt-paste-collapse.md) | Done | Cap input box height, collapse large pastes into a summary chip |
 | [markdown-rendering-theme.md](tui/markdown-rendering-theme.md) | In Progress | Fix markdown theme scopes, align with Atom One palette, conceal delimiter markers |
 | [verbose-tool-logging.md](tui/verbose-tool-logging.md) | In Progress | `--verbose` prints `[TOOL-CALL]` / `[TOOL-RESULT]` to stderr in CLI mode |
+| [prompt-status-border-fix.md](tui/prompt-status-border-fix.md) | Done | Compose prompt top status border at exact width to remove the model-name hole |
 | [queued-user-messages.md](tui/queued-user-messages.md) | Draft | Type-ahead follow-up while agent runs — opencode-style unified input box with queued chip |
 
 ## 📊 Commands
@@ -114,4 +115,4 @@ status: done
 
 ---
 
-**Summary:** 12 done, 7 in-progress, 6 drafts, 3 reference surveys, 1 tool spec, 8 diagrams, 4 foundation artifacts.
+**Summary:** 13 done, 7 in-progress, 6 drafts, 3 reference surveys, 1 tool spec, 8 diagrams, 4 foundation artifacts.

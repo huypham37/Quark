@@ -1018,6 +1018,7 @@ export const App: Component<AppProps> = (props) => {
         selectedImageIndex={selectedImageIndex()}
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
+        width={dims().width - 4}
       />
 
       {/* Statistics overlay */}

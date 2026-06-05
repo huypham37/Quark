@@ -2,17 +2,18 @@
 // Prompt — input area with status line
 //
 // Uses OpenTUI's <textarea> renderable for multiline text input.
-// Status line (tokens, cost, model, skills) is rendered above the input.
+// Status line (tokens, cost, model, skills) is rendered on the top border.
 // App.tsx owns autocomplete state; this component just renders the input
 // and forwards events upward.
 
 import type { Component } from "solid-js"
 import { Show, For } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
 import { FlipPercent } from "./flip-percent"
-import { tokenPercentValue } from "./flip-percent-frame"
+import { tokenPercentText, tokenPercentValue } from "./flip-percent-frame"
 
 // Paste-collapse thresholds: if pasted text exceeds either limit, replace
 // it with a `[Pasted #N +X lines]` placeholder and stash the real content
@@ -54,6 +55,8 @@ export interface PromptProps {
   onRemoveImage?: (index: number) => void
   /** Current thinking effort level ("none" = off) */
   thinkingEffort?: string
+  /** Rendered prompt width in terminal cells */
+  width?: number
 }
 
 function formatTokens(n: number): string {
@@ -62,7 +65,19 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
+function visibleWidth(s: string): number {
+  return Array.from(s).length
+}
+
+function truncateEnd(s: string, max: number): string {
+  if (visibleWidth(s) <= max) return s
+  if (max <= 0) return ""
+  if (max === 1) return "…"
+  return `${Array.from(s).slice(0, max - 1).join("")}…`
+}
+
 export const Prompt: Component<PromptProps> = (props) => {
+  const dims = useTerminalDimensions()
   let textareaRef: TextareaRenderable | undefined
 
   // Side-buffer for collapsed pastes. Keyed by the numeric id embedded in
@@ -84,6 +99,21 @@ export const Prompt: Component<PromptProps> = (props) => {
   }
 
   const borderColor = () => colors.outline
+  const promptWidth = () => Math.max(12, props.width ?? dims().width)
+  const topBorder = () => {
+    const percent = tokenPercentText(tokenPercent())
+    const leftRest = `${leftStatusRest()} `
+    const rightSuffix = " ──╮"
+    const thinking = props.thinkingEffort && props.thinkingEffort !== "none"
+      ? `[T:${props.thinkingEffort}] `
+      : ""
+    const right = ` ${thinking}${modelName()}`
+    const fixed = visibleWidth("╭── ") + visibleWidth(percent) + visibleWidth(leftRest) + visibleWidth(rightSuffix)
+    const maxRight = Math.max(0, promptWidth() - fixed - 1)
+    const rightText = truncateEnd(right, maxRight)
+    const filler = "─".repeat(Math.max(0, promptWidth() - fixed - visibleWidth(rightText)))
+    return { leftRest, filler, rightText, rightSuffix }
+  }
 
   // Replace every `[Pasted #N +X lines]` placeholder with its stashed text.
   // Unknown ids (user typed the token by hand, or the entry was already
@@ -134,22 +164,16 @@ export const Prompt: Component<PromptProps> = (props) => {
   }
 
   return (
-    <box flexDirection="column" flexShrink={0}>
-      {/* Status line — single row, flex-based filler */}
-      <box flexDirection="row" height={1} overflow="hidden">
+    <box flexDirection="column" flexShrink={0} width={promptWidth()}>
+      <box flexDirection="row" height={1} overflow="hidden" width={promptWidth()}>
         <text fg={borderColor()} flexShrink={0}>╭── </text>
         <FlipPercent value={tokenPercent()} />
-        <text fg={colors.statusLine} flexShrink={0}>{leftStatusRest()}</text>
-        <text fg={borderColor()} flexGrow={1} flexShrink={1} overflow="hidden" wrapMode="none">{" " + "─".repeat(300) + " "}</text>
-        <Show when={props.thinkingEffort && props.thinkingEffort !== "none"}>
-          <text fg={RGBA.fromHex("#a78bfa")} flexShrink={0}>[T:{props.thinkingEffort}]─</text>
-        </Show>
-        <text fg={modelColor(modelName())} flexShrink={0}>{modelName()}</text>
-        <text fg={borderColor()} flexShrink={0}>─</text>
-        <text fg={borderColor()} flexShrink={0}> ──╮</text>
+        <text fg={colors.statusLine} flexShrink={0}>{topBorder().leftRest}</text>
+        <text fg={borderColor()} flexShrink={0}>{topBorder().filler}</text>
+        <text fg={modelColor(modelName())} flexShrink={0}>{topBorder().rightText}</text>
+        <text fg={borderColor()} flexShrink={0}>{topBorder().rightSuffix}</text>
       </box>
 
-      {/* Input box — no top border since status line acts as top edge */}
       <box
         flexDirection="column"
         borderStyle="rounded"
