@@ -18,9 +18,10 @@ import type { TuiMessage, TuiPart } from "../state"
 
 interface MessageItemProps {
   message: TuiMessage
+  showThinking?: boolean
 }
 
-const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => {
+const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: boolean }> = (props) => {
   // Helper to cast tool parts
   const asTool = () => props.part as Extract<TuiPart, { type: "tool" }>
 
@@ -64,6 +65,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean }> = (props) => 
           <ThinkingIndicator
             done={(props.part as Extract<TuiPart, { type: "thinking" }>).done}
             text={(props.part as Extract<TuiPart, { type: "thinking" }>).text}
+            showText={props.showThinking}
           />
         </box>
       </Match>
@@ -95,7 +97,7 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
       <box flexDirection="column" width="100%">
         <For each={props.message.parts}>
           {(part) => (
-            <PartView part={part} isStreaming={!!props.message.streaming} />
+            <PartView part={part} isStreaming={!!props.message.streaming} showThinking={props.showThinking} />
           )}
         </For>
       </box>

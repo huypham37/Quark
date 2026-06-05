@@ -935,6 +935,12 @@ export const App: Component<AppProps> = (props) => {
 
     // Ctrl+T — cycle thinking effort (none → low → medium → high → xhigh → none)
     if (evt.ctrl && evt.name === "t") {
+      // Ctrl+Shift+T — toggle show thinking text
+      if (evt.shift) {
+        dispatch(state, { type: "toggle-show-thinking" })
+        evt.preventDefault()
+        return
+      }
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
       getThinkingNormalizer(state.store.status.modelName).configure({ enabled: effort !== "none", effort })
@@ -978,7 +984,7 @@ export const App: Component<AppProps> = (props) => {
         scrollbarOptions={{ visible: false }}
       >
         <For each={state.store.messages}>
-          {(msg) => <MessageItem message={msg} />}
+          {(msg) => <MessageItem message={msg} showThinking={state.store.showThinking} />}
         </For>
       </scrollbox>
 

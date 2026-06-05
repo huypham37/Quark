@@ -14,10 +14,11 @@ import { colors, icons } from "../theme"
 interface ThinkingIndicatorProps {
   done?: boolean
   text?: string
+  showText?: boolean
 }
 
 export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
-  const displayText = () => props.text?.trim() ?? ""
+  const displayText = () => (props.showText && props.text?.trim()) ? props.text.trim() : ""
 
   return (
     <box flexDirection="column">
@@ -33,7 +34,7 @@ export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
         <text fg={colors.muted}>{icons.arrow}</text>
       </box>
 
-      {/* Thinking content — shown when non-empty */}
+      {/* Thinking content — shown only when showText is true and text is non-empty */}
       <Show when={displayText()}>
         {(text: () => string) => (
           <box flexDirection="column" paddingLeft={2}>

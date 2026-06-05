@@ -115,6 +115,7 @@ export type TuiAction =
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "cycle-thinking"; modelId: string }
+  | { type: "toggle-show-thinking" }
   | { type: "reasoning-start"; messageId: string }
   | { type: "set-question"; request: QuestionRequest }
   | { type: "clear-question" }
@@ -232,6 +233,7 @@ export interface AppStore {
   running: boolean
   steering: boolean
   thinkingEffort: ThinkingEffort
+  showThinking: boolean
   status: TuiStatus
   error?: string
   permission?: PermissionRequest
@@ -256,6 +258,7 @@ export function createAppState(initial: {
     running: false,
     steering: false,
     thinkingEffort: "none",
+    showThinking: false,
     status: {
       tokensUsed: 0,
       tokenLimit: (() => { const ms = loadConfig().main_model; const lim = getModelLimit(ms); return lim?.context ?? lim?.input ?? 0 })(),
@@ -580,6 +583,10 @@ export function dispatch(state: AppState, action: TuiAction): void {
           }
         }),
       )
+      break
+
+    case "toggle-show-thinking":
+      setStore("showThinking", (prev) => !prev)
       break
 
     case "cycle-thinking": {
