@@ -23,7 +23,7 @@ export interface TuiMessage {
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
-  | { type: "thinking"; done: boolean; text: string }
+  | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
@@ -607,7 +607,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (m) => m.id === action.messageId,
         "parts",
         produce((parts: TuiPart[]) => {
-          parts.push({ type: "thinking", done: false, text: "" })
+          parts.push({ type: "thinking", done: false, text: "", startedAt: Date.now() })
         }),
       )
       break
@@ -635,6 +635,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           const last = parts[parts.length - 1]
           if (last && last.type === "thinking") {
             last.done = true
+            if (last.startedAt != null) last.durationMs = Date.now() - last.startedAt
           }
         }),
       )

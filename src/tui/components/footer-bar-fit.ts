@@ -116,13 +116,13 @@ export function pickRightZone(
 }
 
 // ---------------------------------------------------------------------------
-// Left-zone widths — depend on which Show branch is active and which label
-// is currently cycled. Spinner is 2 cells (two braille glyphs).
+// Left-zone widths — depend on which Show branch is active. The spinner was
+// replaced by shimmering status text, so the status label has no glyph prefix.
 // ---------------------------------------------------------------------------
 
 export function leftWidthRunning(label: string): number {
-  // "<spinner(2)> " + label + "      " + "Esc" + " to cancel"
-  return 3 + label.length + 6 + 3 + 10
+  // label + "      " + "Esc" + " to cancel"
+  return label.length + 6 + 3 + 10
 }
-export const LEFT_WIDTH_STEERING = 3 + "Steering context…".length
+export const LEFT_WIDTH_STEERING = "Steering context…".length
 export const LEFT_WIDTH_IDLE = 1 // single " " placeholder text

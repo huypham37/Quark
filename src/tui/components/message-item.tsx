@@ -65,6 +65,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
           <ThinkingIndicator
             done={(props.part as Extract<TuiPart, { type: "thinking" }>).done}
             text={(props.part as Extract<TuiPart, { type: "thinking" }>).text}
+            durationMs={(props.part as Extract<TuiPart, { type: "thinking" }>).durationMs}
             showText={props.showThinking}
           />
         </box>

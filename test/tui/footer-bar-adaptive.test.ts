@@ -255,16 +255,19 @@ describe("pickRightZone()", () => {
 // ---------------------------------------------------------------------------
 
 describe("left zone widths", () => {
-  test("21. running left width grows with the cycling label", () => {
-    // "Streaming" (9) → 22 + 9 = 31
-    expect(leftWidthRunning("Streaming")).toBe(31)
-    // "Channelling…" (12) → 34
-    expect(leftWidthRunning("Channelling…")).toBe(34)
+  test("21. running left width grows with the label (no spinner prefix)", () => {
+    // label + "      "(6) + "Esc"(3) + " to cancel"(10) = label + 19
+    // "Working" (7) → 26
+    expect(leftWidthRunning("Working")).toBe(26)
+    // "Streaming" (9) → 28
+    expect(leftWidthRunning("Streaming")).toBe(28)
+    // "Channelling…" (12) → 31
+    expect(leftWidthRunning("Channelling…")).toBe(31)
   })
 
   test("22. steering and idle widths are constants matching the rendered text", () => {
-    // "<spinner(2)> Steering context…" = 3 + 17
-    expect(LEFT_WIDTH_STEERING).toBe(3 + "Steering context…".length)
+    // Shimmering "Steering context…" — no spinner prefix
+    expect(LEFT_WIDTH_STEERING).toBe("Steering context…".length)
     // Idle is a single space placeholder
     expect(LEFT_WIDTH_IDLE).toBe(1)
   })
