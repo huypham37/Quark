@@ -79,6 +79,7 @@ function getData(): ModelsDevData {
 // Known renames between user-facing provider IDs and models.dev IDs
 const PROVIDER_REMAP: Record<string, string> = {
   copilot: "github-copilot",
+  codex: "openai",
   opencode: "opencode-go",
 };
 

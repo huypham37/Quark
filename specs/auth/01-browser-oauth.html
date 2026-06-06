@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PKCE Browser OAuth — Pi ↔ ChatGPT Subscription</title>
+<style>
+  :root {
+    --bg:#0a0a0f; --panel:#12131a; --panel2:#161824; --line:#1f2230;
+    --ink:#e6e8ef; --dim:#6b7080;
+    --accent:#5cc8ff; --accent2:#ffb86b; --good:#7be495; --pink:#ff7ab6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 24px 32px 8px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--dim); font-size: 13px; margin-top: 4px; }
+
+  .objective {
+    margin: 14px 32px 0;
+    padding: 14px 16px;
+    background: var(--panel2);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    font-size: 13px; line-height: 1.55;
+  }
+  .objective .olabel {
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px;
+  }
+  .objective b { color: var(--ink); }
+
+  .container { padding: 24px 32px; max-width: 1100px; }
+
+  /* Stage row */
+  .stages {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr;
+    align-items: start;
+    margin-bottom: 20px;
+  }
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 14px;
+    transition: all 0.35s ease;
+    position: relative;
+    min-height: 260px;
+  }
+  .stage.active {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px -10px rgba(92,200,255,0.25);
+  }
+  .stage .snum {
+    font-size: 11px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+  .stage.active .snum { color: var(--accent); }
+  .stage .stitle {
+    font-size: 14px; font-weight: 600; margin-bottom: 10px;
+  }
+  .stage .sbody {
+    font-size: 12px; color: var(--dim); line-height: 1.6;
+  }
+  .stage .sbody code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    background: var(--panel2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .stage .sbody .val {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; color: var(--good);
+  }
+
+  .arrow {
+    display: flex; align-items: center; justify-content: center;
+    padding-top: 100px;
+    color: var(--dim); font-size: 18px;
+    transition: color 0.35s ease;
+  }
+  .arrow.hot { color: var(--accent); }
+
+  /* Actors row */
+  .actors {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr;
+    margin-bottom: 24px;
+    margin-top: 2px;
+  }
+  .actor {
+    font-size: 10px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    text-align: center;
+  }
+  .empt { }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 20px;
+  }
+  .controls button {
+    background: var(--panel2); border: 1px solid var(--line);
+    color: var(--ink); font-size: 12px;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button:active { background: var(--accent); color: #001a2a; }
+  .step-indicator {
+    font-size: 13px; color: var(--dim);
+    margin-left: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  /* Detail panel */
+  .detail {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    min-height: 120px;
+    transition: border-color 0.35s ease;
+  }
+  .detail .dtitle {
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+  .detail .dbody {
+    font-size: 12px; line-height: 1.7; color: var(--dim);
+  }
+  .detail .dbody code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    background: var(--panel2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* Live readout */
+  .readout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px;
+    margin-top: 14px;
+  }
+  .readout .rk { color: var(--dim); text-align: right; }
+  .readout .rv { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .readout .rv.hl { color: var(--good); }
+  .readout .rv.ac { color: var(--accent); }
+
+  .coming-soon { color: var(--dim); font-style: italic; font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Browser OAuth (PKCE) — Pi ↔ ChatGPT Subscription</h1>
+  <div class="sub">Authorization Code + PKCE flow with local callback server on port 1455</div>
+</header>
+
+<div class="objective">
+  <div class="olabel">Objective</div>
+  After this you'll understand how Pi authenticates with a <b>ChatGPT Plus/Pro subscription</b> using
+  <b>PKCE</b> (Proof Key for Code Exchange) — a browser-based OAuth 2.0 flow that never exposes a client secret.
+  Pi generates a one-time code challenge, the user logs in via browser, and a local HTTP server catches the
+  redirect to exchange the authorization code for long-lived tokens.
+</div>
+
+<div class="container">
+
+  <div class="stages" id="stages">
+    <div class="stage" data-stage="0">
+      <div class="snum">Step 1</div>
+      <div class="stitle">Generate PKCE &amp; State</div>
+      <div class="sbody">
+        Pi creates a cryptographically random <code>code_verifier</code> (32 bytes, base64url-encoded).
+        It SHA-256 hashes it to produce a <code>code_challenge</code>.
+        A random <code>state</code> (16 hex bytes) prevents CSRF.
+        <br><br>
+        <span style="color:var(--dim)">Key:</span> The verifier stays in Pi; only the challenge is sent in the URL.
+      </div>
+    </div>
+    <div class="arrow" data-arrow="0">→</div>
+    <div class="stage" data-stage="1">
+      <div class="snum">Step 2</div>
+      <div class="stitle">Open Browser + Start Server</div>
+      <div class="sbody">
+        Pi starts a local HTTP server on <code>127.0.0.1:1455</code> to catch the redirect.
+        It opens the browser to:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          auth.openai.com/oauth/authorize<br>
+          ?response_type=code<br>
+          &amp;code_challenge=&lt;challenge&gt;<br>
+          &amp;code_challenge_method=S256<br>
+          &amp;state=&lt;state&gt;<br>
+          &amp;originator=pi
+        </code>
+      </div>
+    </div>
+    <div class="arrow" data-arrow="1">→</div>
+    <div class="stage" data-stage="2">
+      <div class="snum">Step 3</div>
+      <div class="stitle">User Authenticates</div>
+      <div class="sbody">
+        The user logs into their ChatGPT account on the OpenAI auth page.
+        They grant the requested scopes:
+        <code>openid profile email offline_access</code>.
+        <br><br>
+        <span style="color:var(--dim)">Note:</span> <code>offline_access</code> is what gives Pi a refresh token
+        so the subscription stays active without re-login.
+      </div>
+    </div>
+    <div class="arrow" data-arrow="2">→</div>
+    <div class="stage" data-stage="3">
+      <div class="snum">Step 4</div>
+      <div class="stitle">Browser Redirects to Pi</div>
+      <div class="sbody">
+        OpenAI redirects the browser to:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          http://localhost:1455/auth/callback<br>
+          ?code=&lt;auth_code&gt;<br>
+          &amp;state=&lt;state&gt;
+        </code>
+        <br><br>
+        Pi's HTTP server receives the request, validates <code>state</code> matches,
+        and extracts the <code>authorization_code</code>.
+        The browser sees a dark-themed success page.
+      </div>
+    </div>
+    <div class="arrow" data-arrow="3">→</div>
+    <div class="stage" data-stage="4">
+      <div class="snum">Step 5</div>
+      <div class="stitle">Exchange Code for Tokens</div>
+      <div class="sbody">
+        Pi <code>POST</code>s to <code>auth.openai.com/oauth/token</code>:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          grant_type=authorization_code<br>
+          code=&lt;auth_code&gt;<br>
+          code_verifier=&lt;verifier&gt;<br>
+          redirect_uri=http://localhost:1455/...
+        </code>
+        <br><br>
+        OpenAI verifies the verifier hashes to the challenge → returns <code>access_token</code> + <code>refresh_token</code>.
+      </div>
+    </div>
+  </div>
+
+  <div class="actors" id="actors">
+    <div class="actor">Pi CLI</div>
+    <div class="empt"></div>
+    <div class="actor">Pi + Browser</div>
+    <div class="empt"></div>
+    <div class="actor">User + OpenAI</div>
+    <div class="empt"></div>
+    <div class="actor">Pi Server</div>
+    <div class="empt"></div>
+    <div class="actor">Pi → OpenAI</div>
+  </div>
+
+  <div class="controls">
+    <button id="btnRestart">↻ Restart</button>
+    <button id="btnPrev">◀ Step</button>
+    <button id="btnPlay">▶ Play</button>
+    <button id="btnNext">Step ▶</button>
+    <div class="step-indicator" id="stepLabel">Step 1 / 5</div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="dtitle" id="detailTitle">What's happening</div>
+    <div class="dbody" id="detailBody"></div>
+    <div class="readout" id="readout"></div>
+  </div>
+
+</div>
+
+<script>
+const steps = [
+  {
+    title: "PKCE Generation",
+    body: `Pi generates two linked values using <b>Web Crypto API</b>:<br><br>
+<code>generatePKCE()</code> → <b>32 random bytes</b> as the <code>code_verifier</code> (kept secret in Pi's memory),
+then <code>SHA-256(verifier)</code> → <code>code_challenge</code> (safe to send in the URL).<br><br>
+A separate <code>createState()</code> call produces a <b>16-byte random hex string</b> to prevent
+cross-site request forgery (CSRF) — the state is checked on the callback to confirm the redirect
+came from the same authorization request Pi initiated.`,
+    readout: [
+      ["verifier (32B)", "dGhpcyBpcyBhIDMyLWJ5dGUgcmFuZG9tIHZlcmlmaWVy"],
+      ["challenge (S256)", "E9Melhoa2OwDKfY1Rb...R1vVs"],
+      ["state (16B)", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"]
+    ]
+  },
+  {
+    title: "Local Server + Browser Launch",
+    body: `Pi starts an HTTP server on <code>127.0.0.1:1455</code> that listens for <code>GET /auth/callback</code>.
+If the port is in use, the server silently fails and Pi falls back to asking the user to paste the redirect URL manually.<br><br>
+The authorization URL includes <code>originator=pi</code> so OpenAI knows the request came from the Pi agent harness.
+The <code>codex_cli_simplified_flow=true</code> parameter tells OpenAI to use the simplified CLI UX.`,
+    readout: [
+      ["callback URL", "http://localhost:1455/auth/callback"],
+      ["scope", "openid profile email offline_access"],
+      ["challenge_method", "S256"],
+      ["originator", "pi"]
+    ]
+  },
+  {
+    title: "User Grants Authorization",
+    body: `The browser displays OpenAI's login page. The user enters their ChatGPT credentials
+(or uses an existing session cookie) and approves the access request.<br><br>
+The <code>offline_access</code> scope is critical — without it, OpenAI would only return an access token
+(short-lived, ~1 hour), and Pi would have no way to refresh the session. With it, Pi receives
+a <b>refresh token</b> that lets it obtain new access tokens indefinitely (until the user revokes access).`,
+    readout: [
+      ["user action", "Login + Approve"],
+      ["scope granted", "openid profile email offline_access"],
+      ["refresh token?", "YES (offline_access)"]
+    ]
+  },
+  {
+    title: "Redirect Catch + State Validation",
+    body: `OpenAI redirects the browser to Pi's local server. The request hits <code>GET /auth/callback</code>.
+Pi's server:<br><br>
+<b>1.</b> Parses <code>state</code> from the query string and compares it to the one it generated.
+If they don't match → <b>rejected</b> (CSRF attempt or wrong callback).<br>
+<b>2.</b> Extracts <code>code</code> (the authorization code).<br>
+<b>3.</b> Returns a dark-themed HTML success page to the browser saying "You can close this window."<br><br>
+Pi also races the callback against <b>manual input</b> — the user can paste the redirect URL
+into the TUI, which is useful for remote SSH sessions where localhost isn't reachable.`,
+    readout: [
+      ["state match", "✓ PASS"],
+      ["auth code received", "✓ YES"],
+      ["browser sees", "oauthSuccessHtml()"]
+    ]
+  },
+  {
+    title: "Token Exchange",
+    body: `Pi <code>POST</code>s the authorization code + code_verifier to <code>auth.openai.com/oauth/token</code>.
+OpenAI re-computes <code>SHA-256(verifier)</code> and checks it against the original <code>code_challenge</code>
+from the authorization request. If they match → the request is genuine (no interception possible).<br><br>
+The response contains:<br>
+• <code>access_token</code> (JWT, used as Bearer token for API calls, ~1h expiry)<br>
+• <code>refresh_token</code> (used to get new access tokens without re-login)<br>
+• <code>expires_in</code> (seconds until access token expires)<br><br>
+Pi then <b>decodes the JWT</b> to extract <code>chatgpt_account_id</code> from the claim
+at <code>https://api.openai.com/auth</code> — this ties the credential to a specific ChatGPT account.
+Everything is persisted to <code>~/.pi/auth.json</code> (mode 600, file-locked) as:`,
+    readout: [
+      ["access_token", "eyJhbGciOi... (JWT, ~1h TTL)"],
+      ["refresh_token", "tOuc0K3y... (long-lived)"],
+      ["expires_at", new Date(Date.now() + 3600000).toISOString()],
+      ["accountId", "chatgpt-acc-8f3a2b1c"],
+      ["stored at", "~/.pi/auth.json (mode 600)"]
+    ]
+  }
+];
+
+let currentStep = 0;
+let playing = false;
+let timer = null;
+const STAGE_COUNT = 5;
+const STEP_INTERVAL = 2500; // ms per step in autoplay
+
+const stageEls = document.querySelectorAll('.stage');
+const arrowEls = document.querySelectorAll('.arrow');
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnRestart = document.getElementById('btnRestart');
+const stepLabel = document.getElementById('stepLabel');
+const detailTitle = document.getElementById('detailTitle');
+const detailBody = document.getElementById('detailBody');
+const readout = document.getElementById('readout');
+
+function updateUI() {
+  stageEls.forEach((el, i) => el.classList.toggle('active', i === currentStep));
+  arrowEls.forEach((el, i) => {
+    el.classList.toggle('hot', i <= currentStep - 1);
+  });
+
+  stepLabel.textContent = `Step ${currentStep + 1} / ${STAGE_COUNT}`;
+  const s = steps[currentStep];
+  detailTitle.textContent = s.title;
+  detailBody.innerHTML = s.body;
+
+  let html = '';
+  for (const [k, v] of s.readout) {
+    const rvClass = v.includes('✓') ? 'hl' : (v.includes('eyJ') || v.includes('tOuc') ? 'ac' : '');
+    html += `<div class="rk">${k}</div><div class="rv ${rvClass}">${v}</div>`;
+  }
+  readout.innerHTML = html;
+}
+
+function stopAutoplay() {
+  if (timer) { clearInterval(timer); timer = null; }
+  playing = false;
+  btnPlay.textContent = '▶ Play';
+}
+
+function nextStep() {
+  if (currentStep < STAGE_COUNT - 1) {
+    currentStep++;
+    updateUI();
+  } else {
+    stopAutoplay();
+  }
+}
+
+function prevStep() {
+  stopAutoplay();
+  if (currentStep > 0) {
+    currentStep--;
+    updateUI();
+  }
+}
+
+function restart() {
+  stopAutoplay();
+  currentStep = 0;
+  updateUI();
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playing) {
+    stopAutoplay();
+    return;
+  }
+  if (currentStep >= STAGE_COUNT - 1) {
+    currentStep = 0;
+    updateUI();
+  }
+  playing = true;
+  btnPlay.textContent = '⏸ Pause';
+  timer = setInterval(() => {
+    if (currentStep < STAGE_COUNT - 1) {
+      currentStep++;
+      updateUI();
+    } else {
+      stopAutoplay();
+    }
+  }, STEP_INTERVAL);
+});
+
+btnPrev.addEventListener('click', prevStep);
+btnNext.addEventListener('click', nextStep);
+btnRestart.addEventListener('click', restart);
+
+// Initialize
+updateUI();
+</script>
+</body>
+</html>

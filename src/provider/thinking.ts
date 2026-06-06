@@ -49,6 +49,16 @@ const MODEL_THINKING: Record<string, ThinkingEntry> = {
     thinkingField: { reasoningSummary: "auto" },
     levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
   },
+  "gpt-5.5": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
+  },
+  "gpt-5.5-pro": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
+  },
   "gpt-5.4": {
     effortField: "reasoningEffort",
     thinkingField: { reasoningSummary: "auto" },

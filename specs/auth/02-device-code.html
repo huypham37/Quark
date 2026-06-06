@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Device Code OAuth — Pi ↔ ChatGPT Subscription</title>
+<style>
+  :root {
+    --bg:#0a0a0f; --panel:#12131a; --panel2:#161824; --line:#1f2230;
+    --ink:#e6e8ef; --dim:#6b7080;
+    --accent:#5cc8ff; --accent2:#ffb86b; --good:#7be495; --pink:#ff7ab6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 24px 32px 8px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--dim); font-size: 13px; margin-top: 4px; }
+
+  .objective {
+    margin: 14px 32px 0;
+    padding: 14px 16px;
+    background: var(--panel2);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    font-size: 13px; line-height: 1.55;
+  }
+  .objective .olabel {
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px;
+  }
+  .objective b { color: var(--ink); }
+
+  .container { padding: 24px 32px; max-width: 1100px; }
+
+  /* Stage row — 6 stages for device code */
+  .stages {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr;
+    align-items: start;
+    margin-bottom: 20px;
+  }
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 14px;
+    transition: all 0.35s ease;
+    position: relative;
+    min-height: 260px;
+  }
+  .stage.active {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px -10px rgba(92,200,255,0.25);
+  }
+  .stage .snum {
+    font-size: 11px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+  .stage.active .snum { color: var(--accent); }
+  .stage .stitle {
+    font-size: 14px; font-weight: 600; margin-bottom: 10px;
+  }
+  .stage .sbody {
+    font-size: 12px; color: var(--dim); line-height: 1.6;
+  }
+  .stage .sbody code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    background: var(--panel2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .stage .sbody .val {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; color: var(--good);
+  }
+
+  .arrow {
+    display: flex; align-items: center; justify-content: center;
+    padding-top: 100px;
+    color: var(--dim); font-size: 18px;
+    transition: color 0.35s ease;
+  }
+  .arrow.hot { color: var(--accent); }
+  .arrow.polling { color: var(--accent2); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Actors row */
+  .actors {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr 36px 1fr;
+    margin-bottom: 24px;
+    margin-top: 2px;
+  }
+  .actor {
+    font-size: 10px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    text-align: center;
+  }
+  .empt { }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 20px;
+  }
+  .controls button {
+    background: var(--panel2); border: 1px solid var(--line);
+    color: var(--ink); font-size: 12px;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button:active { background: var(--accent); color: #001a2a; }
+  .step-indicator {
+    font-size: 13px; color: var(--dim);
+    margin-left: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  /* Detail panel */
+  .detail {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    min-height: 130px;
+    transition: border-color 0.35s ease;
+  }
+  .detail .dtitle {
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+  .detail .dbody {
+    font-size: 12px; line-height: 1.7; color: var(--dim);
+  }
+  .detail .dbody code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    background: var(--panel2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* Live readout */
+  .readout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px;
+    margin-top: 14px;
+  }
+  .readout .rk { color: var(--dim); text-align: right; }
+  .readout .rv { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .readout .rv.hl { color: var(--good); }
+  .readout .rv.ac { color: var(--accent); }
+
+  /* Polling indicator in step 3 */
+  .poll-dots { display: inline-block; }
+  .poll-dots::after {
+    content: '';
+    animation: dots 1.5s steps(4, end) infinite;
+  }
+  @keyframes dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
+  }
+
+  /* Comparison table */
+  .compare-box {
+    margin-top: 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .compare-box .ctitle {
+    font-size: 11px; color: var(--accent2);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+  .compare {
+    display: grid;
+    grid-template-columns: 220px 1fr 1fr;
+    gap: 10px 16px;
+    font-size: 12px;
+    align-items: start;
+  }
+  .compare .ch { color: var(--dim); font-size: 11px; }
+  .compare .cv { color: var(--ink); line-height: 1.5; }
+  .compare .ca { font-weight: 600; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Device Code OAuth — Pi ↔ ChatGPT Subscription</h1>
+  <div class="sub">RFC 8628 Device Authorization flow — no browser on the Pi machine needed</div>
+</header>
+
+<div class="objective">
+  <div class="olabel">Objective</div>
+  After this you'll understand the <b>Device Code Flow</b> (RFC 8628) — Pi's headless authentication method
+  for ChatGPT subscriptions. Unlike browser OAuth, the user authenticates on a <b>separate device</b> (phone,
+  another computer) by visiting a URL and entering a short code. Pi polls OpenAI's servers until the user
+  completes login, then exchanges the resulting authorization code for tokens.
+</div>
+
+<div class="container">
+
+  <div class="stages" id="stages">
+    <div class="stage" data-stage="0">
+      <div class="snum">Step 1</div>
+      <div class="stitle">Request Device Code</div>
+      <div class="sbody">
+        Pi <code>POST</code>s to:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          auth.openai.com/api/accounts/<br>deviceauth/usercode
+        </code>
+        <br><br>
+        Body: <code>{"client_id": "app_EMoam..."}</code>
+        <br><br>
+        <span style="color:var(--dim)">No PKCE yet — PKCE is handled server-side by OpenAI for device code.</span>
+      </div>
+    </div>
+    <div class="arrow" data-arrow="0">→</div>
+    <div class="stage" data-stage="1">
+      <div class="snum">Step 2</div>
+      <div class="stitle">Receive Code + Show User</div>
+      <div class="sbody">
+        OpenAI responds with:
+        <br><br>
+        • <code>device_auth_id</code> — internal session ID<br>
+        • <code>user_code</code> — short code the user types<br>
+        • <code>interval</code> — suggested poll interval<br>
+        <br>
+        Pi displays to the user:
+        <br>
+        <span class="val">Go to auth.openai.com/codex/device</span><br>
+        <span class="val">Enter code: ABCD-1234</span><br>
+        <span style="color:var(--dim)">Expires in 15 minutes</span>
+      </div>
+    </div>
+    <div class="arrow" data-arrow="1">→</div>
+    <div class="stage" data-stage="2">
+      <div class="snum">Step 3</div>
+      <div class="stitle">User Authenticates Elsewhere</div>
+      <div class="sbody">
+        On a <b>different device</b> (phone, laptop), the user opens:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          auth.openai.com/codex/device
+        </code>
+        <br><br>
+        They enter the <code>user_code</code> and log into their ChatGPT account.
+        <br><br>
+        Meanwhile, <span style="color:var(--accent2)">Pi polls</span> the token endpoint every ~5 seconds,
+        checking if the user has completed authorization.
+      </div>
+    </div>
+    <div class="arrow" data-arrow="2">→</div>
+    <div class="stage" data-stage="3">
+      <div class="snum">Step 4</div>
+      <div class="stitle">Polling Loop</div>
+      <div class="sbody">
+        Pi <code>POST</code>s to:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          auth.openai.com/api/accounts/<br>deviceauth/token
+        </code>
+        <br><br>
+        Body: <code>{"device_auth_id": "...", "user_code": "..."}</code>
+        <br><br>
+        <b>Possible responses:</b><br>
+        • <span style="color:var(--accent)">403/404</span> → still waiting<br>
+        • <span style="color:var(--accent2)">slow_down</span> → add 5s to interval<br>
+        • <span style="color:var(--good)">200 OK</span> → success! (returns auth code + verifier)<br>
+        • <span style="color:var(--pink)">timeout</span> → 15 minutes elapsed
+      </div>
+    </div>
+    <div class="arrow" data-arrow="3">→</div>
+    <div class="stage" data-stage="4">
+      <div class="snum">Step 5</div>
+      <div class="stitle">Authorization Code Returned</div>
+      <div class="sbody">
+        When polling succeeds, OpenAI returns:
+        <br><br>
+        • <code>authorization_code</code><br>
+        • <code>code_verifier</code><br>
+        <br>
+        <span style="color:var(--dim)">Note:</span> Unlike browser OAuth, OpenAI <b>generates the PKCE pair server-side</b> —
+        the verifier is returned along with the auth code. Pi uses both to exchange for tokens.
+      </div>
+    </div>
+    <div class="arrow" data-arrow="4">→</div>
+    <div class="stage" data-stage="5">
+      <div class="snum">Step 6</div>
+      <div class="stitle">Exchange for Tokens</div>
+      <div class="sbody">
+        Same token exchange as browser flow:
+        <br><br>
+        <code style="font-size:10px;word-break:break-all">
+          POST auth.openai.com/oauth/token<br>
+          grant_type=authorization_code<br>
+          code=&lt;auth_code&gt;<br>
+          code_verifier=&lt;server_verifier&gt;<br>
+          redirect_uri=.../deviceauth/callback
+        </code>
+        <br><br>
+        → <code>access_token</code> + <code>refresh_token</code><br>
+        → Extract <code>chatgpt_account_id</code> from JWT<br>
+        → Save to <code>~/.pi/auth.json</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="actors" id="actors">
+    <div class="actor">Pi CLI</div>
+    <div class="empt"></div>
+    <div class="actor">Pi + User</div>
+    <div class="empt"></div>
+    <div class="actor">User (2nd Device)</div>
+    <div class="empt"></div>
+    <div class="actor">Pi → OpenAI (poll)</div>
+    <div class="empt"></div>
+    <div class="actor">Pi + OpenAI</div>
+    <div class="empt"></div>
+    <div class="actor">Pi → OpenAI</div>
+  </div>
+
+  <div class="controls">
+    <button id="btnRestart">↻ Restart</button>
+    <button id="btnPrev">◀ Step</button>
+    <button id="btnPlay">▶ Play</button>
+    <button id="btnNext">Step ▶</button>
+    <div class="step-indicator" id="stepLabel">Step 1 / 6</div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="dtitle" id="detailTitle">What's happening</div>
+    <div class="dbody" id="detailBody"></div>
+    <div class="readout" id="readout"></div>
+  </div>
+
+  <div class="compare-box" id="compareBox" style="display:none;">
+    <div class="ctitle" id="compareTitle">Browser OAuth vs Device Code — Key Difference</div>
+    <div class="compare" id="compareBody"></div>
+  </div>
+
+</div>
+
+<script>
+const steps = [
+  {
+    title: "Device Code Request",
+    body: `Pi sends a simple JSON POST to OpenAI's device auth endpoint. No PKCE parameters are needed —
+the <b>server will generate the PKCE pair</b> later. Only the <code>client_id</code> identifies Pi as
+the application requesting access.<br><br>
+This is the <b>starting handshake</b> — Pi says "I have a user who wants to log in, give me a code
+they can type on another device."`,
+    readout: [
+      ["endpoint", "POST /api/accounts/deviceauth/usercode"],
+      ["client_id", "app_EMoamEEZ73f0CkXaXp7hrann"],
+      ["PKCE?", "No (server-side)"],
+      ["status", "pending..."]
+    ]
+  },
+  {
+    title: "Display Code to User",
+    body: `OpenAI returns a <b>device_auth_id</b> (internal tracking), a short <b>user_code</b>
+(typically "XXXX-XXXX" format), and a suggested poll <b>interval</b>.<br><br>
+Pi shows these to the user in the TUI login dialog. The code is short enough to type on a phone.
+The 15-minute expiration gives the user plenty of time to switch devices.<br><br>
+<span style="color:var(--dim)">The device_auth_id is never shown to the user — it's an internal
+correlation ID for the polling loop.</span>`,
+    readout: [
+      ["device_auth_id", "da_f3a2b1c9d8e7..."],
+      ["user_code", "ABCD-1234"],
+      ["interval", "5 seconds"],
+      ["expires_in", "900s (15 minutes)"],
+      ["verification URI", "auth.openai.com/codex/device"]
+    ]
+  },
+  {
+    title: "User on Separate Device",
+    body: `This is the key difference from browser OAuth: the user <b>does not need a browser on the Pi machine</b>.
+They can use their phone, tablet, or any device with a web browser.<br><br>
+The user visits <code>auth.openai.com/codex/device</code>, enters the short code, and logs into ChatGPT.
+Meanwhile, Pi is polling — it has no way to know the user is done until the server says so.<br><br>
+<span style="color:var(--dim)">This is why the device code flow is called "headless" — Pi doesn't need
+a display or browser at all. It works over SSH, in containers, on servers.</span>`,
+    readout: [
+      ["user opens", "auth.openai.com/codex/device"],
+      ["user enters", "ABCD-1234"],
+      ["user logs in", "ChatGPT credentials"],
+      ["Pi is...", "polling every ~5s"]
+    ]
+  },
+  {
+    title: "Polling Loop (RFC 8628 §3.5)",
+    body: `Pi calls <code>pollOAuthDeviceCodeFlow()</code> which implements a <b>generic RFC 8628 polling loop</b>:<br><br>
+<b>1.</b> POST to token endpoint with <code>device_auth_id</code> + <code>user_code</code><br>
+<b>2.</b> If <code>403</code> or <code>404</code> → user hasn't finished yet → wait interval, retry<br>
+<b>3.</b> If <code>error.code === "deviceauth_authorization_pending"</code> → same, keep waiting<br>
+<b>4.</b> If <code>error.code === "slow_down"</code> → <b>increase interval by 5 seconds</b> (per RFC 8628)<br>
+<b>5.</b> If <code>200 OK</code> → success! Extract <code>authorization_code</code> + <code>code_verifier</code><br>
+<b>6.</b> If deadline passes (15 min) → throw timeout error<br><br>
+The loop is cancellable via <code>AbortSignal</code> — if the user presses Escape in the TUI, polling stops immediately.`,
+    readout: [
+      ["poll endpoint", "POST /api/accounts/deviceauth/token"],
+      ["base interval", "5 seconds"],
+      ["slow_down inc", "+5 seconds"],
+      ["max duration", "900s (15 minutes)"],
+      ["cancel", "AbortSignal (Escape key)"]
+    ]
+  },
+  {
+    title: "Success — PKCE from Server",
+    body: `When the loop returns <code>status: "complete"</code>, the response contains:<br><br>
+• <code>authorization_code</code> — a standard OAuth authorization code<br>
+• <code>code_verifier</code> — the PKCE verifier <b>generated by OpenAI's server</b><br><br>
+This is a subtle but important difference from browser OAuth: in the browser flow, <b>Pi generates PKCE</b>;
+in the device code flow, <b>OpenAI generates PKCE</b> server-side and returns both the code and verifier
+together. The security property is the same — the verifier proves the token request is tied to the
+original device auth session — but the generation responsibility shifts.`,
+    readout: [
+      ["auth_code", "ac_f3a2b1c9d8..."],
+      ["code_verifier", "dGhpcyB3YXMgZ2VuZXJhdGVk... (server)"],
+      ["PKCE source", "SERVER (not client)"],
+      ["poll status", "✓ COMPLETE"]
+    ]
+  },
+  {
+    title: "Token Exchange + Persistence",
+    body: `The final step is <b>identical to browser OAuth</b>: Pi exchanges the authorization code
++ code_verifier for tokens at <code>auth.openai.com/oauth/token</code>. The only difference is the
+<code>redirect_uri</code> — it uses <code>auth.openai.com/deviceauth/callback</code> (a virtual
+redirect) instead of <code>localhost:1455</code>.<br><br>
+The response produces the same credential structure stored in <code>~/.pi/auth.json</code>:`,
+    readout: [
+      ["access_token", "eyJhbGciOi... (JWT, ~1h TTL)"],
+      ["refresh_token", "tOuc0K3y... (long-lived)"],
+      ["expires_at", new Date(Date.now() + 3600000).toISOString()],
+      ["accountId", "chatgpt-acc-8f3a2b1c"],
+      ["stored at", "~/.pi/auth.json (mode 600)"],
+      ["token refresh", "Via refresh_token grant"]
+    ]
+  }
+];
+
+const comparison = [
+  ["PKCE generation", "Client-side (Pi)", "Server-side (OpenAI)"],
+  ["HTTP server needed?", "Yes (localhost:1455)", "No"],
+  ["Where does user log in?", "Same machine's browser", "Any device with a browser"],
+  ["Fallback for headless?", "Manual URL paste", "Built-in (primary method)"],
+  ["Code delivered via", "Browser redirect → localhost", "Polling HTTP endpoint"],
+  ["User types a code?", "No", "Yes (short code)"],
+  ["State parameter?", "Yes (CSRF protection)", "No (device_auth_id serves same role)"],
+  ["Originator parameter?", "Yes (originator=pi)", "No"],
+  ["redirect_uri", "http://localhost:1455/auth/callback", "auth.openai.com/deviceauth/callback"],
+  ["Same token endpoint?", "Yes (auth.openai.com/oauth/token)", "Yes (same endpoint)"],
+];
+
+let currentStep = 0;
+let playing = false;
+let timer = null;
+const STAGE_COUNT = 6;
+const STEP_INTERVAL = 2800;
+
+const stageEls = document.querySelectorAll('.stage');
+const arrowEls = document.querySelectorAll('.arrow');
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnRestart = document.getElementById('btnRestart');
+const stepLabel = document.getElementById('stepLabel');
+const detailTitle = document.getElementById('detailTitle');
+const detailBody = document.getElementById('detailBody');
+const readout = document.getElementById('readout');
+const compareBox = document.getElementById('compareBox');
+const compareTitle = document.getElementById('compareTitle');
+const compareBody = document.getElementById('compareBody');
+
+function updateUI() {
+  stageEls.forEach((el, i) => el.classList.toggle('active', i === currentStep));
+  arrowEls.forEach((el, i) => {
+    el.classList.toggle('hot', i <= currentStep - 1);
+    el.classList.toggle('polling', i === 3 && currentStep >= 3); // pulse arrow 3 during polling
+  });
+
+  stepLabel.textContent = `Step ${currentStep + 1} / ${STAGE_COUNT}`;
+  const s = steps[currentStep];
+  detailTitle.textContent = s.title;
+  detailBody.innerHTML = s.body;
+
+  let html = '';
+  for (const [k, v] of s.readout) {
+    const rvClass = v.includes('✓') ? 'hl' : (v.includes('eyJ') || v.includes('tOuc') ? 'ac' : '');
+    html += `<div class="rk">${k}</div><div class="rv ${rvClass}">${v}</div>`;
+  }
+  readout.innerHTML = html;
+
+  // Show comparison on last step
+  if (currentStep === STAGE_COUNT - 1) {
+    compareBox.style.display = 'block';
+    compareTitle.textContent = 'Browser OAuth vs Device Code — Key Differences';
+    let ch = '';
+    ch += '<div class="ch"></div><div class="ch" style="color:var(--accent);font-weight:600;">Browser OAuth (PKCE)</div><div class="ch" style="color:var(--accent2);font-weight:600;">Device Code</div>';
+    for (const [aspect, browser, device] of comparison) {
+      ch += `<div class="ch">${aspect}</div><div class="cv">${browser}</div><div class="cv">${device}</div>`;
+    }
+    compareBody.innerHTML = ch;
+  } else {
+    compareBox.style.display = 'none';
+  }
+}
+
+function stopAutoplay() {
+  if (timer) { clearInterval(timer); timer = null; }
+  playing = false;
+  btnPlay.textContent = '▶ Play';
+}
+
+function nextStep() {
+  if (currentStep < STAGE_COUNT - 1) {
+    currentStep++;
+    updateUI();
+  } else {
+    stopAutoplay();
+  }
+}
+
+function prevStep() {
+  stopAutoplay();
+  if (currentStep > 0) {
+    currentStep--;
+    updateUI();
+  }
+}
+
+function restart() {
+  stopAutoplay();
+  currentStep = 0;
+  updateUI();
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playing) {
+    stopAutoplay();
+    return;
+  }
+  if (currentStep >= STAGE_COUNT - 1) {
+    currentStep = 0;
+    updateUI();
+  }
+  playing = true;
+  btnPlay.textContent = '⏸ Pause';
+  timer = setInterval(() => {
+    if (currentStep < STAGE_COUNT - 1) {
+      currentStep++;
+      updateUI();
+    } else {
+      stopAutoplay();
+    }
+  }, STEP_INTERVAL);
+});
+
+btnPrev.addEventListener('click', prevStep);
+btnNext.addEventListener('click', nextStep);
+btnRestart.addEventListener('click', restart);
+
+updateUI();
+</script>
+</body>
+</html>

@@ -8,7 +8,9 @@ import {
   resolveApiKey,
 } from "../config/config"
 import { fireHook } from "../plugin/registry"
-import { loadToken } from "./copilot-auth"
+import { createCodexConsumer } from "./codex-consumer"
+import { loadToken, refreshToken as refreshCodexToken, saveToken as saveCodexToken } from "./codex-auth"
+import { loadToken as loadCopilotToken } from "./copilot-auth"
 import { getCustomFetch } from "./custom-fetch"
 
 export async function resolveModel(
@@ -42,7 +44,7 @@ export async function resolveModel(
 
   if (providerId === "copilot") {
     const getToken = async () => {
-      const token = loadToken()
+      const token = loadCopilotToken()
       if (!token) {
         throw new Error(
           "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
@@ -57,6 +59,27 @@ export async function resolveModel(
       apiKey: "copilot",
       fetch,
     })(modelId)
+  }
+
+  if (providerId === "codex") {
+    let token = loadToken()
+    if (!token) {
+      throw new Error(
+        "No Codex token found. Run the login flow first (scripts/codex-login.ts).",
+      )
+    }
+    const getToken = async () => {
+      if (Date.now() >= token!.expires) {
+        token = await refreshCodexToken({ refreshToken: token!.refresh })
+        saveCodexToken(token)
+      }
+      return token!.access
+    }
+    return createCodexConsumer({
+      modelId,
+      getToken,
+      getAccountId: async () => token!.accountId,
+    })
   }
 
   const pc = getProviderConfig(providerId)
