@@ -31,6 +31,31 @@ export type { ColorInput, Theme }
 /** Active theme metadata (mostly for debugging / future settings UI). */
 export let activeTheme: Theme = darkTheme
 
+// ── OpenTUI patch ────────────────────────────────────────────────────────
+// TextBufferRenderable hardcodes _defaultFg to white via
+//   _defaultOptions = { fg: RGBA.fromValues(1,1,1,1), ... }
+// Markdown and code-block renderables create internal TextBufferRenderables
+// that we can't reach from JSX. We intercept RGBA.fromValues(1,1,1,1) so
+// every new text buffer defaults to the current theme's text color.
+//
+// Class-field initializers run at *instance creation*, so the patch works
+// even though the class was already loaded.
+
+const originalFromValues = RGBA.fromValues.bind({} as any)
+let currentDefaultText = colors.text
+
+;(RGBA as any).fromValues = function (r: number, g: number, b: number, a: number) {
+  if (r === 1 && g === 1 && b === 1 && a === 1) {
+    return currentDefaultText
+  }
+  return originalFromValues(r, g, b, a)
+}
+
+// Keep the intercept in sync when the theme changes.
+function syncDefaultTextColor() {
+  currentDefaultText = colors.text
+}
+
 /**
  * Swap the active theme. Mutates `colors` in place and rebuilds
  * `syntaxStyle`. Safe to call multiple times; intended to be called once
@@ -40,6 +65,7 @@ export function applyTheme(theme: Theme): void {
   Object.assign(colors, theme.colors)
   syntaxStyle = SyntaxStyle.fromTheme(theme.syntax)
   activeTheme = theme
+  syncDefaultTextColor()
 }
 
 /**
