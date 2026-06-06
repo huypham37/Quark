@@ -488,12 +488,15 @@ const renderer = await createCliRenderer({
 // Tier 4: macOS system dark-mode preference
 // Tier 5: hard-coded dark fallback
 // ---------------------------------------------------------------------------
+const envTheme = process.env.QUARK_THEME
 if (themeArg === "light" || themeArg === "dark") {
   applyTheme(themeArg === "light" ? lightTheme : darkTheme)
+} else if (envTheme === "light" || envTheme === "dark") {
+  applyTheme(envTheme === "light" ? lightTheme : darkTheme)
 } else {
   let bg: RGBA | undefined
   try {
-    const palette = await renderer.getPalette({ timeout: 500 })
+    const palette = await renderer.getPalette({ timeout: 1200 })
     if (palette.defaultBackground) {
       bg = RGBA.fromHex(palette.defaultBackground)
     }
