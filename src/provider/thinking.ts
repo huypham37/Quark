@@ -178,7 +178,7 @@ export class ThinkingNormalizer {
     this.modelId = modelId
     this.config = {
       enabled: config?.enabled ?? false,
-      effort: config?.effort ?? "medium",
+      effort: config?.effort ?? "xhigh",
     }
   }
 
