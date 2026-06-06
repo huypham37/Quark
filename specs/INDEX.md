@@ -37,6 +37,7 @@ status: done
 | [task-first-architecture.md](core/task-first-architecture.md) | In Progress | Task as first-class citizen; session branching replaces compaction |
 | [goal-command.md](core/goal-command.md) | Draft | Autonomous `/goal` orchestrator: plan → execute → verify → loop |
 | [delegate-tool-migration.md](core/delegate-tool-migration.md) | Draft | Migrate sub-agent spawning from bash to a first-class `delegate` tool |
+| [codex-consumer-provider.md](provider/codex-consumer-provider.md) | Done | ChatGPT consumer API provider — AI SDK v3 LanguageModelV3 with SSE streaming, images, reasoning, retry |
 
 ## 🖥️ TUI / UX
 *Terminal user interface: rendering, themes, input, interaction patterns.*
@@ -115,4 +116,4 @@ status: done
 
 ---
 
-**Summary:** 13 done, 7 in-progress, 6 drafts, 3 reference surveys, 1 tool spec, 8 diagrams, 4 foundation artifacts.
+**Summary:** 14 done, 7 in-progress, 6 drafts, 3 reference surveys, 1 tool spec, 8 diagrams, 4 foundation artifacts.
