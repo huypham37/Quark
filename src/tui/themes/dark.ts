@@ -10,6 +10,7 @@ export const darkTheme: Theme = {
     success: RGBA.fromHex("#00d75f"),
     error: RGBA.fromHex("#ff5f5f"),
     warning: RGBA.fromHex("#d7d700"),
+    info: RGBA.fromHex("#5fd7ff"),
     muted: RGBA.fromHex("#808080"),
 
     text: RGBA.fromHex("#e4e4e4"),

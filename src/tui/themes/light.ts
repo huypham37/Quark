@@ -13,6 +13,7 @@ export const lightTheme: Theme = {
     success: RGBA.fromHex("#008833"),
     error: RGBA.fromHex("#cc0000"),
     warning: RGBA.fromHex("#996600"),
+    info: RGBA.fromHex("#0087af"),
     muted: RGBA.fromHex("#6c6c6c"),
 
     text: RGBA.fromHex("#1c1c1c"),
