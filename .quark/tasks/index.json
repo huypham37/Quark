@@ -862,5 +862,29 @@
     "profile": "coder",
     "timeCreated": 1780601907079,
     "timeUpdated": 1780601907079
+  },
+  {
+    "id": "task_Bm9TfEEXudwzXIv0",
+    "title": "quark",
+    "description": "quark",
+    "profile": "coder",
+    "timeCreated": 1780670116155,
+    "timeUpdated": 1780670116155
+  },
+  {
+    "id": "task_KJa1u61BYjLnqQFH",
+    "title": "Fix the poor contrast of the hardcoded dark teal color for tool call parameters in the TUI to ensure readability on dark terminals.",
+    "description": "Fix the poor contrast of the hardcoded dark teal color for tool call parameters in the TUI to ensure readability on dark terminals.",
+    "profile": "coder",
+    "timeCreated": 1780674972861,
+    "timeUpdated": 1780674987317
+  },
+  {
+    "id": "task_LJVR04gSKdImYGgv",
+    "title": "Fix markdown content that fails to inherit the theme, leaving some portions white on a white background",
+    "description": "Fix markdown content that fails to inherit the theme, leaving some portions white on a white background",
+    "profile": "coder",
+    "timeCreated": 1780675067232,
+    "timeUpdated": 1780720548922
   }
 ]

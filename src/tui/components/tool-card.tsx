@@ -134,15 +134,15 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
         <Show when={!isRunning() && !shouldBraille() && !isAwaiting()}>
           <Show
             when={isError()}
-            fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
+            fallback={<text fg={colors.success}>✓ </text>}
           >
             <text fg={colors.error}>✗ </text>
           </Show>
         </Show>
       </box>
-      <text bold flexShrink={0}>{displayName()} </text>
+      <text bold fg={colors.text} flexShrink={0}>{displayName()} </text>
       <Show when={label()}>
-        <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
+        <text fg={colors.toolPath} underline wrap="wrap" flexShrink={1}>{label()}</text>
       </Show>
       <Show when={props.error && isError()}>
         <text> </text>

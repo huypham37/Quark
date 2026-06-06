@@ -81,7 +81,7 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
                     </text>
                     <text fg={colors.muted}>{`${i() + 1}. `}</text>
                     <text
-                      fg={active() ? colors.primary : picked() ? RGBA.fromHex("#98C379") : undefined}
+                      fg={active() ? colors.primary : picked() ? RGBA.fromHex("#98C379") : colors.text}
                       bold={active()}
                     >
                       {isMulti() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
@@ -100,14 +100,14 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
       {/* Confirm tab — review answers */}
       <Show when={isConfirm()}>
         <box paddingLeft={1} flexDirection="column">
-          <text bold>Review your answers:</text>
+          <text bold fg={colors.text}>Review your answers:</text>
           <For each={questions()}>
             {(q, index) => {
               const value = () => props.answers()[index()]?.join(", ") ?? ""
               return (
                 <box>
                   <text fg={colors.muted}>{q.header}: </text>
-                  <text fg={value() ? undefined : colors.error}>
+                  <text fg={value() ? colors.text : colors.error}>
                     {value() || "(not answered)"}
                   </text>
                 </box>

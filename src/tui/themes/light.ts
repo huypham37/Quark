@@ -48,6 +48,7 @@ export const lightTheme: Theme = {
     cursorColor: RGBA.fromHex("#0087af"),
   },
   syntax: [
+    { scope: ["default"], style: { foreground: "#1c1c1c" } },
     { scope: ["comment", "punctuation.definition.comment"], style: { foreground: "#008000", italic: true } },
     {
       scope: ["keyword", "storage.type", "storage.modifier", "keyword.control", "keyword.operator.new"],

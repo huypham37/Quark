@@ -34,12 +34,7 @@ interface SubAgentViewProps {
 // ---------------------------------------------------------------------------
 
 const STREAMING_LABELS = [
-  "✨ Thinking out loud...",
-  "🧠 Processing vibes...",
-  "🔮 Divining answer...",
-  "💭 Having thoughts...",
-  "📡 Beaming back...",
-  "🌀 Spinning up...",
+  "Thinking...",
 ] as const
 
 const STREAMING_LABEL_INTERVAL_MS = 3_000
@@ -141,7 +136,7 @@ const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "ru
       case "pending": return colors.textBold
       case "awaiting_approval": return colors.muted
       case "error": return colors.error
-      default: return RGBA.fromHex("#98C379")
+      default: return colors.success
     }
   }
 
@@ -163,10 +158,10 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (p
       <box flexShrink={0}>
         <StatusIndicator status={props.tool.status} />
       </box>
-      <text>{displayName}</text>
+      <text fg={colors.text}>{displayName}</text>
       <text> </text>
       <Show when={label()}>
-        <text fg={RGBA.fromHex("#365A61")}>{label()}</text>
+        <text fg={colors.toolPath}>{label()}</text>
       </Show>
       <Show when={props.tool.error}>
         <text> </text>
@@ -271,7 +266,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
             <Show when={hasPrompt()}>
               <box flexDirection="column" onMouseUp={() => setExpanded((v) => !v)}>
                 <text fg={colors.muted}>Task: [{toggleLabel()}]</text>
-                <text fg={RGBA.fromHex("#365A61")}>"{promptText()}"</text>
+                <text fg={colors.toolPath}>"{promptText()}"</text>
               </box>
             </Show>
 

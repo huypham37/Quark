@@ -114,7 +114,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
           >
             <box flexDirection="row">
               <text fg={colors.primary} bold>{spinnerChar()} </text>
-              <text>{currentLabel()}</text>
+              <text fg={colors.text}>{currentLabel()}</text>
               <text>      </text>
               <text fg={colors.footerKey} bold>Esc</text>
               <text fg={colors.muted}> to cancel</text>
@@ -124,7 +124,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
       >
         <box flexDirection="row">
           <text fg={colors.warning} bold>{spinnerChar()} </text>
-          <text>Steering context…</text>
+          <text fg={colors.text}>Steering context…</text>
         </box>
       </Show>
       <box flexDirection="row">

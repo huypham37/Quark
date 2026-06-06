@@ -10,6 +10,7 @@ import { RGBA, SyntaxStyle } from "@opentui/core"
 import type { ColorInput } from "@opentui/core"
 import { darkTheme } from "./themes/dark"
 import { lightTheme } from "./themes/light"
+export { darkTheme, lightTheme }
 import type { Palette, Theme } from "./themes/types"
 
 // Mutable singleton — components import this reference once and keep it.

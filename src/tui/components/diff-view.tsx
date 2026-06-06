@@ -14,6 +14,7 @@
 
 import type { Component } from "solid-js"
 import { For, Show } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
 import { parseDiffHunks } from "../diff-utils"
@@ -24,8 +25,8 @@ interface DiffViewProps {
   filePath?: string
 }
 
-const MAX_LINES_PER_HUNK = 30
-const MAX_HUNKS = 5
+const MAX_LINES_PER_HUNK = 100
+const MAX_HUNKS = 10
 
 const COLOR_ADDED    = RGBA.fromHex("#3a5c3a")  // dark green bg feel via text color
 const COLOR_REMOVED  = RGBA.fromHex("#5c3a3a")  // dark red bg feel via text color
@@ -51,7 +52,7 @@ function truncateLine(content: string, maxLen = 80): string {
   return content.length > maxLen ? content.slice(0, maxLen - 1) + "…" : content
 }
 
-const DiffLineView: Component<{ line: DiffLine }> = (props) => {
+const DiffLineView: Component<{ line: DiffLine, maxLen: number }> = (props) => {
   const prefix = () => {
     if (props.line.type === "added") return "+"
     if (props.line.type === "removed") return "-"
@@ -84,19 +85,19 @@ const DiffLineView: Component<{ line: DiffLine }> = (props) => {
       <text fg={COLOR_LINENUM}>{lineNo()}</text>
       <text fg={colors.muted}>│</text>
       <text fg={prefixColor()}>{prefix()}</text>
-      <text fg={fgColor()}>{truncateLine(props.line.content)}</text>
+      <text fg={fgColor()}>{truncateLine(props.line.content, props.maxLen)}</text>
     </box>
   )
 }
 
-const HunkView: Component<{ hunk: DiffHunk }> = (props) => {
+const HunkView: Component<{ hunk: DiffHunk, maxLen: number }> = (props) => {
   const visibleLines = () => props.hunk.lines.slice(0, MAX_LINES_PER_HUNK)
   const overflow = () => props.hunk.lines.length - MAX_LINES_PER_HUNK
 
   return (
     <box flexDirection="column">
       <For each={visibleLines()}>
-        {(line) => <DiffLineView line={line} />}
+        {(line) => <DiffLineView line={line} maxLen={props.maxLen} />}
       </For>
       <Show when={overflow() > 0}>
         <text fg={colors.muted}>     … {overflow()} more lines</text>
@@ -106,11 +107,13 @@ const HunkView: Component<{ hunk: DiffHunk }> = (props) => {
 }
 
 export const DiffView: Component<DiffViewProps> = (props) => {
+  const dims = useTerminalDimensions()
   const hunks = () => parseDiffHunks(props.diff)
   const visibleHunks = () => hunks().slice(0, MAX_HUNKS)
   const overflowHunks = () => hunks().length - MAX_HUNKS
   const changes = () => countChanges(hunks())
-  const rule = "─".repeat(42)
+  const rule = () => "─".repeat(Math.max(10, dims().width - 8))
+  const maxLineLen = () => Math.max(10, dims().width - 14)
 
   return (
     <Show when={hunks().length > 0}>
@@ -128,18 +131,18 @@ export const DiffView: Component<DiffViewProps> = (props) => {
         </box>
         {/* Hunks */}
         <box flexDirection="column" marginLeft={4}>
-          <text fg={COLOR_RULE}>{rule}</text>
+          <text fg={COLOR_RULE}>{rule()}</text>
           <For each={visibleHunks()}>
             {(hunk, i) => (
               <box flexDirection="column">
-                <HunkView hunk={hunk} />
+                <HunkView hunk={hunk} maxLen={maxLineLen()} />
                 <Show when={i() < visibleHunks().length - 1}>
-                  <text fg={COLOR_RULE}>{rule}</text>
+                  <text fg={COLOR_RULE}>{rule()}</text>
                 </Show>
               </box>
             )}
           </For>
-          <text fg={COLOR_RULE}>{rule}</text>
+          <text fg={COLOR_RULE}>{rule()}</text>
           <Show when={overflowHunks() > 0}>
             <text fg={colors.muted}>… {overflowHunks()} more hunk{overflowHunks() > 1 ? "s" : ""}</text>
           </Show>

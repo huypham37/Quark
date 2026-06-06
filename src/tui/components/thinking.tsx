@@ -41,7 +41,7 @@ export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
         >
           <text fg={colors.success}>{icons.checkmark}</text>
         </Show>
-        <text> Thinking </text>
+        <text fg={colors.text}> Thinking </text>
         <text fg={colors.muted}>{icons.arrow}</text>
       </box>
 

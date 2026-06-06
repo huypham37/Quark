@@ -45,6 +45,7 @@ export const darkTheme: Theme = {
     cursorColor: RGBA.fromHex("#00d7d7"),
   },
   syntax: [
+    { scope: ["default"], style: { foreground: "#e4e4e4" } },
     { scope: ["comment", "punctuation.definition.comment"], style: { foreground: "#6A9955", italic: true } },
     {
       scope: ["keyword", "storage.type", "storage.modifier", "keyword.control", "keyword.operator.new"],
