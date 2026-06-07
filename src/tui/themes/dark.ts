@@ -43,7 +43,7 @@ export const darkTheme: Theme = {
     scrollbarTrack: RGBA.fromHex("#3a3a3a"),
     scrollbarThumb: RGBA.fromHex("#666666"),
 
-    cursorColor: RGBA.fromHex("#00d7d7"),
+    cursorColor: RGBA.fromHex("#ffffff"),
   },
   syntax: [
     { scope: ["default", "text"], style: { foreground: "#e4e4e4" } },
