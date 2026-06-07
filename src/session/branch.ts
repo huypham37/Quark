@@ -371,7 +371,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   // 3. Append the steer goal as the final user message
   const prompt = input.prompt?.trim()
   if (prompt) {
-    saveUserMessage({ sessionId: child.id, text: prompt })
+    saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" })
   }
 
   return { sessionId: child.id, created: true, summary }

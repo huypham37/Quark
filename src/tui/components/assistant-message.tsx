@@ -11,6 +11,7 @@
 
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
+import { colors } from "../theme"
 import { syntaxStyle } from "../syntax-theme"
 
 const DEBUG_LOG = Bun.env.QUARK_MD_DEBUG === "1"

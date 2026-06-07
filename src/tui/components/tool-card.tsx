@@ -1,23 +1,20 @@
 // @jsxImportSource @opentui/solid
 // ToolCard — unified tool rendering with header/body separation
 //
-// Header (always visible): status icon + tool name + args label
+// Header (always visible): status circle + tool name + args label
 // Body (polymorphic by tool): WriteStreamView / DiffView / ScrollableOutput / empty
 //
-// Matches the style:
-//   ⠋ Bash  ~/deploy.sh          (running: animated spinner)
-//   ✓ Read  ~/package.json        (completed: green check)
-//   ✗ Write  ~/out.ts (EACCES)    (error: red cross)
-//   ⠋ Read  ~/src/tool.ts         (pending: braille cycle)
-//   ⏸ Write  ~/out.ts             (awaiting_approval: pause)
-//   ⠋ Bash  rm -rf /              (bash awaiting_approval: braille cycle)
+// Status indicator: static filled circle (●), color by status:
+//   ● Bash  ~/deploy.sh           (running: yellow)
+//   ● Read  ~/package.json        (completed: green)
+//   ● Write  ~/out.ts (EACCES)    (error: red)
+//   ● Read  ~/src/tool.ts         (pending: light blue)
+//   ● Write  ~/out.ts             (awaiting_approval: light blue)
 
 import type { Component } from "solid-js"
-import { Show, createSignal, createEffect, onCleanup } from "solid-js"
+import { Show } from "solid-js"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
-import { InlineSpinner } from "./inline-spinner"
-import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
 import { DiffView } from "./diff-view"
 import { WriteStreamView } from "./write-stream-view"
 import { ScrollableOutput } from "./scrollable-output"
@@ -100,49 +97,36 @@ function getToolDisplayName(tool: string): string {
 const ToolCardHeader: Component<ToolCardProps> = (props) => {
   const displayName = () => getToolDisplayName(props.tool)
   const label = () => getToolLabel(props.tool, props.input)
-  const isPending = () => props.status === "pending"
-  const isAwaiting = () => props.status === "awaiting_approval"
-  const isRunning = () => props.status === "running"
   const isError = () => props.status === "error"
-  const isBash = () => props.tool === "bash"
 
-  // Braille cycle spinner for pending state, and for bash awaiting_approval.
-  // Bash shows the braille spinner instead of ⏸ between tool-input and tool-run.
-  const shouldBraille = () => isPending() || (isAwaiting() && isBash())
-  const [pendingFrame, setPendingFrame] = createSignal(0)
-  createEffect(() => {
-    const id = setInterval(() => {
-      if (!shouldBraille()) return
-      setPendingFrame((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
-    }, BRAILLE_CYCLE_INTERVAL_MS)
-    onCleanup(() => clearInterval(id))
-  })
-  const pendingChar = () => BRAILLE_CYCLE_FRAMES[pendingFrame()]
+  // Static filled-circle status indicator.
+  //   pending / awaiting_approval → light blue
+  //   running                     → yellow
+  //   completed                   → green
+  //   error                       → red
+  const statusColor = () => {
+    switch (props.status) {
+      case "completed":
+        return colors.success
+      case "error":
+        return colors.error
+      case "running":
+        return colors.warning
+      case "pending":
+      case "awaiting_approval":
+      default:
+        return colors.info
+    }
+  }
 
   return (
     <box flexDirection="row">
       <box flexShrink={0}>
-        <Show when={isRunning()}>
-          <InlineSpinner />
-        </Show>
-        <Show when={shouldBraille()}>
-          <text fg={colors.textBold}>{pendingChar()} </text>
-        </Show>
-        <Show when={isAwaiting() && !isBash()}>
-          <text fg={colors.text}>⏸ </text>
-        </Show>
-        <Show when={!isRunning() && !shouldBraille() && !isAwaiting()}>
-          <Show
-            when={isError()}
-            fallback={<text fg={RGBA.fromHex("#98C379")}>✓ </text>}
-          >
-            <text fg={colors.error}>✗ </text>
-          </Show>
-        </Show>
+        <text fg={statusColor()}>● </text>
       </box>
-      <text bold flexShrink={0}>{displayName()} </text>
+      <text bold fg={colors.text} flexShrink={0}>{displayName()} </text>
       <Show when={label()}>
-        <text fg={RGBA.fromHex("#365A61")} underline wrap="wrap" flexShrink={1}>{label()}</text>
+        <text fg={colors.toolPath} underline wrap="wrap" flexShrink={1}>{label()}</text>
       </Show>
       <Show when={props.error && isError()}>
         <text flexShrink={0}> </text>

@@ -1,47 +1,52 @@
 // @jsxImportSource @opentui/solid
 // ThinkingIndicator — shows collapsed thinking block with optional text content
 //
-// Matches the style:
-//   ✓ Thinking ▶  (done)
-//   ∷ Thinking ▶  (in-progress)
+// Status indicator: static filled circle (●), color by state (matches ToolCard):
+//   ● Thinking ▶                  (in-progress: light blue)
+//   ● Thought for 5 seconds ▶     (done with timing: green)
+//   ● Thought ▶                   (done, no timing — e.g. loaded from history)
 //
 // When text is present, it is shown below the header in a dimmed/muted style.
 
 import type { Component } from "solid-js"
-import { Show, createSignal, createEffect, onCleanup } from "solid-js"
+import { Show } from "solid-js"
 import { colors, icons } from "../theme"
-import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
 
 interface ThinkingIndicatorProps {
   done?: boolean
   text?: string
+  /** Elapsed thinking time in ms; when present and done, shows "Thought for Ns". */
+  durationMs?: number
   showText?: boolean
 }
 
 export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
   const displayText = () => (props.showText && props.text?.trim()) ? props.text.trim() : ""
 
-  // Animated braille spinner for in-progress thinking
-  const [frameIndex, setFrameIndex] = createSignal(0)
-  createEffect(() => {
-    if (props.done) return
-    const id = setInterval(() => {
-      setFrameIndex((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
-    }, BRAILLE_CYCLE_INTERVAL_MS)
-    onCleanup(() => clearInterval(id))
-  })
+  // Header label reflects state:
+  //   in-progress → "Thinking"
+  //   done w/ time → "Thought for N seconds"
+  //   done no time → "Thought"
+  const label = () => {
+    if (!props.done) return "Thinking"
+    if (props.durationMs != null) {
+      const secs = Math.max(1, Math.round(props.durationMs / 1000))
+      return `Thought for ${secs} second${secs === 1 ? "" : "s"}`
+    }
+    return "Thought"
+  }
+
+  // Static filled-circle status indicator.
+  //   in-progress → light blue
+  //   done        → green
+  const statusColor = () => (props.done ? colors.success : colors.info)
 
   return (
     <box flexDirection="column">
       {/* Header row: status icon + label */}
       <box flexDirection="row">
-        <Show
-          when={props.done}
-          fallback={<text fg={colors.muted}>{BRAILLE_CYCLE_FRAMES[frameIndex()]}</text>}
-        >
-          <text fg={colors.success}>{icons.checkmark}</text>
-        </Show>
-        <text> Thinking </text>
+        <text fg={statusColor()}>● </text>
+        <text fg={colors.text}>{props.done ? <i>{label()} </i> : `${label()} `}</text>
         <text fg={colors.muted}>{icons.arrow}</text>
       </box>
 

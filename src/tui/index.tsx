@@ -5,7 +5,7 @@
 // Usage: bun src/tui/index.tsx --profile researcher
 
 import { render } from "@opentui/solid"
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, resolveModel } from "../session/prompt"
@@ -21,8 +21,8 @@ import { discoverSkills, loadSkill } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
-import { queryTerminalBackground } from "./terminal-bg"
-import { setTerminalBg } from "./theme"
+import { detectFromConfigOrOS } from "./terminal-bg"
+import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
@@ -33,19 +33,26 @@ import { undoLatest } from "../commands/undo"
 import { runGoal } from "../commands/goal/orchestrator"
 import { listTasks } from "../task/task"
 
-// Detect terminal background BEFORE the TUI takes over stdin/stdout,
-// then pick dark or light theme based on background luminance.
-const termBg = await queryTerminalBackground()
-setTerminalBg(termBg)
+// ---------------------------------------------------------------------------
+// Parse CLI args
+// ---------------------------------------------------------------------------
+function parseArg(flag: string): string | undefined {
+  const args = process.argv.slice(2)
+  const idx = args.indexOf(flag)
+  if (idx !== -1 && args[idx + 1]) return args[idx + 1]
+  return undefined
+}
+
+// Theme detection is deferred until after the renderer is created so we can
+// use renderer.getPalette() (OpenTUI's native terminal palette query).
+// The --theme flag still overrides everything.
+const themeArg = parseArg("--theme")
 
 // ---------------------------------------------------------------------------
 // Parse --profile flag from CLI args
 // ---------------------------------------------------------------------------
 function parseProfileArg(): string | undefined {
-  const args = process.argv.slice(2)
-  const idx = args.indexOf("--profile")
-  if (idx !== -1 && args[idx + 1]) return args[idx + 1]
-  return undefined
+  return parseArg("--profile")
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +478,36 @@ const renderer = await createCliRenderer({
     },
   },
 })
+
+// ---------------------------------------------------------------------------
+// Theme detection — deferred until after renderer creation so we can use
+// renderer.getPalette() for reliable terminal background detection.
+// Tier 1: --theme CLI flag (user override)
+// Tier 2: renderer.getPalette() (OpenTUI native, uses OSC queries)
+// Tier 3: terminal config file parsing (Ghostty, Kitty, iTerm2)
+// Tier 4: macOS system dark-mode preference
+// Tier 5: hard-coded dark fallback
+// ---------------------------------------------------------------------------
+const envTheme = process.env.QUARK_THEME
+if (themeArg === "light" || themeArg === "dark") {
+  applyTheme(themeArg === "light" ? lightTheme : darkTheme)
+} else if (envTheme === "light" || envTheme === "dark") {
+  applyTheme(envTheme === "light" ? lightTheme : darkTheme)
+} else {
+  let bg: RGBA | undefined
+  try {
+    const palette = await renderer.getPalette({ timeout: 1200 })
+    if (palette.defaultBackground) {
+      bg = RGBA.fromHex(palette.defaultBackground)
+    }
+  } catch { /* palette detection failed — fall through */ }
+
+  if (!bg) {
+    bg = detectFromConfigOrOS()
+  }
+
+  setTerminalBg(bg)
+}
 
 render(() => (
   <App

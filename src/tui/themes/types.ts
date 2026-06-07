@@ -9,6 +9,7 @@ export type Palette = {
   success: RGBA
   error: RGBA
   warning: RGBA
+  info: RGBA
   muted: RGBA
 
   // Text

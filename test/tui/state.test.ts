@@ -4,7 +4,8 @@
 
 import { describe, test, expect } from "bun:test"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
+import { createAppState, dbToTuiMessages, dispatch } from "../../src/tui/state"
+import { dbToConversationMessages } from "../../src/shared/conversation-view"
 import type { TuiMessage, TuiPart } from "../../src/tui/state"
 
 // Helper: run a test inside a SolidJS reactive root
@@ -104,6 +105,42 @@ describe("dispatch: session actions", () => {
       expect(s.store.messages.length).toBe(2)
       expect(s.store.messages[0]!.id).toBe("m1")
       expect(s.store.messages[1]!.id).toBe("m2")
+    })
+  })
+})
+
+describe("dbToTuiMessages", () => {
+  test("preserves the steer display variant", () => {
+    const messages = [{
+      id: "m1",
+      sessionId: "s1",
+      role: "user" as const,
+      modelId: null,
+      providerId: null,
+      finish: "stop" as const,
+      cost: null,
+      tokensIn: null,
+      tokensOut: null,
+      timeCreated: 1,
+      timeCompleted: 1,
+    }]
+    const parts = [{
+      id: "p1",
+      messageId: "m1",
+      sessionId: "s1",
+      type: "text" as const,
+      data: JSON.stringify({ text: "Improving the TUI", variant: "steer" }),
+    }]
+
+    expect(dbToTuiMessages(messages, parts)[0]!.parts[0]).toEqual({
+      type: "text",
+      text: "Improving the TUI",
+      variant: "steer",
+    })
+    expect(dbToConversationMessages(messages, parts)[0]!.parts[0]).toEqual({
+      type: "text",
+      text: "Improving the TUI",
+      variant: "steer",
     })
   })
 })

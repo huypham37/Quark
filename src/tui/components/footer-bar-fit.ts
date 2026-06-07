@@ -116,13 +116,31 @@ export function pickRightZone(
 }
 
 // ---------------------------------------------------------------------------
-// Left-zone widths — depend on which Show branch is active and which label
-// is currently cycled. Spinner is 2 cells (two braille glyphs).
+// Duration formatting — "Worked for X.Xs" or "Worked for Xm Ys"
+// ---------------------------------------------------------------------------
+
+export function formatDuration(ms: number): string {
+  const totalSec = ms / 1000
+  if (totalSec < 60) {
+    return `Worked for ${totalSec.toFixed(1)}s`
+  }
+  const min = Math.floor(totalSec / 60)
+  const sec = Math.round(totalSec % 60)
+  return `Worked for ${min}m ${sec}s`
+}
+
+export function durationWidth(label: string): number {
+  return label.length
+}
+
+// ---------------------------------------------------------------------------
+// Left-zone widths — depend on which Show branch is active. The spinner was
+// replaced by shimmering status text, so the status label has no glyph prefix.
 // ---------------------------------------------------------------------------
 
 export function leftWidthRunning(label: string): number {
-  // "<spinner(2)> " + label + "      " + "Esc" + " to cancel"
-  return 3 + label.length + 6 + 3 + 10
+  // label + "      " + "Esc" + " to cancel"
+  return label.length + 6 + 3 + 10
 }
-export const LEFT_WIDTH_STEERING = 3 + "Steering context…".length
+export const LEFT_WIDTH_STEERING = "Steering context".length
 export const LEFT_WIDTH_IDLE = 1 // single " " placeholder text
