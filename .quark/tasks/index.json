@@ -881,10 +881,370 @@
   },
   {
     "id": "task_LJVR04gSKdImYGgv",
-    "title": "Fix markdown content that fails to inherit the theme, leaving some portions white on a white background",
-    "description": "Fix markdown content that fails to inherit the theme, leaving some portions white on a white background",
+    "title": "QUARK_THEME Environment Variable",
+    "description": "QUARK_THEME Environment Variable",
     "profile": "coder",
     "timeCreated": 1780675067232,
-    "timeUpdated": 1780720548922
+    "timeUpdated": 1780733803059
+  },
+  {
+    "id": "task_YyOYdYHuPsbsPfsD",
+    "title": "BFS Effect Inquiry",
+    "description": "BFS Effect Inquiry",
+    "profile": "coder",
+    "timeCreated": 1780736001393,
+    "timeUpdated": 1780758019672
+  },
+  {
+    "id": "task_TknYtg2XTawzIzTb",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780775355210,
+    "timeUpdated": 1780775357541
+  },
+  {
+    "id": "task_b1nHNhWkJHO11jpE",
+    "title": "List all the epics from the project management system.",
+    "description": "List all the epics from the project management system.",
+    "profile": "coder",
+    "timeCreated": 1780775362938,
+    "timeUpdated": 1780775392009
+  },
+  {
+    "id": "task_RWGDoVUnJn3yP4W0",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780775807731,
+    "timeUpdated": 1780775810058
+  },
+  {
+    "id": "task_HzCzk2ApaLzcXax6",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780776303199,
+    "timeUpdated": 1780776357233
+  },
+  {
+    "id": "task_vD4G9388ULMMAeuv",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780776582696,
+    "timeUpdated": 1780776585449
+  },
+  {
+    "id": "task_dgRHR7oaUo8EDLHc",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780776654564,
+    "timeUpdated": 1780776657493
+  },
+  {
+    "id": "task_GcMTVoB6nvhgYBoj",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780776675064,
+    "timeUpdated": 1780776677521
+  },
+  {
+    "id": "task_mDBeixA5WkonCdGK",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780777072717,
+    "timeUpdated": 1780777076282
+  },
+  {
+    "id": "task_72TAwoNbtrPsmuuC",
+    "title": "Code Terminology Inquiry",
+    "description": "Code Terminology Inquiry",
+    "profile": "coder",
+    "timeCreated": 1780777116342,
+    "timeUpdated": 1780802916576
+  },
+  {
+    "id": "task_VVO6IjQAfoUj2zJN",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780777249866,
+    "timeUpdated": 1780777252143
+  },
+  {
+    "id": "task_CK9df7orXgsKczJI",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780777257819,
+    "timeUpdated": 1780777260225
+  },
+  {
+    "id": "task_jC5A5jJWMEmDthaZ",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780777292520,
+    "timeUpdated": 1780777294790
+  },
+  {
+    "id": "task_atumGcFhiZQ6Ikqi",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780777321933,
+    "timeUpdated": 1780777324038
+  },
+  {
+    "id": "task_XnvhlTLvgwkiDiMA",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780803450212,
+    "timeUpdated": 1780803450212
+  },
+  {
+    "id": "task_vIqWyqPHtA1vurGX",
+    "title": "Perform a Git commit operation on the current repository.",
+    "description": "Perform a Git commit operation on the current repository.",
+    "profile": "coder",
+    "timeCreated": 1780806321891,
+    "timeUpdated": 1780807817980
+  },
+  {
+    "id": "task_MnNab5og8c1xMo7z",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780807166577,
+    "timeUpdated": 1780807186673
+  },
+  {
+    "id": "task_MBCDQdGUZldimVJA",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780807231471,
+    "timeUpdated": 1780807234076
+  },
+  {
+    "id": "task_9cdXrO2qWCZL2S8g",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780807270329,
+    "timeUpdated": 1780807273079
+  },
+  {
+    "id": "task_Gai0GrxrYRyv2EyF",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780807285223,
+    "timeUpdated": 1780807287839
+  },
+  {
+    "id": "task_zomSs3AfKh6NUj3H",
+    "title": "Handle the 'pm list-epics' user command to list all epics.",
+    "description": "Handle the 'pm list-epics' user command to list all epics.",
+    "profile": "coder",
+    "timeCreated": 1780807289398,
+    "timeUpdated": 1780807297795
+  },
+  {
+    "id": "task_hdD5NVGi4reH3znG",
+    "title": "Say pong",
+    "description": "Say pong",
+    "profile": "coder",
+    "timeCreated": 1780807506487,
+    "timeUpdated": 1780807506487
+  },
+  {
+    "id": "task_DnTINVR7NsyCuoIH",
+    "title": "Greeting Inquiry",
+    "description": "Greeting Inquiry",
+    "profile": "coder",
+    "timeCreated": 1780807530970,
+    "timeUpdated": 1780807540782
+  },
+  {
+    "id": "task_CyVyEOk4zCrmyVTi",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780807716039,
+    "timeUpdated": 1780807719752
+  },
+  {
+    "id": "task_LNIDtKGcJKCjytnA",
+    "title": "Git Commit",
+    "description": "Git Commit",
+    "profile": "coder",
+    "timeCreated": 1780808293470,
+    "timeUpdated": 1780808649937
+  },
+  {
+    "id": "task_rFPFC6eoC6RyWEGo",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808496133,
+    "timeUpdated": 1780808496133
+  },
+  {
+    "id": "task_N9BsOJR8iS77XwnR",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808496156,
+    "timeUpdated": 1780808496156
+  },
+  {
+    "id": "task_617BZqMuqX56lobv",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808501751,
+    "timeUpdated": 1780808501751
+  },
+  {
+    "id": "task_QxKvsQnp3m3WtdcJ",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808501800,
+    "timeUpdated": 1780808501800
+  },
+  {
+    "id": "task_EvValJe7nI4DGxBl",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808507096,
+    "timeUpdated": 1780808507096
+  },
+  {
+    "id": "task_lwGmRqX9PSXoMEj7",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808507143,
+    "timeUpdated": 1780808507143
+  },
+  {
+    "id": "task_z6QNcVlC6Dv0Rp66",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808511702,
+    "timeUpdated": 1780808511702
+  },
+  {
+    "id": "task_fHq2QOpGacb4BNGi",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808511753,
+    "timeUpdated": 1780808511753
+  },
+  {
+    "id": "task_VRTKm3dBaZxVm9VN",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808517515,
+    "timeUpdated": 1780808517515
+  },
+  {
+    "id": "task_fxMLCp35k8fKCu9b",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808517564,
+    "timeUpdated": 1780808517564
+  },
+  {
+    "id": "task_t7AUhwTEtWHfTZCB",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808519739,
+    "timeUpdated": 1780808519739
+  },
+  {
+    "id": "task_w0eoAynejS3I0915",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808519788,
+    "timeUpdated": 1780808519788
+  },
+  {
+    "id": "task_FcBX1CXQ014uXYmr",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808524460,
+    "timeUpdated": 1780808524460
+  },
+  {
+    "id": "task_8Ny18WMM6Nf8O8uD",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808524510,
+    "timeUpdated": 1780808524510
+  },
+  {
+    "id": "task_nCw3FJX8F3qmFBjJ",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780808532019,
+    "timeUpdated": 1780808532019
+  },
+  {
+    "id": "task_KJngvqmNK6x3WBSr",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780808532044,
+    "timeUpdated": 1780808532044
+  },
+  {
+    "id": "task_L6QZZvAsERccLWhM",
+    "title": "Compaction TUI Workflow",
+    "description": "Compaction TUI Workflow",
+    "profile": "coder",
+    "timeCreated": 1780809010131,
+    "timeUpdated": 1780809015685
+  },
+  {
+    "id": "task_LFh9E76P2oiGJbO4",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780809900408,
+    "timeUpdated": 1780809900408
+  },
+  {
+    "id": "task_knwXikAz83OETQg2",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780809900432,
+    "timeUpdated": 1780809900432
+  },
+  {
+    "id": "task_r9PJPpspfYXIMovV",
+    "title": "Merge this work tree into the main tree",
+    "description": "Merge this work tree into the main tree",
+    "profile": "coder",
+    "timeCreated": 1780816624628,
+    "timeUpdated": 1780816629289
   }
 ]
