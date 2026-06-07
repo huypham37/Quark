@@ -18,13 +18,17 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const cleaned = () => parseContextBlocks(props.text).cleaned
 
   return (
-    <box flexDirection="column" marginLeft={1}>
+    <box flexDirection="column">
       {/* Text line */}
-      <text fg={colors.text}>{cleaned()}</text>
+      <box flexDirection="row">
+        <text fg={colors.userBar}>|</text>
+        <text fg={colors.text}>{cleaned()}</text>
+      </box>
 
       {/* Image chips */}
       <Show when={(props.images?.length ?? 0) > 0}>
         <box flexDirection="row">
+          <text fg={colors.userBar}>|</text>
           <For each={props.images}>
             {(img) => <text fg={colors.success}>[{img.label}] </text>}
           </For>
