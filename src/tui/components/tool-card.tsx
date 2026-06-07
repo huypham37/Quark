@@ -145,18 +145,12 @@ const ToolCardBody: Component<ToolCardProps> = (props) => {
     <>
       {/* Write tool streaming: progressive green lines */}
       <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
-        <WriteStreamView
-          content={props.streamingContent!}
-          filePath={typeof (props.input.filePath ?? props.input.path) === "string" ? (props.input.filePath ?? props.input.path) as string : undefined}
-        />
+        <WriteStreamView content={props.streamingContent!} />
       </Show>
 
       {/* Edit tool diff: unified diff view — shows at awaiting_approval (preview) and completed (canonical) */}
       <Show when={props.diff && (props.status === "completed" || props.status === "awaiting_approval")}>
-        <DiffView
-          diff={props.diff!}
-          filePath={typeof props.input.filePath === "string" ? props.input.filePath : undefined}
-        />
+        <DiffView diff={props.diff!} />
       </Show>
 
       {/* Output for terminal states (not write, not read-only, not pending/running/awaiting) */}

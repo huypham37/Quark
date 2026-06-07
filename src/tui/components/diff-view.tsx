@@ -22,7 +22,6 @@ import type { DiffHunk, DiffLine } from "../../shared/diff-utils"
 
 interface DiffViewProps {
   diff: string
-  filePath?: string
 }
 
 const MAX_LINES_PER_HUNK = 100
@@ -130,13 +129,9 @@ export const DiffView: Component<DiffViewProps> = (props) => {
   return (
     <Show when={hunks().length > 0}>
       <box flexDirection="column" marginLeft={0}>
-        {/* File path + change summary */}
+        {/* Change summary */}
         <box flexDirection="row">
           <text fg={colors.muted}>└── </text>
-          <Show when={props.filePath}>
-            <text fg={COLOR_FILEPATH}>{props.filePath!.replace(/^\/Users\/[^/]+\//, "~/")}</text>
-            <text> </text>
-          </Show>
           <text fg={COLOR_ADDED_FG}>+{changes().added}</text>
           <text> </text>
           <text fg={COLOR_REMOVED_FG}>-{changes().removed}</text>

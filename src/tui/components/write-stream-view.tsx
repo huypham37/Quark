@@ -18,7 +18,6 @@ import { colors } from "../theme"
 
 interface WriteStreamViewProps {
   content: string
-  filePath?: string
 }
 
 const MAX_VISIBLE_LINES = 100
@@ -26,7 +25,6 @@ const MAX_VISIBLE_LINES = 100
 const COLOR_ADDED_FG = RGBA.fromHex("#98C379")
 const COLOR_LINENUM  = RGBA.fromHex("#4a5568")
 const COLOR_RULE     = RGBA.fromHex("#2d3748")
-const COLOR_FILEPATH = RGBA.fromHex("#61AFEF")
 
 function truncateLine(content: string, maxLen = 80): string {
   return content.length > maxLen ? content.slice(0, maxLen - 1) + "…" : content
@@ -44,10 +42,6 @@ export const WriteStreamView: Component<WriteStreamViewProps> = (props) => {
     <box flexDirection="column" marginLeft={2}>
       <box flexDirection="row">
         <text fg={colors.muted}>└── </text>
-        <Show when={props.filePath}>
-          <text fg={COLOR_FILEPATH}>{props.filePath!.replace(/^\/Users\/[^/]+\//, "~/")}</text>
-          <text> </text>
-        </Show>
         <text fg={COLOR_ADDED_FG}>+{lines().length}</text>
       </box>
       <box flexDirection="column" marginLeft={4}>
