@@ -147,14 +147,14 @@ export async function prompt(input: {
           message: text,
           profile: agent.id,
         });
+        resolveModel(input.model ?? loadConfig().small_model, "small")
+          .then((model) =>
+            upgradeSessionTitle({ sessionId, message: text, model }),
+          )
+          .catch(() => {
+            // best-effort upgrade — fallback title from sync init is kept
+          });
       }
-      resolveModel(input.model ?? loadConfig().small_model, "small")
-        .then((model) =>
-          upgradeSessionTitle({ sessionId, message: text, model }),
-        )
-        .catch(() => {
-          // best-effort upgrade — fallback title from sync init is kept
-        });
     }
 
     finalSessionId = await loop(sessionId, controller.signal, agent, input.model);
