@@ -48,11 +48,7 @@ function countChanges(hunks: DiffHunk[]): { added: number; removed: number } {
   return { added, removed }
 }
 
-function truncateLine(content: string, maxLen = 80): string {
-  return content.length > maxLen ? content.slice(0, maxLen - 1) + "…" : content
-}
-
-const DiffLineView: Component<{ line: DiffLine, maxLen: number }> = (props) => {
+const DiffLineView: Component<{ line: DiffLine }> = (props) => {
   const prefix = () => {
     if (props.line.type === "added") return "+"
     if (props.line.type === "removed") return "-"
@@ -82,22 +78,22 @@ const DiffLineView: Component<{ line: DiffLine, maxLen: number }> = (props) => {
 
   return (
     <box flexDirection="row">
-      <text fg={COLOR_LINENUM}>{lineNo()}</text>
-      <text fg={colors.muted}>│</text>
-      <text fg={prefixColor()}>{prefix()}</text>
-      <text fg={fgColor()}>{truncateLine(props.line.content, props.maxLen)}</text>
+      <text fg={COLOR_LINENUM} flexShrink={0}>{lineNo()}</text>
+      <text fg={colors.muted} flexShrink={0}>│</text>
+      <text fg={prefixColor()} flexShrink={0}>{prefix()}</text>
+      <text fg={fgColor()} wrap="wrap" flexShrink={1}>{props.line.content}</text>
     </box>
   )
 }
 
-const HunkView: Component<{ hunk: DiffHunk, maxLen: number }> = (props) => {
+const HunkView: Component<{ hunk: DiffHunk }> = (props) => {
   const visibleLines = () => props.hunk.lines.slice(0, MAX_LINES_PER_HUNK)
   const overflow = () => props.hunk.lines.length - MAX_LINES_PER_HUNK
 
   return (
     <box flexDirection="column">
       <For each={visibleLines()}>
-        {(line) => <DiffLineView line={line} maxLen={props.maxLen} />}
+        {(line) => <DiffLineView line={line} />}
       </For>
       <Show when={overflow() > 0}>
         <text fg={colors.muted}>     … {overflow()} more lines</text>
@@ -113,7 +109,6 @@ export const DiffView: Component<DiffViewProps> = (props) => {
   const overflowHunks = () => hunks().length - MAX_HUNKS
   const changes = () => countChanges(hunks())
   const rule = () => "─".repeat(Math.max(10, dims().width - 8))
-  const maxLineLen = () => Math.max(10, dims().width - 14)
 
   return (
     <Show when={hunks().length > 0}>
@@ -135,7 +130,7 @@ export const DiffView: Component<DiffViewProps> = (props) => {
           <For each={visibleHunks()}>
             {(hunk, i) => (
               <box flexDirection="column">
-                <HunkView hunk={hunk} maxLen={maxLineLen()} />
+                <HunkView hunk={hunk} />
                 <Show when={i() < visibleHunks().length - 1}>
                   <text fg={COLOR_RULE}>{rule()}</text>
                 </Show>

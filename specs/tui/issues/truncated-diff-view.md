@@ -1,11 +1,13 @@
 ---
 title: Truncated Diff View
 date_created: 2026-06-05
-date_modified: 2026-06-05
-revision: 1
+date_modified: 2026-06-07
+revision: 3
 history:
   - 2026-06-05: Initial draft detailing the problem
-status: draft
+  - 2026-06-07: Removed truncateLine() from diff-view.tsx; replaced with wrap="wrap" on content <Text>
+  - 2026-06-07: Added flexShrink={0} to prefix elements and flexShrink={1} to content text so line numbers and │ align correctly on wrapped rows
+status: done
 ---
 
 # Truncated Diff View
