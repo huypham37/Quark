@@ -25,7 +25,7 @@ import { Notifications } from "./notifications"
 import { colors } from "../theme"
 import { respond as respondPermission } from "../../permission/permission"
 import { respondQuestion } from "../../tool/question"
-import { getFiles, fuzzyFilter } from "../filelist"
+import { getFiles, fuzzyFilter } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
 import {
   buildSessionTreeRows,

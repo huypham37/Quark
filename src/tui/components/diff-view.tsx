@@ -16,8 +16,8 @@ import type { Component } from "solid-js"
 import { For, Show } from "solid-js"
 import { RGBA } from "@opentui/core"
 import { colors } from "../theme"
-import { parseDiffHunks } from "../diff-utils"
-import type { DiffHunk, DiffLine } from "../diff-utils"
+import { parseDiffHunks } from "../../shared/diff-utils"
+import type { DiffHunk, DiffLine } from "../../shared/diff-utils"
 
 interface DiffViewProps {
   diff: string

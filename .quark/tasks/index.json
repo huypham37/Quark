@@ -862,5 +862,493 @@
     "profile": "coder",
     "timeCreated": 1780601907079,
     "timeUpdated": 1780601907079
+  },
+  {
+    "id": "task_kVZes6JcHXvyjzZh",
+    "title": "hello, explore the codebase",
+    "description": "hello, explore the codebase",
+    "profile": "coder",
+    "timeCreated": 1780638866317,
+    "timeUpdated": 1780638866317
+  },
+  {
+    "id": "task_nMItrsQ5YfY9JWTh",
+    "title": "Write a fix to files in the @specs/ directory",
+    "description": "Write a fix to files in the @specs/ directory",
+    "profile": "coder",
+    "timeCreated": 1780639519146,
+    "timeUpdated": 1780640202820
+  },
+  {
+    "id": "task_cDoohTTV31Bj4syE",
+    "title": "Continuation Request",
+    "description": "Continuation Request",
+    "profile": "coder",
+    "timeCreated": 1780647655643,
+    "timeUpdated": 1780649009980
+  },
+  {
+    "id": "task_5xcUdilaZZMXzmHm",
+    "title": "Commit the current changes",
+    "description": "Commit the current changes",
+    "profile": "coder",
+    "timeCreated": 1780648053330,
+    "timeUpdated": 1780667404778
+  },
+  {
+    "id": "task_8uAKmEAGb5mwOk5r",
+    "title": "Merge changes into the main branch.",
+    "description": "Merge changes into the main branch.",
+    "profile": "coder",
+    "timeCreated": 1780667636378,
+    "timeUpdated": 1780669806124
+  },
+  {
+    "id": "task_0YV1a5BFOKmG17nz",
+    "title": "UI Message Location",
+    "description": "UI Message Location",
+    "profile": "coder",
+    "timeCreated": 1780667653890,
+    "timeUpdated": 1780667665577
+  },
+  {
+    "id": "task_Ci3Bhyr7ncttvfv3",
+    "title": "Position Inquiry",
+    "description": "Position Inquiry",
+    "profile": "coder",
+    "timeCreated": 1780668725405,
+    "timeUpdated": 1780668735212
+  },
+  {
+    "id": "task_Om4NExCs51QO7iEC",
+    "title": "Bottom Alignment Test",
+    "description": "Bottom Alignment Test",
+    "profile": "coder",
+    "timeCreated": 1780668949669,
+    "timeUpdated": 1780668960858
+  },
+  {
+    "id": "task_d5rQBf8QorwLfAbH",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780668997318,
+    "timeUpdated": 1780669000190
+  },
+  {
+    "id": "task_ftp6sGm0l7slq27m",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780669054271,
+    "timeUpdated": 1780669057282
+  },
+  {
+    "id": "task_UyqBJF3FsYcOvYbf",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780669149200,
+    "timeUpdated": 1780669151644
+  },
+  {
+    "id": "task_JcJsSfjXbOfpBAT1",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780669172419,
+    "timeUpdated": 1780669174784
+  },
+  {
+    "id": "task_3gRlNxsCH1WyPu6L",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780669243166,
+    "timeUpdated": 1780669247258
+  },
+  {
+    "id": "task_WaiaGzkvfLg8uSt2",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780669306602,
+    "timeUpdated": 1780669329778
+  },
+  {
+    "id": "task_idUlrpS19ggdnr2U",
+    "title": "Create a new work tree for experimenting with a new UI feature.",
+    "description": "Create a new work tree for experimenting with a new UI feature.",
+    "profile": "coder",
+    "timeCreated": 1780669843541,
+    "timeUpdated": 1780669852986
+  },
+  {
+    "id": "task_by0JT5otWNbBNfiP",
+    "title": "Call Again Request",
+    "description": "Call Again Request",
+    "profile": "coder",
+    "timeCreated": 1780670172089,
+    "timeUpdated": 1780670863923
+  },
+  {
+    "id": "task_E3FaeHnocO6BkvG7",
+    "title": "Truncate the parameter when resizing",
+    "description": "Truncate the parameter when resizing",
+    "profile": "coder",
+    "timeCreated": 1780670304169,
+    "timeUpdated": 1780671404933
+  },
+  {
+    "id": "task_NXj60XP5w2DKvHBt",
+    "title": "Read and display the contents of the package.json configuration file.",
+    "description": "Read and display the contents of the package.json configuration file.",
+    "profile": "coder",
+    "timeCreated": 1780670769009,
+    "timeUpdated": 1780670781675
+  },
+  {
+    "id": "task_yjS930n7eOHstL9f",
+    "title": "Call a subagent to analyze and understand the context.",
+    "description": "Call a subagent to analyze and understand the context.",
+    "profile": "coder",
+    "timeCreated": 1780670893992,
+    "timeUpdated": 1780670913795
+  },
+  {
+    "id": "task_S47ZzK3c9EdWNvdj",
+    "title": "Use a sub-agent to explore the src/ directory and find all components.",
+    "description": "Use a sub-agent to explore the src/ directory and find all components.",
+    "profile": "coder",
+    "timeCreated": 1780671000696,
+    "timeUpdated": 1780671083010
+  },
+  {
+    "id": "task_qdbEuotCCBcAIDcE",
+    "title": "Analyze the call finder system by invoking it to understand its functionality.",
+    "description": "Analyze the call finder system by invoking it to understand its functionality.",
+    "profile": "coder",
+    "timeCreated": 1780671255713,
+    "timeUpdated": 1780671276868
+  },
+  {
+    "id": "task_DR0XYqEoECFESVx0",
+    "title": "Finder Status Inquiry",
+    "description": "Finder Status Inquiry",
+    "profile": "coder",
+    "timeCreated": 1780671562733,
+    "timeUpdated": 1780671585936
+  },
+  {
+    "id": "task_Cr6pR2gUag904iP9",
+    "title": "The Finder Call",
+    "description": "The Finder Call",
+    "profile": "coder",
+    "timeCreated": 1780671599244,
+    "timeUpdated": 1780671637007
+  },
+  {
+    "id": "task_92ZSabhhml0S4o1d",
+    "title": "Call the finder tool to understand the codebase structure and content.",
+    "description": "Call the finder tool to understand the codebase structure and content.",
+    "profile": "coder",
+    "timeCreated": 1780672127625,
+    "timeUpdated": 1780672134522
+  },
+  {
+    "id": "task_XG9ltEviCsSOmAJU",
+    "title": "Fix the module resolution error for '../filelist' in the Quark TUI App component.",
+    "description": "Fix the module resolution error for '../filelist' in the Quark TUI App component.",
+    "profile": "coder",
+    "timeCreated": 1780734886581,
+    "timeUpdated": 1780735489122
+  },
+  {
+    "id": "task_oUrO85Uq62va3n5K",
+    "title": "Research the authentication mechanism with a subscription model similar to ChatGPT using the Librarian agent on the @reference-cache/pi.",
+    "description": "Research the authentication mechanism with a subscription model similar to ChatGPT using the Librarian agent on the @reference-cache/pi.",
+    "profile": "coder",
+    "timeCreated": 1780735809084,
+    "timeUpdated": 1780735823961
+  },
+  {
+    "id": "task_0CHDZ6hEOqoRRycV",
+    "title": "Work Summary",
+    "description": "Work Summary",
+    "profile": "coder",
+    "timeCreated": 1780735867363,
+    "timeUpdated": 1780757560373
+  },
+  {
+    "id": "task_HmqRrtpZx6EtWmWr",
+    "title": "cd ..",
+    "description": "cd ..",
+    "profile": "coder",
+    "timeCreated": 1780735913885,
+    "timeUpdated": 1780735913885
+  },
+  {
+    "id": "task_FtVYZx1GTnlfnBRX",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755851364,
+    "timeUpdated": 1780755854698
+  },
+  {
+    "id": "task_bwmtxbrly9IhdPP6",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755851398,
+    "timeUpdated": 1780755854380
+  },
+  {
+    "id": "task_VrVwBQWJXsAR7R3z",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755874739,
+    "timeUpdated": 1780755877306
+  },
+  {
+    "id": "task_sHoxngnZ1k3P3q9R",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755874787,
+    "timeUpdated": 1780755877660
+  },
+  {
+    "id": "task_FRKSF0ZLpMbeD2bg",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755906383,
+    "timeUpdated": 1780755911568
+  },
+  {
+    "id": "task_KFSokXjM5IuV4Lvs",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755906406,
+    "timeUpdated": 1780755909232
+  },
+  {
+    "id": "task_Zq9LkMPAS7IqSC6h",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755929360,
+    "timeUpdated": 1780755936253
+  },
+  {
+    "id": "task_VXwq2SaYREFd9hTO",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755929382,
+    "timeUpdated": 1780755933341
+  },
+  {
+    "id": "task_hLXCAQhyH6Guweaz",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755961595,
+    "timeUpdated": 1780755964395
+  },
+  {
+    "id": "task_k8mGHlft8jny6MK3",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755961647,
+    "timeUpdated": 1780755964260
+  },
+  {
+    "id": "task_lCW5s6EyC7DMcox8",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755993534,
+    "timeUpdated": 1780755997514
+  },
+  {
+    "id": "task_yE0i1NjP17AThmIF",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780755993558,
+    "timeUpdated": 1780755996249
+  },
+  {
+    "id": "task_A5m3Ova4c6noaE2P",
+    "title": "Pi Google Integration",
+    "description": "Pi Google Integration",
+    "profile": "coder",
+    "timeCreated": 1780757698390,
+    "timeUpdated": 1780757729156
+  },
+  {
+    "id": "task_EdlA0EKKnP3Yljbm",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780776569992,
+    "timeUpdated": 1780776569992
+  },
+  {
+    "id": "task_Gp0psQrhnG29eXFS",
+    "title": "Directory Listing Command",
+    "description": "Directory Listing Command",
+    "profile": "coder",
+    "timeCreated": 1780803489548,
+    "timeUpdated": 1780803503466
+  },
+  {
+    "id": "task_HUUlOuqLarY7T0wR",
+    "title": "Git Commit",
+    "description": "Git Commit",
+    "profile": "coder",
+    "timeCreated": 1780803634114,
+    "timeUpdated": 1780806419296
+  },
+  {
+    "id": "task_r283wHn1rrHC7pI5",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780804031057,
+    "timeUpdated": 1780804031057
+  },
+  {
+    "id": "task_6TzzRcohNc8mAqME",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780804262268,
+    "timeUpdated": 1780804262268
+  },
+  {
+    "id": "task_bMuRuxqZ2xHQm1Tg",
+    "title": "Reply with exactly TUI_LIVE_OK and nothing else.",
+    "description": "Reply with exactly TUI_LIVE_OK and nothing else.",
+    "profile": "coder",
+    "timeCreated": 1780805005794,
+    "timeUpdated": 1780805005794
+  },
+  {
+    "id": "task_cxr6nc1FBejiW5B8",
+    "title": "Reply with exactly TUI_FIXED_OK and nothing else.",
+    "description": "Reply with exactly TUI_FIXED_OK and nothing else.",
+    "profile": "coder",
+    "timeCreated": 1780805357688,
+    "timeUpdated": 1780805357688
+  },
+  {
+    "id": "task_Ds1fzO1OjboC1sIk",
+    "title": "Use the read tool to read package.json, then reply with only the package name.",
+    "description": "Use the read tool to read package.json, then reply with only the package name.",
+    "profile": "coder",
+    "timeCreated": 1780805501777,
+    "timeUpdated": 1780805501777
+  },
+  {
+    "id": "task_sJCf53kUORZBFiCt",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780805581624,
+    "timeUpdated": 1780805581624
+  },
+  {
+    "id": "task_zVAIexzwEZf3HWFi",
+    "title": "Git Commit Task",
+    "description": "Git Commit Task",
+    "profile": "coder",
+    "timeCreated": 1780806696618,
+    "timeUpdated": 1780807494504
+  },
+  {
+    "id": "task_RPOk8fIS4fz6CTGE",
+    "title": "Path-based File Query",
+    "description": "Path-based File Query",
+    "profile": "coder",
+    "timeCreated": 1780807661954,
+    "timeUpdated": 1780808031907
+  },
+  {
+    "id": "task_WSdjoKm5SsjpuqPz",
+    "title": "Investigate the issue where the task name changes after quitting, restoring the app, and sending a new message, and confirm or find an alternative hypothesis.",
+    "description": "Investigate the issue where the task name changes after quitting, restoring the app, and sending a new message, and confirm or find an alternative hypothesis.",
+    "profile": "coder",
+    "timeCreated": 1780808471467,
+    "timeUpdated": 1780808735394
+  },
+  {
+    "id": "task_It4jd1b1Pp4cZ63I",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780809010014,
+    "timeUpdated": 1780809012931
+  },
+  {
+    "id": "task_QuHrBNEmuzzCjNT9",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780809013853,
+    "timeUpdated": 1780809015748
+  },
+  {
+    "id": "task_D3zBfN455DiDDwga",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1780809017055,
+    "timeUpdated": 1780809017055
+  },
+  {
+    "id": "task_KraDLXeWA4CM1sxV",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1780809022058,
+    "timeUpdated": 1780809022058
+  },
+  {
+    "id": "task_CGpLh1DAQoXkdexO",
+    "title": "persistent test",
+    "description": "persistent test",
+    "profile": "coder",
+    "timeCreated": 1780809037735,
+    "timeUpdated": 1780809037735
+  },
+  {
+    "id": "task_Ie7Joj4bElxHhrId",
+    "title": "research this",
+    "description": "research this",
+    "profile": "coder",
+    "timeCreated": 1780809047768,
+    "timeUpdated": 1780809047768
+  },
+  {
+    "id": "task_I7ZbzwsUqlTd4rA2",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780809052769,
+    "timeUpdated": 1780809054820
+  },
+  {
+    "id": "task_0WjNx6ObzT9wM9ni",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780809056781,
+    "timeUpdated": 1780809058954
   }
 ]

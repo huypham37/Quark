@@ -50,14 +50,14 @@ const NotificationCard: Component<NotificationCardProps> = (props) => {
   })
 
   return (
-    <box flexDirection="column" width={props.panelWidth()} bg={colors.notificationBg} marginLeft={offset()}>
+    <box flexDirection="column" width={props.panelWidth()} backgroundColor={colors.notificationBg} marginLeft={offset()}>
       <box
         flexDirection="column"
         paddingX={1}
         paddingY={0}
         borderStyle="round"
         borderColor={props.getColor(props.notification.type)}
-        bg={colors.notificationBg}
+        backgroundColor={colors.notificationBg}
       >
         <text fg={props.getColor(props.notification.type)} bg={colors.notificationBg} bold>
           {props.pad(`${props.getIcon(props.notification.type)} ${props.notification.title}`)}

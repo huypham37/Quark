@@ -8,7 +8,7 @@
 //   - MAX_FILE_ITEMS (50) allows deep browsing in large repos
 
 import { describe, test, expect } from "bun:test"
-import { fuzzyFilter } from "../../src/tui/filelist"
+import { fuzzyFilter } from "../../src/shared/filelist"
 
 /** Generate a list of pseudo-file paths for testing */
 function makeFiles(count: number, prefix = "src/components/"): string[] {

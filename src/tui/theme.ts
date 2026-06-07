@@ -56,10 +56,11 @@ export function pickThemeFor(bg: RGBA): Theme {
 
 /**
  * Apply the readable theme for the detected terminal background, while
- * keeping autocomplete overlays flush with the terminal itself.
+ * keeping panel backgrounds flush with the terminal itself.
  */
 export function setTerminalBg(bg: RGBA): void {
   applyTheme(pickThemeFor(bg))
+  colors.commandCardBg = bg
   colors.dropdownBg = bg
   colors.notificationBg = bg
 }

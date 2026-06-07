@@ -196,7 +196,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
       height={visibleHeight()}
       scrollbarOptions={{ visible: false }}
-      bg={panelBg()}
+      backgroundColor={panelBg()}
     >
       <For each={rows()}>
         {(row) => {
@@ -207,7 +207,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
             return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
           }
           return (
-            <box height={1} bg={row.bg}>
+            <box height={1} backgroundColor={row.bg}>
               <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
             </box>
           )
@@ -225,7 +225,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       bottom={BOTTOM_OFFSET}
       left={isSessionCard() ? SESSION_CARD_INSET : 0}
       right={isSessionCard() ? SESSION_CARD_INSET : 0}
-      bg={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
+      backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
     >
       {isSessionCard() && rows().length > 0
         ? <CommandCard height={panelHeight()}>{content()}</CommandCard>

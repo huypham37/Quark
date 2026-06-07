@@ -15,7 +15,7 @@ export const CommandCard: Component<CommandCardProps> = (props) => (
     paddingX={1}
     borderStyle="rounded"
     borderColor={colors.outline}
-    bg={colors.commandCardBg}
+    backgroundColor={colors.commandCardBg}
   >
     {props.children}
   </box>
