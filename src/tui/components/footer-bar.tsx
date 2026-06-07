@@ -99,7 +99,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   })
 
   return (
-    <box flexDirection="row" justifyContent="space-between" height={1}>
+    <box flexDirection="row" justifyContent="space-between" height={1} marginLeft={1}>
       <Show
         when={props.steering}
         fallback={
