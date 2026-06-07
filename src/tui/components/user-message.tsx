@@ -21,14 +21,14 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
     <box flexDirection="column">
       {/* Text line */}
       <box flexDirection="row">
-        <text fg={colors.userBar}>|</text>
+        <text fg={colors.userBar}>| </text>
         <text fg={colors.text}>{cleaned()}</text>
       </box>
 
       {/* Image chips */}
       <Show when={(props.images?.length ?? 0) > 0}>
         <box flexDirection="row">
-          <text fg={colors.userBar}>|</text>
+          <text fg={colors.userBar}>| </text>
           <For each={props.images}>
             {(img) => <text fg={colors.success}>[{img.label}] </text>}
           </For>
