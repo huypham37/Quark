@@ -1039,7 +1039,7 @@ export const App: Component<AppProps> = (props) => {
       <Notifications />
 
       {/* Footer bar */}
-      <FooterBar running={state.store.running} steering={state.store.steering} />
+      <FooterBar running={state.store.running} steering={state.store.steering} lastDuration={state.store.lastDuration} />
     </box>
   )
 }

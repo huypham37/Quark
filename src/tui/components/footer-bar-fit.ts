@@ -116,6 +116,24 @@ export function pickRightZone(
 }
 
 // ---------------------------------------------------------------------------
+// Duration formatting — "Worked for X.Xs" or "Worked for Xm Ys"
+// ---------------------------------------------------------------------------
+
+export function formatDuration(ms: number): string {
+  const totalSec = ms / 1000
+  if (totalSec < 60) {
+    return `Worked for ${totalSec.toFixed(1)}s`
+  }
+  const min = Math.floor(totalSec / 60)
+  const sec = Math.round(totalSec % 60)
+  return `Worked for ${min}m ${sec}s`
+}
+
+export function durationWidth(label: string): number {
+  return label.length
+}
+
+// ---------------------------------------------------------------------------
 // Left-zone widths — depend on which Show branch is active. The spinner was
 // replaced by shimmering status text, so the status label has no glyph prefix.
 // ---------------------------------------------------------------------------

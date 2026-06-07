@@ -19,6 +19,8 @@ import {
   leftWidthRunning,
   LEFT_WIDTH_STEERING,
   LEFT_WIDTH_IDLE,
+  formatDuration,
+  durationWidth,
 } from "../../src/tui/components/footer-bar-fit"
 
 // ---------------------------------------------------------------------------
@@ -270,5 +272,38 @@ describe("left zone widths", () => {
     expect(LEFT_WIDTH_STEERING).toBe("Steering context…".length)
     // Idle is a single space placeholder
     expect(LEFT_WIDTH_IDLE).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// formatDuration / durationWidth
+// ---------------------------------------------------------------------------
+
+describe("formatDuration()", () => {
+  test("23. < 60s formats as 'Worked for X.Xs' with one decimal", () => {
+    expect(formatDuration(500)).toBe("Worked for 0.5s")
+    expect(formatDuration(1000)).toBe("Worked for 1.0s")
+    expect(formatDuration(1234)).toBe("Worked for 1.2s")
+    expect(formatDuration(59999)).toBe("Worked for 60.0s")
+  })
+
+  test("24. >= 60s formats as 'Worked for Xm Ys'", () => {
+    expect(formatDuration(60000)).toBe("Worked for 1m 0s")
+    expect(formatDuration(90000)).toBe("Worked for 1m 30s")
+    expect(formatDuration(125000)).toBe("Worked for 2m 5s")
+    expect(formatDuration(3661000)).toBe("Worked for 61m 1s")
+  })
+
+  test("25. seconds are rounded in minute format", () => {
+    expect(formatDuration(60500)).toBe("Worked for 1m 1s")
+    expect(formatDuration(60900)).toBe("Worked for 1m 1s")
+    expect(formatDuration(150100)).toBe("Worked for 2m 30s")
+  })
+})
+
+describe("durationWidth()", () => {
+  test("26. returns the label length exactly", () => {
+    expect(durationWidth("Worked for 1.2s")).toBe("Worked for 1.2s".length)
+    expect(durationWidth("Worked for 2m 5s")).toBe("Worked for 2m 5s".length)
   })
 })

@@ -102,6 +102,7 @@ export type TuiAction =
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
   | { type: "set-steering"; steering: boolean }
+  | { type: "set-last-duration"; duration: number }
   | { type: "update-status"; partial: Partial<TuiStatus> }
   | { type: "set-error"; message: string }
   | { type: "clear-error" }
@@ -232,6 +233,8 @@ export interface AppStore {
   messages: TuiMessage[]
   running: boolean
   steering: boolean
+  /** Duration (ms) of the last completed agent run, from user message to assistant finish */
+  lastDuration: number | null
   thinkingEffort: ThinkingEffort
   showThinking: boolean
   status: TuiStatus
@@ -257,6 +260,7 @@ export function createAppState(initial: {
     messages: [],
     running: false,
     steering: false,
+    lastDuration: null,
     thinkingEffort: "none",
     showThinking: false,
     status: {
@@ -289,6 +293,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.sessionId = action.sessionId
           s.messages = []
           s.running = false
+          s.lastDuration = null
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
@@ -304,6 +309,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.sessionId = action.sessionId
           s.messages = action.messages
           s.running = false
+          s.lastDuration = null
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
@@ -511,6 +517,20 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     case "set-steering":
       setStore("steering", action.steering)
+      break
+
+    case "set-last-duration":
+      setStore(
+        produce((s) => {
+          if (action.duration > 0) {
+            s.lastDuration = action.duration
+            s.lastDurationSetAt = Date.now()
+          } else {
+            s.lastDuration = null
+            s.lastDurationSetAt = 0
+          }
+        }),
+      )
       break
 
     case "update-status":

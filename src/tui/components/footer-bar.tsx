@@ -2,13 +2,18 @@
 // FooterBar — bottom bar showing running status, git branch, and working directory
 //
 // Always renders 1 row to keep layout stable (no height jumps).
-// When running: "Working      Esc to cancel"  (shimmering status text)
-// When steering: "Steering context…"  (shimmering status text)
-// When idle: empty line
+// When running:    "Working      Esc to cancel"  (shimmering status text)
+// When steering:   "Steering context…"           (shimmering status text)
+// When just done:  "Worked for X.Xs"             (italic, muted, persists until next request)
+// When idle:       empty line
 // Right side shows git branch (if in a repo) and abbreviated cwd path.
 //
 // The status text uses a per-letter shimmer (ShimmerText) instead of a spinner:
 // a bright highlight sweeps left-to-right across the word while the agent works.
+//
+// After the agent finishes, the footer shows "Worked for X.Xs" in italic,
+// persisting until the next user request so the user always sees the last
+// turn duration.
 //
 // The right side adapts to terminal width: cwd shrinks first (full → ~/…/leaf →
 // …/leaf), then branch middle-truncates (fix/gh-135-…-redesign), then tail-
@@ -27,11 +32,15 @@ import {
   leftWidthRunning,
   LEFT_WIDTH_STEERING,
   LEFT_WIDTH_IDLE,
+  formatDuration,
+  durationWidth,
 } from "./footer-bar-fit"
 
 export interface FooterBarProps {
   running: boolean
   steering?: boolean
+  /** Duration (ms) of the last completed agent run, from user message to assistant finish */
+  lastDuration: number | null
 }
 
 function getGitBranch(): string {
@@ -65,14 +74,21 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   const RUNNING_LABEL = "Working"
   const STEERING_LABEL = "Steering context…"
 
+  // "Worked for X.Xs" label — shown after agent finishes, persists until next request.
+  const workedLabel = createMemo(() =>
+    props.lastDuration != null ? formatDuration(props.lastDuration) : null,
+  )
+
   // Adaptive right zone — recomputes when terminal width, branch, running
-  // state, or steering state change.
+  // state, steering state, or worked label change.
   const rightZone = createMemo(() => {
     const leftWidth = props.steering
       ? LEFT_WIDTH_STEERING
       : props.running
         ? leftWidthRunning(RUNNING_LABEL)
-        : LEFT_WIDTH_IDLE
+        : workedLabel()
+          ? durationWidth(workedLabel()!)
+          : LEFT_WIDTH_IDLE
     const budget = dims().width - APP_PADDING_X_TOTAL - leftWidth - ZONE_GAP
     return pickRightZone(branch(), cwd, budget)
   })
@@ -84,7 +100,13 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
         fallback={
           <Show
             when={props.running}
-            fallback={<text> </text>}
+            fallback={
+              <Show when={workedLabel()} fallback={<text> </text>}>
+                {(label) => (
+                  <text fg={colors.muted} italic>{label()}</text>
+                )}
+              </Show>
+            }
           >
             <box flexDirection="row">
               <ShimmerText text={RUNNING_LABEL} color={colors.text} background={colors.notificationBg} />
