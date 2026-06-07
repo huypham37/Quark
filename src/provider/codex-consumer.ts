@@ -114,6 +114,7 @@ export function createCodexConsumer(options: CodexConsumerOptions): LanguageMode
 				async start(controller) {
 					const reader = response.body!.getReader()
 					const decoder = new TextDecoder()
+					const mapper = new CodexStreamMapper()
 					let buffer = ""
 					let readerDone = false
 					let aborted = false
@@ -154,8 +155,7 @@ export function createCodexConsumer(options: CodexConsumerOptions): LanguageMode
 
 								for (const data of dataLines) {
 									if (!data || data === "[DONE]") continue
-									const part = parseCodexSSE(data)
-									if (part) {
+									for (const part of mapper.map(data)) {
 										controller.enqueue(part)
 										if (part.type === "finish" || part.type === "error") {
 											closeIfNeeded()
@@ -175,16 +175,15 @@ export function createCodexConsumer(options: CodexConsumerOptions): LanguageMode
 								.map((l) => l.slice(5).trim())
 							for (const data of dataLines) {
 								if (!data || data === "[DONE]") continue
-								const part = parseCodexSSE(data)
-								if (part) {
+								for (const part of mapper.map(data)) {
 									controller.enqueue(part)
 									if (part.type === "finish" || part.type === "error") {
 										closeIfNeeded()
 										return
-										}
 									}
 								}
 							}
+						}
 
 						closeIfNeeded()
 					} catch (err) {
@@ -230,24 +229,25 @@ function buildRequestBody(modelId: string, opts: LanguageModelV3CallOptions): Co
 		.join("\n")
 		.trim()
 
-	const input = nonSystemParts.map((m) => {
+	const input: unknown[] = []
+	for (const m of nonSystemParts) {
 		if (m.role === "user") {
 			if (typeof m.content === "string") {
-				return { role: "user", content: m.content }
+				input.push({ role: "user", content: m.content })
+				continue
 			}
 			if (Array.isArray(m.content)) {
 				const hasImages = m.content.some(
 					(c) => c.type === "file" && (c as { mediaType?: string }).mediaType?.startsWith("image/"),
 				)
 				if (!hasImages) {
-					// Text-only — join all text parts into a single string
 					const text = m.content
 						.filter((c) => c.type === "text")
 						.map((c) => (c as { text: string }).text)
 						.join("")
-					return { role: "user", content: text }
+					input.push({ role: "user", content: text })
+					continue
 				}
-				// Mixed text + images — use array format
 				const parts = m.content
 					.map((c) => {
 						if (c.type === "text") {
@@ -272,52 +272,49 @@ function buildRequestBody(modelId: string, opts: LanguageModelV3CallOptions): Co
 						return null
 					})
 					.filter(Boolean)
-				return { role: "user", content: parts }
+				input.push({ role: "user", content: parts })
+				continue
 			}
-			return m
+			input.push(m)
+			continue
 		}
 		if (m.role === "assistant") {
-			const parts: Array<Record<string, unknown>> = []
 			if (Array.isArray(m.content)) {
+				const textParts = m.content
+					.filter((c) => c.type === "text")
+					.map((c) => ({ type: "output_text", text: (c as { text: string }).text }))
+				if (textParts.length > 0) {
+					input.push({ role: "assistant", content: textParts })
+				}
 				for (const c of m.content) {
-					if (c.type === "text") {
-						parts.push({ type: "input_text", text: (c as { text: string }).text })
-					} else if (c.type === "reasoning") {
-						parts.push({ type: "input_text", text: (c as { text: string }).text })
-					} else if (c.type === "tool-call") {
+					if (c.type === "tool-call") {
 						const tc = c as { toolCallId: string; toolName: string; input: unknown }
-						parts.push({
-							type: "tool_call",
-							id: tc.toolCallId,
+						input.push({
+							type: "function_call",
 							call_id: tc.toolCallId,
-							type_: "tool_call",
 							name: tc.toolName,
-							arguments: String(tc.input),
+							arguments: typeof tc.input === "string" ? tc.input : JSON.stringify(tc.input),
 						})
 					}
 				}
 			}
-			return { role: "assistant", content: parts }
+			continue
 		}
 		if (m.role === "tool") {
 			const results = Array.isArray(m.content) ? m.content : []
-			return {
-				role: "user",
-				content: results
-					.filter((c) => c.type === "tool-result")
-					.map((c) => {
-						const tr = c as { toolCallId: string; toolName: string; output: unknown; isError?: boolean }
-						return {
-							type: "tool_result",
-							tool_call_id: tr.toolCallId,
-							output: JSON.stringify(tr.output),
-							is_error: tr.isError ?? false,
-						}
-					}),
+			for (const c of results) {
+				if (c.type !== "tool-result") continue
+				const tr = c as { toolCallId: string; output: unknown }
+				input.push({
+					type: "function_call_output",
+					call_id: tr.toolCallId,
+					output: serializeToolOutput(tr.output),
+				})
 			}
+			continue
 		}
-		return m
-	})
+		input.push(m)
+	}
 
 	const body: CodexRequestBody = {
 		model: modelId,
@@ -340,11 +337,9 @@ function buildRequestBody(modelId: string, opts: LanguageModelV3CallOptions): Co
 			const ft = t as { name: string; description?: string; inputSchema?: unknown }
 			return {
 				type: "function",
-				function: {
-					name: ft.name,
-					description: ft.description,
-					parameters: ft.inputSchema,
-				},
+				name: ft.name,
+				description: ft.description,
+				parameters: ft.inputSchema,
 			}
 		})
 		body.tool_choice = "auto"
@@ -368,6 +363,31 @@ function buildRequestBody(modelId: string, opts: LanguageModelV3CallOptions): Co
 	}
 
 	return body
+}
+
+function serializeToolOutput(output: unknown): unknown {
+	if (!output || typeof output !== "object") return String(output ?? "")
+	const value = output as Record<string, unknown>
+	if (
+		value.type === "text" ||
+		value.type === "error-text" ||
+		value.type === "json" ||
+		value.type === "error-json"
+	) {
+		return typeof value.value === "string" ? value.value : JSON.stringify(value.value)
+	}
+	if (value.type === "execution-denied") {
+		return typeof value.reason === "string" ? value.reason : "Tool execution denied."
+	}
+	if (value.type === "content" && Array.isArray(value.value)) {
+		return value.value
+			.filter((part) => part && typeof part === "object" && (part as Record<string, unknown>).type === "text")
+			.map((part) => ({
+				type: "input_text",
+				text: String((part as Record<string, unknown>).text ?? ""),
+			}))
+	}
+	return JSON.stringify(output)
 }
 
 function buildHeaders(jwt: string, accountId: string): Headers {
@@ -457,6 +477,246 @@ async function fetchWithRetry(
 // ---------------------------------------------------------------------------
 // SSE event parsing
 // ---------------------------------------------------------------------------
+
+interface ActiveTool {
+	id: string
+	name: string
+}
+
+class CodexStreamMapper {
+	private textId?: string
+	private reasoningIds = new Set<string>()
+	private toolsByIndex = new Map<string, ActiveTool>()
+	private toolsByItem = new Map<string, ActiveTool>()
+	private pendingToolDeltas = new Map<string, string[]>()
+	private hasToolCall = false
+
+	map(data: string): LanguageModelV3StreamPart[] {
+		let event: Record<string, unknown>
+		try {
+			event = JSON.parse(data) as Record<string, unknown>
+		} catch {
+			return []
+		}
+
+		const type = typeof event.type === "string" ? event.type : undefined
+		if (!type) return []
+
+		if (type === "response.output_item.added") {
+			return this.startItem(event)
+		}
+
+		if (type === "response.output_text.delta") {
+			const id = this.ensureText(event.item_id)
+			const parts: LanguageModelV3StreamPart[] = []
+			if (this.textId !== id) {
+				this.textId = id
+				parts.push({ type: "text-start", id })
+			}
+			parts.push({
+				type: "text-delta",
+				id,
+				delta: typeof event.delta === "string" ? event.delta : "",
+			})
+			return parts
+		}
+
+		if (
+			type === "response.reasoning_text.delta" ||
+			type === "response.reasoning_summary_text.delta"
+		) {
+			const id = this.reasoningId(event)
+			const parts: LanguageModelV3StreamPart[] = []
+			if (!this.reasoningIds.has(id)) {
+				this.reasoningIds.add(id)
+				parts.push({ type: "reasoning-start", id })
+			}
+			parts.push({
+				type: "reasoning-delta",
+				id,
+				delta: typeof event.delta === "string" ? event.delta : "",
+			})
+			return parts
+		}
+
+		if (type === "response.function_call_arguments.delta") {
+			const tool = this.findTool(event)
+			const delta = typeof event.delta === "string" ? event.delta : ""
+			if (!tool) {
+				const key = this.toolKey(event)
+				const pending = this.pendingToolDeltas.get(key) ?? []
+				pending.push(delta)
+				this.pendingToolDeltas.set(key, pending)
+				return []
+			}
+			return [{ type: "tool-input-delta", id: tool.id, delta }]
+		}
+
+		if (type === "response.output_item.done") {
+			return this.finishItem(event)
+		}
+
+		if (type === "response.completed" || type === "response.done") {
+			return [
+				...this.closeOpenParts(),
+				{
+					type: "finish",
+					usage: type === "response.completed"
+						? mapUsage((event.response as Record<string, unknown> | undefined)?.usage as Record<string, unknown> | undefined)
+						: zeroUsage(),
+					finishReason: {
+						unified: this.hasToolCall ? "tool-calls" : "stop",
+						raw: type === "response.completed" ? "completed" : "done",
+					},
+				},
+			]
+		}
+
+		if (type === "response.incomplete") {
+			return [
+				...this.closeOpenParts(),
+				{
+					type: "finish",
+					usage: zeroUsage(),
+					finishReason: { unified: "length", raw: "incomplete" },
+				},
+			]
+		}
+
+		const part = parseCodexSSE(data)
+		return part ? [part] : []
+	}
+
+	private startItem(event: Record<string, unknown>): LanguageModelV3StreamPart[] {
+		const item = event.item as Record<string, unknown> | undefined
+		if (!item) return []
+
+		if (item.type === "message") {
+			const id = String(item.id ?? generateId())
+			this.textId = id
+			return [{ type: "text-start", id }]
+		}
+
+		if (item.type === "reasoning") {
+			const id = `${String(item.id ?? generateId())}:0`
+			this.reasoningIds.add(id)
+			return [{ type: "reasoning-start", id }]
+		}
+
+		if (item.type === "function_call") {
+			const tool = {
+				id: String(item.call_id ?? item.id ?? generateId()),
+				name: String(item.name ?? ""),
+			}
+			this.storeTool(event, item, tool)
+			return [{ type: "tool-input-start", id: tool.id, toolName: tool.name }]
+		}
+
+		return []
+	}
+
+	private finishItem(event: Record<string, unknown>): LanguageModelV3StreamPart[] {
+		const item = event.item as Record<string, unknown> | undefined
+		if (!item) return []
+
+		if (item.type === "message") {
+			const id = String(item.id ?? this.textId ?? generateId())
+			if (this.textId === id) this.textId = undefined
+			return [{ type: "text-end", id }]
+		}
+
+		if (item.type === "reasoning") {
+			const prefix = `${String(item.id ?? "")}:`
+			const ids = [...this.reasoningIds].filter((id) => id.startsWith(prefix))
+			for (const id of ids) this.reasoningIds.delete(id)
+			return ids.map((id) => ({ type: "reasoning-end", id }))
+		}
+
+		if (item.type === "function_call") {
+			const existing = this.findTool(event)
+			const tool = existing ?? {
+				id: String(item.call_id ?? item.id ?? generateId()),
+				name: String(item.name ?? ""),
+			}
+			const parts: LanguageModelV3StreamPart[] = []
+			if (!existing) {
+				parts.push({ type: "tool-input-start", id: tool.id, toolName: tool.name })
+			}
+			for (const delta of this.pendingToolDeltas.get(this.toolKey(event)) ?? []) {
+				parts.push({ type: "tool-input-delta", id: tool.id, delta })
+			}
+			this.pendingToolDeltas.delete(this.toolKey(event))
+			parts.push(
+				{ type: "tool-input-end", id: tool.id },
+				{
+					type: "tool-call",
+					toolCallId: tool.id,
+					toolName: tool.name,
+					input: String(item.arguments ?? ""),
+				},
+			)
+			this.hasToolCall = true
+			return parts
+		}
+
+		return []
+	}
+
+	private closeOpenParts(): LanguageModelV3StreamPart[] {
+		const parts: LanguageModelV3StreamPart[] = []
+		if (this.textId) {
+			parts.push({ type: "text-end", id: this.textId })
+			this.textId = undefined
+		}
+		for (const id of this.reasoningIds) {
+			parts.push({ type: "reasoning-end", id })
+		}
+		this.reasoningIds.clear()
+		return parts
+	}
+
+	private ensureText(itemId: unknown): string {
+		return typeof itemId === "string" ? itemId : this.textId ?? generateId()
+	}
+
+	private reasoningId(event: Record<string, unknown>): string {
+		if (typeof event.item_id === "string") {
+			const index = typeof event.summary_index === "number" ? event.summary_index : 0
+			return `${event.item_id}:${index}`
+		}
+		return this.reasoningIds.values().next().value ?? `${generateId()}:0`
+	}
+
+	private toolKey(event: Record<string, unknown>): string {
+		if (typeof event.output_index === "number") return `index:${event.output_index}`
+		if (typeof event.item_id === "string") return `item:${event.item_id}`
+		return "default"
+	}
+
+	private findTool(event: Record<string, unknown>): ActiveTool | undefined {
+		if (typeof event.output_index === "number") {
+			const tool = this.toolsByIndex.get(String(event.output_index))
+			if (tool) return tool
+		}
+		if (typeof event.item_id === "string") {
+			return this.toolsByItem.get(event.item_id)
+		}
+		return undefined
+	}
+
+	private storeTool(
+		event: Record<string, unknown>,
+		item: Record<string, unknown>,
+		tool: ActiveTool,
+	): void {
+		if (typeof event.output_index === "number") {
+			this.toolsByIndex.set(String(event.output_index), tool)
+		}
+		if (typeof item.id === "string") {
+			this.toolsByItem.set(item.id, tool)
+		}
+	}
+}
 
 export function parseCodexSSE(data: string): LanguageModelV3StreamPart | null {
 	let event: Record<string, unknown>

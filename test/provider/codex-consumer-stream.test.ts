@@ -18,6 +18,8 @@ import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider"
+import { streamText } from "ai"
+import { z } from "zod"
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -684,6 +686,125 @@ describe("SSE — full sequence", () => {
     const parts = await collectFromModel(model)
     const toolCalls = parts.filter((p) => p.type === "tool-call")
     expect(toolCalls.length).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AI SDK integration boundary
+// ---------------------------------------------------------------------------
+describe("streamText integration", () => {
+  test("preserves text lifecycle through AI SDK", async () => {
+    const messageId = "msg_live"
+    const mockFetch: FetchFn = async () =>
+      sseResponse([
+        JSON.stringify({
+          type: "response.output_item.added",
+          output_index: 0,
+          item: { id: messageId, type: "message" },
+        }),
+        JSON.stringify({
+          type: "response.output_text.delta",
+          output_index: 0,
+          item_id: messageId,
+          delta: "BOUNDARY_OK",
+        }),
+        JSON.stringify({
+          type: "response.output_item.done",
+          output_index: 0,
+          item: { id: messageId, type: "message" },
+        }),
+        JSON.stringify({
+          type: "response.completed",
+          response: { usage: { input_tokens: 4, output_tokens: 2 } },
+        }),
+      ])
+
+    const model = createCodexConsumer({
+      modelId: "gpt-5.5",
+      jwt: "jwt",
+      accountId: "acct",
+      fetch: mockFetch,
+    })
+    const result = streamText({
+      model,
+      messages: [{ role: "user", content: "test" }],
+      maxRetries: 0,
+    })
+
+    expect(await result.text).toBe("BOUNDARY_OK")
+  })
+
+  test("preserves tool lifecycle and finish reason through AI SDK", async () => {
+    const itemId = "fc_live"
+    const callId = "call_live"
+    const mockFetch: FetchFn = async () =>
+      sseResponse([
+        JSON.stringify({
+          type: "response.output_item.added",
+          output_index: 0,
+          item: {
+            id: itemId,
+            call_id: callId,
+            type: "function_call",
+            name: "get_weather",
+          },
+        }),
+        JSON.stringify({
+          type: "response.function_call_arguments.delta",
+          output_index: 0,
+          item_id: itemId,
+          delta: '{"city":"Amsterdam"}',
+        }),
+        JSON.stringify({
+          type: "response.output_item.done",
+          output_index: 0,
+          item: {
+            id: itemId,
+            call_id: callId,
+            type: "function_call",
+            name: "get_weather",
+            arguments: '{"city":"Amsterdam"}',
+          },
+        }),
+        JSON.stringify({
+          type: "response.completed",
+          response: { usage: { input_tokens: 8, output_tokens: 4 } },
+        }),
+      ])
+
+    const model = createCodexConsumer({
+      modelId: "gpt-5.5",
+      jwt: "jwt",
+      accountId: "acct",
+      fetch: mockFetch,
+    })
+    const result = streamText({
+      model,
+      messages: [{ role: "user", content: "weather" }],
+      tools: {
+        get_weather: {
+          description: "Get weather",
+          inputSchema: z.object({ city: z.string() }),
+        },
+      },
+      maxRetries: 0,
+    })
+
+    const events = []
+    for await (const event of result.fullStream) events.push(event)
+
+    const toolCall = events.find((event) => event.type === "tool-call")
+    expect(toolCall?.type).toBe("tool-call")
+    if (toolCall?.type === "tool-call") {
+      expect(toolCall.toolCallId).toBe(callId)
+      expect(toolCall.toolName).toBe("get_weather")
+      expect(toolCall.input).toEqual({ city: "Amsterdam" })
+    }
+    const finish = events.find((event) => event.type === "finish-step")
+    expect(finish?.type).toBe("finish-step")
+    if (finish?.type === "finish-step") {
+      expect(finish.finishReason).toBe("tool-calls")
+    }
   })
 })
 

@@ -506,6 +506,110 @@ describe("doStream — HTTP request", () => {
     expect(hasSystemInInput).toBe(false)
   })
 
+  test("maps assistant and tool history to Responses API items", async () => {
+    let capturedBody: Record<string, unknown> = {}
+
+    const mockFetch: FetchFn = async (_url, init) => {
+      capturedBody = JSON.parse((init?.body as string) ?? "{}")
+      return mockResponse(simpleTextStream("done"))
+    }
+
+    const model = createCodexConsumer({
+      modelId: "gpt-5.5",
+      jwt: "jwt",
+      accountId: "acct",
+      fetch: mockFetch,
+    })
+
+    await collectStream(await model.doStream({
+      prompt: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Checking." },
+            {
+              type: "tool-call",
+              toolCallId: "call_1",
+              toolName: "read",
+              input: { path: "package.json" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call_1",
+              toolName: "read",
+              output: { type: "text", value: "{\"name\":\"@quark/sdk\"}" },
+            },
+          ],
+        },
+      ],
+    }))
+
+    expect(capturedBody.input).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "output_text", text: "Checking." }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_1",
+        name: "read",
+        arguments: "{\"path\":\"package.json\"}",
+      },
+      {
+        type: "function_call_output",
+        call_id: "call_1",
+        output: "{\"name\":\"@quark/sdk\"}",
+      },
+    ])
+  })
+
+  test("maps tools to Responses API flat format", async () => {
+    let capturedBody: Record<string, unknown> = {}
+
+    const mockFetch: FetchFn = async (_url, init) => {
+      capturedBody = JSON.parse((init?.body as string) ?? "{}")
+      return mockResponse(simpleTextStream("hello"))
+    }
+
+    const model = createCodexConsumer({
+      modelId: "gpt-5.5",
+      jwt: "jwt",
+      accountId: "acct",
+      fetch: mockFetch,
+    })
+
+    await collectStream(await model.doStream({
+      prompt: [
+        { role: "user", content: [{ type: "text", text: "hi" }] },
+      ],
+      tools: [
+        {
+          type: "function" as const,
+          name: "get_weather",
+          description: "Get the weather",
+          inputSchema: { type: "object", properties: { city: { type: "string" } }, required: ["city"] } as any,
+        },
+      ],
+    }))
+
+    const tools = capturedBody.tools as Array<Record<string, unknown>>
+    expect(tools).toBeDefined()
+    expect(tools.length).toBe(1)
+    expect(tools[0]).toEqual({
+      type: "function",
+      name: "get_weather",
+      description: "Get the weather",
+      parameters: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
+    })
+    expect(capturedBody.tool_choice).toBe("auto")
+    expect(capturedBody.parallel_tool_calls).toBe(true)
+  })
+
   test("uses POST method", async () => {
     let capturedMethod = ""
 
