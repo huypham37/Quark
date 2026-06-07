@@ -796,6 +796,8 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
+          state.setStore("thinkingEffort", "none")
+          getThinkingNormalizer(next).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: next })
         }
       }
@@ -813,6 +815,8 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", prev, state.store.sessionId)
           }
           state.setStore("status", "modelName", prev)
+          state.setStore("thinkingEffort", "none")
+          getThinkingNormalizer(prev).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: prev })
         }
       }
