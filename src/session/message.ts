@@ -21,6 +21,7 @@ import type {
 
 export interface TextPartData {
   text: string
+  variant?: "steer"
 }
 
 export interface ToolPartData {
@@ -88,6 +89,7 @@ export function saveUserMessage(input: {
   sessionId: string
   text: string
   images?: { mime: string; data: string }[]
+  variant?: "steer"
 }): MessageRow {
   const now = Date.now()
   const msgId = generateId()
@@ -113,7 +115,7 @@ export function saveUserMessage(input: {
     messageId: msgId,
     partId,
     partType: "text",
-    data: { text: input.text } satisfies TextPartData,
+    data: { text: input.text, variant: input.variant } satisfies TextPartData,
   }
 
   const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [msgEvent, partEvent]

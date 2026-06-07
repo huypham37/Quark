@@ -97,11 +97,18 @@ describe("session branching", () => {
       .map((p) => (JSON.parse(p.data) as { text: string }).text)
       .join("\n")
     const lastUser = extractLastUserText(messages, parts)
+    const lastText = parts
+      .filter((part) => part.type === "text")
+      .at(-1)
 
     expect(text).toContain("Task: Keep context across branches")
     expect(text).toContain("Session")
     expect(text).toContain("Parent did the first half")
     expect(lastUser).toBe("Finish the second half")
+    expect(JSON.parse(lastText!.data)).toEqual({
+      text: "Finish the second half",
+      variant: "steer",
+    })
   })
 
   test("replays recent context without tool/runtime parts", () => {

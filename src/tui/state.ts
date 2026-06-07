@@ -21,7 +21,7 @@ export interface TuiMessage {
 }
 
 export type TuiPart =
-  | { type: "text"; text: string; streaming?: boolean }
+  | { type: "text"; text: string; streaming?: boolean; variant?: "steer" }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
@@ -174,7 +174,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
       if (p.type === "text" || p.type === "summary") {
         const d = JSON.parse(p.data) as TextPartData
         if (d.text) {
-          tuiParts.push({ type: "text", text: d.text })
+          tuiParts.push({ type: "text", text: d.text, variant: d.variant })
         }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData

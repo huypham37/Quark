@@ -142,5 +142,5 @@ export function leftWidthRunning(label: string): number {
   // label + "      " + "Esc" + " to cancel"
   return label.length + 6 + 3 + 10
 }
-export const LEFT_WIDTH_STEERING = "Steering context…".length
+export const LEFT_WIDTH_STEERING = "Steering context".length
 export const LEFT_WIDTH_IDLE = 1 // single " " placeholder text

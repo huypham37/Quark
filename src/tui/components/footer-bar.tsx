@@ -3,7 +3,7 @@
 //
 // Always renders 1 row to keep layout stable (no height jumps).
 // When running:    "Working      Esc to cancel"  (shimmering status text)
-// When steering:   "Steering context…"           (shimmering status text)
+// When steering:   "Steering context"            (shimmering status text)
 // When just done:  "Worked for X.Xs"             (italic, muted, persists until next request)
 // When idle:       empty line
 // Right side shows git branch (if in a repo) and abbreviated cwd path.
@@ -72,7 +72,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   })
 
   const RUNNING_LABEL = "Working"
-  const STEERING_LABEL = "Steering context…"
+  const STEERING_LABEL = "Steering context"
 
   // "Worked for X.Xs" label — shown after agent finishes, persists until next request.
   const workedLabel = createMemo(() =>
