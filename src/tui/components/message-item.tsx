@@ -101,7 +101,7 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
       }
     >
       {/* Assistant message — render all parts */}
-      <box flexDirection="column" width="100%">
+      <box flexDirection="column" width="100%" marginLeft={1}>
         <For each={props.message.parts}>
           {(part) => (
             <PartView part={part} isStreaming={!!props.message.streaming} showThinking={props.showThinking} />
