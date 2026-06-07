@@ -48,6 +48,27 @@ describe("createAppState", () => {
       expect(store.sessionId).toBeNull()
     })
   })
+
+  // Worktree fields — added to AppStore, must be initialized correctly.
+  // Accessed via (store as any) until the AppStore interface is updated.
+  test("initialises worktree fields with defaults", () => {
+    withRoot(() => {
+      const { store } = createAppState({
+        sessionId: "s1",
+        modelName: "smart",
+        skillCount: 3,
+       })
+      // rootProjectDir should be captured at startup
+      expect((store as any).rootProjectDir).toBeString()
+      // cwd should match rootProjectDir initially
+      expect((store as any).cwd).toBe((store as any).rootProjectDir)
+      // No active worktree until one is selected
+      expect((store as any).activeWorktree).toBeNull()
+      expect((store as any).activeBranch).toBeNull()
+      // Not currently switching
+      expect((store as any).worktreeSwitching).toBe(false)
+    })
+  })
 })
 
 describe("dispatch: session actions", () => {
@@ -539,6 +560,189 @@ describe("dispatch: subagent-done marks parent tool completed", () => {
       // Assert: parent tool part status is completed
       const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
       expect(part.status).toBe("completed")
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dispatch: worktree actions
+// ---------------------------------------------------------------------------
+
+describe("dispatch: worktree actions", () => {
+  // The AppStore type will be augmented with worktree fields:
+  //   rootProjectDir: string
+  //   cwd: string
+  //   activeWorktree: TuiWorktree | null
+  //   activeBranch: string | null
+  //   worktreeSwitching: boolean
+  //
+  // Until then, we access new fields via (store as any).
+
+  interface TuiWorktree {
+    id: string
+    path: string
+    branch: string | null
+    shortHash: string
+    isRoot: boolean
+  }
+
+  describe("worktree-switch-start", () => {
+    test("sets worktreeSwitching to true", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+        // Initially false
+        expect((s.store as any).worktreeSwitching).toBe(false)
+
+        dispatch(s, { type: "worktree-switch-start" } as any)
+        expect((s.store as any).worktreeSwitching).toBe(true)
+      })
+    })
+  })
+
+  describe("worktree-switched", () => {
+    test("clears sessionId, messages, tokens, cost, permission, question", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+
+        // Populate state
+        dispatch(s, { type: "add-user-message", id: "m1", text: "hello" })
+        dispatch(s, { type: "update-status", partial: { tokensUsed: 500, cost: 0.01 } })
+        dispatch(s, {
+          type: "set-permission",
+          request: { requestId: "r1", tool: "bash", input: {} },
+        })
+        dispatch(s, {
+          type: "set-question",
+          request: { requestId: "q1", sessionId: "s1", questions: [] },
+        })
+
+        dispatch(s, {
+          type: "worktree-switched",
+          cwd: "/new/worktree/path",
+          activeWorktree: { id: "feat", path: "/new/worktree/path", branch: "feat/branch", shortHash: "abc1234", isRoot: false },
+          activeBranch: "feat/branch",
+          modelSpec: "gpt-4",
+          skillCount: 5,
+        } as any)
+
+        expect(s.store.sessionId).toBeNull()
+        expect(s.store.messages).toEqual([])
+        expect(s.store.status.tokensUsed).toBe(0)
+        expect(s.store.status.cost).toBe(0)
+        expect(s.store.permission).toBeUndefined()
+        expect(s.store.question).toBeUndefined()
+        // Permission and question queues should also be cleared
+        expect(s.store.permissionQueue).toEqual([])
+        expect(s.store.questionQueue).toEqual([])
+      })
+    })
+
+    test("clears error and resets running to false", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+        dispatch(s, { type: "set-error", message: "old error" })
+        dispatch(s, { type: "set-running", running: true })
+
+        dispatch(s, {
+          type: "worktree-switched",
+          cwd: "/new/path",
+          activeWorktree: null,
+          activeBranch: "main",
+          modelSpec: "claude",
+          skillCount: 2,
+        } as any)
+
+        expect(s.store.error).toBeUndefined()
+        expect(s.store.running).toBe(false)
+      })
+    })
+
+    test("updates cwd, activeWorktree, activeBranch, modelSpec, skillCount", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+
+        const wt: TuiWorktree = {
+          id: "feature-login-auth",
+          path: "/Users/mac/projects/Quark/.quark/worktrees/feature-login-auth",
+          branch: "feature/login-auth",
+          shortHash: "abc1234",
+          isRoot: false,
+        }
+
+        dispatch(s, {
+          type: "worktree-switched",
+          cwd: wt.path,
+          activeWorktree: wt,
+          activeBranch: "feature/login-auth",
+          modelSpec: "gpt-4",
+          skillCount: 5,
+        } as any)
+
+        expect((s.store as any).cwd).toBe(wt.path)
+        expect((s.store as any).activeWorktree).toEqual(wt)
+        expect((s.store as any).activeBranch).toBe("feature/login-auth")
+        expect(s.store.status.modelName).toBe("gpt-4")
+        expect(s.store.status.skillCount).toBe(5)
+      })
+    })
+
+    test("handles null activeWorktree (switching to root)", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+
+        dispatch(s, {
+          type: "worktree-switched",
+          cwd: "/Users/mac/projects/Quark",
+          activeWorktree: null,
+          activeBranch: "main",
+          modelSpec: "claude",
+          skillCount: 4,
+        } as any)
+
+        expect((s.store as any).activeWorktree).toBeNull()
+        expect((s.store as any).activeBranch).toBe("main")
+        expect((s.store as any).cwd).toBe("/Users/mac/projects/Quark")
+        // Session state still reset
+        expect(s.store.sessionId).toBeNull()
+        expect(s.store.messages).toEqual([])
+      })
+    })
+  })
+
+  describe("worktree-switch-failed", () => {
+    test("clears worktreeSwitching flag", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+
+        // Simulate switch in progress
+        dispatch(s, { type: "worktree-switch-start" } as any)
+        expect((s.store as any).worktreeSwitching).toBe(true)
+
+        dispatch(s, {
+          type: "worktree-switch-failed",
+          message: "Agent is running — cannot switch worktrees",
+        } as any)
+
+        expect((s.store as any).worktreeSwitching).toBe(false)
+      })
+    })
+
+    test("sets error message and clears running", () => {
+      withRoot(() => {
+        const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
+        dispatch(s, { type: "set-running", running: true })
+
+        dispatch(s, {
+          type: "worktree-switch-failed",
+          message: "Agent is running — cannot switch worktrees",
+        } as any)
+
+        expect(s.store.error).toBe("Agent is running — cannot switch worktrees")
+        expect(s.store.running).toBe(false)
+        // Session data should NOT be reset on failure
+        expect(s.store.sessionId).toBe("s1")
+        expect(s.store.status.modelName).toBe("smart")
+      })
     })
   })
 })

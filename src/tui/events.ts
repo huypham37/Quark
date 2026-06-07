@@ -137,6 +137,18 @@ export function wireEvents(state: AppState) {
   }
   bus.on("model-switched", handleModelSwitched)
 
+  const handleWorktreeSwitched = (data: BusEvents["worktree-switched"]) => {
+    dispatch(state, {
+      type: "worktree-switched",
+      cwd: data.cwd,
+      activeWorktree: data.activeWorktree,
+      activeBranch: data.activeBranch,
+      modelSpec: data.modelSpec,
+      skillCount: data.skillCount,
+    })
+  }
+  bus.on("worktree-switched", handleWorktreeSwitched)
+
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return

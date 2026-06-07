@@ -144,6 +144,15 @@ export interface BusEvents {
     sessionId: string; messageId: string; parentCallId: string
     profile: string
   }
+
+  // Worktree switch — TUI resets session state and updates cwd/branch
+  "worktree-switched": {
+    cwd: string
+    activeWorktree: { id: string; path: string; branch: string | null; shortHash: string; isRoot: boolean } | null
+    activeBranch: string | null
+    modelSpec: string
+    skillCount: number
+  }
 }
 
 /** Union of all bus event names */

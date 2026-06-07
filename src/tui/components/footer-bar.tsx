@@ -31,6 +31,10 @@ import {
 export interface FooterBarProps {
   running: boolean
   steering?: boolean
+  /** Override for cwd (worktree-aware). Falls back to process.cwd() if not provided. */
+  cwd?: string
+  /** Override for git branch (worktree-aware). Falls back to auto-detection if not provided. */
+  branch?: string | null
 }
 
 function getGitBranch(): string {
@@ -50,15 +54,16 @@ function getGitBranch(): string {
 
 export const FooterBar: Component<FooterBarProps> = (props) => {
   const dims = useTerminalDimensions()
-  const cwd = process.cwd()
-  const [branch, setBranch] = createSignal(getGitBranch())
+  const cwd = () => props.cwd ?? process.cwd()
+  const [detectedBranch, setDetectedBranch] = createSignal(getGitBranch())
+  const branch = () => props.branch ?? detectedBranch()
   const [frameIndex, setFrameIndex] = createSignal(0)
   const [labelIndex, setLabelIndex] = createSignal(0)
 
   // Poll git branch every 5 seconds so the footer stays current
   createEffect(() => {
     const id = setInterval(() => {
-      setBranch(getGitBranch())
+      setDetectedBranch(getGitBranch())
     }, 5_000)
     onCleanup(() => clearInterval(id))
   })
@@ -100,7 +105,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
         ? leftWidthRunning(currentLabel())
         : LEFT_WIDTH_IDLE
     const budget = dims().width - APP_PADDING_X_TOTAL - leftWidth - ZONE_GAP
-    return pickRightZone(branch(), cwd, budget)
+    return pickRightZone(branch(), cwd(), budget)
   })
 
   return (
