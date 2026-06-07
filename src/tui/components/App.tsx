@@ -34,6 +34,12 @@ import {
   type SessionTreeInput,
   type SessionTreeRow,
 } from "../session-tree-picker"
+import {
+  buildWorktreeRows,
+  firstSelectableWorktreeRow,
+  moveWorktreeRowSelection,
+  type WorktreePickerRow,
+} from "../worktree-picker"
 import { generateId } from "ai"
 import * as fs from "fs"
 import * as path from "path"
@@ -48,7 +54,7 @@ import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from ".
 
 /** Command handler result */
 export type CommandResult =
-  | { handled: true }
+  | { handled: true; next?: "sessions-picker" }
   | { handled: false }
 
 interface AppProps {
@@ -56,6 +62,17 @@ interface AppProps {
   onCancel: (sessionId: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   getSessions?: () => SessionTreeInput[]
+  getWorktrees?: () => {
+    id: string
+    path: string
+    branch: string | null
+    shortHash: string
+    isRoot: boolean
+    isCurrent: boolean
+    prunable: boolean
+    missing: boolean
+    sessionCount: number
+  }[]
   getModels?: () => { id: string; name: string }[]
   getCurrentModel?: () => string
   getProfiles?: () => { id: string; name: string }[]
@@ -93,11 +110,12 @@ const MENTION_INACTIVE: MentionState = {
 
 interface SlashState {
   active: boolean
-  mode: "commands" | "sessions" | ChoicePickerMode
+  mode: "commands" | "sessions" | "worktrees" | ChoicePickerMode
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
   sessionRows: SessionTreeRow[]
+  worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
 
@@ -108,6 +126,7 @@ const SLASH_INACTIVE: SlashState = {
   items: [],
   pickerItems: [],
   sessionRows: [],
+  worktreeRows: [],
   selectedIndex: 0,
 }
 
@@ -338,6 +357,7 @@ export const App: Component<AppProps> = (props) => {
       items: filtered,
       pickerItems: [],
       sessionRows: [],
+      worktreeRows: [],
       selectedIndex: 0,
     })
   }
@@ -353,8 +373,8 @@ export const App: Component<AppProps> = (props) => {
 
     const s = slash()
 
-    // Sessions picker: block all input changes (no filtering)
-    if (s.mode === "sessions" && s.active) {
+    // Sessions / worktree pickers: block all input changes (no filtering)
+    if ((s.mode === "sessions" || s.mode === "worktrees") && s.active) {
       return
     }
 
@@ -409,7 +429,39 @@ export const App: Component<AppProps> = (props) => {
       items: [],
       pickerItems: [],
       sessionRows,
+      worktreeRows: [],
       selectedIndex: firstSelectableSessionRow(sessionRows, sid),
+    })
+    setInputText("")
+    return true
+  }
+
+  const openWorktreePicker = (): boolean => {
+    if (!props.getWorktrees) return false
+    const worktrees = props.getWorktrees()
+    const rows = buildWorktreeRows(
+      worktrees.map((w) => ({
+        id: w.id,
+        path: w.path,
+        branch: w.branch,
+        shortHash: w.shortHash,
+        isRoot: w.isRoot,
+        isCurrent: w.isCurrent,
+        prunable: w.prunable,
+        missing: w.missing,
+      })),
+      state.store.activeWorktree?.id ?? "root",
+      Object.fromEntries(worktrees.map((w) => [w.id, w.sessionCount])),
+    )
+    setSlash({
+      active: true,
+      mode: "worktrees",
+      query: "",
+      items: [],
+      pickerItems: [],
+      sessionRows: [],
+      worktreeRows: rows,
+      selectedIndex: firstSelectableWorktreeRow(rows),
     })
     setInputText("")
     return true
@@ -431,6 +483,7 @@ export const App: Component<AppProps> = (props) => {
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
       sessionRows: [],
+      worktreeRows: [],
       selectedIndex: 0,
     })
     setInputText("")
@@ -464,6 +517,10 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    if (commandId === "worktree" && !args && openWorktreePicker()) {
+      return
+    }
+
     if (commandId === "statistics") {
       const stats = collectStatistics()
       const chart = renderStatisticsChart(stats)
@@ -473,7 +530,12 @@ export const App: Component<AppProps> = (props) => {
 
     // Delegate to backend handler
     if (props.onCommand) {
-      props.onCommand(commandId, args, state.store.sessionId)
+      Promise.resolve(props.onCommand(commandId, args, state.store.sessionId))
+        .then((res) => {
+          if (res?.handled && res.next === "sessions-picker") {
+            openSessionsPicker()
+          }
+        })
     }
   }
 
@@ -491,7 +553,9 @@ export const App: Component<AppProps> = (props) => {
           ...prev,
           selectedIndex: prev.mode === "sessions"
             ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, -1)
-            : Math.max(0, prev.selectedIndex - 1),
+            : prev.mode === "worktrees"
+              ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, -1)
+              : Math.max(0, prev.selectedIndex - 1),
         }))
         return true
       }
@@ -501,14 +565,18 @@ export const App: Component<AppProps> = (props) => {
           ? s.items.length
           : s.mode === "sessions"
             ? s.sessionRows.length
-            : s.pickerItems.length
+            : s.mode === "worktrees"
+              ? s.worktreeRows.length
+              : s.pickerItems.length
         setSlash((prev) => {
           if (totalItems === 0) return prev
           return {
             ...prev,
             selectedIndex: prev.mode === "sessions"
               ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, 1)
-              : Math.min(totalItems - 1, prev.selectedIndex + 1),
+              : prev.mode === "worktrees"
+                ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, 1)
+                : Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
         })
         return true
@@ -523,6 +591,24 @@ export const App: Component<AppProps> = (props) => {
             setInputText("")
             if (props.onCommand) {
               props.onCommand("sessions", selected.id, state.store.sessionId)
+            }
+          }
+          return true
+        }
+
+        // --- Worktree picker mode ---
+        if (s.mode === "worktrees") {
+          const selected = s.worktreeRows[s.selectedIndex]
+          if (selected?.type === "worktree") {
+            setSlash(SLASH_INACTIVE)
+            setInputText("")
+            if (props.onCommand) {
+              Promise.resolve(props.onCommand("worktree", selected.id, state.store.sessionId))
+                .then((res) => {
+                  if (res?.handled && res.next === "sessions-picker") {
+                    openSessionsPicker()
+                  }
+                })
             }
           }
           return true
@@ -551,6 +637,11 @@ export const App: Component<AppProps> = (props) => {
           if (selected) {
             // /sessions → transition to session picker
             if (selected.id === "sessions" && isReturn && openSessionsPicker()) {
+              return true
+            }
+
+            // /worktree → transition to worktree picker
+            if (selected.id === "worktree" && isReturn && openWorktreePicker()) {
               return true
             }
 
@@ -700,6 +791,9 @@ export const App: Component<AppProps> = (props) => {
     if (s.active) {
       if (s.mode === "sessions") {
         return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
+      }
+      if (s.mode === "worktrees") {
+        return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
       }
       if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
@@ -1043,7 +1137,7 @@ export const App: Component<AppProps> = (props) => {
       <Notifications />
 
       {/* Footer bar */}
-      <FooterBar running={state.store.running} steering={state.store.steering} lastDuration={state.store.lastDuration} />
+      <FooterBar running={state.store.running} steering={state.store.steering} lastDuration={state.store.lastDuration} cwd={state.store.cwd} branch={state.store.activeBranch} />
     </box>
   )
 }

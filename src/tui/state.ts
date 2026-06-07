@@ -10,6 +10,19 @@ import { getModelLimit } from "../provider/models"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
+// Worktree types
+// ---------------------------------------------------------------------------
+
+/** Lightweight worktree reference stored in TUI state */
+export interface TuiWorktree {
+  id: string
+  path: string
+  branch: string | null
+  shortHash: string
+  isRoot: boolean
+}
+
+// ---------------------------------------------------------------------------
 // TUI data model types
 // ---------------------------------------------------------------------------
 
@@ -124,6 +137,10 @@ export type TuiAction =
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string }
   | { type: "truncate-messages"; upToMessageId: string }
+  // Worktree actions
+  | { type: "worktree-switch-start" }
+  | { type: "worktree-switched"; cwd: string; activeWorktree: TuiWorktree | null; activeBranch: string | null; modelSpec: string; skillCount: number }
+  | { type: "worktree-switch-failed"; message: string }
 
 // ---------------------------------------------------------------------------
 // Extract profile and prompt from a quark --sub-agent bash command
@@ -235,6 +252,12 @@ export interface AppStore {
   steering: boolean
   /** Duration (ms) of the last completed agent run, from user message to assistant finish */
   lastDuration: number | null
+  // Worktree
+  rootProjectDir: string
+  cwd: string
+  activeWorktree: TuiWorktree | null
+  activeBranch: string | null
+  worktreeSwitching: boolean
   thinkingEffort: ThinkingEffort
   showThinking: boolean
   status: TuiStatus
@@ -255,12 +278,19 @@ export function createAppState(initial: {
   modelName: string
   skillCount: number
 }): AppState {
+  const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
     sessionId: initial.sessionId,
     messages: [],
     running: false,
     steering: false,
     lastDuration: null,
+    // Worktree
+    rootProjectDir: cwd,
+    cwd,
+    activeWorktree: null,
+    activeBranch: null,
+    worktreeSwitching: false,
     thinkingEffort: "none",
     showThinking: false,
     status: {
@@ -863,5 +893,47 @@ export function dispatch(state: AppState, action: TuiAction): void {
       }))
       break
     }
+
+    // ------------------------------------------------------------------
+    // Worktree actions
+    // ------------------------------------------------------------------
+
+    case "worktree-switch-start":
+      setStore("worktreeSwitching", true)
+      break
+
+    case "worktree-switched":
+      setStore(
+        produce((s) => {
+          s.cwd = action.cwd
+          s.activeWorktree = action.activeWorktree
+          s.activeBranch = action.activeBranch
+          s.worktreeSwitching = false
+
+          s.sessionId = null
+          s.messages = []
+          s.running = false
+          s.status.tokensUsed = 0
+          s.status.cost = 0
+          s.status.modelName = action.modelSpec
+          s.status.skillCount = action.skillCount
+          s.error = undefined
+          s.permission = undefined
+          s.permissionQueue = []
+          s.question = undefined
+          s.questionQueue = []
+        }),
+      )
+      break
+
+    case "worktree-switch-failed":
+      setStore(
+        produce((s) => {
+          s.worktreeSwitching = false
+          s.error = action.message
+          s.running = false
+        }),
+      )
+      break
   }
 }
