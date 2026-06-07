@@ -1065,7 +1065,7 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   return (
-    <box flexDirection="column" width={dims().width} height={dims().height} paddingX={2}
+    <box flexDirection="column" width={dims().width} height={dims().height}
       onMouseUp={() => copySelection()}
     >
       {/* Message area — native scrollbox */}
@@ -1077,7 +1077,6 @@ export const App: Component<AppProps> = (props) => {
         flexBasis={0}
         minHeight={0}
         overflow="hidden"
-        paddingX={1}
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{ visible: false }}
       >
@@ -1123,7 +1122,7 @@ export const App: Component<AppProps> = (props) => {
         selectedImageIndex={selectedImageIndex()}
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
-        width={dims().width - 4}
+        width={dims().width}
       />
 
       {/* Statistics overlay */}

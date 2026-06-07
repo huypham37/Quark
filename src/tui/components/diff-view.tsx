@@ -48,7 +48,21 @@ function countChanges(hunks: DiffHunk[]): { added: number; removed: number } {
   return { added, removed }
 }
 
-const DiffLineView: Component<{ line: DiffLine }> = (props) => {
+function computeMaxDigits(hunks: DiffHunk[]): number {
+  let max = 0
+  for (const h of hunks) {
+    for (const l of h.lines) {
+      const n = l.newLineNo ?? l.oldLineNo
+      if (n != null) {
+        const digits = String(n).length
+        if (digits > max) max = digits
+      }
+    }
+  }
+  return Math.max(1, max)
+}
+
+const DiffLineView: Component<{ line: DiffLine; maxDigits: number }> = (props) => {
   const prefix = () => {
     if (props.line.type === "added") return "+"
     if (props.line.type === "removed") return "-"
@@ -61,7 +75,8 @@ const DiffLineView: Component<{ line: DiffLine }> = (props) => {
       : props.line.type === "removed"
       ? props.line.oldLineNo
       : props.line.newLineNo ?? props.line.oldLineNo
-    return n != null ? String(n).padStart(4) : "    "
+    const pad = props.maxDigits
+    return n != null ? String(n).padStart(pad) : " ".repeat(pad)
   }
 
   const fgColor = () => {
@@ -86,17 +101,18 @@ const DiffLineView: Component<{ line: DiffLine }> = (props) => {
   )
 }
 
-const HunkView: Component<{ hunk: DiffHunk }> = (props) => {
+const HunkView: Component<{ hunk: DiffHunk; maxDigits: number }> = (props) => {
   const visibleLines = () => props.hunk.lines.slice(0, MAX_LINES_PER_HUNK)
   const overflow = () => props.hunk.lines.length - MAX_LINES_PER_HUNK
+  const indent = () => " ".repeat(props.maxDigits + 1)
 
   return (
     <box flexDirection="column">
       <For each={visibleLines()}>
-        {(line) => <DiffLineView line={line} />}
+        {(line) => <DiffLineView line={line} maxDigits={props.maxDigits} />}
       </For>
       <Show when={overflow() > 0}>
-        <text fg={colors.muted}>     … {overflow()} more lines</text>
+        <text fg={colors.muted}>{indent()}… {overflow()} more lines</text>
       </Show>
     </box>
   )
@@ -108,11 +124,12 @@ export const DiffView: Component<DiffViewProps> = (props) => {
   const visibleHunks = () => hunks().slice(0, MAX_HUNKS)
   const overflowHunks = () => hunks().length - MAX_HUNKS
   const changes = () => countChanges(hunks())
+  const maxDigits = () => computeMaxDigits(hunks())
   const rule = () => "─".repeat(Math.max(10, dims().width - 8))
 
   return (
     <Show when={hunks().length > 0}>
-      <box flexDirection="column" marginLeft={2}>
+      <box flexDirection="column" marginLeft={0}>
         {/* File path + change summary */}
         <box flexDirection="row">
           <text fg={colors.muted}>└── </text>
@@ -125,12 +142,12 @@ export const DiffView: Component<DiffViewProps> = (props) => {
           <text fg={COLOR_REMOVED_FG}>-{changes().removed}</text>
         </box>
         {/* Hunks */}
-        <box flexDirection="column" marginLeft={4}>
+        <box flexDirection="column">
           <text fg={COLOR_RULE}>{rule()}</text>
           <For each={visibleHunks()}>
             {(hunk, i) => (
               <box flexDirection="column">
-                <HunkView hunk={hunk} />
+                <HunkView hunk={hunk} maxDigits={maxDigits()} />
                 <Show when={i() < visibleHunks().length - 1}>
                   <text fg={COLOR_RULE}>{rule()}</text>
                 </Show>

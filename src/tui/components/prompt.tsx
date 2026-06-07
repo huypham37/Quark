@@ -179,7 +179,6 @@ export const Prompt: Component<PromptProps> = (props) => {
         borderStyle="rounded"
         borderColor={borderColor()}
         border={["left", "right", "bottom"]}
-        paddingX={1}
         minHeight={4}
         maxHeight={8}
       >

@@ -7,9 +7,8 @@
 // in the FooterBar component header. The shrink ladder is the user-visible
 // contract; tests in test/tui/footer-bar-adaptive.test.ts lock it down.
 
-// App.tsx wraps the whole TUI in a <box paddingX={2}>, so 4 cells of horizontal
-// padding are unavailable to the footer.
-export const APP_PADDING_X_TOTAL = 4
+// App.tsx no longer applies horizontal padding, so the footer can use the full width.
+export const APP_PADDING_X_TOTAL = 0
 // Small visual breathing room between left and right zones.
 export const ZONE_GAP = 2
 
