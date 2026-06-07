@@ -209,7 +209,7 @@ export const Prompt: Component<PromptProps> = (props) => {
             focusedTextColor={colors.text}
             placeholderColor={colors.textDim}
             cursorColor={colors.cursorColor}
-            cursorStyle={{ style: "line", blinking: true }}
+            cursorStyle={{ style: "block", blinking: true }}
             onSubmit={handleSubmit}
             onContentChange={handleContentChange}
             keyBindings={[
