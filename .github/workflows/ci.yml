@@ -22,6 +22,14 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Build
+        run: bun run build
+
+      - name: Smoke test (CLI boots)
+        run: node dist/cli.js --help
+
       # NOTE: `bun test` is intentionally not run yet — the suite is currently
       # order-dependent (shared HOME/env/config-cache state) and one test hits
       # the live Codex API. Add a test step once the suite is isolated & hermetic.
+      # The smoke test above does NOT exercise the TUI's native/WASM deps
+      # (@opentui/core, web-tree-sitter); a headless TUI launch is a later step.
