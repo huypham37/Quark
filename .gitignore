@@ -49,3 +49,14 @@ references-cache/
 opencode-reference/
 pi-mono/
 craft-agents-oss/
+
+# Private design docs & specs — not published to GitHub
+specs/
+docs/
+test-specs/
+
+# Markdown is private except top-level project docs
+*.md
+!/README.md
+!/CHANGELOG.md
+!/AGENTS.md
