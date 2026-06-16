@@ -33,25 +33,8 @@ should capture the problem, the proposed architecture, key decisions with
 rationale, and acceptance criteria. Keep it focused — a spec is a plan of
 record, not a living document. Implementation notes go in commit messages.
 
-### Testing: Verify end-to-end at integration boundaries
-
-When your code produces output consumed by a downstream system — an external
-SDK, a framework, an HTTP layer, a file system, a database — unit tests of your
-intermediate return values are not sufficient. The downstream system may rename
-fields, filter unrecognized keys, read from a different namespace than expected,
-or silently discard your data.
-
-**Write tests that verify the effect at the boundary where your output is consumed.**
-
-**For any change that crosses a system boundary (a new tool, a TUI feature,
-a session/event wiring change, a provider integration), run a manual end-to-end
-test through the TUI before declaring the task done. Automated unit tests verify
-the pieces; a manual test verifies the pieces actually fit together at runtime.**
-
 
 # Quark — Philosophy & Design
-
-> Built from scratch.
 
 ---
 
