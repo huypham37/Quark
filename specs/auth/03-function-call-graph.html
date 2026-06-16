@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Function Call Graph — openai-codex.ts Browser OAuth</title>
+<style>
+  :root {
+    --bg:#0a0a0f; --panel:#12131a; --panel2:#161824; --line:#1f2230;
+    --ink:#e6e8ef; --dim:#6b7080;
+    --accent:#5cc8ff; --accent2:#ffb86b; --good:#7be495; --pink:#ff7ab6;
+    --edge: #3a3f50;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 24px 32px 8px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--dim); font-size: 13px; margin-top: 4px; }
+
+  .container { padding: 24px 32px; max-width: 1200px; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 20px; align-items: center;
+    margin-bottom: 18px; font-size: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; }
+  .dot.entry { background: var(--pink); }
+  .dot.browser { background: var(--accent); }
+  .dot.shared { background: var(--good); }
+  .dot.external { background: var(--accent2); }
+
+  /* Flow toggle */
+  .mode-toggle {
+    display: flex; gap: 2px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 3px; width: fit-content; margin-bottom: 18px;
+  }
+  .mode-toggle button {
+    background: transparent; border: none; color: var(--dim); font-size: 12px;
+    padding: 5px 14px; border-radius: 4px; cursor: pointer; font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .mode-toggle button.active { background: var(--panel); color: var(--ink); }
+
+  /* Graph canvas */
+  .graph-wrap {
+    position: relative;
+    height: 680px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+  }
+  #graph { position: relative; width: 1100px; height: 680px; }
+
+  /* SVG edges */
+  svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  path.edge {
+    fill: none; stroke: var(--edge); stroke-width: 2;
+    stroke-dasharray: 8 4;
+    opacity: 0.3;
+    transition: all 0.4s ease;
+  }
+  path.edge.active {
+    stroke: var(--accent); stroke-width: 2.5;
+    opacity: 1; stroke-dasharray: none;
+    filter: drop-shadow(0 0 4px rgba(92,200,255,0.4));
+  }
+  path.edge.active.refresh {
+    stroke: var(--good); filter: drop-shadow(0 0 4px rgba(123,228,149,0.4));
+  }
+
+  /* Nodes */
+  .node {
+    position: absolute;
+    background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 12px;
+    font-size: 11.5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    z-index: 2;
+    cursor: pointer;
+    transition: all 0.35s ease;
+    white-space: nowrap;
+    min-width: 180px;
+  }
+  .node .label { color: var(--ink); }
+  .node .meta { color: var(--dim); font-size: 10px; margin-top: 2px; }
+  .node:hover { transform: translateY(-1px); border-color: var(--dim); }
+
+  .node.entry { border-color: var(--pink); border-left: 3px solid var(--pink); }
+  .node.browser { border-left: 3px solid var(--accent); }
+  .node.shared { border-left: 3px solid var(--good); }
+  .node.external { border-left: 3px solid var(--accent2); }
+
+  .node.active {
+    border-color: var(--accent);
+    box-shadow: 0 4px 20px -6px rgba(92,200,255,0.35);
+    background: #1a2030;
+  }
+  .node.active.entry { border-color: var(--pink); box-shadow: 0 4px 20px -6px rgba(255,122,182,0.35); }
+  .node.active.shared { border-color: var(--good); box-shadow: 0 4px 20px -6px rgba(123,228,149,0.35); }
+
+  /* Step counter */
+  .controls {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 14px; margin-top: 16px;
+  }
+  .controls button {
+    background: var(--panel2); border: 1px solid var(--line);
+    color: var(--ink); font-size: 12px;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .step-indicator {
+    font-size: 13px; color: var(--dim);
+    margin-left: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  /* Detail panel */
+  .detail {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 20px;
+    margin-top: 12px;
+    font-size: 12px; line-height: 1.7; color: var(--dim);
+    min-height: 90px;
+  }
+  .detail .dtitle {
+    font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+  .detail code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; color: var(--accent2);
+    background: var(--panel2); padding: 1px 5px; border-radius: 3px;
+  }
+  .detail .sig {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; color: var(--ink);
+    background: var(--panel2);
+    padding: 8px 12px; border-radius: 6px;
+    display: inline-block;
+    margin-top: 6px;
+    border-left: 2px solid var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Function Call Graph — openai-codex.ts</h1>
+  <div class="sub">Browser OAuth flow: each node is a function, arrows show call sequence. Click a mode, then hit Play.</div>
+</header>
+
+<div class="container">
+
+  <div class="legend">
+    <div class="legend-item"><div class="dot entry"></div> Entry point</div>
+    <div class="legend-item"><div class="dot browser"></div> Browser-only flow</div>
+    <div class="legend-item"><div class="dot shared"></div> Shared / utility</div>
+    <div class="legend-item"><div class="dot external"></div> External module</div>
+  </div>
+
+  <div class="mode-toggle" id="modeToggle">
+    <button data-mode="browser" class="active">Browser OAuth</button>
+    <button data-mode="refresh">Token Refresh</button>
+  </div>
+
+  <div class="graph-wrap">
+    <div id="graph">
+      <svg id="svgEdges" viewBox="0 0 1100 680" preserveAspectRatio="xMidYMid meet"></svg>
+      <!-- Nodes will be injected by JS -->
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btnRestart">↻ Restart</button>
+    <button id="btnPrev">◀ Step</button>
+    <button id="btnPlay">▶ Play</button>
+    <button id="btnNext">Step ▶</button>
+    <div class="step-indicator" id="stepLabel">Step 1 / 18</div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="dtitle" id="detailTitle">Select a flow and press Play</div>
+    <div id="detailBody">Choose "Browser OAuth" or "Token Refresh" above, then use the controls to step through the function call graph.</div>
+  </div>
+
+</div>
+
+<script>
+// ── Node definitions ────────────────────────────────────────────
+// Each node: { id, label, meta, x, y, class: 'entry'|'browser'|'shared'|'external' }
+// x,y in a 1100×680 canvas
+
+const allNodes = [
+  // Browser flow nodes
+  { id:'entry',     label:'openaiCodexOAuthProvider.login()', meta:'OAuthProviderInterface — entry', x:40,  y:40,  cls:'entry' },
+  { id:'onSelect',  label:'callbacks.onSelect()',             meta:'TUI callback — user picks method', x:340, y:40,  cls:'external' },
+  { id:'loginBrowser', label:'loginOpenAICodex()',            meta:'Browser OAuth entry', x:640, y:40,  cls:'browser' },
+
+  { id:'createAuthFlow', label:'createAuthorizationFlow()',   meta:'Builds PKCE + auth URL', x:640, y:120, cls:'browser' },
+  { id:'generatePKCE',   label:'generatePKCE()',               meta:'pkce.ts — Web Crypto SHA-256', x:940, y:120, cls:'external' },
+  { id:'createState',    label:'createState()',                meta:'node:crypto.randomBytes(16)', x:340, y:120, cls:'shared' },
+
+  { id:'startServer',    label:'startLocalOAuthServer()',    meta:'Spawns HTTP on :1455', x:640, y:200, cls:'browser' },
+  { id:'getCallbackHost',label:'getCallbackHost()',          meta:'env PI_OAUTH_CALLBACK_HOST', x:340, y:200, cls:'shared' },
+  { id:'httpCreateServer',label:'_http.createServer()',      meta:'node:http', x:940, y:200, cls:'external' },
+  { id:'oauthHtml',      label:'oauthSuccessHtml() / oauthErrorHtml()', meta:'oauth-page.ts', x:40, y:200, cls:'external' },
+
+  { id:'onAuth',         label:'options.onAuth()',            meta:'TUI callback — show URL', x:340, y:280, cls:'external' },
+  { id:'waitForCode',    label:'server.waitForCode()',       meta:'Resolves when callback hits', x:640, y:280, cls:'browser' },
+
+  { id:'onManualCode',   label:'options.onManualCodeInput()', meta:'TUI callback — race with server', x:340, y:360, cls:'external' },
+  { id:'parseAuthInput', label:'parseAuthorizationInput()',  meta:'Parses URL / raw code / code#state', x:640, y:360, cls:'shared' },
+
+  { id:'onPrompt',       label:'options.onPrompt()',         meta:'TUI callback — fallback prompt', x:340, y:440, cls:'external' },
+
+  { id:'exchangeCreds',  label:'exchangeAuthorizationCodeForCredentials()', meta:'Final exchange', x:640, y:440, cls:'shared' },
+  { id:'exchangeCode',   label:'exchangeAuthorizationCode()', meta:'POST /oauth/token', x:940, y:440, cls:'shared' },
+  { id:'fetchCancel',    label:'fetchWithLoginCancellation()', meta:'Wraps fetch + abort handling', x:340, y:520, cls:'shared' },
+  { id:'readToken',      label:'readTokenResponse()',        meta:'Parses JSON → OAuthToken', x:640, y:520, cls:'shared' },
+
+  { id:'credsFromToken', label:'credentialsFromToken()',     meta:'OAuthToken → OAuthCredentials', x:940, y:520, cls:'shared' },
+  { id:'getAccountId',   label:'getAccountId()',             meta:'Extract chatgpt_account_id', x:340, y:600, cls:'shared' },
+  { id:'decodeJwt',      label:'decodeJwt()',                meta:'base64 decode JWT payload', x:640, y:600, cls:'shared' },
+
+  { id:'serverClose',    label:'server.close()',             meta:'finally block', x:40,  y:440, cls:'browser' },
+
+  // Refresh flow nodes
+  { id:'refreshEntry',   label:'openaiCodexOAuthProvider.refreshToken()', meta:'OAuthProviderInterface', x:40,  y:40,  cls:'entry' },
+  { id:'refreshTokenFn', label:'refreshOpenAICodexToken()',  meta:'Entry for refresh', x:340, y:40,  cls:'shared' },
+  { id:'refreshAccess',  label:'refreshAccessToken()',       meta:'POST /oauth/token (refresh grant)', x:640, y:40,  cls:'shared' },
+];
+
+// ── Edge definitions ────────────────────────────────────────────
+// Each edge: { from, to, mode: 'browser'|'refresh'|'both' }
+
+const allEdges = [
+  // Browser flow edges
+  { from:'entry',         to:'onSelect',       mode:'browser' },
+  { from:'onSelect',      to:'loginBrowser',   mode:'browser' },
+  { from:'loginBrowser',  to:'createAuthFlow', mode:'browser' },
+  { from:'createAuthFlow',to:'generatePKCE',   mode:'browser' },
+  { from:'createAuthFlow',to:'createState',    mode:'browser' },
+  { from:'loginBrowser',  to:'startServer',    mode:'browser' },
+  { from:'startServer',   to:'getCallbackHost',mode:'browser' },
+  { from:'startServer',   to:'httpCreateServer',mode:'browser' },
+  { from:'httpCreateServer',to:'oauthHtml',    mode:'browser' },
+  { from:'loginBrowser',  to:'onAuth',         mode:'browser' },
+  { from:'loginBrowser',  to:'waitForCode',    mode:'browser' },
+  { from:'waitForCode',   to:'onManualCode',   mode:'browser' },
+  { from:'onManualCode',  to:'parseAuthInput', mode:'browser' },
+  { from:'waitForCode',   to:'onPrompt',       mode:'browser' },
+  { from:'onPrompt',      to:'parseAuthInput', mode:'browser' },
+  { from:'parseAuthInput',to:'exchangeCreds',  mode:'browser' },
+  { from:'exchangeCreds', to:'exchangeCode',   mode:'browser' },
+  { from:'exchangeCode',  to:'fetchCancel',    mode:'browser' },
+  { from:'fetchCancel',   to:'readToken',      mode:'browser' },
+  { from:'readToken',     to:'credsFromToken', mode:'browser' },
+  { from:'credsFromToken',to:'getAccountId',   mode:'browser' },
+  { from:'getAccountId',  to:'decodeJwt',      mode:'browser' },
+  { from:'loginBrowser',  to:'serverClose',    mode:'browser' },
+
+  // Refresh flow edges
+  { from:'refreshEntry',  to:'refreshTokenFn', mode:'refresh' },
+  { from:'refreshTokenFn',to:'refreshAccess',  mode:'refresh' },
+  { from:'refreshAccess', to:'readToken',      mode:'refresh' },
+  { from:'readToken',     to:'credsFromToken', mode:'refresh' },
+  { from:'credsFromToken',to:'getAccountId',   mode:'refresh' },
+  { from:'getAccountId',  to:'decodeJwt',      mode:'refresh' },
+];
+
+// ── Step definitions (ordered walk through each flow) ─────────
+
+const browserSteps = [
+  { node:'entry',      desc:'Entry point: TUI calls login() on the OAuth provider. First thing it does is ask the user which method.' },
+  { node:'onSelect',   desc:'TUI callback: presents "Browser login" vs "Device code login". User selects browser.' },
+  { node:'loginBrowser', desc:'Browser OAuth entry. Async function that orchestrates the entire flow.' },
+  { node:'createAuthFlow', desc:'Generates PKCE pair and state, constructs the authorization URL with all query params.', sig:'→ { verifier, state, url }' },
+  { node:'generatePKCE',   desc:'From pkce.ts: generates 32 random bytes, SHA-256 hashes them to produce challenge.', sig:'→ { verifier: string, challenge: string }' },
+  { node:'createState',    desc:'From node:crypto.randomBytes(16) — generates a 32-char hex string for CSRF protection.', sig:'→ string (16 bytes hex)' },
+  { node:'startServer',    desc:'Spawns an HTTP server on 127.0.0.1:1455 listening for GET /auth/callback.', sig:'→ Promise<OAuthServerInfo>' },
+  { node:'getCallbackHost',desc:'Reads env var PI_OAUTH_CALLBACK_HOST or defaults to 127.0.0.1.' },
+  { node:'httpCreateServer', desc:'node:http.createServer() — the actual Node.js HTTP server that catches the browser redirect.' },
+  { node:'oauthHtml',      desc:'oauth-page.ts renders dark-themed success/error HTML pages sent back to the browser.' },
+  { node:'onAuth',         desc:'TUI callback: displays the authorization URL to the user and opens their browser.' },
+  { node:'waitForCode',    desc:'Blocks until the browser hits localhost:1455/auth/callback OR manual input arrives.' },
+  { node:'onManualCode',   desc:'Optional TUI callback: user can paste a redirect URL (for SSH/remote). Races with server callback.' },
+  { node:'parseAuthInput', desc:'Flexible parser: accepts full URL, code#state, query string, or raw code.', sig:'→ { code?, state? }' },
+  { node:'onPrompt',       desc:'Fallback TUI callback: if callback AND manual input both fail, prompt user to paste code.' },
+  { node:'parseAuthInput', desc:'Same parser runs on the prompt result.' },
+  { node:'exchangeCreds',  desc:'Orchestrates the POST /oauth/token exchange. Combines exchange + JWT extraction.', sig:'→ OAuthCredentials' },
+  { node:'exchangeCode',   desc:'POST to auth.openai.com/oauth/token with grant_type=authorization_code + code_verifier.', sig:'→ Promise<OAuthToken>' },
+  { node:'fetchCancel',    desc:'Thin fetch wrapper: converts AbortSignal abort into "Login cancelled" error.' },
+  { node:'readToken',      desc:'Parses response JSON, validates access_token + refresh_token + expires_in exist.', sig:'→ { access, refresh, expires }' },
+  { node:'credsFromToken', desc:'Wraps OAuthToken into OAuthCredentials. Calls getAccountId to extract account from JWT.' },
+  { node:'getAccountId',   desc:'Extracts chatgpt_account_id from the JWT claim at https://api.openai.com/auth.' },
+  { node:'decodeJwt',      desc:'Splits JWT on dots, base64-decodes payload, JSON.parse. Returns JwtPayload.' },
+  { node:'serverClose',    desc:'finally block: always closes the HTTP server regardless of success/failure.' },
+];
+
+const refreshSteps = [
+  { node:'refreshEntry',   desc:'Entry: TUI or auth-storage calls refreshToken() when the access token has expired.' },
+  { node:'refreshTokenFn', desc:'Entry wrapper: calls refreshAccessToken then wraps result in credentials.' },
+  { node:'refreshAccess',  desc:'POST to auth.openai.com/oauth/token with grant_type=refresh_token + client_id.', sig:'→ Promise<OAuthToken>' },
+  { node:'readToken',      desc:'Parses JSON response — same validation as the browser flow exchange.' },
+  { node:'credsFromToken', desc:'Same as browser flow: wraps token + extracts accountId from JWT.' },
+  { node:'getAccountId',   desc:'Same JWT extraction logic as login.' },
+  { node:'decodeJwt',      desc:'Same base64 decode + JSON parse.' },
+];
+
+// ── State ──────────────────────────────────────────────────────
+let currentMode = 'browser';
+let currentStep = 0;
+let playing = false;
+let timer = null;
+let steps = browserSteps;
+
+const graphEl = document.getElementById('graph');
+const svgEl = document.getElementById('svgEdges');
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnRestart = document.getElementById('btnRestart');
+const stepLabel = document.getElementById('stepLabel');
+const detailTitle = document.getElementById('detailTitle');
+const detailBody = document.getElementById('detailBody');
+const modeBtns = document.querySelectorAll('.mode-toggle button');
+
+// ── Build nodes ─────────────────────────────────────────────────
+function buildNodes() {
+  // Remove existing nodes
+  document.querySelectorAll('.node').forEach(n => n.remove());
+
+  const visible = new Set();
+  // Determine which nodes are visible for this mode
+  for (const e of allEdges) {
+    if (e.mode === currentMode || e.mode === 'both') {
+      visible.add(e.from); visible.add(e.to);
+    }
+  }
+  // Also add nodes that appear in steps
+  for (const s of steps) visible.add(s.node);
+
+  for (const n of allNodes) {
+    if (!visible.has(n.id)) continue;
+    const el = document.createElement('div');
+    el.className = 'node ' + n.cls;
+    el.dataset.id = n.id;
+    el.innerHTML = `<div class="label">${n.label}</div><div class="meta">${n.meta}</div>`;
+    el.style.left = n.x + 'px';
+    el.style.top = n.y + 'px';
+    graphEl.appendChild(el);
+  }
+}
+
+// ── Build SVG edges ─────────────────────────────────────────────
+function buildEdges() {
+  svgEl.innerHTML = '';
+  const nodeEls = {};
+  document.querySelectorAll('.node').forEach(el => {
+    nodeEls[el.dataset.id] = el;
+  });
+
+  for (const e of allEdges) {
+    if (e.mode !== currentMode && e.mode !== 'both') continue;
+    const fromEl = nodeEls[e.from];
+    const toEl = nodeEls[e.to];
+    if (!fromEl || !toEl) continue;
+
+    const fromRect = { x: parseInt(fromEl.style.left), y: parseInt(fromEl.style.top), w: fromEl.offsetWidth, h: fromEl.offsetHeight };
+    const toRect = { x: parseInt(toEl.style.left), y: parseInt(toEl.style.top), w: toEl.offsetWidth, h: toEl.offsetHeight };
+
+    // Connect from bottom-center of source to top-center of target
+    const sx = fromRect.x + fromRect.w / 2;
+    const sy = fromRect.y + fromRect.h;
+    const tx = toRect.x + toRect.w / 2;
+    const ty = toRect.y;
+
+    // Bezier curve
+    const cp1y = sy + (ty - sy) * 0.5;
+    const cp2y = ty - (ty - sy) * 0.5;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M ${sx} ${sy} C ${sx} ${cp1y}, ${tx} ${cp2y}, ${tx} ${ty}`);
+    path.setAttribute('class', 'edge');
+    path.dataset.from = e.from;
+    path.dataset.to = e.to;
+    svgEl.appendChild(path);
+  }
+}
+
+// ── Highlight step ──────────────────────────────────────────────
+function highlightStep() {
+  const s = steps[currentStep];
+  if (!s) return;
+
+  // Nodes
+  document.querySelectorAll('.node').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === s.node);
+  });
+
+  // Edges — highlight edges that lead TO the current node from previous step
+  const prev = steps[currentStep - 1];
+  document.querySelectorAll('.edge').forEach(el => {
+    const from = el.dataset.from;
+    const to = el.dataset.to;
+    let on = false;
+    if (prev && from === prev.node && to === s.node) on = true;
+    // Also highlight edge from current node to its next step
+    if (on) {
+      el.classList.add('active');
+      if (currentMode === 'refresh') el.classList.add('refresh');
+    } else {
+      el.classList.remove('active', 'refresh');
+    }
+  });
+
+  // Detail
+  detailTitle.textContent = s.node + '()';
+  let body = s.desc;
+  if (s.sig) body += `<br><div class="sig">${s.sig}</div>`;
+  detailBody.innerHTML = body;
+  stepLabel.textContent = `Step ${currentStep + 1} / ${steps.length}`;
+}
+
+function clearHighlight() {
+  document.querySelectorAll('.node').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.edge').forEach(el => el.classList.remove('active', 'refresh'));
+}
+
+// ── Controls ────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  currentStep = 0;
+  stopAutoplay();
+  steps = mode === 'browser' ? browserSteps : refreshSteps;
+
+  modeBtns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+
+  buildNodes();
+  // Wait for layout then build edges
+  requestAnimationFrame(() => {
+    buildEdges();
+    highlightStep();
+  });
+}
+
+function nextStep() {
+  if (currentStep < steps.length - 1) {
+    currentStep++;
+    highlightStep();
+  } else {
+    stopAutoplay();
+  }
+}
+
+function prevStep() {
+  stopAutoplay();
+  if (currentStep > 0) {
+    currentStep--;
+    highlightStep();
+  }
+}
+
+function restart() {
+  stopAutoplay();
+  currentStep = 0;
+  highlightStep();
+}
+
+function stopAutoplay() {
+  if (timer) { clearInterval(timer); timer = null; }
+  playing = false;
+  btnPlay.textContent = '▶ Play';
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playing) { stopAutoplay(); return; }
+  if (currentStep >= steps.length - 1) { currentStep = 0; }
+  playing = true;
+  btnPlay.textContent = '⏸ Pause';
+  timer = setInterval(() => {
+    if (currentStep < steps.length - 1) {
+      currentStep++;
+      highlightStep();
+    } else {
+      stopAutoplay();
+    }
+  }, 1800);
+});
+
+btnPrev.addEventListener('click', prevStep);
+btnNext.addEventListener('click', nextStep);
+btnRestart.addEventListener('click', restart);
+
+modeBtns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+// Node click = jump to that step
+graphEl.addEventListener('click', (e) => {
+  const node = e.target.closest('.node');
+  if (!node) return;
+  const id = node.dataset.id;
+  const idx = steps.findIndex(s => s.node === id);
+  if (idx >= 0) {
+    stopAutoplay();
+    currentStep = idx;
+    highlightStep();
+  }
+});
+
+// Init
+buildNodes();
+requestAnimationFrame(() => {
+  buildEdges();
+  highlightStep();
+});
+</script>
+</body>
+</html>

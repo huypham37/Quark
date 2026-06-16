@@ -179,7 +179,6 @@ export const Prompt: Component<PromptProps> = (props) => {
         borderStyle="rounded"
         borderColor={borderColor()}
         border={["left", "right", "bottom"]}
-        paddingX={1}
         minHeight={4}
         maxHeight={8}
       >
@@ -210,7 +209,7 @@ export const Prompt: Component<PromptProps> = (props) => {
             focusedTextColor={colors.text}
             placeholderColor={colors.textDim}
             cursorColor={colors.cursorColor}
-            cursorStyle={{ style: "line", blinking: true }}
+            cursorStyle={{ style: "block", blinking: true }}
             onSubmit={handleSubmit}
             onContentChange={handleContentChange}
             keyBindings={[

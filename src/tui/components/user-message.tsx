@@ -22,7 +22,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
       {/* Text line */}
       <box flexDirection="row">
         <text fg={colors.userBar}>| </text>
-        <text>{cleaned()}</text>
+        <text fg={colors.text}>{cleaned()}</text>
       </box>
 
       {/* Image chips */}

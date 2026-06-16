@@ -3,8 +3,8 @@
 
 import { describe, test, expect } from "bun:test"
 import type { TuiPart } from "../../src/tui/state"
-import { generateUnifiedDiff, parseDiffHunks } from "../../src/tui/diff-utils"
-import type { DiffLine, DiffHunk } from "../../src/tui/diff-utils"
+import { generateUnifiedDiff, parseDiffHunks } from "../../src/shared/diff-utils"
+import type { DiffLine, DiffHunk } from "../../src/shared/diff-utils"
 
 // ---------------------------------------------------------------------------
 // generateUnifiedDiff() tests

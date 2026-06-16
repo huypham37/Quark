@@ -49,6 +49,16 @@ const MODEL_THINKING: Record<string, ThinkingEntry> = {
     thinkingField: { reasoningSummary: "auto" },
     levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
   },
+  "gpt-5.5": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
+  },
+  "gpt-5.5-pro": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
+  },
   "gpt-5.4": {
     effortField: "reasoningEffort",
     thinkingField: { reasoningSummary: "auto" },
@@ -168,7 +178,7 @@ export class ThinkingNormalizer {
     this.modelId = modelId
     this.config = {
       enabled: config?.enabled ?? false,
-      effort: config?.effort ?? "medium",
+      effort: config?.effort ?? "xhigh",
     }
   }
 

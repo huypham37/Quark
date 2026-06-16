@@ -7,6 +7,7 @@ import { createSession, getSession, listAllSessions, updateSession, type Session
 import { saveUserMessage, type MessageRow, type PartRow } from "./message"
 import { appendEvents } from "../storage/session-jsonl"
 import type { MessageEvent, PartEvent, MessageEndEvent } from "../storage/session-format"
+import { warn } from "../notification/notification"
 
 const SUMMARY_PROMPT = `Analyze this conversation and produce a continuation context for a child branch session.
 
@@ -212,8 +213,13 @@ export async function summarizeForBranch(input: SummarizeForBranchInput): Promis
       maxRetries: 1,
     })
     const text = result.text.trim()
-    return text || fallbackSummary(oldMessages, oldParts)
-  } catch {
+    if (!text) {
+      warn("Branch Summary", "LLM returned empty summary — using fallback")
+      return fallbackSummary(oldMessages, oldParts)
+    }
+    return text
+  } catch (err) {
+    warn("Branch Summary", `LLM summarization failed: ${err instanceof Error ? err.message : String(err)} — using fallback`)
     return fallbackSummary(oldMessages, oldParts)
   }
 }
@@ -365,7 +371,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   // 3. Append the steer goal as the final user message
   const prompt = input.prompt?.trim()
   if (prompt) {
-    saveUserMessage({ sessionId: child.id, text: prompt })
+    saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" })
   }
 
   return { sessionId: child.id, created: true, summary }

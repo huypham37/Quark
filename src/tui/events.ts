@@ -74,6 +74,9 @@ export function wireEvents(state: AppState) {
   // window usage reported by the API, NOT a cumulative sum.
   let lastInputTokens = 0
 
+  // Track user message timestamp so we can compute "Worked for X.Xs" duration
+  let userMsgTime = 0
+
   // session-created: registered outside createComputed so it fires even when
   // sessionId is null (before the first message creates a session).
   const handleCreated = (data: BusEvents["session-created"]) => {
@@ -137,6 +140,18 @@ export function wireEvents(state: AppState) {
   }
   bus.on("model-switched", handleModelSwitched)
 
+  const handleWorktreeSwitched = (data: BusEvents["worktree-switched"]) => {
+    dispatch(state, {
+      type: "worktree-switched",
+      cwd: data.cwd,
+      activeWorktree: data.activeWorktree,
+      activeBranch: data.activeBranch,
+      modelSpec: data.modelSpec,
+      skillCount: data.skillCount,
+    })
+  }
+  bus.on("worktree-switched", handleWorktreeSwitched)
+
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return
@@ -155,7 +170,10 @@ export function wireEvents(state: AppState) {
     const unsubs: (() => void)[] = []
 
     unsubs.push(on("user-message", (data) => {
+      userMsgTime = Date.now()
       dispatch(state, { type: "add-user-message", id: data.messageId, text: data.text })
+      // Clear previous duration — new turn starts fresh
+      dispatch(state, { type: "set-last-duration", duration: 0 })
     }))
 
     unsubs.push(on("assistant-message-start", (data) => {
@@ -234,6 +252,11 @@ export function wireEvents(state: AppState) {
       // which may be delayed by compaction / DB writes)
       if (data.finish === "stop" || data.finish === "length") {
         dispatch(state, { type: "set-running", running: false })
+        // Record duration from user message to assistant completion
+        if (userMsgTime > 0) {
+          dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })
+        }
+        userMsgTime = 0
       }
     }))
 

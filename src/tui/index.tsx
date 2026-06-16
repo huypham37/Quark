@@ -5,10 +5,10 @@
 // Usage: bun src/tui/index.tsx --profile researcher
 
 import { render } from "@opentui/solid"
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
-import { prompt, cancel, resolveModel } from "../session/prompt"
+import { prompt, cancel, isActive, resolveModel } from "../session/prompt"
 import { createSession, listProjectSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
@@ -21,8 +21,8 @@ import { discoverSkills, loadSkill } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
-import { queryTerminalBackground } from "./terminal-bg"
-import { setTerminalBg } from "./theme"
+import { detectFromConfigOrOS } from "./terminal-bg"
+import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
@@ -32,20 +32,30 @@ import { info as notifyInfo } from "../notification/notification"
 import { undoLatest } from "../commands/undo"
 import { runGoal } from "../commands/goal/orchestrator"
 import { listTasks } from "../task/task"
+import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
+import * as path from "path"
+import * as fs from "fs"
 
-// Detect terminal background BEFORE the TUI takes over stdin/stdout,
-// then pick dark or light theme based on background luminance.
-const termBg = await queryTerminalBackground()
-setTerminalBg(termBg)
+// ---------------------------------------------------------------------------
+// Parse CLI args
+// ---------------------------------------------------------------------------
+function parseArg(flag: string): string | undefined {
+  const args = process.argv.slice(2)
+  const idx = args.indexOf(flag)
+  if (idx !== -1 && args[idx + 1]) return args[idx + 1]
+  return undefined
+}
+
+// Theme detection is deferred until after the renderer is created so we can
+// use renderer.getPalette() (OpenTUI's native terminal palette query).
+// The --theme flag still overrides everything.
+const themeArg = parseArg("--theme")
 
 // ---------------------------------------------------------------------------
 // Parse --profile flag from CLI args
 // ---------------------------------------------------------------------------
 function parseProfileArg(): string | undefined {
-  const args = process.argv.slice(2)
-  const idx = args.indexOf("--profile")
-  if (idx !== -1 && args[idx + 1]) return args[idx + 1]
-  return undefined
+  return parseArg("--profile")
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +88,76 @@ refreshLMStudio()
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null
 
+// Worktree state
+const rootProjectDir = process.cwd()
+const worktreeBase = path.join(rootProjectDir, ".quark", "worktrees")
+let activeWorktree: { id: string; path: string; branch: string | null; shortHash: string; isRoot: boolean } | null = null
+let activeBranch: string | null = getBranchFromPath(rootProjectDir)
+
+async function switchToWorktree(id: string): Promise<{ success: boolean; error?: string }> {
+  if (currentSession?.id && isActive(currentSession.id)) {
+    return { success: false, error: "Cancel the running agent before switching worktrees" }
+  }
+
+  const all = listWorktrees(rootProjectDir)
+  const projectWorktrees = filterToProjectWorktrees(all, rootProjectDir, worktreeBase)
+  const target = resolveWorktree(projectWorktrees, id)
+
+  if (!target) {
+    return { success: false, error: `Worktree not found: ${id}` }
+  }
+
+  if (target.prunable || target.missing) {
+    return { success: false, error: `Worktree is unavailable: ${target.path}` }
+  }
+
+  try {
+    process.chdir(target.path)
+  } catch {
+    return { success: false, error: `Cannot access worktree directory: ${target.path}` }
+  }
+
+  // Reset session state
+  currentSession = null
+  delete process.env.QUARK_SESSION_ID
+
+  // Reset caches
+  resetConfigCache()
+  resetProfileCache()
+  clearSkillCache()
+
+  // Re-bootstrap with new cwd
+  clearRegistry()
+  resetBootstrap()
+  const nextProfile = resolveProfile(activeAgent.id)
+  const nextPromptResult = readPromptFile(nextProfile)
+  activeAgent = agentFromProfile(nextProfile, nextPromptResult.content)
+  await bootstrap({ profileTools: nextProfile.tools, boundSkills: nextProfile.skills })
+
+  // Update worktree state
+  const branch = target.branch ?? getWorktreeBranch(target)
+  activeWorktree = target.isRoot
+    ? null
+    : { id: target.id, path: target.path, branch, shortHash: target.shortHash, isRoot: false }
+  activeBranch = branch
+
+  // Emit events
+  const discoveredSkills = discoverSkills()
+  const currentModel = modelOverride ?? loadConfig().main_model
+
+  bus.emit("session-reset", { sessionId: null })
+  bus.emit("model-switched", { modelSpec: currentModel })
+  bus.emit("worktree-switched", {
+    cwd: target.path,
+    activeWorktree,
+    activeBranch,
+    modelSpec: currentModel,
+    skillCount: discoveredSkills.length,
+  })
+
+  return { success: true }
+}
+
 function handleSubmit(text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) {
   const sid = sessionId ?? currentSession?.id
 
@@ -100,6 +180,43 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
 
 function handleCancel(sessionId: string) {
   cancel(sessionId)
+}
+
+async function handleWorktreeCommand(args: string, sid: string | null): Promise<CommandResult> {
+  const parts = args.trim().split(/\s+/)
+  const subCmd = parts[0]
+
+  if (subCmd === "create") {
+    const branch = parts.slice(1).join(" ")
+    if (!branch) {
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Usage: /worktree create <branch>") })
+      return { handled: true }
+    }
+
+    try {
+      const created = await createWorktree({ rootProjectDir, branch })
+      const result = await switchToWorktree(created.id)
+      if (result.success) {
+        notifyInfo("Worktree", `Created and switched to: ${created.id}`, 3000)
+        return { handled: true, next: "sessions-picker" }
+      }
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
+    } catch (err) {
+      bus.emit("error", { sessionId: sid ?? "unknown", error: err instanceof Error ? err : new Error(String(err)) })
+    }
+    return { handled: true }
+  }
+
+  if (args.trim()) {
+    const result = await switchToWorktree(args.trim())
+    if (result.success) {
+      return { handled: true, next: "sessions-picker" }
+    }
+    bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
+    return { handled: true }
+  }
+
+  return { handled: false }
 }
 
 async function handleCommand(command: string, args: string, sessionId: string | null): Promise<CommandResult> {
@@ -275,6 +392,10 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
+  if (command === "worktree") {
+    return handleWorktreeCommand(args, sid)
+  }
+
   // All other commands require an active session
   if (!sid) {
     bus.emit("error", { sessionId: "unknown", error: new Error("No active session — send a message first") })
@@ -432,6 +553,23 @@ function handleGetSessions() {
   }))
 }
 
+function handleGetWorktrees() {
+  const all = listWorktrees(rootProjectDir)
+  const projectWorktrees = filterToProjectWorktrees(all, rootProjectDir, worktreeBase)
+  const currentPath = process.cwd()
+  return projectWorktrees.map((wt) => ({
+    id: wt.id,
+    path: wt.path,
+    branch: wt.branch ?? getWorktreeBranch(wt),
+    shortHash: wt.shortHash,
+    isRoot: wt.isRoot,
+    isCurrent: path.resolve(wt.path) === path.resolve(currentPath),
+    prunable: wt.prunable,
+    missing: wt.missing,
+    sessionCount: listProjectSessions(wt.path).length,
+  }))
+}
+
 function handleGetModels() {
   const config = loadConfig()
   return config.models.map((id) => ({ id, name: parseModelSpec(id).model }))
@@ -472,12 +610,43 @@ const renderer = await createCliRenderer({
   },
 })
 
+// ---------------------------------------------------------------------------
+// Theme detection — deferred until after renderer creation so we can use
+// renderer.getPalette() for reliable terminal background detection.
+// Tier 1: --theme CLI flag (user override)
+// Tier 2: renderer.getPalette() (OpenTUI native, uses OSC queries)
+// Tier 3: terminal config file parsing (Ghostty, Kitty, iTerm2)
+// Tier 4: macOS system dark-mode preference
+// Tier 5: hard-coded dark fallback
+// ---------------------------------------------------------------------------
+const envTheme = process.env.QUARK_THEME
+if (themeArg === "light" || themeArg === "dark") {
+  applyTheme(themeArg === "light" ? lightTheme : darkTheme)
+} else if (envTheme === "light" || envTheme === "dark") {
+  applyTheme(envTheme === "light" ? lightTheme : darkTheme)
+} else {
+  let bg: RGBA | undefined
+  try {
+    const palette = await renderer.getPalette({ timeout: 1200 })
+    if (palette.defaultBackground) {
+      bg = RGBA.fromHex(palette.defaultBackground)
+    }
+  } catch { /* palette detection failed — fall through */ }
+
+  if (!bg) {
+    bg = detectFromConfigOrOS()
+  }
+
+  setTerminalBg(bg)
+}
+
 render(() => (
   <App
     onSubmit={handleSubmit}
     onCancel={handleCancel}
     onCommand={handleCommand}
     getSessions={handleGetSessions}
+    getWorktrees={handleGetWorktrees}
     getModels={handleGetModels}
     getCurrentModel={handleGetCurrentModel}
     getProfiles={handleGetProfiles}

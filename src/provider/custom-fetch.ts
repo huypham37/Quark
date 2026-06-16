@@ -3,6 +3,7 @@
 // just add a function here.
 
 import { createCopilotFetch, type CopilotFetchFn } from "./copilot-fetch"
+import { createCodexFetch } from "./codex-fetch"
 
 const copilotInstances = new Map<string, CopilotFetchFn>()
 
@@ -35,6 +36,9 @@ export function getCustomFetch(
     const fetch = createCopilotFetch(options)
     copilotInstances.set("copilot", fetch)
     return fetch
+  }
+  if (providerId === "codex" && options) {
+    return createCodexFetch(options)
   }
   return undefined
 }

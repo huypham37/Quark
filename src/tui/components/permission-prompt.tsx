@@ -77,7 +77,7 @@ export const PermissionPrompt: Component<PermissionPromptProps> = (props) => {
     <box flexDirection="column" border={["left"]} borderColor={colors.warning}>
       <box flexDirection="row" paddingLeft={1}>
         <text fg={colors.warning}>▲ </text>
-        <text bold>Allow {displayName()}?</text>
+        <text bold fg={colors.text}>Allow {displayName()}?</text>
         <Show when={label()}>
           <text>  </text>
           <text fg={colors.toolPath}>{label()}</text>

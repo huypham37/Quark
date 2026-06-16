@@ -15,7 +15,7 @@ export interface ConversationMessage {
 }
 
 export type ConversationPart =
-  | { type: "text"; text: string; streaming?: boolean }
+  | { type: "text"; text: string; streaming?: boolean; variant?: "steer" }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: ConversationSubAgentState }
   | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; data: string; label: string }
@@ -59,7 +59,7 @@ export function dbToConversationMessages(
     for (const p of msgParts) {
       if (p.type === "text" || p.type === "summary") {
         const d = JSON.parse(p.data) as TextPartData
-        if (d.text) viewParts.push({ type: "text", text: d.text })
+        if (d.text) viewParts.push({ type: "text", text: d.text, variant: d.variant })
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
         let subAgent: ConversationSubAgentState | undefined

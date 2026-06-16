@@ -11,6 +11,7 @@ import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
 import type { SessionTreeRow } from "../session-tree-picker"
+import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 
 /** Maximum visible rows in the dropdown */
@@ -29,6 +30,7 @@ export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
   | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
+  | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
   | { type: "skills"; items: PickerItem[]; selectedIndex: number }
@@ -117,6 +119,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "sessions" && mode.rows.length === 0) {
       result.push({ label: "No sessions found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
+    } else if (mode.type === "worktrees" && mode.rows.length === 0) {
+      result.push({ label: "No worktrees found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "models" && mode.items.length === 0) {
       result.push({ label: "No models available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "profiles" && mode.items.length === 0) {
@@ -169,6 +173,21 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
+    } else if (mode.type === "worktrees") {
+      for (let i = 0; i < mode.rows.length; i++) {
+        const item = mode.rows[i]!
+        const sel = i === mode.selectedIndex && item.type === "worktree"
+        const prefix = sel ? "❯ " : "  "
+        const marker = item.type === "worktree"
+          ? (item.current ? " ← current" : item.root ? " (root)" : "")
+          : ""
+        result.push({
+          label: `${prefix}${item.label}${marker}`,
+          fg: item.type === "disabled" ? colors.muted : sel ? colors.primary : colors.textDim,
+          bg: colors.commandCardBg,
+          bold: sel,
+        })
+      }
     } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills") {
       for (let i = 0; i < mode.items.length; i++) {
         const item = mode.items[i]!
@@ -187,7 +206,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
-  const isSessionCard = () => m()?.type === "sessions"
+  const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
   const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
   const panelHeight = () => isSessionCard() && rows().length > 0 ? visibleHeight() + 2 : visibleHeight()
 
@@ -196,7 +215,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
       height={visibleHeight()}
       scrollbarOptions={{ visible: false }}
-      bg={panelBg()}
+      backgroundColor={panelBg()}
     >
       <For each={rows()}>
         {(row) => {
@@ -207,7 +226,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
             return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
           }
           return (
-            <box height={1} bg={row.bg}>
+            <box height={1} backgroundColor={row.bg}>
               <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
             </box>
           )
@@ -225,7 +244,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       bottom={BOTTOM_OFFSET}
       left={isSessionCard() ? SESSION_CARD_INSET : 0}
       right={isSessionCard() ? SESSION_CARD_INSET : 0}
-      bg={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
+      backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
     >
       {isSessionCard() && rows().length > 0
         ? <CommandCard height={panelHeight()}>{content()}</CommandCard>

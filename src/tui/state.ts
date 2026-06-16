@@ -10,6 +10,19 @@ import { getModelLimit } from "../provider/models"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
+// Worktree types
+// ---------------------------------------------------------------------------
+
+/** Lightweight worktree reference stored in TUI state */
+export interface TuiWorktree {
+  id: string
+  path: string
+  branch: string | null
+  shortHash: string
+  isRoot: boolean
+}
+
+// ---------------------------------------------------------------------------
 // TUI data model types
 // ---------------------------------------------------------------------------
 
@@ -21,9 +34,9 @@ export interface TuiMessage {
 }
 
 export type TuiPart =
-  | { type: "text"; text: string; streaming?: boolean }
+  | { type: "text"; text: string; streaming?: boolean; variant?: "steer" }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
-  | { type: "thinking"; done: boolean; text: string }
+  | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
@@ -102,6 +115,7 @@ export type TuiAction =
   | { type: "assistant-done"; messageId: string }
   | { type: "set-running"; running: boolean }
   | { type: "set-steering"; steering: boolean }
+  | { type: "set-last-duration"; duration: number }
   | { type: "update-status"; partial: Partial<TuiStatus> }
   | { type: "set-error"; message: string }
   | { type: "clear-error" }
@@ -123,6 +137,10 @@ export type TuiAction =
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string }
   | { type: "truncate-messages"; upToMessageId: string }
+  // Worktree actions
+  | { type: "worktree-switch-start" }
+  | { type: "worktree-switched"; cwd: string; activeWorktree: TuiWorktree | null; activeBranch: string | null; modelSpec: string; skillCount: number }
+  | { type: "worktree-switch-failed"; message: string }
 
 // ---------------------------------------------------------------------------
 // Extract profile and prompt from a quark --sub-agent bash command
@@ -173,7 +191,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
       if (p.type === "text" || p.type === "summary") {
         const d = JSON.parse(p.data) as TextPartData
         if (d.text) {
-          tuiParts.push({ type: "text", text: d.text })
+          tuiParts.push({ type: "text", text: d.text, variant: d.variant })
         }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
@@ -232,6 +250,14 @@ export interface AppStore {
   messages: TuiMessage[]
   running: boolean
   steering: boolean
+  /** Duration (ms) of the last completed agent run, from user message to assistant finish */
+  lastDuration: number | null
+  // Worktree
+  rootProjectDir: string
+  cwd: string
+  activeWorktree: TuiWorktree | null
+  activeBranch: string | null
+  worktreeSwitching: boolean
   thinkingEffort: ThinkingEffort
   showThinking: boolean
   status: TuiStatus
@@ -252,11 +278,19 @@ export function createAppState(initial: {
   modelName: string
   skillCount: number
 }): AppState {
+  const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
     sessionId: initial.sessionId,
     messages: [],
     running: false,
     steering: false,
+    lastDuration: null,
+    // Worktree
+    rootProjectDir: cwd,
+    cwd,
+    activeWorktree: null,
+    activeBranch: null,
+    worktreeSwitching: false,
     thinkingEffort: "none",
     showThinking: false,
     status: {
@@ -289,6 +323,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.sessionId = action.sessionId
           s.messages = []
           s.running = false
+          s.lastDuration = null
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
@@ -304,6 +339,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.sessionId = action.sessionId
           s.messages = action.messages
           s.running = false
+          s.lastDuration = null
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
@@ -513,6 +549,20 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore("steering", action.steering)
       break
 
+    case "set-last-duration":
+      setStore(
+        produce((s) => {
+          if (action.duration > 0) {
+            s.lastDuration = action.duration
+            s.lastDurationSetAt = Date.now()
+          } else {
+            s.lastDuration = null
+            s.lastDurationSetAt = 0
+          }
+        }),
+      )
+      break
+
     case "update-status":
       setStore("status", (prev) => ({ ...prev, ...action.partial }))
       break
@@ -607,7 +657,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         (m) => m.id === action.messageId,
         "parts",
         produce((parts: TuiPart[]) => {
-          parts.push({ type: "thinking", done: false, text: "" })
+          parts.push({ type: "thinking", done: false, text: "", startedAt: Date.now() })
         }),
       )
       break
@@ -635,6 +685,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           const last = parts[parts.length - 1]
           if (last && last.type === "thinking") {
             last.done = true
+            if (last.startedAt != null) last.durationMs = Date.now() - last.startedAt
           }
         }),
       )
@@ -842,5 +893,47 @@ export function dispatch(state: AppState, action: TuiAction): void {
       }))
       break
     }
+
+    // ------------------------------------------------------------------
+    // Worktree actions
+    // ------------------------------------------------------------------
+
+    case "worktree-switch-start":
+      setStore("worktreeSwitching", true)
+      break
+
+    case "worktree-switched":
+      setStore(
+        produce((s) => {
+          s.cwd = action.cwd
+          s.activeWorktree = action.activeWorktree
+          s.activeBranch = action.activeBranch
+          s.worktreeSwitching = false
+
+          s.sessionId = null
+          s.messages = []
+          s.running = false
+          s.status.tokensUsed = 0
+          s.status.cost = 0
+          s.status.modelName = action.modelSpec
+          s.status.skillCount = action.skillCount
+          s.error = undefined
+          s.permission = undefined
+          s.permissionQueue = []
+          s.question = undefined
+          s.questionQueue = []
+        }),
+      )
+      break
+
+    case "worktree-switch-failed":
+      setStore(
+        produce((s) => {
+          s.worktreeSwitching = false
+          s.error = action.message
+          s.running = false
+        }),
+      )
+      break
   }
 }
