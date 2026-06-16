@@ -746,7 +746,7 @@ export const App: Component<AppProps> = (props) => {
       }
     }
 
-    // Extract @file and @directory mentions and read their content
+    // Extract @file and @directory mentions — reference paths only, no content
     const mentionedPaths = extractMentions(text)
 
     let context = ""
@@ -758,8 +758,8 @@ export const App: Component<AppProps> = (props) => {
           // Directory mentions only reference the path — no content loaded
           context += `\n<directory path="${mentionPath}" />\n`
         } else {
-          const content = fs.readFileSync(absPath, "utf-8")
-          context += `\n<file path="${mentionPath}">\n${content}\n</file>\n`
+          // File mentions only reference the path — no content loaded
+          context += `\n<file path="${mentionPath}" />\n`
         }
       } catch {
         // Path not readable — skip silently

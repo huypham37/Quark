@@ -864,7 +864,6 @@
     "timeUpdated": 1780601907079
   },
   {
-
     "id": "task_kVZes6JcHXvyjzZh",
     "title": "hello, explore the codebase",
     "description": "hello, explore the codebase",
@@ -1735,5 +1734,365 @@
     "profile": "coder",
     "timeCreated": 1780816624628,
     "timeUpdated": 1780816629289
+  },
+  {
+    "id": "task_wvKzx9Aa41IFuemY",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780826496768,
+    "timeUpdated": 1780826496768
+  },
+  {
+    "id": "task_cAISOCOdqhIEowJQ",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780826496799,
+    "timeUpdated": 1780826496799
+  },
+  {
+    "id": "task_MVhKor5IHBDL72aL",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780826525141,
+    "timeUpdated": 1780826525141
+  },
+  {
+    "id": "task_yF5MQqvvDLUdIS7A",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780826525193,
+    "timeUpdated": 1780826525193
+  },
+  {
+    "id": "task_i7zk1jAzD4tNR2oM",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780826554313,
+    "timeUpdated": 1780826554313
+  },
+  {
+    "id": "task_VSCXkn79kruO50IF",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780826554334,
+    "timeUpdated": 1780826554334
+  },
+  {
+    "id": "task_da7p4fQkWCVhVbhv",
+    "title": "[Desktop context]",
+    "description": "[Desktop context]",
+    "profile": "coder",
+    "timeCreated": 1780826582876,
+    "timeUpdated": 1780826582876
+  },
+  {
+    "id": "task_Y6YLfGQO2fr0SNnc",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1780826582899,
+    "timeUpdated": 1780826582899
+  },
+  {
+    "id": "task_40OEw9OeV4Qusaag",
+    "title": "<file path=\"specs/core/delegate-tool-migration.md\">",
+    "description": "<file path=\"specs/core/delegate-tool-migration.md\">",
+    "profile": "coder",
+    "timeCreated": 1780826657860,
+    "timeUpdated": 1780826657860
+  },
+  {
+    "id": "task_b2ruez5TZkCrZZbt",
+    "title": "check the current pod searxng",
+    "description": "check the current pod searxng",
+    "profile": "coder",
+    "timeCreated": 1780826978606,
+    "timeUpdated": 1780826978606
+  },
+  {
+    "id": "task_sq2MeEQuQVoQgvjM",
+    "title": "Diff in Edit Tool",
+    "description": "Diff in Edit Tool",
+    "profile": "coder",
+    "timeCreated": 1780832684099,
+    "timeUpdated": 1780832691139
+  },
+  {
+    "id": "task_FGL4MB604Kw26gaF",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780833910293,
+    "timeUpdated": 1780833913074
+  },
+  {
+    "id": "task_lRdf1munkFVBFgvw",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1780833910326,
+    "timeUpdated": 1780833913072
+  },
+  {
+    "id": "task_4NsKzYgYgq4QodUQ",
+    "title": "Investigate why sent image attachments are not displayed in TUI user messages despite being successfully transmitted.",
+    "description": "Investigate why sent image attachments are not displayed in TUI user messages despite being successfully transmitted.",
+    "profile": "coder",
+    "timeCreated": 1780833972675,
+    "timeUpdated": 1780833978051
+  },
+  {
+    "id": "task_R4tmKOOOclTklT5O",
+    "title": "Edit tmp-diff-demo.ts to add a timestamp field to the function signature and change SHORT_LINE to hello world.",
+    "description": "Edit tmp-diff-demo.ts to add a timestamp field to the function signature and change SHORT_LINE to hello world.",
+    "profile": "coder",
+    "timeCreated": 1780834701014,
+    "timeUpdated": 1780834711250
+  },
+  {
+    "id": "task_sGjQdDlXnSIOCwoz",
+    "title": "Edit tmp-diff-demo.ts to add a timestamp field and change the value of SHORT_LINE to 'hello world'.",
+    "description": "Edit tmp-diff-demo.ts to add a timestamp field and change the value of SHORT_LINE to 'hello world'.",
+    "profile": "coder",
+    "timeCreated": 1780834730563,
+    "timeUpdated": 1780834749749
+  },
+  {
+    "id": "task_2h2TU74ezq2XjVaN",
+    "title": "Edit tmp-diff-test.ts to change STATUS to 'active' and add a hits:number field to the DataProcessor cache.",
+    "description": "Edit tmp-diff-test.ts to change STATUS to 'active' and add a hits:number field to the DataProcessor cache.",
+    "profile": "coder",
+    "timeCreated": 1780835585288,
+    "timeUpdated": 1780835594400
+  },
+  {
+    "id": "task_l7tQWZguKIDOuzlK",
+    "title": "Edit test.md to add a timestamp field and rename Section A to Items.",
+    "description": "Edit test.md to add a timestamp field and rename Section A to Items.",
+    "profile": "coder",
+    "timeCreated": 1780835682507,
+    "timeUpdated": 1780835713569
+  },
+  {
+    "id": "task_g7E8da1GZcX3mY7k",
+    "title": "Say hello and then use the edit tool to replace the word 'hello' with 'world' in the file /Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Quark/test.md.",
+    "description": "Say hello and then use the edit tool to replace the word 'hello' with 'world' in the file /Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Quark/test.md.",
+    "profile": "coder",
+    "timeCreated": 1780838477651,
+    "timeUpdated": 1780838490324
+  },
+  {
+    "id": "task_HW2CMO8C48Fm4lhc",
+    "title": "hhello",
+    "description": "hhello",
+    "profile": "coder",
+    "timeCreated": 1780844143996,
+    "timeUpdated": 1780844143996
+  },
+  {
+    "id": "task_5kVjo735Xh7Oq5RR",
+    "title": "TUI Command",
+    "description": "TUI Command",
+    "profile": "coder",
+    "timeCreated": 1780850456703,
+    "timeUpdated": 1780850464876
+  },
+  {
+    "id": "task_CG01oVgWDGBThKge",
+    "title": "Reply with exactly QUARK_CODEX_TUI_OK",
+    "description": "Reply with exactly QUARK_CODEX_TUI_OK",
+    "profile": "coder",
+    "timeCreated": 1780850528376,
+    "timeUpdated": 1780850528376
+  },
+  {
+    "id": "task_QHDojnxdhZb8EakE",
+    "title": "Using finder to read the @specs, check for stale documents and delete them.",
+    "description": "Using finder to read the @specs, check for stale documents and delete them.",
+    "profile": "coder",
+    "timeCreated": 1780850658838,
+    "timeUpdated": 1780850662017
+  },
+  {
+    "id": "task_xJuY52d7BZZC4uBc",
+    "title": "Subagent System Understanding",
+    "description": "Subagent System Understanding",
+    "profile": "coder",
+    "timeCreated": 1780850736667,
+    "timeUpdated": 1780850741237
+  },
+  {
+    "id": "task_MZa6uTfQC2GO9SRl",
+    "title": "Spawn a finder to check if @specs has stale documentation, where stale means the implementation is done but the documents remain outdated.",
+    "description": "Spawn a finder to check if @specs has stale documentation, where stale means the implementation is done but the documents remain outdated.",
+    "profile": "coder",
+    "timeCreated": 1780850915378,
+    "timeUpdated": 1780850948084
+  },
+  {
+    "id": "task_C2eLg9Eow5A54OT5",
+    "title": "Refactor subagent spawning to use a first-class tool interface instead of non-deterministic bash commands.",
+    "description": "Refactor subagent spawning to use a first-class tool interface instead of non-deterministic bash commands.",
+    "profile": "coder",
+    "timeCreated": 1780851479184,
+    "timeUpdated": 1780851486238
+  },
+  {
+    "id": "task_JnoSKXUmeFJBfoSU",
+    "title": "Use the bash tool to run this exact command: quark --sub-agent --profile finder --prompt 'list files'",
+    "description": "Use the bash tool to run this exact command: quark --sub-agent --profile finder --prompt 'list files'",
+    "profile": "coder",
+    "timeCreated": 1780852718465,
+    "timeUpdated": 1780852718465
+  },
+  {
+    "id": "task_hZRUniT6QhUSnZ1f",
+    "title": "list files",
+    "description": "list files",
+    "profile": "finder",
+    "timeCreated": 1780852720009,
+    "timeUpdated": 1780852720009
+  },
+  {
+    "id": "task_hiF1jwd1FJ5TrNBg",
+    "title": "Run the exact bun command to execute the subagent CLI with the finder profile and prompt 'list files'.",
+    "description": "Run the exact bun command to execute the subagent CLI with the finder profile and prompt 'list files'.",
+    "profile": "coder",
+    "timeCreated": 1780852766507,
+    "timeUpdated": 1780852779841
+  },
+  {
+    "id": "task_USAGotHyCY5zbR9U",
+    "title": "list files",
+    "description": "list files",
+    "profile": "finder",
+    "timeCreated": 1780852768197,
+    "timeUpdated": 1780852768197
+  },
+  {
+    "id": "task_rZOlp4NsYLBPvq8f",
+    "title": "iPad Finder Connection Issue",
+    "description": "iPad Finder Connection Issue",
+    "profile": "coder",
+    "timeCreated": 1781032002491,
+    "timeUpdated": 1781032010957
+  },
+  {
+    "id": "task_1a73CkjmDIioNaOS",
+    "title": "Agent Skill Inquiry",
+    "description": "Agent Skill Inquiry",
+    "profile": "coder",
+    "timeCreated": 1781069338338,
+    "timeUpdated": 1781069341442
+  },
+  {
+    "id": "task_6J26sCGnMX6YhpWq",
+    "title": "Ubagent Architecture",
+    "description": "Ubagent Architecture",
+    "profile": "coder",
+    "timeCreated": 1781078895187,
+    "timeUpdated": 1781078915608
+  },
+  {
+    "id": "task_3ZZjRUuj9OV3ofvM",
+    "title": "pm list-epics",
+    "description": "pm list-epics",
+    "profile": "coder",
+    "timeCreated": 1781078901767,
+    "timeUpdated": 1781078901767
+  },
+  {
+    "id": "task_g54vr9S004aqVBZG",
+    "title": "using finder to understand the current architecture",
+    "description": "using finder to understand the current architecture",
+    "profile": "coder",
+    "timeCreated": 1781100827519,
+    "timeUpdated": 1781100827519
+  },
+  {
+    "id": "task_rIZTrVJDmo5l2x7G",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1781102343910,
+    "timeUpdated": 1781102348067
+  },
+  {
+    "id": "task_TWMP4w5dxVT87lXK",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1781102343964,
+    "timeUpdated": 1781102346795
+  },
+  {
+    "id": "task_x8mvri5LHLmGXdaA",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1781102380220,
+    "timeUpdated": 1781102384804
+  },
+  {
+    "id": "task_1N3U3dOedpWn1jyu",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1781102380253,
+    "timeUpdated": 1781102383164
+  },
+  {
+    "id": "task_8uvyaoCBhOSmm5sC",
+    "title": "Analyze the current communication between the main agent and subagent, compare it against the future design defined in AGENTS.md, ask the oracle for a mitigation strategy, and briefly report the plan.",
+    "description": "Analyze the current communication between the main agent and subagent, compare it against the future design defined in AGENTS.md, ask the oracle for a mitigation strategy, and briefly report the plan.",
+    "profile": "coder",
+    "timeCreated": 1781165455648,
+    "timeUpdated": 1781165472541
+  },
+  {
+    "id": "task_hB1EeRguBZTeLumV",
+    "title": "Quark Codex Communication",
+    "description": "Quark Codex Communication",
+    "profile": "coder",
+    "timeCreated": 1781176497137,
+    "timeUpdated": 1781176506579
+  },
+  {
+    "id": "task_ztT6J3ZuvYhWWDFy",
+    "title": "Quark Skills",
+    "description": "Quark Skills",
+    "profile": "coder",
+    "timeCreated": 1781176802147,
+    "timeUpdated": 1781176830621
+  },
+  {
+    "id": "task_slYYgaqLcCNCGkkh",
+    "title": "Write documentation explaining how external applications can communicate with Quakr using the ACO protocol.",
+    "description": "Write documentation explaining how external applications can communicate with Quakr using the ACO protocol.",
+    "profile": "coder",
+    "timeCreated": 1781183487407,
+    "timeUpdated": 1781183494271
+  },
+  {
+    "id": "task_xGIkK1fggd9JDWU6",
+    "title": "Check if pasted images from users are persisted on disk.",
+    "description": "Check if pasted images from users are persisted on disk.",
+    "profile": "coder",
+    "timeCreated": 1781249725839,
+    "timeUpdated": 1781249744231
+  },
+  {
+    "id": "task_xioie0eCl50Eno2Y",
+    "title": "Check if there are uncommitted changes on the current git branch.",
+    "description": "Check if there are uncommitted changes on the current git branch.",
+    "profile": "coder",
+    "timeCreated": 1781589509648,
+    "timeUpdated": 1781589514694
   }
 ]

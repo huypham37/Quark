@@ -1,10 +1,11 @@
 ---
 title: Specs Index
 date_created: 2026-06-04
-date_modified: 2026-06-04
-revision: 1
+date_modified: 2026-06-07
+revision: 2
 history:
   - 2026-06-04: Initial classification and folder reorganization
+  - 2026-06-07: Archived all done specs to specs/archives/
 status: done
 ---
 
@@ -16,7 +17,6 @@ status: done
 | File | Status | Description |
 |---|---|---|
 | [PRD.md](foundation/PRD.md) | Living | Product Requirements Document — all functional requirements (FR-1 through FR-9) |
-| [architecture.md](foundation/architecture.md) | Done | Architecture & Design Reference — tech stack, system design, directory layout, epic roadmap |
 | [epics.json](foundation/epics.json) | Living | Epic tracking — EPIC-01 through EPIC-19 with requirements, status, acceptance criteria |
 | [tech_stack.json](foundation/tech_stack.json) | — | Tech stack reference (Bun, TypeScript, AI SDK, OpenTUI, SQLite, Tauri) |
 
@@ -25,31 +25,19 @@ status: done
 
 | File | Status | Description |
 |---|---|---|
-| [permission-feature.md](core/permission-feature.md) | Done | Permission system: pre-execution gate, `awaiting_approval` status, profile-level rules, rejection abort |
-| [permission-gate-timing.md](core/permission-gate-timing.md) | Done | Investigation: when does the permission gate fire relative to tool arguments? |
 | [permission-diff-preview.md](core/permission-diff-preview.md) | Draft | Compute edit diffs **before** the permission prompt so user sees what will change |
-| [profile-picker.md](core/profile-picker.md) | Done | Interactive `/profile` picker (TUI) reusing slash-picker UI |
-| [provider-config.md](core/provider-config.md) | Done | Provider config schema, preset dictionary, CLI wizard |
-| [provider-refactor.md](core/provider-refactor.md) | Done | Split god-module `provider.ts` into focused modules; remove web-proxy |
-| [prompt-loop-boundaries.md](core/prompt-loop-boundaries.md) | Done | Extract provider, AI SDK tool wrapping, and display mapping out of `prompt.ts` |
 | [remove-link-task.md](core/remove-link-task.md) | In Progress | Make `taskId` immutable; synchronous init, async title-only upgrade |
-| [tool-rendering-unification.md](core/tool-rendering-unification.md) | Done | Unify TUI tool cards into `ToolCard` with header/body separation |
 | [task-first-architecture.md](core/task-first-architecture.md) | In Progress | Task as first-class citizen; session branching replaces compaction |
 | [goal-command.md](core/goal-command.md) | Draft | Autonomous `/goal` orchestrator: plan → execute → verify → loop |
 | [delegate-tool-migration.md](core/delegate-tool-migration.md) | Draft | Migrate sub-agent spawning from bash to a first-class `delegate` tool |
-| [codex-consumer-provider.md](provider/codex-consumer-provider.md) | Done | ChatGPT consumer API provider — AI SDK v3 LanguageModelV3 with SSE streaming, images, reasoning, retry |
 
 ## 🖥️ TUI / UX
 *Terminal user interface: rendering, themes, input, interaction patterns.*
 
 | File | Status | Description |
 |---|---|---|
-| [sub-agent-tui-redesign.md](tui/sub-agent-tui-redesign.md) | Done | Replace raw bash card with unified sub-agent view (header + expandable prompt/tree) |
-| [tui-token-percent-flip-clock.md](tui/tui-token-percent-flip-clock.md) | Done | Animated flip-clock effect for token context percentage |
-| [prompt-paste-collapse.md](tui/prompt-paste-collapse.md) | Done | Cap input box height, collapse large pastes into a summary chip |
 | [markdown-rendering-theme.md](tui/markdown-rendering-theme.md) | In Progress | Fix markdown theme scopes, align with Atom One palette, conceal delimiter markers |
 | [verbose-tool-logging.md](tui/verbose-tool-logging.md) | In Progress | `--verbose` prints `[TOOL-CALL]` / `[TOOL-RESULT]` to stderr in CLI mode |
-| [prompt-status-border-fix.md](tui/prompt-status-border-fix.md) | Done | Compose prompt top status border at exact width to remove the model-name hole |
 | [queued-user-messages.md](tui/queued-user-messages.md) | Draft | Type-ahead follow-up while agent runs — opencode-style unified input box with queued chip |
 
 ## 📊 Commands
@@ -66,14 +54,6 @@ status: done
 |---|---|---|
 | [quark-desktop-tauri.md](desktop/quark-desktop-tauri.md) | Draft | Desktop V1: three-pane shared diff workspace (Tauri + Vite) |
 | [desktop-model-thinking-pickers.md](desktop/desktop-model-thinking-pickers.md) | In Progress | Model & thinking-level picker pills in the desktop composer bar |
-| [epic-17-task-breakdown.md](desktop/epic-17-task-breakdown.md) | Done | Atomic task breakdown for EPIC-17 (Desktop V1 backend + frontend, 22 tasks) |
-
-## 🐳 Infrastructure
-*Deployment, containerization, environment setup.*
-
-| File | Status | Description |
-|---|---|---|
-| [container.md](infrastructure/container.md) | Done | Docker setup — `oven/bun`, volume strategy, TTY config |
 
 ## 🔌 Integration
 *Protocol implementations and external system connectors.*
@@ -89,8 +69,6 @@ status: done
 
 | File | Status | Description |
 |---|---|---|
-| [antigravity-cli-tui-survey.md](surveys/antigravity-cli-tui-survey.md) | Done | Google Antigravity CLI TUI — layout, reasoning blocks, diff review, model picker |
-| [codex-cli-tui-survey.md](surveys/codex-cli-tui-survey.md) | Done | OpenAI Codex CLI TUI — monochrome event-feed, slash/cmd-I menus, model picker |
 | [tui-opentui-notes.md](surveys/tui-opentui-notes.md) | In Progress | Working notes for OpenTUI development — prop naming, theme wiring, ANSI compat |
 
 ## 🛠️ Tool Specs
@@ -116,4 +94,6 @@ status: done
 
 ---
 
-**Summary:** 14 done, 7 in-progress, 6 drafts, 3 reference surveys, 1 tool spec, 8 diagrams, 4 foundation artifacts.
+**Summary:** 0 done, 7 in-progress, 6 drafts, 1 reference survey, 1 tool spec, 8 diagrams, 3 foundation artifacts.
+
+*Done specs have been archived to [`specs/archives/`](archives/).*

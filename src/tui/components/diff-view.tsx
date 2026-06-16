@@ -6,11 +6,12 @@
 //   └── src/tui/components/tool-result.tsx  +3 -1
 //       ─────────────────────────────────────
 //        64│ function getToolDisplayName(tool: string)
-//       -65│   read: "Read",
-//       +65│   read: "Read",
-//       +66│   write: "Write",
+//        65│   read: "Read",   (red text = removed)
+//        65│   read: "Read",   (green text = added)
+//        66│   write: "Write", (green text = added)
 //        67│ }
 //       ─────────────────────────────────────
+// Added/removed lines are distinguished by color only (no +/- prefix).
 
 import type { Component } from "solid-js"
 import { For, Show } from "solid-js"
@@ -62,12 +63,6 @@ function computeMaxDigits(hunks: DiffHunk[]): number {
 }
 
 const DiffLineView: Component<{ line: DiffLine; maxDigits: number }> = (props) => {
-  const prefix = () => {
-    if (props.line.type === "added") return "+"
-    if (props.line.type === "removed") return "-"
-    return " "
-  }
-
   const lineNo = () => {
     const n = props.line.type === "added"
       ? props.line.newLineNo
@@ -84,17 +79,10 @@ const DiffLineView: Component<{ line: DiffLine; maxDigits: number }> = (props) =
     return colors.textDim
   }
 
-  const prefixColor = () => {
-    if (props.line.type === "added") return COLOR_ADDED_FG
-    if (props.line.type === "removed") return COLOR_REMOVED_FG
-    return colors.muted
-  }
-
   return (
     <box flexDirection="row">
       <text fg={COLOR_LINENUM} flexShrink={0}>{lineNo()}</text>
-      <text fg={colors.muted} flexShrink={0}>│</text>
-      <text fg={prefixColor()} flexShrink={0}>{prefix()}</text>
+      <text fg={colors.muted} flexShrink={0}>│ </text>
       <text fg={fgColor()} wrap="wrap" flexShrink={1}>{props.line.content}</text>
     </box>
   )
@@ -103,7 +91,7 @@ const DiffLineView: Component<{ line: DiffLine; maxDigits: number }> = (props) =
 const HunkView: Component<{ hunk: DiffHunk; maxDigits: number }> = (props) => {
   const visibleLines = () => props.hunk.lines.slice(0, MAX_LINES_PER_HUNK)
   const overflow = () => props.hunk.lines.length - MAX_LINES_PER_HUNK
-  const indent = () => " ".repeat(props.maxDigits + 1)
+  const indent = () => " ".repeat(props.maxDigits + 2)
 
   return (
     <box flexDirection="column">

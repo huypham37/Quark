@@ -49,6 +49,53 @@ export interface CodexToken {
 	accountId: string
 }
 
+export class CodexTokenStore {
+	constructor(private readonly file = TOKEN_FILE) {}
+
+	save(token: CodexToken): void {
+		fs.mkdirSync(path.dirname(this.file), { recursive: true })
+		const tmpFile = `${this.file}.tmp.${Date.now()}`
+		fs.writeFileSync(tmpFile, JSON.stringify({ ...token, savedAt: Date.now() }), {
+			encoding: "utf-8",
+			mode: 0o600,
+		})
+		fs.renameSync(tmpFile, this.file)
+	}
+
+	load(): CodexToken | null {
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const raw = fs.readFileSync(this.file, "utf-8")
+				if (raw.length === 0) {
+					if (attempt < 2) continue
+					return null
+				}
+				const data = JSON.parse(raw) as CodexToken
+				if (
+					typeof data.access !== "string" ||
+					typeof data.refresh !== "string" ||
+					typeof data.expires !== "number" ||
+					typeof data.accountId !== "string"
+				) {
+					return null
+				}
+				return {
+					access: data.access,
+					refresh: data.refresh,
+					expires: data.expires,
+					accountId: data.accountId,
+				}
+			} catch (error) {
+				const transient =
+					error instanceof SyntaxError ||
+					(error instanceof Error && error.message.includes("unexpected end"))
+				if (!transient || attempt >= 2) return null
+			}
+		}
+		return null
+	}
+}
+
 export interface DeviceAuthInfo {
 	deviceAuthId: string
 	userCode: string
@@ -648,55 +695,12 @@ export async function loginWithBrowser(options: {
 // Persistence
 // ---------------------------------------------------------------------------
 
+const defaultTokenStore = new CodexTokenStore()
+
 export function saveToken(token: CodexToken): void {
-	fs.mkdirSync(TOKEN_DIR, { recursive: true })
-	const tmpFile = `${TOKEN_FILE}.tmp.${Date.now()}`
-	fs.writeFileSync(tmpFile, JSON.stringify({ ...token, savedAt: Date.now() }), "utf-8")
-	fs.renameSync(tmpFile, TOKEN_FILE)
+	defaultTokenStore.save(token)
 }
 
 export function loadToken(): CodexToken | null {
-	// Retry for transient read errors (file being written by another process).
-	// We only retry on errors that could be temporary (empty file, JSON parse
-	// error, truncated read). ENOENT (file not found) is not retried.
-	let lastError: unknown
-	for (let attempt = 0; attempt < 3; attempt++) {
-		try {
-			const raw = fs.readFileSync(TOKEN_FILE, "utf-8")
-			if (raw.length === 0) {
-				lastError = new Error("Token file is empty")
-				if (attempt < 2) continue
-				break
-			}
-			const data = JSON.parse(raw) as CodexToken & { savedAt?: number }
-			if (
-				typeof data.access !== "string" ||
-				typeof data.refresh !== "string" ||
-				typeof data.expires !== "number" ||
-				typeof data.accountId !== "string"
-			) {
-				lastError = new Error(`Token file missing required fields: ${Object.keys(data).join(", ")}`)
-				if (attempt < 2) continue
-				break
-			}
-			return {
-				access: data.access,
-				refresh: data.refresh,
-				expires: data.expires,
-				accountId: data.accountId,
-			}
-		} catch (err) {
-			lastError = err
-			// Only retry on transient errors (empty file, parse error).
-			// ENOENT (file missing) and permission errors are not retried.
-			const isTransient =
-				(err instanceof Error && err.message.includes("Token file is empty")) ||
-				(err instanceof SyntaxError) ||
-				(err instanceof Error && err.message.includes("unexpected end"))
-			if (!isTransient || attempt >= 2) break
-		}
-	}
-	return null
+	return defaultTokenStore.load()
 }
-
-

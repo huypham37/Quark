@@ -1,12 +1,12 @@
 ## Project-Specific Agent Rules
 
 ### Quark Project
-- This is the Quark codebase - a powerful AI coding agent
+- This is the Quark codebase - a powerful AI coding and research agent
 - When working on this project, prioritize code quality and test coverage
 - Always run tests after making changes to core functionality
 
 ### Rules
-- When user asking for explanation, always start with brief explanation then example. 
+- When user asking for explanation, always start with brief explanation then example.
 
 ### Specs: YAML frontmatter required
 
@@ -35,7 +35,6 @@ record, not a living document. Implementation notes go in commit messages.
 
 ### Testing: Verify end-to-end at integration boundaries
 
-
 When your code produces output consumed by a downstream system — an external
 SDK, a framework, an HTTP layer, a file system, a database — unit tests of your
 intermediate return values are not sufficient. The downstream system may rename
@@ -56,6 +55,20 @@ the pieces; a manual test verifies the pieces actually fit together at runtime.*
 
 ---
 
+## North Star
+
+**Quark is an ergonomic, tool-first agent for coding AND research.**
+
+Quark is *not* a minimal coding agent, and *not* an OpenCode / Claude Code clone.
+The differentiator is a small set of **premade, well-designed, well-tested tools
+and subagents** that give the best experience — for both writing code and doing
+research. We (Quark) own, design, and test these tools. We do not hand that
+control to users.
+
+The product is the quality of the tools, not the configurability of the harness.
+
+---
+
 ## Core Belief
 
 **Agent = Model + Harness.**
@@ -68,92 +81,135 @@ The model is a pluggable component. The harness is the product.
 
 ## What Makes an LLM an Agent
 
-One pattern: **the loop**.
+One pattern: **the loop**. The model reasons, calls a tool, observes the
+result, and repeats until the task is done. Everything else is in service of
+making that loop reliable, observable, and safe.
 
-### 2. Profile-Driven Identity
+---
 
-Agents do not start as generalists that get narrowed down.
-They start as specialists that can be composed.
+## Tools Are the Product (The Moat)
 
-A **profile** defines an agent's identity:
-- A minimal system prompt (read from a file, not inline)
-- A strict set of tools
-- A strict set of skills
+- Tools and subagents are the moat: **research-backed and test-backed**.
+- Every tool is engineered deliberately and verified at its integration boundary
+  (see *Testing: Verify end-to-end at integration boundaries*).
+- Flagship tools — `finder`, `oracle`, `researcher`, and the like — are
+  first-class, made by us, and read to the model as plain, purpose-built verbs.
+- The role of the Quark author is **researcher**: create the tool, test the
+  tool, prove it improves outcomes, then ship it. Every real invocation is
+  potential evaluation data.
 
-```yaml
-profiles:
-  researcher:
-    prompt_file: profiles/researcher.md
-    tools: [websearch, webfetch, write]
-    skills: [academic-research, competitive-intel]
-    model: claude-sonnet-4.5  # optional, falls back to config main_model
-  coder:
-    prompt_file: profiles/coder.md
-    tools: [read, write, edit, bash, todo]
-    skills: [code-review, git-release]
-```
+---
 
-A research agent does not carry `edit`, `bash`, or `read` tool definitions.
-A coding agent does not carry `websearch` descriptions. This is not a
-limitation — it is the design. Noise reduction is a feature.
+## Subagents Are Baked Into the Binary, Not User Config
 
-### 3. Strict Binding, No Inheritance
+- Agents and subagents live **in the binary**, defined in code. Users do **not**
+  define subagents in `config.yaml`.
+- Extension, when needed, happens through **code** (plugins / MCP) — never
+  through casual YAML. A high extension bar is a quality guarantee, not a
+  limitation.
+- **Rationale:** config-driven subagents turn Quark into a generic harness (an
+  OpenCode clone) and push quality and responsibility onto the user. Baking
+  agents in lets us guarantee behavior and *dissolves* the structural problems
+  that user-defined subagents create: the `/profile` picker leak, permission
+  flattening, and the tool/agent contract mismatch all disappear because we
+  control the definitions.
 
-Profiles declare exactly what they need. Nothing more.
+This is stricter than Amp on purpose. Amp allows code-level extension; we adopt
+the same "extend via code, not config" rule and reserve config for nothing that
+affects identity or capability.
 
-- **Profile 1:M Tools** — only declared tools are available
-- **Profile 1:M Skills** — only declared skill descriptions enter the system prompt
-- **No global skill pool** — skills not bound to the active profile do not exist in the agent's context
-- **No inheritance** — a profile does not inherit from a "base" or "global" set
+---
 
-This is strict by default. If the agent doesn't need it, it doesn't know about it.
+## Subagent = Agent Exposed by a Tool (Composition, not Inheritance)
 
-### 4. Progressive Disclosure for Skills
+- A subagent is **not** a subtype of tool. It is an **Agent**
+  (prompt + tools + permissions + model) invoked through a thin `ToolDef`
+  adapter whose `execute()` runs the agent in an isolated session and returns
+  its final text.
+- "delegate **is-a** tool" is false. "delegate is **exposed-by** a tool" is true.
+- The adapter closes over the baked-in `AgentConfig`; the agent never inherits
+  the tool interface.
+
+---
+
+## Deterministic, Named Invocation
+
+- Subagents are invoked through **named, purpose-built tools** —
+  `oracle({...})`, `finder({...})`, `researcher({...})` — each with its own
+  typed contract.
+- **No generic `task` / `delegate` tool.** A free-form "spawn any agent" verb
+  produces too much non-determinism. Deterministic by default; an explicit named
+  tool per capability.
+
+---
+
+## Permissions: Per-Agent, Safe by Default
+
+- Permission is evaluated **per-agent, per-session** — never flattened to the
+  parent's ruleset.
+- **Two layers:**
+  1. May the caller invoke this subagent at all? (coarse gate on the tool)
+  2. What may the subagent do once running? (its own ruleset, its own session)
+- **Safe default floor:** read-only tools (`read`, `grep`, `glob`, `websearch`)
+  default to `allow`; mutating tools (`write`, `edit`, `bash`) default to `deny`
+  unless the subagent definition explicitly opts in.
+- **Headless `ask` collapses to `deny`.** A subagent has no human to prompt, so
+  `ask` must never hang — it resolves to `deny`.
+
+---
+
+## Subagent Sessions: Linked Child, Persisted for Eval
+
+- A subagent runs in its **own session**: `kind: "subagent"`, `parentSessionId`
+  set. Hidden from the main session picker (which lists only `kind: "main"`).
+- The **parent transcript stores only the tool call + final result.**
+- **Invariant:** a subagent's intermediate parts (its thinking, tool calls,
+  scratch messages) **never** feed back into the parent's model context. Context
+  isolation is the entire reason subagents exist.
+- The full child run **is persisted** so real invocations become test/eval
+  fixtures — this powers the test-backed moat. Apply a retention policy
+  (e.g. time-bounded, or keep failed/flagged runs) to bound storage.
+- Live TUI nesting comes from the event bus (events stamped with `parentCallId`),
+  independent of where the run is persisted.
+
+---
+
+## Reliability: Failures Are Real Errors
+
+- A tool or subagent failure **must surface as a real error** (throw →
+  `error` status), never as a successful tool result with the failure buried in
+  text.
+- Never report success on a failed operation. Never silently truncate a result
+  and call it done. Non-zero exit codes, failed API calls, and over-limit output
+  are failures, not successes.
+
+---
+
+## Harness Engineering
+
+Every agent failure is a system problem to permanently fix, not a prompt to retry.
+
+- Each failure mode produces a harness update: a new tool, an updated
+  instruction, a linter rule, or a guardrail.
+- Correctness is mechanically enforced, not verbally requested.
+- The harness grows incrementally from observed failures.
+
+---
+
+## Progressive Disclosure for Skills
 
 Skills follow a three-level loading model:
 
 | Level | When | Token Cost | Content |
 |-------|------|------------|---------|
-| **L1: Metadata** | Profile activation | ~100 tokens/skill | `name` + `description` from frontmatter |
+| **L1: Metadata** | Agent activation | ~100 tokens/skill | `name` + `description` from frontmatter |
 | **L2: Instructions** | When triggered | <5k tokens | SKILL.md body |
 | **L3: Resources** | As needed | Effectively zero | Scripts, references, templates (filesystem, not context) |
 
-Only L1 metadata for profile-bound skills enters the system prompt.
-L2 and L3 are loaded on-demand, never preemptively.
-
-### 5. Skill Discovery via Sub-Agent
-
-Skills outside the active profile are not invisible — they are **undiscoverable
-by default**. Discovery is an explicit, isolated action:
-
-```
-discover_skills → sub-agent runs → returns skill list →
-  agent selects → load_skill → content enters context
-```
-
-Discovery happens in a sub-agent to avoid polluting the working agent's
-context with irrelevant skill descriptions. The working agent only receives
-the final, relevant skill content.
-
-### 6. Harness Engineering
-
-Every agent failure is a system problem to permanently fix,
-not a prompt to retry.
-
-- Each failure mode produces a harness update: a new tool, an updated
-  instruction, a linter rule, or a guardrail
-- Correctness is mechanically enforced, not verbally requested
-- The harness grows incrementally from observed failures
-
----
-
-
-### Non-Deterministic (Agent-Selected)
-
-The agent receives a task and selects the appropriate profile from the
-available set. In the TUI, `/profile research` allows manual override.
-
-**Default approach:** Deterministic. Non-deterministic selection is opt-in.
+Only L1 metadata for an agent's bound skills enters the system prompt.
+L2 and L3 are loaded on-demand, never preemptively. Skills outside the active
+agent are undiscoverable by default; discovery is an explicit, isolated action
+run in a sub-agent so it never pollutes the working agent's context.
 
 ---
 
@@ -162,37 +218,22 @@ available set. In the TUI, `/profile research` allows manual override.
 ```
 ┌─────────────────────────────────────────────────┐
 │                  TUI / SDK / CLI                │
-│           quark --profile coder task.md         │
 ├─────────────────────────────────────────────────┤
-│                  Profile System                 │
-│        prompt_file + tools[] + skills[]         │
+│        Baked-in Agents (identities, in code)    │
+│         prompt + tools[] + skills[] + perms     │
 ├──────────┬──────────┬───────────┬───────────────┤
 │  Agent   │  Tool    │  Skill    │  Permission   │
 │  Loop    │  System  │  System   │  System       │
+│          │ (named   │ (L1/L2/L3 │ (per-agent,   │
+│          │ tools +  │ disclosure│  safe floor)  │
+│          │ subagent │ )         │               │
+│          │ adapters)│           │               │
 ├──────────┴──────────┴───────────┴───────────────┤
-│              Persistence (SQLite)               │
-│          Session → Message → Part               │
+│              Persistence (SQLite/JSONL)         │
+│   Session (main | subagent | ephemeral)         │
+│        → Message → Part   (parentSessionId)     │
 └─────────────────────────────────────────────────┘
 ```
-
-### Profile System
-- Reads YAML config for profile definitions
-- Loads prompt from file, resolves tool set, resolves skill set
-- Per-project overrides via `.quark/config.yaml`
-
-### Tool System
-- Universal `ToolDef` interface
-- Only profile-declared tools are registered per session
-- Tool descriptions only enter context for registered tools
-
-### Skill System
-- SKILL.md files in `.quark/skills/` (project) and `~/.quark/skills/` (global)
-- Only profile-bound skills have L1 metadata loaded
-- Discovery of non-bound skills via sub-agent only
-
-### Permission System
-- `allow / deny / ask` rules evaluated before each tool execution
-- Profile-level and project-level permission overrides
 
 ---
 

@@ -3,46 +3,17 @@
 // Verifies that `resolveModel("codex/gpt-4o")` correctly routes to the
 // OpenAI Codex provider with proper token loading and error handling.
 //
-// TARGET SOURCE: src/provider/resolver.ts (MODIFICATION — codex branch)
-// STATUS: The resolver.ts file EXISTS but the "codex" branch DOES NOT.
-//         These tests will FAIL because resolveModel doesn't yet handle "codex".
-//
-// Pattern: Integration-style tests that interact with the real resolver
-// and token file persistence. Token file is written/cleaned up per test.
+// Pattern: Integration-style tests using isolated token persistence.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import {
+  CodexTokenStore,
+  type CodexToken,
+} from "../../src/provider/codex-auth"
 import { resolveModel } from "../../src/provider/resolver"
-
-// ---------------------------------------------------------------------------
-// Token file helpers — same conventions as copilot-auth.ts
-// ---------------------------------------------------------------------------
-const TOKEN_DIR = path.join(os.homedir(), ".config", "quark")
-const TOKEN_FILE = path.join(TOKEN_DIR, "codex-token.json")
-
-interface CodexToken {
-  access: string
-  refresh: string
-  expires: number
-  accountId: string
-}
-
-/** Write a CodexToken to the standard location. */
-function writeTokenFile(token: CodexToken): void {
-  fs.mkdirSync(TOKEN_DIR, { recursive: true })
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(token), "utf-8")
-}
-
-/** Remove the token file if it exists. */
-function deleteTokenFile(): void {
-  try {
-    fs.unlinkSync(TOKEN_FILE)
-  } catch {
-    // File doesn't exist — fine
-  }
-}
 
 /** A JWT-like access token that encodes a known accountId. */
 function makeAccessToken(accountId: string): string {
@@ -87,147 +58,100 @@ function expiredToken(): CodexToken {
 // resolveModel — codex provider routing
 // ---------------------------------------------------------------------------
 describe("resolveModel(codex/...)", () => {
-  // Clean up before and after each test
+  let tokenDir: string
+  let tokenStore: CodexTokenStore
+
   beforeEach(() => {
-    deleteTokenFile()
+    tokenDir = fs.mkdtempSync(path.join(os.tmpdir(), "quark-resolver-codex-"))
+    tokenStore = new CodexTokenStore(path.join(tokenDir, "codex-token.json"))
   })
+
   afterEach(() => {
-    deleteTokenFile()
+    fs.rmSync(tokenDir, { recursive: true, force: true })
   })
 
   test("returns a configured model when codex token is present", async () => {
-    writeTokenFile(validToken())
+    tokenStore.save(validToken())
 
-    // This should succeed once the codex branch is implemented.
-    // Currently it will throw because "codex" is not a recognized provider.
-    const model = await resolveModel("codex/gpt-4o")
+    const model = await resolveModel("codex/gpt-4o", "main", {
+      codexTokenStore: tokenStore,
+    })
 
     expect(model).toBeDefined()
-    // The model should expose its modelId
-    if ("modelId" in model) {
-      expect(model.modelId).toBe("gpt-4o")
-    }
+    expect(model.modelId).toBe("gpt-4o")
+    expect(model.provider).toBe("codex-consumer")
   })
 
   test("returns model with correct model ID for codex/gpt-4.1", async () => {
-    writeTokenFile(validToken())
+    tokenStore.save(validToken())
 
-    const model = await resolveModel("codex/gpt-4.1")
+    const model = await resolveModel("codex/gpt-4.1", "main", {
+      codexTokenStore: tokenStore,
+    })
 
-    expect(model).toBeDefined()
-    if ("modelId" in model) {
-      expect(model.modelId).toBe("gpt-4.1")
-    }
+    expect(model.modelId).toBe("gpt-4.1")
   })
 
   test("returns model with correct model ID for codex/o3", async () => {
-    writeTokenFile(validToken())
+    tokenStore.save(validToken())
 
-    const model = await resolveModel("codex/o3")
+    const model = await resolveModel("codex/o3", "main", {
+      codexTokenStore: tokenStore,
+    })
 
-    expect(model).toBeDefined()
-    if ("modelId" in model) {
-      expect(model.modelId).toBe("o3")
-    }
+    expect(model.modelId).toBe("o3")
   })
 
   test("throws helpful error when no codex token file exists", async () => {
-    // No token file written — should throw with guidance
     await expect(
-      resolveModel("codex/gpt-4o"),
-    ).rejects.toThrow(/codex/i)
-
-    // The error should tell the user HOW to log in
-    try {
-      await resolveModel("codex/gpt-4o")
-    } catch (e) {
-      const msg = (e as Error).message.toLowerCase()
-      expect(
-        msg.includes("login") ||
-        msg.includes("token") ||
-        msg.includes("auth"),
-      ).toBe(true)
-    }
-  })
-
-  test("throws error mentioning codex when token is missing", async () => {
-    await expect(
-      resolveModel("codex/gpt-4o"),
-    ).rejects.toThrow()
-
-    // The error message should reference "codex" so the user knows
-    // WHICH provider needs authentication
-    try {
-      await resolveModel("codex/gpt-4o")
-    } catch (e) {
-      expect((e as Error).message.toLowerCase()).toContain("codex")
-    }
+      resolveModel("codex/gpt-4o", "main", {
+        codexTokenStore: tokenStore,
+      }),
+    ).rejects.toThrow(/No Codex token.*codex-login/i)
   })
 
   test("auto-refreshes expired token before resolving", async () => {
-    writeTokenFile(expiredToken())
-
-    // When the implementation supports auto-refresh, this should succeed
-    // by refreshing the token behind the scenes.
-    // Currently: will fail because codex branch doesn't exist.
-    //
-    // The expected behavior once implemented:
-    // 1. loadToken() detects expired token
-    // 2. refreshToken() is called with the refresh token
-    // 3. New token is saved to disk
-    // 4. Provider is created with new access token
-    const modelOrError = await resolveModel("codex/gpt-4o").catch(
-      (e) => e as Error,
-    )
-
-    // Once implemented, modelOrError should be a model, not an error
-    if (modelOrError instanceof Error) {
-      // If it's still an error, it should NOT be "no token found"
-      // because the expired token IS present. It should either:
-      // - Auto-refresh successfully (and not throw)
-      // - Fail with a refresh-specific error
-      const msg = modelOrError.message.toLowerCase()
-      // NOT the missing-token error
-      expect(msg.includes("no") && msg.includes("token")).toBe(false)
-    } else {
-      // Success case: model was returned after auto-refresh
-      expect(modelOrError).toBeDefined()
-    }
-  })
-
-  test("resolves codex provider with base URL pointing to OpenAI API", async () => {
-    writeTokenFile(validToken())
-
-    // The codex provider should use the standard OpenAI API base URL
-    // This test validates the resolver configures it correctly
-    const model = await resolveModel("codex/gpt-4o")
-
-    // Model should have a provider that targets OpenAI
-    expect(model).toBeDefined()
-    // The exact API surface depends on the AI SDK version.
-    // We verify the model was created without throwing.
-  })
-
-  test("integrates with custom-fetch via getCustomFetch for codex", async () => {
-    // Import getCustomFetch to verify it returns a codex fetch wrapper
-    // once the implementation is in place
-    const { getCustomFetch } = await import(
-      "../../src/provider/custom-fetch"
-    )
-
-    writeTokenFile(validToken())
-
-    // Resolving the model should cause a codex fetch wrapper to be
-    // registered via getCustomFetch
-    await resolveModel("codex/gpt-4o")
-
-    // Once implemented, getCustomFetch("codex", { getToken }) should
-    // return a valid fetch wrapper. For now it returns undefined.
-    const fetch = getCustomFetch("codex", {
-      getToken: async () => "test",
+    tokenStore.save(expiredToken())
+    const refreshed = validToken()
+    let refreshToken = ""
+    let authorization = ""
+    const model = await resolveModel("codex/gpt-4o", "main", {
+      codexFetch: async (_url, init) => {
+        authorization = new Headers(init?.headers).get("authorization") ?? ""
+        return new Response("", { status: 200 })
+      },
+      codexTokenStore: tokenStore,
+      refreshCodexToken: async (options) => {
+        refreshToken = options.refreshToken
+        return refreshed
+      },
     })
-    // After implementation: expect(fetch).toBeDefined()
-    // Before implementation: this may be undefined
-    expect(fetch === undefined || typeof fetch === "function").toBe(true)
+
+    const result = await model.doStream({
+      prompt: [],
+      maxOutputTokens: 1,
+    })
+    await result.stream.pipeTo(new WritableStream())
+
+    expect(refreshToken).toBe("rt-expired")
+    expect(authorization).toBe(`Bearer ${refreshed.access}`)
+    expect(tokenStore.load()).toEqual(refreshed)
+  })
+
+  test("instructs the user to sign in when refresh is rejected", async () => {
+    tokenStore.save(expiredToken())
+    const model = await resolveModel("codex/gpt-4o", "main", {
+      codexTokenStore: tokenStore,
+      refreshCodexToken: async () => {
+        throw new Error("refresh failed (401)")
+      },
+    })
+
+    await expect(
+      model.doStream({
+        prompt: [],
+        maxOutputTokens: 1,
+      }),
+    ).rejects.toThrow(/Codex login expired.*codex-login.*401/i)
   })
 })

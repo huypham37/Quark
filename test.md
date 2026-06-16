@@ -1,25 +1,34 @@
-# Heading 1
-## Heading 2
-### Heading 3
+# Test Document
 
-Plain paragraph with **bold**, *italic*, ***bold italic***, ~~strike~~, and `inline code`.
+**Timestamp:** 2026-06-07T00:00:00Z
 
-A [link to example](https://example.com).
+This is a deliberately long line that will wrap when shown in the diff view of the TUI because it exceeds the width of a narrow terminal.
 
-> A blockquote line.
+## Items
 
-- Unordered item one
-- Unordered item two
+Item one
+Item two
+Item three
+Item four
 
-1. Ordered item one
-2. Ordered item two
+## Section B
 
-```ts
-const x: number = 42
-console.log(`hello ${x}`)
-```
+The quick brown fox jumps over the lazy dog. Now is the time for all good men to come to the aid of their country.
 
-| Name | Age | City |
-|------|-----|------|
-| Alice | 30 | NYC |
-| Bob | 25 | LA |
+## Configuration
+
+export const CONFIG = {
+  maxRetries: 5,
+  timeout: 10000,
+  enableLogging: true,
+  enableMetrics: true,
+  logLevel: "verbose" as const,
+}
+
+## Metrics
+
+export function computeMetrics(input: { a: number; b: number; c: number; d: number; e: number }): { result: number; ok: boolean; duration: number; cached: boolean } {
+  const start = performance.now()
+  const sum = input.a + input.b + input.c + input.d + input.e
+  return { result: sum, ok: sum > 0, duration: performance.now() - start, cached: false }
+}

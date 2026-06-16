@@ -8,9 +8,13 @@
 // Pattern: Follows test/provider/copilot-auth.test.ts mock fetch style.
 // All HTTP calls are mocked via injectable FetchFn.
 
-import { describe, test, expect } from "bun:test"
+import { afterEach, beforeEach, describe, test, expect } from "bun:test"
+import * as fs from "fs"
+import * as os from "os"
+import * as path from "path"
 import type { FetchFn } from "../../src/provider/codex-auth"
 import {
+  CodexTokenStore,
   decodeJwt,
   getAccountId,
   readTokenResponse,
@@ -20,8 +24,6 @@ import {
   pollDeviceAuth,
   loginWithDeviceCode,
   loginWithBrowser,
-  saveToken,
-  loadToken,
 } from "../../src/provider/codex-auth"
 import type {
   CodexToken,
@@ -668,50 +670,35 @@ describe("loginWithBrowser", () => {
 // saveToken / loadToken — token persistence to disk
 // ---------------------------------------------------------------------------
 describe("saveToken / loadToken", () => {
-  // We can't easily override the home directory path in these tests without
-  // modifying the source. The copilot-auth pattern uses a hardcoded path.
-  // We test the contracts: save writes, load reads, errors handled gracefully.
-  //
-  // These tests validate the public API contract. File path isolation would
-  // require refactoring the source to accept a path override for testing.
-  //
-  // For now, we test that:
-  // 1. saveToken writes without throwing
-  // 2. loadToken returns something when file exists
-  // 3. loadToken returns null when file doesn't exist
+  let dir: string
+  let file: string
+  let store: CodexTokenStore
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "quark-codex-auth-"))
+    file = path.join(dir, "codex-token.json")
+    store = new CodexTokenStore(file)
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
 
   test("saveToken writes without throwing", () => {
     const token = makeToken()
 
-    // Should not throw
-    expect(() => saveToken(token)).not.toThrow()
+    expect(() => store.save(token)).not.toThrow()
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
   })
 
   test("loadToken returns null when no token file exists", () => {
-    // Note: This assumes the default ~/.config/quark/codex-token.json
-    // does not exist in the test environment.
-    const result = loadToken()
-    // If file doesn't exist, returns null
-    // (If it does exist from a previous run, result would be a CodexToken)
-    if (result === null) {
-      expect(result).toBeNull()
-    } else {
-      // If file exists, validate shape
-      expect(typeof result.access).toBe("string")
-      expect(typeof result.refresh).toBe("string")
-      expect(typeof result.expires).toBe("number")
-      expect(typeof result.accountId).toBe("string")
-    }
+    expect(store.load()).toBeNull()
   })
 
   test("loadToken returns null for corrupted JSON", () => {
-    // This test validates the contract: if the implementation catches
-    // JSON parse errors, it returns null.
-    // Without path injection, we test the type contract.
-    const result = loadToken()
-    // Either null (no file) or valid CodexToken (file exists and is valid)
-    // The implementation should NEVER throw from loadToken
-    expect(result === null || typeof result === "object").toBe(true)
+    fs.writeFileSync(file, "{invalid", "utf-8")
+
+    expect(store.load()).toBeNull()
   })
 
   test("save then load round-trips values correctly", () => {
@@ -721,14 +708,9 @@ describe("saveToken / loadToken", () => {
       accountId: "roundtrip-acct",
     })
 
-    saveToken(token)
-    const loaded = loadToken()
+    store.save(token)
+    const loaded = store.load()
 
-    // If loadToken returns the saved token (because it uses the same path):
-    if (loaded) {
-      expect(loaded.access).toBe("roundtrip-access")
-      expect(loaded.refresh).toBe("roundtrip-refresh")
-      expect(loaded.accountId).toBe("roundtrip-acct")
-    }
+    expect(loaded).toEqual(token)
   })
 })
