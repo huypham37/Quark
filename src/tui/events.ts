@@ -152,6 +152,78 @@ export function wireEvents(state: AppState) {
   }
   bus.on("worktree-switched", handleWorktreeSwitched)
 
+  // ---------------------------------------------------------------------------
+  // Async panel side-session event routing (persistent, outside createComputed)
+  // ---------------------------------------------------------------------------
+  const handleAsyncUserMessage = (data: BusEvents["user-message"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-add-user-message", id: data.messageId, text: data.text })
+    }
+  }
+  bus.on("user-message", handleAsyncUserMessage)
+
+  const handleAsyncAssistantStart = (data: BusEvents["assistant-message-start"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-add-assistant-message", id: data.messageId })
+    }
+  }
+  bus.on("assistant-message-start", handleAsyncAssistantStart)
+
+  const handleAsyncTextStart = (data: BusEvents["text-start"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-text-start", messageId: data.messageId })
+    }
+  }
+  bus.on("text-start", handleAsyncTextStart)
+
+  const handleAsyncTextDelta = (data: BusEvents["text-delta"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-text-delta", messageId: data.messageId, delta: data.delta, text: data.text })
+    }
+  }
+  bus.on("text-delta", handleAsyncTextDelta)
+
+  const handleAsyncTextEnd = (data: BusEvents["text-end"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-text-end", messageId: data.messageId, text: data.text })
+    }
+  }
+  bus.on("text-end", handleAsyncTextEnd)
+
+  const handleAsyncToolStart = (data: BusEvents["tool-start"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-tool-start", messageId: data.messageId, tool: data.tool, callId: data.callId })
+    }
+  }
+  bus.on("tool-start", handleAsyncToolStart)
+
+  const handleAsyncAssistantEnd = (data: BusEvents["assistant-message-end"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-assistant-done", messageId: data.messageId })
+    }
+  }
+  bus.on("assistant-message-end", handleAsyncAssistantEnd)
+
+  const handleAsyncLoopStart = (data: BusEvents["loop-start"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-set-running", running: true })
+    }
+  }
+  bus.on("loop-start", handleAsyncLoopStart)
+
+  const handleAsyncLoopEnd = (data: BusEvents["loop-end"]) => {
+    if (data.sessionId === state.store.asyncPanel?.sessionId) {
+      dispatch(state, { type: "async-set-running", running: false })
+    }
+  }
+  bus.on("loop-end", handleAsyncLoopEnd)
+
+  // async-panel-open: backend created an ephemeral side session, TUI should show panel
+  const handleAsyncPanelOpen = (data: BusEvents["async-panel-open"]) => {
+    dispatch(state, { type: "open-async-panel", sessionId: data.sessionId ?? null, title: data.title })
+  }
+  bus.on("async-panel-open", handleAsyncPanelOpen)
+
   createComputed(() => {
     const sid = state.store.sessionId
     if (!sid) return

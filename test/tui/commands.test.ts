@@ -139,3 +139,31 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBeUndefined()
   })
 })
+
+// --- /async-msg slash command ---
+
+describe("async-msg command", () => {
+  test("async-msg command exists in commands list", () => {
+    const cmd = commands.find((c) => c.id === "async-msg")
+    expect(cmd).toBeDefined()
+    expect(cmd!.description).toMatch(/side|parallel|panel/i)
+  })
+
+  test("a prefix matches async-msg", () => {
+    const result = filterCommands("a")
+    const ids = result.map((c) => c.id)
+    expect(ids).toContain("async-msg")
+  })
+
+  test("async prefix matches async-msg exclusively", () => {
+    const result = filterCommands("async")
+    expect(result.length).toBe(1)
+    expect(result[0]!.id).toBe("async-msg")
+  })
+
+  test("async-msg has no usage hint", () => {
+    const result = filterCommands("async-msg")
+    expect(result.length).toBe(1)
+    expect(result[0]!.usage).toBeUndefined()
+  })
+})

@@ -602,19 +602,11 @@ describe("dispatch: subagent-done marks parent tool completed", () => {
 })
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // dispatch: worktree actions
 // ---------------------------------------------------------------------------
 
 describe("dispatch: worktree actions", () => {
-  // The AppStore type will be augmented with worktree fields:
-  //   rootProjectDir: string
-  //   cwd: string
-  //   activeWorktree: TuiWorktree | null
-  //   activeBranch: string | null
-  //   worktreeSwitching: boolean
-  //
-  // Until then, we access new fields via (store as any).
-
   interface TuiWorktree {
     id: string
     path: string
@@ -627,7 +619,6 @@ describe("dispatch: worktree actions", () => {
     test("sets worktreeSwitching to true", () => {
       withRoot(() => {
         const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
-        // Initially false
         expect((s.store as any).worktreeSwitching).toBe(false)
 
         dispatch(s, { type: "worktree-switch-start" } as any)
@@ -641,7 +632,6 @@ describe("dispatch: worktree actions", () => {
       withRoot(() => {
         const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
 
-        // Populate state
         dispatch(s, { type: "add-user-message", id: "m1", text: "hello" })
         dispatch(s, { type: "update-status", partial: { tokensUsed: 500, cost: 0.01 } })
         dispatch(s, {
@@ -668,7 +658,6 @@ describe("dispatch: worktree actions", () => {
         expect(s.store.status.cost).toBe(0)
         expect(s.store.permission).toBeUndefined()
         expect(s.store.question).toBeUndefined()
-        // Permission and question queues should also be cleared
         expect(s.store.permissionQueue).toEqual([])
         expect(s.store.questionQueue).toEqual([])
       })
@@ -739,7 +728,6 @@ describe("dispatch: worktree actions", () => {
         expect((s.store as any).activeWorktree).toBeNull()
         expect((s.store as any).activeBranch).toBe("main")
         expect((s.store as any).cwd).toBe("/Users/mac/projects/Quark")
-        // Session state still reset
         expect(s.store.sessionId).toBeNull()
         expect(s.store.messages).toEqual([])
       })
@@ -751,7 +739,6 @@ describe("dispatch: worktree actions", () => {
       withRoot(() => {
         const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
 
-        // Simulate switch in progress
         dispatch(s, { type: "worktree-switch-start" } as any)
         expect((s.store as any).worktreeSwitching).toBe(true)
 
@@ -776,10 +763,115 @@ describe("dispatch: worktree actions", () => {
 
         expect(s.store.error).toBe("Agent is running — cannot switch worktrees")
         expect(s.store.running).toBe(false)
-        // Session data should NOT be reset on failure
         expect(s.store.sessionId).toBe("s1")
         expect(s.store.status.modelName).toBe("smart")
       })
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Async Panel state tests (gh issue /async-msg)
+// ---------------------------------------------------------------------------
+
+describe("dispatch: async-panel lifecycle", () => {
+  test("open-async-panel creates panel with sessionId and title", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+
+      expect(s.store.asyncPanel).toBeDefined()
+      expect(s.store.asyncPanel!.sessionId).toBe("side-1")
+      expect(s.store.asyncPanel!.title).toBe("bug-report")
+      expect(s.store.asyncPanel!.collapsed).toBe(false)
+      expect(s.store.asyncPanel!.running).toBe(false)
+      expect(s.store.asyncPanel!.done).toBe(false)
+      expect(s.store.asyncPanel!.toolsUsed).toBe(0)
+      expect(s.store.asyncPanel!.unread).toBe(0)
+      expect(s.store.asyncPanel!.messages).toEqual([])
+    })
+  })
+
+  test("close-async-panel removes panel", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "close-async-panel" })
+      expect(s.store.asyncPanel).toBeNull()
+    })
+  })
+
+  test("async-add-user-message appends to panel messages", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "async-add-user-message", id: "m1", text: "crash on save" })
+
+      expect(s.store.asyncPanel!.messages.length).toBe(1)
+      expect(s.store.asyncPanel!.messages[0]!.role).toBe("user")
+      expect((s.store.asyncPanel!.messages[0]!.parts[0] as any).text).toBe("crash on save")
+    })
+  })
+
+  test("async-add-assistant-message + async-text-delta builds condensed text", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "async-add-assistant-message", id: "a1" })
+      dispatch(s, { type: "async-text-start", messageId: "a1" })
+      dispatch(s, { type: "async-text-delta", messageId: "a1", delta: "It", text: "It" })
+      dispatch(s, { type: "async-text-delta", messageId: "a1", delta: " works.", text: "It works." })
+      dispatch(s, { type: "async-text-end", messageId: "a1", text: "It works." })
+
+      const msg = s.store.asyncPanel!.messages[0]!
+      expect(msg.role).toBe("assistant")
+      expect((msg.parts[0] as any).text).toBe("It works.")
+      expect((msg.parts[0] as any).streaming).toBe(false)
+    })
+  })
+
+  test("async-tool-start increments toolsUsed counter", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "async-add-assistant-message", id: "a1" })
+      dispatch(s, { type: "async-tool-start", messageId: "a1", tool: "read", callId: "c1" })
+
+      expect(s.store.asyncPanel!.toolsUsed).toBe(1)
+    })
+  })
+
+  test("async-set-running toggles panel running flag", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "async-set-running", running: true })
+      expect(s.store.asyncPanel!.running).toBe(true)
+      dispatch(s, { type: "async-set-running", running: false })
+      expect(s.store.asyncPanel!.running).toBe(false)
+    })
+  })
+
+  test("toggle-async-collapse flips collapsed state", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      expect(s.store.asyncPanel!.collapsed).toBe(false)
+      dispatch(s, { type: "toggle-async-collapse" })
+      expect(s.store.asyncPanel!.collapsed).toBe(true)
+      dispatch(s, { type: "toggle-async-collapse" })
+      expect(s.store.asyncPanel!.collapsed).toBe(false)
+    })
+  })
+
+  test("async-assistant-done sets done=true", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
+      dispatch(s, { type: "async-set-running", running: true })
+      dispatch(s, { type: "async-assistant-done", messageId: "a1" })
+      expect(s.store.asyncPanel!.done).toBe(true)
+      expect(s.store.asyncPanel!.running).toBe(false)
     })
   })
 })
