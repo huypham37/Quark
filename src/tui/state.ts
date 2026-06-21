@@ -7,7 +7,7 @@ import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
-import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
+import { type ThinkingEffort, getThinkingLevels, getThinkingNormalizer } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
 // Worktree types
@@ -696,6 +696,8 @@ export function dispatch(state: AppState, action: TuiAction): void {
       const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
       setStore("status", "modelName", action.modelSpec)
+      setStore("thinkingEffort", "none")
+      getThinkingNormalizer(action.modelSpec).configure({ enabled: false, effort: "none" })
       break
     }
 
