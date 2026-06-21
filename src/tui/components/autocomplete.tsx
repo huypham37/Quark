@@ -13,6 +13,7 @@ import type { SlashCommand } from "../commands"
 import type { SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
+import { scrollTopForSelection } from "./autocomplete-scroll"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
@@ -34,6 +35,7 @@ export type AutocompleteMode =
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
   | { type: "skills"; items: PickerItem[]; selectedIndex: number }
+  | { type: "tools"; items: PickerItem[]; selectedIndex: number }
 
 export interface AutocompleteProps {
   mode: AutocompleteMode | null
@@ -81,18 +83,21 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
   }
 
-  // Scroll to keep selected item visible
+  // Scroll to keep the selected item anchored at a fixed visual row.
+  // The cursor stays put; the list slides past it (vim `scrolloff` style).
   createEffect(() => {
     const mode = m()
     if (!mode || !scrollRef) return
-    const selectedIndex = mode.selectedIndex
-    const viewportHeight = maxVisibleRows()
-    const rowIndex = scrollAnchorIndex(mode, selectedIndex, viewportHeight)
-    const scrollBottom = scrollRef.scrollTop + viewportHeight
-    if (rowIndex < scrollRef.scrollTop) {
-      scrollRef.scrollTo(rowIndex)
-    } else if (rowIndex + 1 > scrollBottom) {
-      scrollRef.scrollTo(rowIndex + 1 - viewportHeight)
+    const totalRows = rows().length
+    const viewportHeight = Math.min(totalRows, maxVisibleRows())
+    const newScrollTop = scrollTopForSelection(
+      mode,
+      mode.selectedIndex,
+      totalRows,
+      viewportHeight,
+    )
+    if (newScrollTop !== scrollRef.scrollTop) {
+      scrollRef.scrollTo(newScrollTop)
     }
   })
 
@@ -110,6 +115,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "Profiles — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "skills") {
       result.push({ label: "Skills — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
+    } else if (mode.type === "tools") {
+      result.push({ label: "User tools — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     }
 
     // Empty-state row OR data rows (mutually exclusive)
@@ -127,6 +134,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "No profiles available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "skills" && mode.items.length === 0) {
       result.push({ label: "No skills found", fg: colors.muted, bg: colors.dropdownBg, bold: false })
+    } else if (mode.type === "tools" && mode.items.length === 0) {
+      result.push({ label: "No user tools in ~/.config/quark/tools/", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands") {
       for (let i = 0; i < mode.items.length; i++) {
         const cmd = mode.items[i]!
@@ -188,7 +197,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
-    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills") {
+    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills" || mode.type === "tools") {
       for (let i = 0; i < mode.items.length; i++) {
         const item = mode.items[i]!
         const sel = i === mode.selectedIndex
@@ -251,19 +260,4 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         : content()}
     </box>
   )
-}
-
-function scrollAnchorIndex(mode: AutocompleteMode, selectedIndex: number, viewportHeight: number): number {
-  if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills") return selectedIndex + 1
-  if (mode.type !== "sessions") return selectedIndex
-
-  for (let i = selectedIndex - 1; i >= 0; i--) {
-    const row = mode.rows[i]
-    if (!row || row.type === "spacer") break
-    if (row.type === "task") {
-      return selectedIndex - i < viewportHeight ? i : selectedIndex
-    }
-  }
-
-  return selectedIndex
 }
