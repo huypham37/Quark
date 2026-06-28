@@ -27,6 +27,7 @@ export const commands: SlashCommand[] = [
   { id: "steer", description: "Branch to a new session with a goal", usage: "<goal>" },
   { id: "goal", description: "Pursue a goal autonomously until done", usage: "<goal description>" },
   { id: "statistics", description: "Show token usage statistics and charts" },
+  { id: "export", description: "Export conversation history to markdown" },
   { id: "worktree", description: "Switch or create git worktrees", usage: "[create <branch>]" },
   { id: "async-msg", description: "Open side panel for a quick parallel question" },
   { id: "exit", description: "Exit Quark" },
@@ -36,7 +37,7 @@ export const commands: SlashCommand[] = [
  * Filter commands by prefix match against query.
  * Returns up to `limit` matching commands.
  */
-export function filterCommands(query: string, limit = 15): SlashCommand[] {
+export function filterCommands(query: string, limit = commands.length): SlashCommand[] {
   if (!query) return commands.slice(0, limit)
   const lower = query.toLowerCase()
   return commands

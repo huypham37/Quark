@@ -30,6 +30,7 @@ import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { info as notifyInfo } from "../notification/notification"
 import { undoLatest } from "../commands/undo"
+import { exportSessionToMarkdown } from "../commands/export"
 import { runGoal } from "../commands/goal/orchestrator"
 import { listTasks } from "../task/task"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
@@ -403,6 +404,19 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   }
 
   switch (command) {
+    case "export": {
+      try {
+        const result = exportSessionToMarkdown(sid)
+        notifyInfo("Export", `Saved ${result.messageCount} message(s) to ${result.filePath}`, 5000)
+      } catch (err) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      }
+      return { handled: true }
+    }
+
     case "undo": {
       const result = await undoLatest(sid)
       if (!result) {

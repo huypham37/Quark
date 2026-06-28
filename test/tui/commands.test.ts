@@ -9,8 +9,8 @@ describe("filterCommands", () => {
     expect(result).toEqual(commands)
   })
 
-  test("returns all commands when query is empty with default limit", () => {
-    const result = filterCommands("", 15)
+  test("returns all commands when query is empty with an explicit full limit", () => {
+    const result = filterCommands("", commands.length)
     expect(result.length).toBe(commands.length)
   })
 
@@ -93,10 +93,21 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("reload-config")
   })
 
-  test("e prefix matches exit only", () => {
+  test("e prefix matches export and exit", () => {
     const result = filterCommands("e")
+    expect(result.map((c) => c.id)).toEqual(["export", "exit"])
+  })
+
+  test("export command exists in commands list", () => {
+    const cmd = commands.find((c) => c.id === "export")
+    expect(cmd).toBeDefined()
+    expect(cmd!.description).toMatch(/export|markdown/i)
+  })
+
+  test("export prefix matches export exclusively", () => {
+    const result = filterCommands("export")
     expect(result.length).toBe(1)
-    expect(result[0]!.id).toBe("exit")
+    expect(result[0]!.id).toBe("export")
   })
 
   test("h prefix matches help only", () => {
