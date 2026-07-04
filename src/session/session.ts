@@ -14,6 +14,7 @@ import {
   replaySessionFile,
 } from "../storage/session-jsonl"
 import type { SessionUpdateEvent } from "../storage/session-format"
+import { bus } from "./events"
 
 export type SessionKind = "main" | "subagent" | "ephemeral"
 
@@ -177,6 +178,7 @@ export function updateSession(id: string, patch: SessionPatch): void {
 
 export function setSessionTitle(id: string, title: string): void {
   updateSession(id, { title })
+  bus.emit("session-title-changed", { sessionId: id, title, updatedAt: Date.now() })
 }
 
 /** List user-facing sessions only (main sessions and branches), most recently updated first */

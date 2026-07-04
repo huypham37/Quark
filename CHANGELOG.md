@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Session resume by ID (`--session <id>`)
 - Message history navigation (up/down) within the TUI
 
-#### Profile System
+#### Profile System 
 - YAML-driven profiles declaring `prompt_file`, `tools[]`, `skills[]`, and optional `model`
 - Deterministic profile activation via `--profile <name>`
 - Per-project profile overrides via `.quark/config.yaml`
@@ -42,7 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Project-local skills (`.quark/skills/`) and global skills (`~/.quark/skills/`)
 
 #### TUI
-- Full terminal UI built with Ink (React for the terminal)
+- Full terminal UI built with OpenTUI (`@opentui/core` + `@opentui/solid`)
 - Real-time streaming output with live `Write` tool progress
 - Sub-agent observability — child tool calls rendered inline
 - Highlight-to-copy clipboard support

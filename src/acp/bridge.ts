@@ -135,12 +135,26 @@ export function bridgeSession(sessionId: SessionId, send: (msg: OutgoingMessage)
     if (data.sessionId !== sid) return
   }
 
+  const onSessionTitleChanged = (data: { sessionId: string; title: string | null; updatedAt?: number }) => {
+    if (data.sessionId !== sid) return
+    send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionUpdate: "session_info_update",
+        title: data.title,
+        updatedAt: data.updatedAt ? new Date(data.updatedAt).toISOString() : undefined,
+      },
+    })
+  }
+
   bus.on("text-delta", onTextDelta)
   bus.on("tool-start", onToolStart)
   bus.on("tool-running", onToolRunning)
   bus.on("tool-end", onToolEnd)
   bus.on("reasoning-delta", onReasoningDelta)
   bus.on("step-finish", onStepFinish)
+  bus.on("session-title-changed", onSessionTitleChanged)
 
   return {
     close() {
@@ -150,6 +164,7 @@ export function bridgeSession(sessionId: SessionId, send: (msg: OutgoingMessage)
       bus.off("tool-end", onToolEnd)
       bus.off("reasoning-delta", onReasoningDelta)
       bus.off("step-finish", onStepFinish)
+      bus.off("session-title-changed", onSessionTitleChanged)
     },
   }
 }

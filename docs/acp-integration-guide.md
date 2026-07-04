@@ -344,6 +344,37 @@ Quark emits a plan notification whenever the tool-call task list changes:
 }
 ```
 
+### 5.5 Session Info Updates
+
+Quark pushes session metadata changes — primarily the auto-generated title — via
+`session_info_update`:
+
+```jsonc
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionUpdate": "session_info_update",
+    "title": "Refactor auth module to async/await",
+    "updatedAt": "2026-06-21T14:22:15.000Z"
+  }
+}
+```
+
+**When it fires:**
+- After Quark auto-generates a session title from the first meaningful exchange.
+- During `session/load` replay, if the session already has a title.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | `string \| null` | Human-readable session title (may be auto-generated from the first prompt). `null` to clear. |
+| `updatedAt` | `string \| null` | ISO 8601 timestamp of the update. `null` to clear. |
+
+Editors should use this to update their session list UI in real-time without polling
+`session/list`.
+
 ---
 
 ## 6. Content Blocks (Prompt Input)
@@ -589,6 +620,9 @@ rl.on("line", (line: string) => {
       case "plan":
         console.log(`\n📋 Plan:`, p.entries)
         break
+      case "session_info_update":
+        console.log(`\n📝 Session title:`, p.title)
+        break
     }
   }
 
@@ -673,6 +707,7 @@ child.stdin.end()
 | `session/update` | `tool_call` | Tool call started |
 | `session/update` | `tool_call_update` | Tool call progress/result |
 | `session/update` | `plan` | Execution plan entry list |
+| `session/update` | `session_info_update` | Session title and metadata |
 | `session/update` | `current_mode_update` | Profile/mode changed |
 | `session/update` | `config_option_update` | Config changed |
 

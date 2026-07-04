@@ -1,9 +1,0 @@
-services:
-  quark:
-    build: .
-    stdin_open: true
-    tty: true
-    volumes:
-      - .:/quark
-      - /quark/node_modules
-      - ~/.config/quark:/root/.config/quark

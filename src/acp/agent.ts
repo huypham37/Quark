@@ -166,6 +166,20 @@ function replaySession(sessionId: string, send: (msg: OutgoingMessage) => void):
       }
     }
   }
+
+  // Send session info update if the session already has a title
+  const session = getSession(sessionId)
+  if (session.title) {
+    send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionUpdate: "session_info_update",
+        title: session.title,
+        updatedAt: new Date(session.timeUpdated).toISOString(),
+      },
+    })
+  }
 }
 
 // ─── Permission Bridge ───────────────────────────────────────────────────────

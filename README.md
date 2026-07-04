@@ -1,470 +1,235 @@
 # Quark
 
-> A powerful AI coding agent — run from the terminal or embed as an SDK.
+**An ergonomic, tool-first AI agent for coding _and_ research.**
 
-Quark is an agent harness: it owns the loop, the tools, the memory, and the guardrails. The model is a pluggable component. You bring your workflow; Quark adapts to it through tools you define.
+Quark is a harness — it owns everything around the model: tool execution,
+memory, context management, state persistence, and guardrails. The model is a
+pluggable component; the harness is the product. The differentiator is a small
+set of premade, well-designed, well-tested tools and subagents that give the
+best experience for both writing code and doing research.
+
+> **Agent = Model + Harness.** The model provides intelligence. The harness
+> makes that intelligence useful.
 
 ---
+
+## Highlights
+
+- **The agent loop** — the model reasons, calls a tool, observes the result, and
+  repeats until the task is done, with configurable `minSteps` / `maxSteps`
+  guardrails.
+- **Multi-provider** — Anthropic (Claude), OpenAI (GPT / o-series), GitHub
+  Copilot, and any OpenAI-compatible endpoint (Ollama, local models, etc.).
+- **Streaming TUI** — a full terminal UI with real-time token streaming, live
+  tool progress, model switching, and inline sub-agent observability.
+- **Deterministic, named subagents** — subagents are invoked through
+  purpose-built tools, each with its own typed contract. No generic `task` /
+  `delegate` verb.
+- **Per-agent permissions** — `allow / deny / ask` rules evaluated per-agent,
+  per-session. Read-only tools default to `allow`; mutating tools default to
+  `deny` unless explicitly opted in.
+- **Progressive-disclosure skills** — three-level loading (metadata →
+  instructions → resources) keeps the context window lean.
+- **Session persistence** — per-session JSONL storage with resume, ephemeral
+  (`--no-store`) runs, and parent–child session linking for subagents.
+
+---
+
+## Requirements
+
+- [Bun](https://bun.sh) (runtime + package manager)
+- An API key for at least one provider (see [Configuration](#configuration))
 
 ## Install
 
 ```bash
-npm i -g @quark/sdk
+git clone https://github.com/huypham37/Quark.git
+cd Quark
+bun install
 ```
 
-Requires **Bun** runtime.
+Run the interactive TUI:
+
+```bash
+bun run dev
+```
+
+Or use the CLI directly:
+
+```bash
+bun run cli --help
+```
+
+A convenience launcher lives at [`bin/quark`](bin/quark) — add `bin/` to your
+`PATH` (or symlink it) to invoke `quark` from anywhere.
 
 ---
 
-## CLI
+## Usage
 
 ```bash
-# One-shot prompt
-quark "fix the null pointer in main.ts"
-
-# Explicit profile
-quark --profile coder "refactor the auth module"
-
-# Resume a previous session
-quark --session sess_abc123 "continue from where we left off"
-
-# Use a specific model for this run
-quark --model claude-sonnet-4.5 "quick question"
-
-# Ephemeral run — nothing written to disk
-quark --no-store "scratch-pad question"
-
-# Spawn a child/sub-agent (links to parent via QUARK_SESSION_ID)
-quark --sub-agent --profile researcher --prompt "research the auth flow"
-
-# List available profiles
-quark --list-profiles
-
-# Launch the interactive TUI
+# Interactive TUI
 quark
+
+# One-off prompt with a profile
+quark --profile coder --prompt "fix the bug in main.ts"
+
+# Pick a specific model for a single run
+quark --model copilot/claude-sonnet-4.5 "use this model for this run"
+
+# Quick question that should never be saved to disk
+quark --no-store "what does this regex do?"
+
+# Resume an existing session
+quark --session <id>
+
+# Spawn a research sub-agent under a parent session
+quark --parent-session <id> --profile researcher --prompt "research the auth flow"
 ```
 
-### Flags
+### CLI flags
 
-| Flag | Short | Description |
-|---|---|---|
-| `--profile <name>` | `-p` | Profile to use |
-| `--prompt <text>` | `-m` | Prompt text (positional arg also works) |
-| `--session <id>` | `-s` | Resume an existing session |
-| `--model <id>` | | Model override for this run (`provider/model` or bare `model`) |
-| `--parent-session <id>` | | Create a child session under a parent |
-| `--sub-agent` | | Mark as a child agent (reads `QUARK_SESSION_ID` from env) |
-| `--no-store` | | Ephemeral session — never written to disk |
-| `--verbose` | | Print every tool call + result to stderr (`tool-call,tool-result` namespaces). For engine internals use `QUARK_DEBUG=*`. |
-| `--list-profiles` | `-l` | List available profiles |
-| `--help` | `-h` | Show help |
-
----
-
-## Debugging
-
-Quark uses **namespaced debug logs**. Logs are off by default and go to **stderr** (stdout stays clean for the assistant's reply). Enable per-subsystem with the `QUARK_DEBUG` env var:
-
-```bash
-QUARK_DEBUG=processor quark "..."             # only processor events
-QUARK_DEBUG=processor,loop quark "..."        # multiple namespaces
-QUARK_DEBUG='*' quark "..."                   # everything (engine + tool)
-QUARK_DEBUG='*,-copilot-sse' quark "..."      # everything except SSE dump
-quark --verbose "..."                         # just tool-call + tool-result
-```
-
-The env var inherits to child processes (sub-agents, bash tool) automatically.
-
-### Available namespaces
-
-| Namespace | What it logs |
-|---|---|
-| `processor` | Every `fullStream` event, finish-step reasons, and the `continue` / `stop` / `compact` return value |
-| `loop` | Each agent loop iteration, message/part counts, role+type summary of model messages, `processStream` result |
-| `cli` | `text-start` / `text-delta` / `text-end` and `assistant-message-start` / `assistant-message-end` events |
-| `tool-call` | `[TOOL-CALL] <name>(<args>)` per invocation — args truncated, secrets redacted |
-| `tool-result` | `[TOOL-RESULT] <name> ok\|error …` per completion (byte count for ok, error string for error) |
-| `tool-call:raw` | `[TOOL-CALL:RAW] <name> <json>` — full untruncated JSON of every tool input, no redaction |
-| `models` | Context window resolution from models.dev (cache hit, fallback search, not-found) |
-| `compaction` | Context window calc and compaction trigger decisions |
-| `copilot-sse` | Raw Copilot SSE stream tee — very verbose; use to debug streaming bugs |
-| `plugin` | Plugin loader output (suppressed unless enabled) |
-
-To add a new namespace, just call `debug("my-ns")` from anywhere and document it in the table above and in the comment block at the top of [`src/debug.ts`](src/debug.ts).
-
----
-
-## Profiles
-
-Profiles define agent identity: a system prompt, a set of tools, and a set of skills. Only what a profile declares is loaded — no noise from unrelated tools.
-
-| Profile | Purpose |
-|---|---|
-| `coder` | File editing, bash execution, todo tracking |
-| `researcher` | Web search and content fetching |
-| `finder` | Codebase exploration and discovery |
-| `test-engineer` | Test planning and specification writing |
-
-Define custom profiles in your config:
-
-```yaml
-# ~/.config/quark/config.yaml
-profiles:
-  coder:
-    prompt_file: profiles/coder.md
-    tools: [read, write, edit, bash, todo]
-    skills: [code-review]
-    model: copilot/claude-sonnet-4.5   # optional per-profile model
-```
-
-Profile prompt files are Markdown with optional frontmatter:
-
-```markdown
----
-name: Coder
-description: File editing and bash execution agent
----
-
-You are a coding agent. Use the tools available to read, edit, and run code.
-```
+| Flag | Description |
+|------|-------------|
+| `-p, --profile <name>` | Profile to use (default: from config) |
+| `-m, --prompt <text>` | Prompt text (alternative to a positional arg) |
+| `-s, --session <id>` | Resume an existing session |
+| `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
+| `--parent-session <id>` | Create a child session under this parent |
+| `--sub-agent` | Create a child session (reads `QUARK_SESSION_ID` from env) |
+| `--no-store` | Run an ephemeral session — never written to disk |
+| `--verbose` | Print every tool call + result to stderr |
+| `-l, --list-profiles` | List available profiles |
+| `-h, --help` | Show help |
 
 ---
 
 ## Configuration
 
-Global config lives at `~/.config/quark/config.yaml`. Per-project overrides go in `.quark/config.yaml` at the repo root.
+Config lives at `~/.config/quark/config.yaml`. Missing files and fields fall
+back to sensible defaults. Models are always written as `provider/model`.
 
 ```yaml
-# ~/.config/quark/config.yaml
-
-main_model: claude-sonnet-4.5      # model used in the agent loop
-small_model: gpt-4o-mini           # lightweight tasks (title generation, etc.)
-
-# optional model list for the /model TUI picker
+# Curated models shown in the /model picker
 models:
-  - gpt-4o
   - claude-sonnet-4.5
-  - gemini-2.5-pro
+  - gpt-4o
+  - copilot/claude-sonnet-4.5
 
-max_steps: 100                     # max agent loop iterations per session
-context_window: 100000             # fallback token budget (when model info unavailable)
+main_model: claude-sonnet-4.5   # main agent loop
+small_model: gpt-4o-mini        # lightweight tasks (title generation, etc.)
 
-compact:
-  auto: true                       # auto-compact when token usage is high
-  threshold: 0.95                  # compact at 95% of context window
-  retain_turns: 5                  # keep last N turn pairs verbatim
-  method: general
+max_steps: 100
 
+# Auto-branch when the context window fills up
+branching:
+  auto: true
+  threshold: 0.90
+
+# Custom OpenAI-compatible providers
 providers:
   ollama:
     baseURL: http://localhost:11434/v1
-    apiKey: env:OLLAMA_API_KEY     # "env:VAR" reads from environment
-
-profiles:
-  coder:
-    prompt_file: profiles/coder.md
-    tools: [read, write, edit, bash, todo, skill]
-    skills: [code-review]
+    apiKey: "env:OLLAMA_API_KEY"   # literal value, or "env:VAR" to read from env
 ```
 
-### Model strings
+Per-project overrides go in `.quark/config.yaml` at the repo root.
 
-Models use a `provider/model` format. If no provider prefix is given, `copilot` is used.
-
-```
-gpt-4o                     → copilot/gpt-4o
-claude-sonnet-4.5          → copilot/claude-sonnet-4.5
-ollama/llama3.2            → ollama provider, llama3.2 model
-```
-
-### Project overrides
-
-Project config can extend a profile's tool and skill set:
-
-```yaml
-# .quark/config.yaml
-profile_overrides:
-  coder:
-    tools_add: [deploy, test-runner]
-    skills_add: [django-patterns]
-```
+Set provider API keys via environment variables (e.g. `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`) or reference them from config using the `env:VAR_NAME` syntax.
 
 ---
 
-## Tools
+## Profiles
 
-Tools are the adaptation layer. They let the agent act on your system — read files, run commands, call APIs, deploy code. The harness stays generic; your tools make it specific.
-
-### Built-in tools
-
-| Tool | Description |
-|---|---|
-| `read` | Read a file or directory |
-| `skill` | Load a skill's instructions into context |
-| `compact` | Summarize session history to free context space |
-
-### External tools
-
-Drop a `.ts` file in `~/.config/quark/tools/` and declare its ID in your profile:
-
-```typescript
-// ~/.config/quark/tools/deploy.ts
-import { defineTool } from '@quark/sdk'
-import { z } from 'zod'
-
-export default defineTool({
-  id: 'deploy',
-  description: 'Deploy the current branch to staging',
-  parameters: z.object({
-    env: z.enum(['staging', 'prod']).describe('Target environment'),
-  }),
-  execute: async ({ env }) => {
-    // your deploy logic
-    return `Deployed to ${env}`
-  },
-})
-```
-
-Then declare it in your profile:
-
-```yaml
-profiles:
-  coder:
-    tools: [read, write, edit, bash, deploy]
-```
-
-Several ready-to-use example tools ship in `examples/tools/`:
-
-| Tool | File |
-|---|---|
-| `bash` | `bash.ts` |
-| `edit` | `edit.ts` |
-| `glob` | `glob.ts` |
-| `grep` | `grep.ts` |
-| `todo` | `todo.ts` |
-| `websearch` | `websearch.ts` |
-| `write` | `write.ts` |
-
----
-
-## Skills
-
-Skills are Markdown instruction packs loaded on demand. They let you give the agent domain-specific knowledge without bloating the system prompt.
-
-### Structure
-
-```
-~/.config/quark/skills/
-  code-review/
-    SKILL.md
-  django-patterns/
-    SKILL.md
-    references/
-      model-guide.md
-
-.quark/skills/              # project-level skills
-  deploy-runbook/
-    SKILL.md
-```
-
-### SKILL.md format
-
-```markdown
----
-name: code-review
-description: Structured code review checklist and conventions
----
-
-## Code Review Checklist
-
-1. Check for logic errors...
-2. Verify error handling...
-```
-
-### Loading model
-
-| Level | When | What loads |
-|---|---|---|
-| L1 Metadata | Profile activation | `name` + `description` injected into system prompt |
-| L2 Instructions | Agent calls the `skill` tool | Full SKILL.md body enters context |
-| L3 Resources | As needed | Reference files on disk (never auto-loaded) |
-
-Profile-bound skills advertise their metadata automatically. Skills outside the active profile are not visible unless explicitly discovered.
-
----
-
-## Plugins
-
-Plugins extend Quark's behavior by hooking into the agent lifecycle. Drop a `.ts` file in `~/.config/quark/plugins/`:
-
-```typescript
-// ~/.config/quark/plugins/fallback-model.ts
-import type { PluginFn } from '@quark/sdk'
-
-const plugin: PluginFn = async (ctx) => ({
-  'provider.request.error': async (input, output) => {
-    if (input.statusCode === 429) {
-      output.retry = true
-      output.model = 'gpt-4o-mini'
-    }
-  },
-})
-
-export default plugin
-```
-
-Plugins can also register providers programmatically:
-
-```typescript
-const plugin: PluginFn = async (ctx) => {
-  ctx.registerProvider('myprovider', {
-    baseURL: 'https://my-api.internal/v1',
-    apiKey: process.env.MY_API_KEY ?? '',
-  })
-  return {}
-}
-```
-
-### Available hooks
-
-| Hook | Fires when |
-|---|---|
-| `provider.request.before` | Before the model call — swap provider or model |
-| `provider.request.error` | On a retryable error — trigger retry with fallback |
-| `session.created` | After a new session is created |
-| `session.idle` | After the agent loop exits |
-| `session.error` | On an unhandled loop error |
-| `session.compacting` | During compaction — inject extra context |
-| `tool.execute.before` | Before a tool runs — can mutate args |
-| `tool.execute.after` | After a tool returns — receives result |
-| `loop.step.before` | Start of each loop iteration |
-| `loop.step.after` | End of each loop iteration |
-
----
-
-## SDK
-
-Use Quark as a library in your own application:
-
-```typescript
-import { bootstrap, prompt, resolveProfile, readPromptFile, agentFromProfile } from '@quark/sdk'
-
-// Initialize tools for the profile
-await bootstrap({ profileTools: ['read', 'write', 'edit', 'bash'], boundSkills: [] })
-
-// Build the agent config
-const profile = resolveProfile('coder')
-const { content } = readPromptFile(profile)
-const agent = agentFromProfile(profile, content)
-
-// Run a prompt
-const result = await prompt({
-  parts: [{ type: 'text', text: 'Fix the bug in main.ts' }],
-  agent,
-})
-
-console.log('Session:', result.sessionId)
-```
-
-### Key exports
-
-**Functions**
-
-| Export | Description |
-|---|---|
-| `bootstrap` | Initialize tools and skills for a session |
-| `createSession` / `getSession` | Session CRUD |
-| `prompt` | Run the agent loop |
-| `cancel` | Cancel an in-flight session |
-| `compact` | Manually compact session history |
-| `register` / `defineTool` / `listTools` | Tool registry |
-| `resolveProfile` / `listProfiles` / `readPromptFile` | Profile system |
-| `bus` | Event bus for real-time updates |
-
-**Types:** `ToolDef`, `ToolContext`, `ToolResult`, `Session`, `SessionKind`, `AgentConfig`, `ProfileDef`, `ProfileConfig`, `BusEvents`, `Rule`, `Ruleset`, `Action`
-
----
-
-## Sessions
-
-Sessions are stored as append-only JSONL event logs:
-
-```
-~/.config/quark/session/
-  <session-id>/
-    session.jsonl     # event log
-    meta.json         # derived metadata cache
-```
-
-Ephemeral sessions (`--no-store`) live in memory only and are never written to disk.
-
-### Sub-agents
-
-Child agents are linked to a parent session. The parent session ID is passed via `QUARK_SESSION_ID`:
+A profile is a baked-in agent identity declared in YAML — `prompt_file`,
+`tools[]`, `skills[]`, and an optional `model`. Activate one deterministically
+with `--profile <name>`:
 
 ```bash
-# Parent spawns a child
-quark --sub-agent --profile researcher --prompt "research the auth flow"
-
-# Or explicitly
-quark --parent-session <parent-id> --profile researcher --prompt "research the auth flow"
+quark --list-profiles
+quark --profile researcher --prompt "..."
 ```
 
 ---
 
-## Agent Instructions
+## Tools & Subagents
 
-Quark reads instruction files to customize agent behavior at two levels:
+Tools are the product — research-backed and test-backed.
 
-| File | Scope |
-|---|---|
-| `~/.config/quark/AGENTS.md` | Global — applies to all sessions |
-| `./AGENTS.md` | Project-level — applies when running in this directory |
+**Built-in tools** are registered by the harness at bootstrap: `read`, `look`,
+`skill`, `question`, `find_session`, and `read_session`.
 
-Both files are prepended to the system prompt before the profile's own prompt.
+**Profile-declared tools** are loaded by ID from `~/.config/quark/tools/{id}.ts`
+when a profile lists them in its `tools[]` array. Reference implementations for
+`bash`, `edit`, `glob`, `grep`, `todo`, `websearch`, and `write` live in
+[`examples/tools/`](examples/tools) — copy them into `~/.config/quark/tools/`
+to enable them.
 
----
-
-## File Layout
-
-```
-~/.config/quark/
-  config.yaml               global config
-  AGENTS.md                 global agent instructions
-  profiles/
-    coder.md                system prompt for coder profile
-    researcher.md
-  skills/
-    code-review/
-      SKILL.md
-  tools/
-    deploy.ts               external tool
-  plugins/
-    fallback-model.ts       lifecycle plugin
-  session/
-    <id>/
-      session.jsonl
-      meta.json
-
-.quark/                     project-level overrides
-  config.yaml
-  AGENTS.md
-  skills/
-    deploy-runbook/
-      SKILL.md
-```
+A **subagent** is an agent (prompt + tools + permissions + model) exposed through
+a thin, named tool. It runs in its own isolated session (`kind: "subagent"`,
+`parentSessionId` set) so its intermediate reasoning never pollutes the parent's
+context — the parent transcript stores only the tool call and the final result.
 
 ---
 
-## Build
+## Architecture
+
+```diagram
+╭─────────────────────────────────────────────────╮
+│                  TUI / SDK / CLI                  │
+├─────────────────────────────────────────────────┤
+│        Baked-in Agents (identities, in code)      │
+│         prompt + tools[] + skills[] + perms       │
+├──────────┬──────────┬───────────┬─────────────────┤
+│  Agent   │  Tool    │  Skill    │  Permission     │
+│  Loop    │  System  │  System   │  System         │
+├──────────┴──────────┴───────────┴─────────────────┤
+│              Persistence (JSONL)                   │
+│   Session (main | subagent | ephemeral)           │
+│        → Message → Part   (parentSessionId)        │
+╰─────────────────────────────────────────────────╯
+```
+
+See [`docs/data-model.md`](docs/data-model.md) for the persistence schema,
+[`docs/acp-integration-guide.md`](docs/acp-integration-guide.md) for the agent
+control protocol, and [`specs/`](specs/) for design records.
+
+---
+
+## Using Quark as an SDK
+
+Quark also ships as the `@quark/sdk` package, exposing its session, tool,
+permission, and agent primitives:
+
+```ts
+import { bootstrap, createSession, prompt } from "@quark/sdk"
+```
+
+---
+
+## Development
 
 ```bash
-bun install
-bun run build
+bun run dev          # run the TUI from source
+bun run cli          # run the CLI from source
+bun run typecheck    # type-check the project
+bun run build        # bundle to dist/ (tsup + declarations)
+bun run docs         # generate API docs with TypeDoc
+bun test             # run the test suite
 ```
 
+> Always run the tests after changing core functionality. Quark's moat is
+> test-backed tools — keep it that way.
+
 ---
+
+## Status
+
+Quark is early and under active development — some tools listed in the
+[CHANGELOG](CHANGELOG.md) are still being implemented or ship as examples. Expect
+the surface area to change.
 
 ## License
 
-MIT
+No license has been published yet.

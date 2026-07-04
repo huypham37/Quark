@@ -375,6 +375,8 @@ export const ConfigOptionUpdate = z.object({
 
 export const SessionInfoUpdate = z.object({
   sessionUpdate: z.literal("session_info_update"),
+  title: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
   _meta: z.record(z.string(), z.unknown()).optional(),
 })
 

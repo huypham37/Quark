@@ -81,6 +81,9 @@ export interface BusEvents {
   // Session was lazily created (first message in a new conversation)
   "session-created": { sessionId: string }
 
+  // Session title or metadata was updated (e.g. auto-generated after first exchange)
+  "session-title-changed": { sessionId: string; title: string | null; updatedAt?: number }
+
   // Model was switched (e.g. Tab/Shift+Tab cycling, /model command) — TUI should update token limit
   "model-switched": { modelSpec: string } // e.g. "copilot/claude-sonnet-4.6" or "openai/gpt-4o"
 

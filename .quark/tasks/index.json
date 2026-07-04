@@ -2102,5 +2102,445 @@
     "profile": "coder",
     "timeCreated": 1781599338407,
     "timeUpdated": 1781599350386
+  },
+  {
+    "id": "task_wRvIG7ZLUFdbfRej",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782020392836,
+    "timeUpdated": 1782020395446
+  },
+  {
+    "id": "task_KyCJsNeazWDJVvev",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782021053632,
+    "timeUpdated": 1782021056070
+  },
+  {
+    "id": "task_mYJrCzVQeg5rKV9d",
+    "title": "SwiftUI Animation Overview",
+    "description": "SwiftUI Animation Overview",
+    "profile": "general",
+    "timeCreated": 1782021195003,
+    "timeUpdated": 1782021203434
+  },
+  {
+    "id": "task_FgtAcailJYgLfYWP",
+    "title": "ACP Session Title",
+    "description": "ACP Session Title",
+    "profile": "coder",
+    "timeCreated": 1782021958213,
+    "timeUpdated": 1782021965028
+  },
+  {
+    "id": "task_jwK4jz7GmjhC3faA",
+    "title": "Git Branch Inquiry",
+    "description": "Git Branch Inquiry",
+    "profile": "coder",
+    "timeCreated": 1782022214117,
+    "timeUpdated": 1782022222568
+  },
+  {
+    "id": "task_TlzWg8sM7HVZUASB",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782022294999,
+    "timeUpdated": 1782022297062
+  },
+  {
+    "id": "task_6fX6zGzzDG3dduBz",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782022445665,
+    "timeUpdated": 1782022448816
+  },
+  {
+    "id": "task_j13FYAcwRykqKpoZ",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782022445690,
+    "timeUpdated": 1782022448050
+  },
+  {
+    "id": "task_7Q3aCJrCkMH5yskh",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782022485359,
+    "timeUpdated": 1782022488263
+  },
+  {
+    "id": "task_E6wzSsAm45Rs3L48",
+    "title": "Random Story Request",
+    "description": "Random Story Request",
+    "profile": "coder",
+    "timeCreated": 1782022597986,
+    "timeUpdated": 1782022603184
+  },
+  {
+    "id": "task_bsb010kjamafDVI0",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782023063568,
+    "timeUpdated": 1782023065742
+  },
+  {
+    "id": "task_t5t8dYmMpVK2ZW3S",
+    "title": "Project Exploration",
+    "description": "Project Exploration",
+    "profile": "general",
+    "timeCreated": 1782029709668,
+    "timeUpdated": 1782029719131
+  },
+  {
+    "id": "task_vK1A5uPppimwZrV8",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782029763615,
+    "timeUpdated": 1782029765900
+  },
+  {
+    "id": "task_t91djgdWtf0xNMrs",
+    "title": "Investigate the failure of the abort coder during parallel spawning.",
+    "description": "Investigate the failure of the abort coder during parallel spawning.",
+    "profile": "coder",
+    "timeCreated": 1782030142001,
+    "timeUpdated": 1782030159536
+  },
+  {
+    "id": "task_6VlZMygwKXivrquI",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782030182220,
+    "timeUpdated": 1782030185169
+  },
+  {
+    "id": "task_5egHCUoD1nf7sNWn",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782031231292,
+    "timeUpdated": 1782031233926
+  },
+  {
+    "id": "task_PySDkMKJLuUFooCr",
+    "title": "Search the web for ACP (Agent Client Protocol) and check if the ACP response contains a session title field.",
+    "description": "Search the web for ACP (Agent Client Protocol) and check if the ACP response contains a session title field.",
+    "profile": "coder",
+    "timeCreated": 1782031282182,
+    "timeUpdated": 1782031289235
+  },
+  {
+    "id": "task_bc8bzzQXmSYGStZ5",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782031570313,
+    "timeUpdated": 1782031572514
+  },
+  {
+    "id": "task_iKMoGeu949vtXjvY",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031660690,
+    "timeUpdated": 1782031665403
+  },
+  {
+    "id": "task_25YTsXm1rgdjYakQ",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031660720,
+    "timeUpdated": 1782031663256
+  },
+  {
+    "id": "task_Yl8zfmS2u01jqxJx",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031693057,
+    "timeUpdated": 1782031697166
+  },
+  {
+    "id": "task_AegxrTvNOVN9unPo",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031693091,
+    "timeUpdated": 1782031696612
+  },
+  {
+    "id": "task_dpKTdQQNkmLjMzVp",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031725623,
+    "timeUpdated": 1782031732354
+  },
+  {
+    "id": "task_tw4M37M7h4iiwKIn",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031725653,
+    "timeUpdated": 1782031729000
+  },
+  {
+    "id": "task_YdBcjeOqdlH8f9tR",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031756405,
+    "timeUpdated": 1782031760369
+  },
+  {
+    "id": "task_L6Zj3Z3gXiw5PoNj",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782031756463,
+    "timeUpdated": 1782031758798
+  },
+  {
+    "id": "task_o6LxpU1q0AZU9xi4",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782032121952,
+    "timeUpdated": 1782032124404
+  },
+  {
+    "id": "task_lKDYvCcdAoBLz4kU",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782032560528,
+    "timeUpdated": 1782032563084
+  },
+  {
+    "id": "task_xWslIcdsBUdpifzu",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782033238085,
+    "timeUpdated": 1782033242017
+  },
+  {
+    "id": "task_6234wS6lbqy4lNVD",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782036743713,
+    "timeUpdated": 1782036746131
+  },
+  {
+    "id": "task_eXcTMTTWyujHdrbI",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782039130433,
+    "timeUpdated": 1782039133609
+  },
+  {
+    "id": "task_yXNmiql3bc0VWeDk",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782039887206,
+    "timeUpdated": 1782039889503
+  },
+  {
+    "id": "task_U6qjT62yf92ltLzs",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782039892965,
+    "timeUpdated": 1782039895218
+  },
+  {
+    "id": "task_zfJUrcOnHXkdbXdx",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782043384877,
+    "timeUpdated": 1782043388327
+  },
+  {
+    "id": "task_OQx99LdcbD4mSZWo",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782043392166,
+    "timeUpdated": 1782043394536
+  },
+  {
+    "id": "task_1PX6icEeU8ma5NvW",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782043424632,
+    "timeUpdated": 1782043427409
+  },
+  {
+    "id": "task_eyweMZQPVXdfsRrn",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782043730130,
+    "timeUpdated": 1782043732436
+  },
+  {
+    "id": "task_EeHylnSwp730z4Tw",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782043739900,
+    "timeUpdated": 1782043741703
+  },
+  {
+    "id": "task_arujQzjGF7dF2dp8",
+    "title": "Transition Test",
+    "description": "Transition Test",
+    "profile": "general",
+    "timeCreated": 1782043817819,
+    "timeUpdated": 1782043827695
+  },
+  {
+    "id": "task_VqPMFOR7BylrcZKv",
+    "title": "UI Transition Check",
+    "description": "UI Transition Check",
+    "profile": "general",
+    "timeCreated": 1782043889837,
+    "timeUpdated": 1782043900654
+  },
+  {
+    "id": "task_gXNyLFceHdYhNmiL",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782044195344,
+    "timeUpdated": 1782044197729
+  },
+  {
+    "id": "task_F7dngQpQAN3afK8X",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782044202911,
+    "timeUpdated": 1782044205328
+  },
+  {
+    "id": "task_RLAh0v2d62VY0ukx",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782044364514,
+    "timeUpdated": 1782044367432
+  },
+  {
+    "id": "task_HmZf1VJkQp33fyJA",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782044370992,
+    "timeUpdated": 1782044373698
+  },
+  {
+    "id": "task_1FqQrArxMhCFmRs0",
+    "title": "Project Exploration",
+    "description": "Project Exploration",
+    "profile": "general",
+    "timeCreated": 1782044668674,
+    "timeUpdated": 1782044679623
+  },
+  {
+    "id": "task_rBF58M5KrWWe1pSu",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782044817938,
+    "timeUpdated": 1782044821353
+  },
+  {
+    "id": "task_jhtXKp2SmZupgNfK",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "general",
+    "timeCreated": 1782139838535,
+    "timeUpdated": 1782139841445
+  },
+  {
+    "id": "task_vQS1wxIaqZLaGiR4",
+    "title": "Software Inquiry",
+    "description": "Software Inquiry",
+    "profile": "general",
+    "timeCreated": 1782140919799,
+    "timeUpdated": 1782140929433
+  },
+  {
+    "id": "task_FiuT58EfJtfWxzBc",
+    "title": "Interpret the provided directory path and set the writing context accordingly.",
+    "description": "Interpret the provided directory path and set the writing context accordingly.",
+    "profile": "writing-coach",
+    "timeCreated": 1782141236808,
+    "timeUpdated": 1782141247854
+  },
+  {
+    "id": "task_nNnQ6oR2dTXZjOKk",
+    "title": "Explore the codebase thoroughly to understand its structure, dependencies, and core functionality.",
+    "description": "Explore the codebase thoroughly to understand its structure, dependencies, and core functionality.",
+    "profile": "general",
+    "timeCreated": 1782141255875,
+    "timeUpdated": 1782141271075
+  },
+  {
+    "id": "task_gUY8Go994javmBbp",
+    "title": "Implement a /export command that exports the conversation history to a Markdown file in ./.quark/export using the conversation name.",
+    "description": "Implement a /export command that exports the conversation history to a Markdown file in ./.quark/export using the conversation name.",
+    "profile": "coder",
+    "timeCreated": 1782628906457,
+    "timeUpdated": 1782628910026
+  },
+  {
+    "id": "task_ORsQUappWY9FxAel",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782797926107,
+    "timeUpdated": 1782797929150
+  },
+  {
+    "id": "task_JaHJuD4gahmPKGV7",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1782797926133,
+    "timeUpdated": 1782797928387
+  },
+  {
+    "id": "task_AB1dRqBoNBwg13Z7",
+    "title": "Determine whether first-level .json files in the repository are needed during cleanup",
+    "description": "Determine whether first-level .json files in the repository are needed during cleanup",
+    "profile": "coder",
+    "timeCreated": 1783163688642,
+    "timeUpdated": 1783163693536
+  },
+  {
+    "id": "task_IEB4Tve35okOIih4",
+    "title": "Git Tree View",
+    "description": "Git Tree View",
+    "profile": "coder",
+    "timeCreated": 1783163953558,
+    "timeUpdated": 1783163961738
   }
 ]
