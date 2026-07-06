@@ -25,7 +25,7 @@ import { Notifications } from "./notifications"
 import { colors } from "../theme"
 import { respond as respondPermission } from "../../permission/permission"
 import { respondQuestion } from "../../tool/question"
-import { getFiles, fuzzyFilter } from "../../shared/filelist"
+import { getFiles, fuzzyFilter, clearFileCache } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
 import {
   buildSessionTreeRows,
@@ -319,6 +319,13 @@ export const App: Component<AppProps> = (props) => {
     if (query.includes(" ")) {
       setMention(MENTION_INACTIVE)
       return
+    }
+
+    // Fresh @ activation — invalidate stale file cache so newly created
+    // folders/files appear in the dropdown.
+    if (!mention().active) {
+      clearFileCache()
+      allFiles = null
     }
 
     const files = await ensureFilesLoaded()

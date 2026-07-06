@@ -2542,5 +2542,61 @@
     "profile": "coder",
     "timeCreated": 1783163953558,
     "timeUpdated": 1783163961738
+  },
+  {
+    "id": "task_YZ4agYeMAnMnJtKX",
+    "title": "Review the writing structure and plan refactoring/documentation of Quark as a series on building a production-grade coding agent from scratch.",
+    "description": "Review the writing structure and plan refactoring/documentation of Quark as a series on building a production-grade coding agent from scratch.",
+    "profile": "coder",
+    "timeCreated": 1783165753018,
+    "timeUpdated": 1783165758169
+  },
+  {
+    "id": "task_tPVqDFn1TYTCz3xO",
+    "title": "Refactor and document the architecture of Quark, transforming it into a 'How to build a production-grade coding agent from scratch' series based on the structure in .writing/structure.md.",
+    "description": "Refactor and document the architecture of Quark, transforming it into a 'How to build a production-grade coding agent from scratch' series based on the structure in .writing/structure.md.",
+    "profile": "coder",
+    "timeCreated": 1783166073183,
+    "timeUpdated": 1783166092741
+  },
+  {
+    "id": "task_5eo60QxDixbLf1HV",
+    "title": "Explain how Quark communicates with multiple LLM providers using the Vercel SDK",
+    "description": "Explain how Quark communicates with multiple LLM providers using the Vercel SDK",
+    "profile": "coder",
+    "timeCreated": 1783175158778,
+    "timeUpdated": 1783175162542
+  },
+  {
+    "id": "task_KgziTVjOtQCoUvq9",
+    "title": "Mention Feature Folder Behavior",
+    "description": "Mention Feature Folder Behavior",
+    "profile": "coder",
+    "timeCreated": 1783176725820,
+    "timeUpdated": 1783176729713
+  },
+  {
+    "id": "task_8SXix7KKEOCBFHBL",
+    "title": "Safari Cache Check",
+    "description": "Safari Cache Check",
+    "profile": "coder",
+    "timeCreated": 1783317885365,
+    "timeUpdated": 1783317892275
+  },
+  {
+    "id": "task_huSKoaepcLkq3xeu",
+    "title": "Exit request",
+    "description": "Exit request",
+    "profile": "coder",
+    "timeCreated": 1783328756599,
+    "timeUpdated": 1783328762008
+  },
+  {
+    "id": "task_oy8Tf2oKnhl2omnS",
+    "title": "Create a GitHub issue for the bug where aborted messages are still sent to the provider",
+    "description": "Create a GitHub issue for the bug where aborted messages are still sent to the provider",
+    "profile": "coder",
+    "timeCreated": 1783329277068,
+    "timeUpdated": 1783329293580
   }
 ]

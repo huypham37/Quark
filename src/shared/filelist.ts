@@ -2,10 +2,13 @@ import { $ } from "bun"
 
 let fileCache: string[] | null = null
 let cacheDir: string | null = null
+let cacheTime = 0
+const CACHE_TTL_MS = 1000
 
 export async function getFiles(cwd?: string): Promise<string[]> {
   const dir = cwd ?? process.cwd()
-  if (fileCache && cacheDir === dir) return fileCache
+  const now = Date.now()
+  if (fileCache && cacheDir === dir && now - cacheTime < CACHE_TTL_MS) return fileCache
 
   try {
     const result = await $`git ls-files -z -co --exclude-standard`.cwd(dir).text()
@@ -20,6 +23,7 @@ export async function getFiles(cwd?: string): Promise<string[]> {
 
     fileCache = [...files, ...dirSet].sort()
     cacheDir = dir
+    cacheTime = now
     return fileCache
   } catch {
     return getFilesFallback(dir)
@@ -52,12 +56,14 @@ async function getFilesFallback(dir: string): Promise<string[]> {
 
   fileCache = [...files, ...dirSet].sort()
   cacheDir = dir
+  cacheTime = Date.now()
   return fileCache
 }
 
 export function clearFileCache(): void {
   fileCache = null
   cacheDir = null
+  cacheTime = 0
 }
 
 export function fuzzyFilter(files: string[], query: string, limit = 15): string[] {

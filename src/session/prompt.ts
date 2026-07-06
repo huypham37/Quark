@@ -22,25 +22,22 @@ import { buildSystem } from "./system";
 import { processStream } from "./processor";
 import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
-import { initializeSessionFromMessage, upgradeSessionTitle } from "./initializer";
+import {
+  initializeSessionFromMessage,
+  upgradeSessionTitle,
+} from "./initializer";
 import { resolveToolSet } from "../tool/ai-adapter";
 import { getThinkingNormalizer } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel } from "../provider/resolver";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
-import {
-  loadConfig,
-  parseModelSpec,
-} from "../config/config";
+import { loadConfig, parseModelSpec } from "../config/config";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
 import { debug } from "../debug";
-import {
-  setCurrentTurn,
-  preTurnSnapshot,
-} from "../commands/undo";
+import { setCurrentTurn, preTurnSnapshot } from "../commands/undo";
 
 const dlog = debug("loop");
 
@@ -157,7 +154,12 @@ export async function prompt(input: {
       }
     }
 
-    finalSessionId = await loop(sessionId, controller.signal, agent, input.model);
+    finalSessionId = await loop(
+      sessionId,
+      controller.signal,
+      agent,
+      input.model,
+    );
   } finally {
     if (isSubAgent) setForceAgent(false);
     for (const [id, activeController] of active) {
@@ -198,11 +200,11 @@ export function isActive(sessionId: string): boolean {
 }
 
 function moveActiveSession(from: string, to: string): void {
-  if (from === to) return
-  const controller = active.get(from)
-  active.delete(from)
-  if (controller) active.set(to, controller)
-  process.env.QUARK_SESSION_ID = to
+  if (from === to) return;
+  const controller = active.get(from);
+  active.delete(from);
+  if (controller) active.set(to, controller);
+  process.env.QUARK_SESSION_ID = to;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,10 +219,10 @@ async function loop(
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent.model > config main_model
   // Model is always in "provider/model" format.
-  const modelSpec = modelOpt ?? agent.model ?? loadConfig().main_model
-  const parsedModel = parseModelSpec(modelSpec)
-  const effectiveModel = parsedModel.model
-  const effectiveProvider = parsedModel.provider
+  const modelSpec = modelOpt ?? agent.model ?? loadConfig().main_model;
+  const parsedModel = parseModelSpec(modelSpec);
+  const effectiveModel = parsedModel.model;
+  const effectiveProvider = parsedModel.provider;
   const model = await resolveModel(modelSpec);
   const modelLimit = getModelLimit(modelSpec);
 
@@ -248,7 +250,9 @@ async function loop(
     const modelMessages = toModelMessages(messages, parts);
 
     if (dlog.enabled) {
-      dlog(`loaded ${messages.length} messages, ${parts.length} parts → ${modelMessages.length} model messages`);
+      dlog(
+        `loaded ${messages.length} messages, ${parts.length} parts → ${modelMessages.length} model messages`,
+      );
       const roles = modelMessages.map((m) => {
         const c = m.content;
         if (typeof c === "string") return `${m.role}(text:${c.length})`;
@@ -281,16 +285,19 @@ async function loop(
           model,
           profile: agent.id,
           abort,
-        })
-        const previousSessionId = currentSessionId
-        currentSessionId = branchResult.sessionId
-        moveActiveSession(previousSessionId, currentSessionId)
-        await emitSessionSwitch(currentSessionId, agent)
+        });
+        const previousSessionId = currentSessionId;
+        currentSessionId = branchResult.sessionId;
+        moveActiveSession(previousSessionId, currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent);
 
         // Re-load after branching so the model sees the task lineage context.
         continue;
       } catch (err) {
-        console.error("[prompt] auto-branch FAILED:", err instanceof Error ? err.stack : String(err));
+        console.error(
+          "[prompt] auto-branch FAILED:",
+          err instanceof Error ? err.stack : String(err),
+        );
         bus.emit("error", { sessionId: currentSessionId, error: err });
         fireHook("session.error", {
           sessionId: currentSessionId,
@@ -320,7 +327,9 @@ async function loop(
 
     // 6. Stream + process
     const providerId = effectiveProvider;
-    const thinkingProviderOptions = getThinkingNormalizer(effectiveModel).normalize(providerId ?? "");
+    const thinkingProviderOptions = getThinkingNormalizer(
+      effectiveModel,
+    ).normalize(providerId ?? "");
     const result = await processStream({
       model,
       system,
@@ -349,7 +358,8 @@ async function loop(
     if (result === "branch") {
       // Provider returned context-too-long or mid-stream pressure exceeded.
       try {
-        const { messages: curMsgs, parts: curParts } = loadMessages(currentSessionId);
+        const { messages: curMsgs, parts: curParts } =
+          loadMessages(currentSessionId);
         const branchResult = await createAutoBranch({
           sessionId: currentSessionId,
           messages: curMsgs,
@@ -357,20 +367,23 @@ async function loop(
           model,
           profile: agent.id,
           abort,
-        })
-        const previousSessionId = currentSessionId
-        currentSessionId = branchResult.sessionId
-        moveActiveSession(previousSessionId, currentSessionId)
-        await emitSessionSwitch(currentSessionId, agent)
+        });
+        const previousSessionId = currentSessionId;
+        currentSessionId = branchResult.sessionId;
+        moveActiveSession(previousSessionId, currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent);
 
         continue;
       } catch (err) {
-        console.error("[prompt] context-too-long branch FAILED:", err instanceof Error ? err.stack : String(err));
+        console.error(
+          "[prompt] context-too-long branch FAILED:",
+          err instanceof Error ? err.stack : String(err),
+        );
         bus.emit("error", { sessionId: currentSessionId, error: err });
         break;
       }
     }
     break; // "stop"
   }
-  return currentSessionId
+  return currentSessionId;
 }
