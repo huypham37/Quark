@@ -17,7 +17,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
-import { parse as parseYAML } from "yaml"
+import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 import { warn as notifyWarn } from "../notification/notification"
 import { type Action } from "../permission/permission"
 
@@ -43,12 +43,14 @@ export interface ProfileDef {
   skills: string[]
   /** Profile IDs of sub-agents this profile can spawn */
   subAgents?: string[]
-  /** Model string for this profile (e.g. `"copilot/gpt-4o"`). Falls back to config `main_model` if omitted. */
-  model?: string
-  /** Thinking effort for this profile. Falls back to global config when omitted. */
-  thinkingEffort?: string
-  /** Thinking mode for this profile. Falls back to global config when omitted. */
-  thinkingMode?: string
+  /** Model configuration for this profile. Falls back to config `main_model` if omitted. */
+  model?: {
+    id: string
+    thinking?: {
+      effort: string
+      mode?: string
+    }
+  }
   /** Permission rules for this profile's tools.
    *  Each rule matches a tool ID and specifies whether to allow, deny, or ask.
    *  Rules are evaluated with last-match-wins semantics.
@@ -135,14 +137,34 @@ function parseProfilesFromYAML(raw: Record<string, unknown>, configDir: string):
       tools: Array.isArray(p.tools) ? (p.tools as string[]) : BUILTIN_CODER.tools,
       skills: Array.isArray(p.skills) ? (p.skills as string[]) : [],
       subAgents: Array.isArray(p.sub_agents) ? (p.sub_agents as string[]) : undefined,
-      model: typeof p.model === "string" ? p.model : undefined,
-      thinkingEffort: typeof p.thinking_effort === "string" ? p.thinking_effort : undefined,
-      thinkingMode: typeof p.thinking_mode === "string" ? p.thinking_mode : undefined,
+      model: parseModel(p.model),
       permissions: parsePermissions(p.permissions),
     }
   }
 
   return profiles
+}
+
+function parseModel(raw: unknown): ProfileDef["model"] | undefined {
+  if (typeof raw === "string" && raw) return { id: raw }
+  if (!raw || typeof raw !== "object") return undefined
+  const value = raw as Record<string, unknown>
+  if (typeof value.id !== "string" || !value.id) return undefined
+  const thinking = parseThinking(value.thinking)
+  return {
+    id: value.id,
+    ...(thinking ? { thinking } : {}),
+  }
+}
+
+function parseThinking(raw: unknown): NonNullable<ProfileDef["model"]>["thinking"] | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const value = raw as Record<string, unknown>
+  if (typeof value.effort !== "string" || !value.effort) return undefined
+  return {
+    effort: value.effort,
+    ...(typeof value.mode === "string" && value.mode ? { mode: value.mode } : {}),
+  }
 }
 
 function resolvePromptPath(promptFile: string, configDir: string): string {
@@ -377,6 +399,33 @@ export function listProfiles(): string[] {
  * Clear the cached profile config.
  * Call after the `/profile` switch command or when config files change at runtime.
  */
+export function setProfileThinking(profileId: string, thinking: NonNullable<ProfileDef["model"]>["thinking"]): void {
+  const configPath = path.join(globalConfigDir(), "config.yaml")
+  let raw: Record<string, unknown> = {}
+  try {
+    const content = fs.readFileSync(configPath, "utf-8")
+    const parsed = parseYAML(content)
+    if (parsed && typeof parsed === "object") raw = parsed as Record<string, unknown>
+  } catch {}
+
+  const profiles = raw.profiles && typeof raw.profiles === "object"
+    ? raw.profiles as Record<string, unknown>
+    : {}
+  const profile = profiles[profileId] && typeof profiles[profileId] === "object"
+    ? profiles[profileId] as Record<string, unknown>
+    : {}
+  const model = profile.model && typeof profile.model === "object"
+    ? profile.model as Record<string, unknown>
+    : {}
+  if (typeof model.id !== "string" || !model.id) return
+  profiles[profileId] = { ...profile, model: { id: model.id, ...(thinking ? { thinking } : {}) } }
+  raw.profiles = profiles
+
+  fs.mkdirSync(globalConfigDir(), { recursive: true })
+  fs.writeFileSync(configPath, stringifyYAML(raw), "utf-8")
+  resetProfileCache()
+}
+
 export function resetProfileCache(): void {
   configCache = null
 }
@@ -388,6 +437,8 @@ export const _internal = {
   parseProfilesFromYAML,
   parseProjectOverrides,
   parsePermissions,
+  parseModel,
+  parseThinking,
   validateSubAgents,
   BUILTIN_CODER,
   BUILTIN_PROMPT,

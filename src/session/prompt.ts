@@ -32,7 +32,7 @@ import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel } from "../provider/resolver";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
-import { hasConfigField, loadConfig, parseModelSpec } from "../config/config";
+import { loadConfig, parseModelSpec } from "../config/config";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
@@ -217,9 +217,9 @@ async function loop(
   modelOpt?: string,
 ): Promise<string> {
   // Build the AI SDK model
-  // Priority: explicit modelOpt > agent.model > config main_model
+  // Priority: explicit modelOpt > agent model > config main_model
   // Model is always in "provider/model" format.
-  const modelSpec = modelOpt ?? agent.model ?? loadConfig().main_model;
+  const modelSpec = modelOpt ?? agent.model?.id ?? loadConfig().main_model;
   const parsedModel = parseModelSpec(modelSpec);
   const effectiveModel = parsedModel.model;
   const effectiveProvider = parsedModel.provider;
@@ -328,13 +328,10 @@ async function loop(
     // 6. Stream + process
     const providerId = effectiveProvider;
     const thinkingNormalizer = getThinkingNormalizer(effectiveModel)
-    const config = loadConfig()
-    const effort = agent.thinkingEffort ?? config.thinking_effort
-    const mode = agent.thinkingMode ?? config.thinking_mode
     thinkingNormalizer.configure({
-      effort,
-      mode,
-      modeExplicit: agent.thinkingMode !== undefined || hasConfigField("thinking_mode"),
+      effort: agent.model?.thinking?.effort ?? "none",
+      mode: agent.model?.thinking?.mode ?? "standard",
+      modeExplicit: agent.model?.thinking?.mode !== undefined,
     })
     const thinkingProviderOptions = thinkingNormalizer.normalize(providerId ?? "");
     const result = await processStream({

@@ -7,12 +7,11 @@ import { dbToConversationMessages } from "../shared/conversation-view"
 import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile"
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
-import { loadConfig, parseModelSpec, setConfigField } from "../config/config"
+import { loadConfig } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
 import { getFiles, fuzzyFilter } from "../shared/filelist"
 import { getModelLimit } from "../provider/models"
-import { getThinkingNormalizer } from "../provider/thinking"
 import path from "path"
 import { mkdirSync } from "fs"
 
@@ -153,25 +152,12 @@ function createRequestHandler(agent: AgentConfig) {
     if (req.method === "POST" && pathname === "/api/model") {
       const body = (await req.json()) as { model: string | null }
       const mainModel = loadConfig().main_model
-      // Clear the override when the user picks the main model so config default is used
       modelOverride = (body.model && body.model !== mainModel) ? body.model : null
       return json({ model: modelOverride ?? mainModel })
     }
 
     if (req.method === "GET" && pathname === "/api/model") {
       return json({ model: modelOverride ?? loadConfig().main_model })
-    }
-
-    if (req.method === "POST" && pathname === "/api/thinking") {
-      const body = (await req.json()) as { effort: string }
-      setConfigField("thinking_effort", body.effort)
-      const activeModel = parseModelSpec(modelOverride ?? loadConfig().main_model).model
-      getThinkingNormalizer(activeModel).configure({ effort: body.effort })
-      return json({ effort: body.effort })
-    }
-
-    if (req.method === "GET" && pathname === "/api/thinking") {
-      return json({ effort: loadConfig().thinking_effort })
     }
 
     if (req.method === "POST" && pathname === "/api/permission") {

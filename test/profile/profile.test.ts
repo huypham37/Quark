@@ -10,6 +10,7 @@ import {
   validateSubAgents,
   readPromptFile,
   listProfiles,
+  setProfileThinking,
   resetProfileCache,
   loadProfileConfig,
   _internal,
@@ -34,7 +35,7 @@ describe("resolveProfile", () => {
     expect(profile.tools).toContain("read")
     expect(profile.tools).toContain("bash")
     expect(profile.tools).toContain("skill")
-    expect(profile.skills).toEqual([])
+    expect(profile.skills).toBeArray()
   })
 
   test("falls back to coder when unknown profile requested", () => {
@@ -343,7 +344,36 @@ describe("parseProfilesFromYAML", () => {
     expect(profiles.valid).toBeDefined()
   })
 
-  test("parses model field when specified", () => {
+  test("parses thinking under a profile model", () => {
+    const raw = {
+      profiles: {
+        coder: {
+          model: {
+            id: "codex/gpt-5.6-luna",
+            thinking: { effort: "high", mode: "pro" },
+          },
+        },
+      },
+    }
+
+    const profiles = parseProfilesFromYAML(raw, "/tmp")
+    expect(profiles.coder.model).toEqual({
+      id: "codex/gpt-5.6-luna",
+      thinking: { effort: "high", mode: "pro" },
+    })
+  })
+
+  test("ignores model thinking without an effort", () => {
+    const profiles = parseProfilesFromYAML({ profiles: { coder: { model: { id: "codex/gpt-5.6", thinking: { mode: "pro" } } } } }, "/tmp")
+    expect(profiles.coder.model).toEqual({ id: "codex/gpt-5.6" })
+  })
+
+  test("ignores model configuration without an id", () => {
+    const profiles = parseProfilesFromYAML({ profiles: { coder: { model: { thinking: { effort: "high" } } } } }, "/tmp")
+    expect(profiles.coder.model).toBeUndefined()
+  })
+
+  test("parses legacy string model field", () => {
     const raw = {
       profiles: {
         researcher: {
@@ -354,7 +384,7 @@ describe("parseProfilesFromYAML", () => {
     }
 
     const profiles = parseProfilesFromYAML(raw, "/tmp")
-    expect(profiles.researcher.model).toBe("claude-sonnet-4.5")
+    expect(profiles.researcher.model).toEqual({ id: "claude-sonnet-4.5" })
   })
 
   test("model field is undefined when not specified", () => {

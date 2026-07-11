@@ -121,9 +121,14 @@ small_model: gpt-4o-mini        # lightweight tasks (title generation, etc.)
 
 max_steps: 100
 
-# Thinking defaults
-thinking_effort: none
-thinking_mode: standard
+# Per-agent model configuration
+profiles:
+  coder:
+    model:
+      id: codex/gpt-5.6-luna
+      thinking:
+        effort: high
+        mode: pro
 
 # Auto-branch when the context window fills up
 branching:
@@ -146,21 +151,9 @@ Set provider API keys via environment variables (e.g. `ANTHROPIC_API_KEY`,
 
 ## Profiles
 
-A profile is an agent identity declared in YAML — `prompt_file`, `tools[]`,
-`skills[]`, an optional `model`, and optional per-agent thinking settings.
-Activate one deterministically with `--profile <name>`:
-
-```yaml
-profiles:
-  finder:
-    name: Finder
-    model: opencode/deepseek-v4-flash
-    thinking_effort: high
-    thinking_mode: standard
-```
-
-Profile thinking settings override the global `thinking_effort` and
-`thinking_mode` values when present.
+A profile is a baked-in agent identity declared in YAML — `prompt_file`,
+`tools[]`, `skills[]`, and an optional `model`. Activate one deterministically
+with `--profile <name>`:
 
 ```bash
 quark --list-profiles

@@ -62,7 +62,6 @@ const {
   loadConfig,
   setConfigField,
   resetConfigCache,
-  hasConfigField,
 } = await import("../../src/config/config")
 
 // ---------------------------------------------------------------------------
@@ -115,27 +114,6 @@ describe("loadConfig", () => {
     expect(config.models.length).toBeGreaterThan(0)
     expect(config.models).toContain("gpt-4o")
     expect(config.models).toContain("claude-sonnet-4")
-    expect(config.thinking_effort).toBe("none")
-    expect(config.thinking_mode).toBe("standard")
-    expect(hasConfigField("thinking_mode")).toBe(false)
-  })
-
-  test("reads thinking defaults and detects explicit thinking_mode", () => {
-    writeConfig({ thinking_effort: "high", thinking_mode: "adaptive" })
-
-    const config = loadConfig()
-    expect(config.thinking_effort).toBe("high")
-    expect(config.thinking_mode).toBe("adaptive")
-    expect(hasConfigField("thinking_mode")).toBe(true)
-  })
-
-  test("falls back for empty thinking strings", () => {
-    writeConfig({ thinking_effort: "", thinking_mode: "" })
-
-    const config = loadConfig()
-    expect(config.thinking_effort).toBe("none")
-    expect(config.thinking_mode).toBe("standard")
-    expect(hasConfigField("thinking_mode")).toBe(true)
   })
 
   test("returns defaults when config file has invalid YAML", () => {
@@ -328,19 +306,6 @@ describe("setConfigField", () => {
     expect(config.models).toEqual(["x", "y", "z"])
   })
 
-  test("persists thinking effort", () => {
-    setConfigField("thinking_effort", "high")
-
-    expect(readConfigFile().thinking_effort).toBe("high")
-    expect(loadConfig().thinking_effort).toBe("high")
-  })
-
-  test("persists thinking mode", () => {
-    setConfigField("thinking_mode", "adaptive")
-
-    expect(readConfigFile().thinking_mode).toBe("adaptive")
-    expect(hasConfigField("thinking_mode")).toBe(true)
-  })
 })
 
 // ---------------------------------------------------------------------------

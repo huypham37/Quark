@@ -14,7 +14,7 @@ import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
-import { loadConfig, setConfigField } from "../../config/config"
+import { loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -51,6 +51,7 @@ import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { getThinkingNormalizer } from "../../provider/thinking"
+import { resolveProfile, setProfileThinking } from "../../profile/profile"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 
 /** Command handler result */
@@ -84,6 +85,7 @@ interface AppProps {
   initialSessionId?: string
   initialModelName?: string
   initialSkillCount?: number
+  initialThinkingEffort?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,7 @@ export const App: Component<AppProps> = (props) => {
     sessionId: props.initialSessionId ?? null,
     modelName: props.initialModelName ?? "smart",
     skillCount: props.initialSkillCount ?? 0,
+    thinkingEffort: props.initialThinkingEffort,
   })
 
   // Wire event bus to state store
@@ -1069,8 +1072,13 @@ export const App: Component<AppProps> = (props) => {
       }
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
-      setConfigField("thinking_effort", effort)
-      getThinkingNormalizer(state.store.status.modelName).configure({ effort })
+      const profile = resolveProfile(props.getCurrentProfile?.())
+      setProfileThinking(profile.id, { effort, mode: profile.model?.thinking?.mode })
+      getThinkingNormalizer(state.store.status.modelName).configure({
+        effort,
+        mode: profile.model?.thinking?.mode ?? "standard",
+        modeExplicit: profile.model?.thinking?.mode !== undefined,
+      })
       evt.preventDefault()
       return
     }

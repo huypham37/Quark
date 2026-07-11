@@ -7,10 +7,6 @@ import { createRoot } from "solid-js"
 import { createAppState, dbToTuiMessages, dispatch } from "../../src/tui/state"
 import { dbToConversationMessages } from "../../src/shared/conversation-view"
 import type { TuiMessage, TuiPart } from "../../src/tui/state"
-import { setConfigField, resetConfigCache } from "../../src/config/config"
-
-setConfigField("thinking_effort", "high")
-resetConfigCache()
 
 // Helper: run a test inside a SolidJS reactive root
 function withRoot<T>(fn: () => T): T {
@@ -77,14 +73,14 @@ describe("createAppState", () => {
 })
 
 describe("dispatch: thinking actions", () => {
-  test("cycles configured effort and preserves it across model switches", () => {
+  test("cycles configured effort and applies the active profile's effort on model switches", () => {
     withRoot(() => {
-      const s = createAppState({ sessionId: "s1", modelName: "gpt-5", skillCount: 0 })
+      const s = createAppState({ sessionId: "s1", modelName: "gpt-5", skillCount: 0, thinkingEffort: "high" })
       expect(s.store.thinkingEffort).toBe("high")
       dispatch(s, { type: "cycle-thinking", modelId: "gpt-5" })
       expect(s.store.thinkingEffort).toBe("xhigh")
-      dispatch(s, { type: "model-switched", modelSpec: "gpt-5-mini" })
-      expect(s.store.thinkingEffort).toBe("xhigh")
+      dispatch(s, { type: "model-switched", modelSpec: "gpt-5-mini", thinkingEffort: "low" })
+      expect(s.store.thinkingEffort).toBe("low")
     })
   })
 })

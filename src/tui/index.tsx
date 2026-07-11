@@ -81,7 +81,7 @@ bus.on("session-created", ({ sessionId }) => {
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
-const modelName = loadConfig().main_model
+const modelName = activeAgent.model?.id ?? loadConfig().main_model
 
 // Populate LM Studio model cache (non-blocking)
 refreshLMStudio()
@@ -135,6 +135,8 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
   activeAgent = agentFromProfile(nextProfile, nextPromptResult.content)
   await bootstrap({ profileTools: nextProfile.tools, boundSkills: nextProfile.skills })
 
+  modelOverride = null
+
   // Update worktree state
   const branch = target.branch ?? getWorktreeBranch(target)
   activeWorktree = target.isRoot
@@ -144,7 +146,7 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
 
   // Emit events
   const discoveredSkills = discoverSkills()
-  const currentModel = modelOverride ?? loadConfig().main_model
+  const currentModel = modelOverride ?? activeAgent.model?.id ?? loadConfig().main_model
 
   bus.emit("session-reset", { sessionId: null })
   bus.emit("model-switched", { modelSpec: currentModel })
@@ -280,6 +282,12 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     const newProfile = resolveProfile(targetId)
     const newPromptResult = readPromptFile(newProfile)
     activeAgent = agentFromProfile(newProfile, newPromptResult.content)
+    modelOverride = null
+    bus.emit("model-switched", {
+      modelSpec: activeAgent.model?.id ?? loadConfig().main_model,
+      thinkingEffort: activeAgent.model?.thinking?.effort ?? "none",
+      thinkingMode: activeAgent.model?.thinking?.mode,
+    })
 
     // Tear down and re-bootstrap with the new profile's tools and skills
     clearRegistry()
@@ -590,7 +598,7 @@ function handleGetModels() {
 }
 
 function handleGetCurrentModel() {
-  return modelOverride ?? loadConfig().main_model
+  return modelOverride ?? activeAgent.model?.id ?? loadConfig().main_model
 }
 
 function handleGetProfiles() {
@@ -676,5 +684,6 @@ render(() => (
     initialSessionId={currentSession?.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}
+    initialThinkingEffort={activeAgent.model?.thinking?.effort}
   />
 ), renderer)
