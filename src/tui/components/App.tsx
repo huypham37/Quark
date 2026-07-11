@@ -219,6 +219,7 @@ export const App: Component<AppProps> = (props) => {
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
   let inputRef: TextareaRenderable | undefined
+  let customQuestionRef: TextareaRenderable | undefined
 
   // --- Local UI signals (not in the global store — ephemeral) ---
   const [mention, setMention] = createSignal<MentionState>(MENTION_INACTIVE)
@@ -952,8 +953,22 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Question mode: intercept arrow/number/enter/escape keys
+    // Question mode: custom text entry is handled by its focused textarea.
     if (state.store.question) {
+      if (questionHandler.customMode()) {
+        if (evt.name === "return") {
+          questionHandler.submitCustom(customQuestionRef?.plainText)
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "escape") {
+          questionHandler.handleKey(evt.name)
+          evt.preventDefault()
+          return
+        }
+        return
+      }
+
       const consumed = questionHandler.handleKey(evt.name)
       if (consumed) {
         evt.preventDefault()
@@ -1136,6 +1151,11 @@ export const App: Component<AppProps> = (props) => {
             tab={questionHandler.tab}
             selected={questionHandler.selected}
             answers={questionHandler.answers}
+            customMode={questionHandler.customMode}
+            customText={questionHandler.customText}
+            setCustomText={questionHandler.setCustomText}
+            submitCustom={questionHandler.submitCustom}
+            onCustomRef={(ref: TextareaRenderable) => { customQuestionRef = ref }}
           />
         )}
       </Show>

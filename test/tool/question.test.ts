@@ -235,6 +235,145 @@ describe("questionTool", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Issue #163 — custom parameter support in question tool
+// ---------------------------------------------------------------------------
+
+describe("issue #163: custom parameter in questionTool", () => {
+  test("parameters schema accepts custom: true without stripping it", () => {
+    const parsed = questionTool.parameters.parse({
+      questions: [
+        {
+          question: "Pick one?",
+          header: "Pick",
+          options: [
+            { label: "A", description: "Option A" },
+            { label: "B", description: "Option B" },
+          ],
+          custom: true,
+        },
+      ],
+    })
+
+    // custom: true must be preserved in the parsed output
+    expect(parsed.questions[0]).toHaveProperty("custom", true)
+  })
+
+  test("parameters schema preserves custom: false when explicitly set", () => {
+    const parsed = questionTool.parameters.parse({
+      questions: [
+        {
+          question: "Pick one?",
+          header: "Pick",
+          options: [{ label: "A", description: "Option A" }],
+          custom: false,
+        },
+      ],
+    })
+
+    expect(parsed.questions[0]).toHaveProperty("custom", false)
+  })
+
+  test("parameters schema defaults custom to undefined when omitted", () => {
+    const parsed = questionTool.parameters.parse({
+      questions: [
+        {
+          question: "Pick one?",
+          header: "Pick",
+          options: [{ label: "A", description: "Option A" }],
+        },
+      ],
+    })
+
+    // When custom is not provided, it should be undefined (not stripped)
+    expect(parsed.questions[0].custom).toBeUndefined()
+  })
+
+  test("execution with custom: true emits question-request with custom preserved", async () => {
+    const ctx = makeCtx()
+    let emittedRequest: any = null
+
+    bus.on("question-request", (data) => {
+      emittedRequest = data
+    })
+
+    // Reply after a short delay
+    const replyPromise = new Promise<void>((resolve) => {
+      bus.on("question-request", (data) => {
+        setTimeout(() => {
+          respondQuestion({
+            requestId: data.requestId,
+            answers: [["Option A"]],
+          })
+          resolve()
+        }, 10)
+      })
+    })
+
+    await questionTool.execute(
+      {
+        questions: [
+          {
+            question: "Which framework?",
+            header: "Framework",
+            options: [
+              { label: "Option A", description: "First choice" },
+            ],
+            custom: true,
+          },
+        ],
+      },
+      ctx,
+    )
+
+    await replyPromise
+
+    expect(emittedRequest).not.toBeNull()
+    expect(emittedRequest.questions[0].custom).toBe(true)
+  })
+
+  test("execution with custom: false does not set custom on emitted event", async () => {
+    const ctx = makeCtx()
+    let emittedRequest: any = null
+
+    bus.on("question-request", (data) => {
+      emittedRequest = data
+    })
+
+    const replyPromise = new Promise<void>((resolve) => {
+      bus.on("question-request", (data) => {
+        setTimeout(() => {
+          respondQuestion({
+            requestId: data.requestId,
+            answers: [["Option A"]],
+          })
+          resolve()
+        }, 10)
+      })
+    })
+
+    await questionTool.execute(
+      {
+        questions: [
+          {
+            question: "Which framework?",
+            header: "Framework",
+            options: [{ label: "Option A", description: "First choice" }],
+            custom: false,
+          },
+        ],
+      },
+      ctx,
+    )
+
+    await replyPromise
+
+    expect(emittedRequest).not.toBeNull()
+    // custom: false is the same as not set — it should not be true
+    expect(emittedRequest.questions[0].custom).not.toBe(true)
+  })
+})
+
 // Clean up bus listeners between tests
 afterEach(() => {
   bus.removeAllListeners("question-request")
