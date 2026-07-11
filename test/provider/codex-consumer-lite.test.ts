@@ -163,12 +163,13 @@ describe("Responses Lite body (gpt-5.6-luna)", () => {
 
 		await drain(await model.doStream({
 			prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
-			providerOptions: { codex: { reasoningEffort: "high", reasoningSummary: "auto" } },
+			providerOptions: { codex: { reasoningEffort: "high", reasoningSummary: "auto", reasoningMode: "pro" } },
 		}))
 
 		expect(captured[0]!.body.reasoning).toEqual({
 			effort: "high",
 			summary: "auto",
+			mode: "pro",
 			context: "all_turns",
 		})
 	})

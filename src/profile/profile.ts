@@ -45,6 +45,10 @@ export interface ProfileDef {
   subAgents?: string[]
   /** Model string for this profile (e.g. `"copilot/gpt-4o"`). Falls back to config `main_model` if omitted. */
   model?: string
+  /** Thinking effort for this profile. Falls back to global config when omitted. */
+  thinkingEffort?: string
+  /** Thinking mode for this profile. Falls back to global config when omitted. */
+  thinkingMode?: string
   /** Permission rules for this profile's tools.
    *  Each rule matches a tool ID and specifies whether to allow, deny, or ask.
    *  Rules are evaluated with last-match-wins semantics.
@@ -132,6 +136,8 @@ function parseProfilesFromYAML(raw: Record<string, unknown>, configDir: string):
       skills: Array.isArray(p.skills) ? (p.skills as string[]) : [],
       subAgents: Array.isArray(p.sub_agents) ? (p.sub_agents as string[]) : undefined,
       model: typeof p.model === "string" ? p.model : undefined,
+      thinkingEffort: typeof p.thinking_effort === "string" ? p.thinking_effort : undefined,
+      thinkingMode: typeof p.thinking_mode === "string" ? p.thinking_mode : undefined,
       permissions: parsePermissions(p.permissions),
     }
   }

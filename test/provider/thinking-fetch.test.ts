@@ -137,7 +137,7 @@ describe("thinking providerOptions land in request body", () => {
     })
 
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: true, effort: "high" })
+    normalizer.configure({ effort: "high" })
 
     await generateText({
       model: provider("gpt-5"),
@@ -162,7 +162,7 @@ describe("thinking providerOptions land in request body", () => {
     })
 
     const normalizer = getThinkingNormalizer("qwen3-max")
-    normalizer.configure({ enabled: true, effort: "thinking" })
+    normalizer.configure({ effort: "thinking" })
 
     await generateText({
       model: provider("qwen3-max"),
@@ -185,7 +185,7 @@ describe("thinking providerOptions land in request body", () => {
     })
 
     const normalizer = getThinkingNormalizer("deepseek-v4-pro")
-    normalizer.configure({ enabled: true, effort: "max" })
+    normalizer.configure({ effort: "max" })
 
     await generateText({
       model: provider("deepseek-v4-pro"),
@@ -200,6 +200,19 @@ describe("thinking providerOptions land in request body", () => {
     expect(body!.thinking).toEqual({ type: "enabled" })
   })
 
+  test("gpt-5.6 — default standard mode and effort reach the body", async () => {
+    const mock = makeCapturingFetch()
+    const provider = createOpenAICompatible({ name: "test", baseURL: "https://mock.example.com/v1", apiKey: "test", fetch: mock.fetch })
+    const normalizer = getThinkingNormalizer("gpt-5.6")
+    normalizer.configure({ effort: "high" })
+
+    await generateText({ model: provider("gpt-5.6"), prompt: "Hello", providerOptions: normalizer.normalize("test") })
+
+    const body = mock.capturedBody()!
+    expect(body.reasoning_effort).toBe("high")
+    expect(body.reasoningMode).toBe("standard")
+  })
+
   test("no thinking fields when effort is none", async () => {
     const mock = makeCapturingFetch()
     const provider = createOpenAICompatible({
@@ -210,7 +223,7 @@ describe("thinking providerOptions land in request body", () => {
     })
 
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: false, effort: "none" })
+    normalizer.configure({ effort: "none" })
 
     const opts = normalizer.normalize("test")
     expect(opts).toBeUndefined()

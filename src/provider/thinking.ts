@@ -19,6 +19,12 @@ type ThinkingEntry = {
   thinkingField?: JSONObject
   /** Valid effort levels including "none" as the off state */
   levels: string[]
+  /** Provider option field for a reasoning mode */
+  modeField?: string
+  /** Valid reasoning modes for this model */
+  modes?: string[]
+  /** Default reasoning mode when thinking is enabled */
+  defaultMode?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +64,38 @@ const MODEL_THINKING: Record<string, ThinkingEntry> = {
     effortField: "reasoningEffort",
     thinkingField: { reasoningSummary: "auto" },
     levels: ["none", "minimal", "low", "medium", "high", "xhigh"],
+  },
+  "gpt-5.6": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    modeField: "reasoningMode",
+    modes: ["standard", "pro"],
+    defaultMode: "standard",
+  },
+  "gpt-5.6-sol": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    modeField: "reasoningMode",
+    modes: ["standard", "pro"],
+    defaultMode: "standard",
+  },
+  "gpt-5.6-terra": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    modeField: "reasoningMode",
+    modes: ["standard", "pro"],
+    defaultMode: "standard",
+  },
+  "gpt-5.6-luna": {
+    effortField: "reasoningEffort",
+    thinkingField: { reasoningSummary: "auto" },
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    modeField: "reasoningMode",
+    modes: ["standard", "pro"],
+    defaultMode: "standard",
   },
   "gpt-5.4": {
     effortField: "reasoningEffort",
@@ -135,6 +173,8 @@ export type ThinkingEffort = string
 
 export interface ThinkingConfig {
   effort: string
+  mode: string
+  modeExplicit: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +217,8 @@ export class ThinkingNormalizer {
     this.modelId = modelId
     this.config = {
       effort: config?.effort ?? "none",
+      mode: config?.mode ?? "standard",
+      modeExplicit: config?.modeExplicit ?? false,
     }
   }
 
@@ -201,9 +243,27 @@ export class ThinkingNormalizer {
     const entry = lookupThinkingEntry(this.modelId)
     if (!entry) return undefined
 
+    if (!entry.modeField) {
+      if (this.config.modeExplicit) {
+        throw new Error(
+          `thinking_mode is not supported by model "${this.modelId}". Remove thinking_mode or choose a model that supports modes.`,
+        )
+      }
+    } else {
+      const mode = this.config.mode || entry.defaultMode
+      if (!mode || !entry.modes?.includes(mode)) {
+        throw new Error(
+          `Invalid thinking_mode "${mode}" for model "${this.modelId}". Supported modes: ${entry.modes?.join(", ")}.`,
+        )
+      }
+    }
+
     const merged = { ...entry.thinkingField } as JSONObject
     if (entry.effortField) {
       merged[entry.effortField] = this.config.effort
+    }
+    if (entry.modeField) {
+      merged[entry.modeField] = this.config.mode || entry.defaultMode
     }
 
     // Map provider → providerOptions key:

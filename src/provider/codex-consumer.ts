@@ -42,7 +42,7 @@ interface CodexRequestBody {
 	temperature?: number
 	previous_response_id?: string
 	prompt_cache_key?: string
-	reasoning?: { effort?: string; summary?: string; context?: string }
+	reasoning?: { effort?: string; summary?: string; mode?: string; context?: string }
 }
 
 // ---------------------------------------------------------------------------
@@ -454,10 +454,12 @@ function buildRequestBody(modelId: string, opts: LanguageModelV3CallOptions): Co
 	const codexOpts = opts.providerOptions?.codex as Record<string, unknown> | undefined
 	const reasoningEffort = codexOpts?.reasoningEffort as string | undefined
 	const reasoningSummary = codexOpts?.reasoningSummary as string | undefined
+	const reasoningMode = codexOpts?.reasoningMode as string | undefined
 	if (reasoningEffort && reasoningEffort !== "none") {
 		body.reasoning = {
 			effort: reasoningEffort,
 			summary: reasoningSummary ?? "auto",
+			...(reasoningMode ? { mode: reasoningMode } : {}),
 		}
 	}
 

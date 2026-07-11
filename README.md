@@ -146,9 +146,21 @@ Set provider API keys via environment variables (e.g. `ANTHROPIC_API_KEY`,
 
 ## Profiles
 
-A profile is a baked-in agent identity declared in YAML — `prompt_file`,
-`tools[]`, `skills[]`, and an optional `model`. Activate one deterministically
-with `--profile <name>`:
+A profile is an agent identity declared in YAML — `prompt_file`, `tools[]`,
+`skills[]`, an optional `model`, and optional per-agent thinking settings.
+Activate one deterministically with `--profile <name>`:
+
+```yaml
+profiles:
+  finder:
+    name: Finder
+    model: opencode/deepseek-v4-flash
+    thinking_effort: high
+    thinking_mode: standard
+```
+
+Profile thinking settings override the global `thinking_effort` and
+`thinking_mode` values when present.
 
 ```bash
 quark --list-profiles

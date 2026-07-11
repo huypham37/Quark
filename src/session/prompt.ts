@@ -32,7 +32,7 @@ import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel } from "../provider/resolver";
 import { getModelLimit } from "../provider/models";
 import { defaultAgent, type AgentConfig } from "../agent";
-import { loadConfig, parseModelSpec } from "../config/config";
+import { hasConfigField, loadConfig, parseModelSpec } from "../config/config";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
@@ -328,7 +328,14 @@ async function loop(
     // 6. Stream + process
     const providerId = effectiveProvider;
     const thinkingNormalizer = getThinkingNormalizer(effectiveModel)
-    thinkingNormalizer.configure({ effort: loadConfig().thinking_effort })
+    const config = loadConfig()
+    const effort = agent.thinkingEffort ?? config.thinking_effort
+    const mode = agent.thinkingMode ?? config.thinking_mode
+    thinkingNormalizer.configure({
+      effort,
+      mode,
+      modeExplicit: agent.thinkingMode !== undefined || hasConfigField("thinking_mode"),
+    })
     const thinkingProviderOptions = thinkingNormalizer.normalize(providerId ?? "");
     const result = await processStream({
       model,
