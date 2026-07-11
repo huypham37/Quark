@@ -41,7 +41,99 @@ interface CodexRequestBody {
 	parallel_tool_calls?: boolean
 	temperature?: number
 	previous_response_id?: string
-	reasoning?: { effort?: string; summary?: string }
+	prompt_cache_key?: string
+	reasoning?: { effort?: string; summary?: string; context?: string }
+}
+
+// ---------------------------------------------------------------------------
+// Responses Lite transport
+// ---------------------------------------------------------------------------
+
+/**
+ * Models requiring the "Responses Lite" transport (Codex CLI 0.144+ format):
+ * tools/instructions move into the `input` array as developer items, plus
+ * compatibility headers and a stable UUIDv7 session identity.
+ *
+ * gpt-5.6-terra and gpt-5.6-sol currently still work via the legacy format —
+ * add them to this set if their legacy path breaks. Remove this entirely if
+ * the backend starts accepting the legacy format for luna.
+ *
+ * See Quark #159 and the reference implementation in opencode PR #36143.
+ */
+const RESPONSES_LITE_MODELS = new Set(["gpt-5.6-luna"])
+
+/** Codex CLI release that introduced Responses Lite; sent as the `version` header. */
+const CODEX_CLI_VERSION = "0.144.0"
+
+/** RFC 9562 UUIDv7: 48-bit unix-ms timestamp + random, portable (no Bun API). */
+function uuidv7(): string {
+	const bytes = new Uint8Array(16)
+	crypto.getRandomValues(bytes)
+	const ts = BigInt(Date.now())
+	bytes[0] = Number((ts >> 40n) & 0xffn)
+	bytes[1] = Number((ts >> 32n) & 0xffn)
+	bytes[2] = Number((ts >> 24n) & 0xffn)
+	bytes[3] = Number((ts >> 16n) & 0xffn)
+	bytes[4] = Number((ts >> 8n) & 0xffn)
+	bytes[5] = Number(ts & 0xffn)
+	bytes[6] = (bytes[6]! & 0x0f) | 0x70 // version 7
+	bytes[8] = (bytes[8]! & 0x3f) | 0x80 // variant 10
+	const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
+ * Adapt a legacy request body to the Responses Lite format. Pure function:
+ * the legacy builder stays untouched, and this is trivially deletable once
+ * the transport situation stabilizes.
+ */
+function toResponsesLite(body: CodexRequestBody, sessionId: string): CodexRequestBody {
+	const input: unknown[] = [
+		// Always present, even with no tools — the backend expects the item.
+		{ type: "additional_tools", role: "developer", tools: body.tools ?? [] },
+	]
+	if (body.instructions) {
+		input.push({
+			type: "message",
+			role: "developer",
+			content: [{ type: "input_text", text: body.instructions }],
+		})
+	}
+	input.push(...body.input.map((item) => stripImageDetail(item)))
+
+	const lite: CodexRequestBody = {
+		...body,
+		input,
+		tool_choice: "auto",
+		parallel_tool_calls: false,
+		prompt_cache_key: sessionId,
+		reasoning: { ...body.reasoning, context: "all_turns" },
+	}
+	delete lite.tools
+	delete lite.instructions
+	return lite
+}
+
+/** Recursively remove `detail` from `input_image` parts (Lite rejects it). */
+function stripImageDetail(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map((v) => stripImageDetail(v))
+	if (value && typeof value === "object") {
+		const record = value as Record<string, unknown>
+		const copy: Record<string, unknown> = {}
+		for (const [key, val] of Object.entries(record)) {
+			if (key === "detail" && record.type === "input_image") continue
+			copy[key] = stripImageDetail(val)
+		}
+		return copy
+	}
+	return value
+}
+
+function applyLiteHeaders(h: Headers, sessionId: string): void {
+	h.set("version", CODEX_CLI_VERSION)
+	h.set("x-openai-internal-codex-responses-lite", "true")
+	h.set("session-id", sessionId)
+	h.set("x-session-affinity", sessionId)
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +143,9 @@ interface CodexRequestBody {
 export function createCodexConsumer(options: CodexConsumerOptions): LanguageModelV3 {
 	const baseFetch = options.fetch ?? globalThis.fetch.bind(globalThis) as FetchFn
 	const maxRetries = options.maxRetries ?? 0
+	// Stable per provider instance: reused as session-id, x-session-affinity,
+	// and prompt_cache_key across all Lite requests (matches Codex CLI behavior).
+	const liteSessionId = uuidv7()
 
 	return {
 		specificationVersion: "v3",
@@ -95,8 +190,12 @@ export function createCodexConsumer(options: CodexConsumerOptions): LanguageMode
 		async doStream(opts: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
 			const jwt = options.jwt ?? (await options.getToken!())
 			const accountId = options.accountId ?? (await options.getAccountId!())
-			const body = buildRequestBody(options.modelId, opts)
+			let body = buildRequestBody(options.modelId, opts)
 			const headers = buildHeaders(jwt, accountId)
+			if (RESPONSES_LITE_MODELS.has(options.modelId)) {
+				body = toResponsesLite(body, liteSessionId)
+				applyLiteHeaders(headers, liteSessionId)
+			}
 
 			const response = await fetchWithRetry(
 				"https://chatgpt.com/backend-api/codex/responses",
