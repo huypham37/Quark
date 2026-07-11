@@ -7,7 +7,7 @@ import { dbToConversationMessages } from "../shared/conversation-view"
 import { resolveProfile, readPromptFile, listProfiles } from "../profile/profile"
 import { agentFromProfile } from "../agent"
 import type { AgentConfig } from "../agent"
-import { loadConfig, parseModelSpec } from "../config/config"
+import { loadConfig, parseModelSpec, setConfigField } from "../config/config"
 import { respond as respondPermission } from "../permission/permission"
 import type { Reply } from "../permission/permission"
 import { getFiles, fuzzyFilter } from "../shared/filelist"
@@ -163,15 +163,15 @@ function createRequestHandler(agent: AgentConfig) {
     }
 
     if (req.method === "POST" && pathname === "/api/thinking") {
-      const body = (await req.json()) as { enabled: boolean }
-      const effort = body.enabled ? "high" : "none"
+      const body = (await req.json()) as { effort: string }
+      setConfigField("thinking_effort", body.effort)
       const activeModel = parseModelSpec(modelOverride ?? loadConfig().main_model).model
-      getThinkingNormalizer(activeModel).configure({ enabled: body.enabled, effort })
-      return json({ enabled: body.enabled })
+      getThinkingNormalizer(activeModel).configure({ effort: body.effort })
+      return json({ effort: body.effort })
     }
 
     if (req.method === "GET" && pathname === "/api/thinking") {
-      return json({ enabled: getThinkingNormalizer().getConfig().enabled })
+      return json({ effort: loadConfig().thinking_effort })
     }
 
     if (req.method === "POST" && pathname === "/api/permission") {

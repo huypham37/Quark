@@ -1,5 +1,9 @@
 import { describe, test, expect } from "bun:test"
-import { getThinkingNormalizer, getThinkingLevels } from "../../src/provider/thinking"
+import { getThinkingNormalizer, getThinkingLevels, resetThinkingNormalizer } from "../../src/provider/thinking"
+
+import { beforeEach } from "bun:test"
+
+beforeEach(() => resetThinkingNormalizer())
 
 describe("getThinkingLevels", () => {
   test("returns effort levels for gpt-5", () => {
@@ -34,9 +38,15 @@ describe("getThinkingLevels", () => {
 })
 
 describe("ThinkingNormalizer normalize", () => {
+  test("defaults to effort none without an enabled field", () => {
+    const normalizer = getThinkingNormalizer("gpt-5")
+    expect(normalizer.getConfig()).toEqual({ effort: "none" })
+    expect(normalizer.normalize("copilot")).toBeUndefined()
+  })
+
   test("qwen3-max uses correct providerOptions key", () => {
     const normalizer = getThinkingNormalizer("qwen3-max")
-    normalizer.configure({ enabled: true, effort: "thinking" })
+    normalizer.configure({ effort: "thinking" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot).toEqual({ enable_thinking: true })
@@ -44,7 +54,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("gpt-5 uses correct providerOptions key", () => {
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: true, effort: "medium" })
+    normalizer.configure({ effort: "medium" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.reasoningEffort).toBe("medium")
@@ -53,7 +63,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("claude-opus-4-7 uses anthropic key", () => {
     const normalizer = getThinkingNormalizer("claude-opus-4-7")
-    normalizer.configure({ enabled: true, effort: "low" })
+    normalizer.configure({ effort: "low" })
     const result = normalizer.normalize("anthropic")
     expect(result).toBeDefined()
     expect(result!.anthropic!.thinking).toEqual({ type: "adaptive" })
@@ -62,7 +72,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("deepseek uses correct key with reasoningEffort and thinking toggle", () => {
     const normalizer = getThinkingNormalizer("deepseek-v4-pro")
-    normalizer.configure({ enabled: true, effort: "high" })
+    normalizer.configure({ effort: "high" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.reasoningEffort).toBe("high")
@@ -71,21 +81,21 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("returns undefined when effort is none", () => {
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: true, effort: "none" })
+    normalizer.configure({ effort: "none" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeUndefined()
   })
 
   test("returns undefined for unknown model", () => {
     const normalizer = getThinkingNormalizer("unknown-model")
-    normalizer.configure({ enabled: true, effort: "high" })
+    normalizer.configure({ effort: "high" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeUndefined()
   })
 
   test("kimi uses correct key with thinking type enabled", () => {
     const normalizer = getThinkingNormalizer("kimi-k2.6")
-    normalizer.configure({ enabled: true, effort: "thinking" })
+    normalizer.configure({ effort: "thinking" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.thinking).toEqual({ type: "enabled" })
@@ -93,7 +103,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("binary model with effort=none returns undefined", () => {
     const normalizer = getThinkingNormalizer("qwen3-max")
-    normalizer.configure({ enabled: true, effort: "none" })
+    normalizer.configure({ effort: "none" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeUndefined()
   })

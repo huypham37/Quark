@@ -327,9 +327,9 @@ async function loop(
 
     // 6. Stream + process
     const providerId = effectiveProvider;
-    const thinkingProviderOptions = getThinkingNormalizer(
-      effectiveModel,
-    ).normalize(providerId ?? "");
+    const thinkingNormalizer = getThinkingNormalizer(effectiveModel)
+    thinkingNormalizer.configure({ effort: loadConfig().thinking_effort })
+    const thinkingProviderOptions = thinkingNormalizer.normalize(providerId ?? "");
     const result = await processStream({
       model,
       system,

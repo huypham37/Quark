@@ -121,6 +121,10 @@ small_model: gpt-4o-mini        # lightweight tasks (title generation, etc.)
 
 max_steps: 100
 
+# Thinking defaults
+thinking_effort: none
+thinking_mode: standard
+
 # Auto-branch when the context window fills up
 branching:
   auto: true

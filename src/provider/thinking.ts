@@ -134,7 +134,6 @@ export type ProviderOptions = Record<string, JSONObject>
 export type ThinkingEffort = string
 
 export interface ThinkingConfig {
-  enabled: boolean
   effort: string
 }
 
@@ -177,8 +176,7 @@ export class ThinkingNormalizer {
   constructor(modelId: string, config?: Partial<ThinkingConfig>) {
     this.modelId = modelId
     this.config = {
-      enabled: config?.enabled ?? false,
-      effort: config?.effort ?? "xhigh",
+      effort: config?.effort ?? "none",
     }
   }
 

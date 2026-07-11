@@ -14,7 +14,7 @@ import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
-import { loadConfig } from "../../config/config"
+import { loadConfig, setConfigField } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -906,8 +906,6 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
-          state.setStore("thinkingEffort", "none")
-          getThinkingNormalizer(next).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: next })
         }
       }
@@ -925,8 +923,6 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", prev, state.store.sessionId)
           }
           state.setStore("status", "modelName", prev)
-          state.setStore("thinkingEffort", "none")
-          getThinkingNormalizer(prev).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: prev })
         }
       }
@@ -1073,7 +1069,8 @@ export const App: Component<AppProps> = (props) => {
       }
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
-      getThinkingNormalizer(state.store.status.modelName).configure({ enabled: effort !== "none", effort })
+      setConfigField("thinking_effort", effort)
+      getThinkingNormalizer(state.store.status.modelName).configure({ effort })
       evt.preventDefault()
       return
     }

@@ -79,6 +79,8 @@ const DEFAULTS = {
   branching: BRANCHING_DEFAULTS,
   providers: {} as Record<string, ProviderConfig>,
   hide_readonly_tools: false,
+  thinking_effort: "none",
+  thinking_mode: "standard",
 } as const
 
 export interface QuarkConfig {
@@ -91,6 +93,8 @@ export interface QuarkConfig {
   providers: Record<string, ProviderConfig>
   /** Hide read-only tool calls (read, grep, glob, websearch, webfetch, etc.) from the conversation view */
   hide_readonly_tools: boolean
+  thinking_effort: string
+  thinking_mode: string
   /** /goal command settings */
   goal?: GoalConfig
 }
@@ -198,6 +202,8 @@ export function loadConfig(): QuarkConfig {
       typeof raw.hide_readonly_tools === "boolean"
         ? raw.hide_readonly_tools
         : DEFAULTS.hide_readonly_tools,
+    thinking_effort: typeof raw.thinking_effort === "string" && raw.thinking_effort ? raw.thinking_effort : DEFAULTS.thinking_effort,
+    thinking_mode: typeof raw.thinking_mode === "string" && raw.thinking_mode ? raw.thinking_mode : DEFAULTS.thinking_mode,
     goal: parseGoalConfig(raw.goal),
   }
 
@@ -239,6 +245,10 @@ export function registerProvider(id: string, config: ProviderConfig): void {
  * Update a config field and persist to disk.
  * Merges with existing config — only overwrites the specified field.
  */
+export function hasConfigField(key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(readRawConfig(), key)
+}
+
 export function setConfigField<K extends keyof QuarkConfig>(
   key: K,
   value: QuarkConfig[K],

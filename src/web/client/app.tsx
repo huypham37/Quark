@@ -90,10 +90,11 @@ export function App() {
   useEffect(() => {
     const saved = localStorage.getItem('quark-thinking')
     if (saved === 'true') set({ showThinking: true })
-    api<{ enabled: boolean }>('GET', '/api/thinking')
+    api<{ effort: string }>('GET', '/api/thinking')
       .then(r => {
-        set({ showThinking: r.enabled })
-        localStorage.setItem('quark-thinking', JSON.stringify(r.enabled))
+        const enabled = r.effort !== 'none'
+        set({ showThinking: enabled })
+        localStorage.setItem('quark-thinking', JSON.stringify(enabled))
       })
       .catch(() => {})
   }, [])
@@ -517,7 +518,7 @@ export function App() {
     set({ showThinking: next })
     localStorage.setItem('quark-thinking', JSON.stringify(next))
     try {
-      await api('POST', '/api/thinking', { enabled: next })
+      await api('POST', '/api/thinking', { effort: next ? 'high' : 'none' })
     } catch { toast('Error', 'Failed to toggle thinking', 'error') }
   }
 

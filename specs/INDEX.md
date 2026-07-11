@@ -30,6 +30,8 @@ status: done
 | [task-first-architecture.md](core/task-first-architecture.md) | In Progress | Task as first-class citizen; session branching replaces compaction |
 | [goal-command.md](core/goal-command.md) | Draft | Autonomous `/goal` orchestrator: plan → execute → verify → loop |
 | [delegate-tool-migration.md](core/delegate-tool-migration.md) | Draft | Migrate sub-agent spawning from bash to a first-class `delegate` tool |
+| [workspace-boundary-guard.md](workspace-boundary-guard.md) | Draft | Confine tools to workspace root; path-aware permissions; fix undo skip (#155) |
+| [codex-responses-lite.md](codex-responses-lite.md) | Done | Responses Lite adapter for gpt-5.6-luna via codex-consumer; luna-only scoping + exit conditions (#159) |
 
 ## 🖥️ TUI / UX
 *Terminal user interface: rendering, themes, input, interaction patterns.*

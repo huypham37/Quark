@@ -317,7 +317,7 @@ export function createAppState(initial: {
     activeWorktree: null,
     activeBranch: null,
     worktreeSwitching: false,
-    thinkingEffort: "none",
+    thinkingEffort: loadConfig().thinking_effort,
     showThinking: false,
     status: {
       tokensUsed: 0,
@@ -723,8 +723,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
       setStore("status", "modelName", action.modelSpec)
-      setStore("thinkingEffort", "none")
-      getThinkingNormalizer(action.modelSpec).configure({ enabled: false, effort: "none" })
+      getThinkingNormalizer(action.modelSpec).configure({ effort: state.store.thinkingEffort })
       break
     }
 
