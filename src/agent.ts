@@ -34,7 +34,7 @@ export interface AgentConfig {
    *  Rules are evaluated with last-match-wins semantics.
    *
    *  TODO: later support argument-level permission via a `pattern` field. */
-  permissions?: Array<{ tool: string; action: Action }>;
+  permissions?: Array<{ tool: string; pattern?: string; action: Action }>;
 }
 
 /**

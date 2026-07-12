@@ -203,6 +203,28 @@ export function getThinkingLevels(modelId: string): string[] | null {
 }
 
 /**
+ * Validate a thinking effort value for a model.
+ * Throws when the model does not support thinking or the effort is not valid.
+ */
+export function validateThinkingEffort(modelId: string, effort: string): void {
+  const levels = getThinkingLevels(modelId)
+  if (!levels) {
+    throw new Error(`Model "${modelId}" does not support thinking.`)
+  }
+  if (!levels.includes(effort)) {
+    throw new Error(`Invalid thinking_effort "${effort}" for "${modelId}". Valid values: ${levels.join(", ")}.`)
+  }
+}
+
+/**
+ * Return the default thinking effort for a model.
+ * Returns "none" when thinking is unsupported or no explicit effort is requested.
+ */
+export function getDefaultThinkingEffort(_modelId: string): string {
+  return "none"
+}
+
+/**
  * Get the available reasoning modes for a model.
  * Returns null when the model does not support explicit modes.
  */

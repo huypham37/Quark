@@ -72,17 +72,48 @@ function getToolLabel(tool: string, input: Record<string, unknown>): string {
 export const PermissionPrompt: Component<PermissionPromptProps> = (props) => {
   const displayName = () => getToolDisplayName(props.request.tool)
   const label = () => getToolLabel(props.request.tool, props.request.input)
+  const isExternal = () => props.request.input.isExternal === true
+  const workspace = () =>
+    typeof props.request.input.workspace === "string"
+      ? props.request.input.workspace.replace(/^\/Users\/[^/]+/, "~")
+      : ""
+  const accessType = () =>
+    typeof props.request.input.accessType === "string"
+      ? props.request.input.accessType
+      : ""
 
   return (
-    <box flexDirection="column" border={["left"]} borderColor={colors.warning}>
+    <box flexDirection="column" border={["left"]} borderColor={isExternal() && accessType() === "write" ? colors.error : colors.warning}>
       <box flexDirection="row" paddingLeft={1}>
-        <text fg={colors.warning}>▲ </text>
-        <text bold fg={colors.text}>Allow {displayName()}?</text>
+        <text fg={isExternal() && accessType() === "write" ? colors.error : colors.warning}>
+          {isExternal() && accessType() === "write" ? "⚠ " : "▲ "}
+        </text>
+        <Show when={isExternal()}>
+          <text bold fg={colors.text}>
+            External {accessType()} access
+          </text>
+        </Show>
+        <Show when={!isExternal()}>
+          <text bold fg={colors.text}>Allow {displayName()}?</text>
+        </Show>
         <Show when={label()}>
           <text>  </text>
           <text fg={colors.toolPath}>{label()}</text>
         </Show>
       </box>
+      <Show when={isExternal()}>
+        <box flexDirection="column" paddingLeft={2}>
+          <Show when={accessType() === "write"}>
+            <text fg={colors.muted}>This operation can modify a file outside the workspace.</text>
+          </Show>
+          <Show when={accessType() === "read"}>
+            <text fg={colors.muted}>This file is outside the workspace.</text>
+          </Show>
+          <text fg={colors.muted}>
+            Workspace: {workspace()}
+          </text>
+        </box>
+      </Show>
       <box flexDirection="row" gap={2} paddingLeft={1}>
         <box flexDirection="row">
           <text fg={colors.footerKey} bold>(a)</text>
