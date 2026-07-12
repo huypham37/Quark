@@ -11,9 +11,10 @@
 //
 // Both are stored under the current turn's user message ID.
 
+import { createHash } from "node:crypto";
 import { mkdir, cp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname, relative, isAbsolute } from "node:path";
+import { join, dirname, relative, isAbsolute, resolve } from "node:path";
 import { getSessionStorageRoot } from "../storage/session-path";
 import { rewriteJSONL } from "../storage/session-jsonl";
 
@@ -100,13 +101,38 @@ async function saveTracker(sessionId: string, data: TrackerData): Promise<void> 
 // ---------------------------------------------------------------------------
 
 /**
- * Convert an absolute file path to one relative to cwd.
- * Returns null if the file is outside the workspace.
+ * Check whether an absolute path falls inside the workspace root.
+ */
+function isInsideWorkspace(absPath: string): boolean {
+  const rel = relative(process.cwd(), absPath);
+  return !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * Convert an absolute path to a workspace-relative path.
+ * Returns the relative path if inside workspace, otherwise null.
  */
 function toRelPath(absPath: string): string | null {
   const rel = relative(process.cwd(), absPath);
   if (rel.startsWith("..") || isAbsolute(rel)) return null;
   return rel;
+}
+
+/**
+ * Derive a deterministic, collision-resistant snapshot storage key
+ * from an absolute file path.
+ *
+ * Internal files (inside workspace): the key is the relative path,
+ * preserving the directory hierarchy inside the undo snapshot dir.
+ *
+ * External files (outside workspace): the key is `files/<sha256 prefix>`
+ * to avoid collisions with internal directory names.
+ */
+function snapshotKey(absPath: string): string {
+  const rel = toRelPath(absPath);
+  if (rel) return rel;
+  const hash = createHash("sha256").update(absPath).digest("hex").slice(0, 16);
+  return join("files", hash);
 }
 
 // ---------------------------------------------------------------------------
@@ -116,18 +142,23 @@ function toRelPath(absPath: string): string | null {
 /**
  * Snapshot a single file into the undo directory for a given turn.
  * Only snapshots files that currently exist (skip files about to be created).
+ *
+ * The `absPath` parameter is the canonical absolute file path.
+ * Internal files are stored under their workspace-relative path;
+ * external files use a hash-based key under a `files/` subdirectory.
  */
 async function snapshotFile(
   sessionId: string,
   messageId: string,
-  relPath: string,
+  filePath: string,
 ): Promise<void> {
-  const src = join(process.cwd(), relPath);
-  if (!existsSync(src)) return;
+  const absPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+  if (!existsSync(absPath)) return;
 
-  const dest = join(undoDir(sessionId, messageId), relPath);
+  const key = snapshotKey(absPath);
+  const dest = join(undoDir(sessionId, messageId), key);
   await mkdir(dirname(dest), { recursive: true });
-  await cp(src, dest);
+  await cp(absPath, dest);
 }
 
 /**
@@ -158,20 +189,25 @@ export async function restoreFromSnapshot(
   const turn = tracker.turns.find((t) => t.messageId === messageId);
   const touchedFiles = turn?.files ?? [];
 
-  for (const relPath of touchedFiles) {
-    const workspacePath = join(process.cwd(), relPath);
-    const snapPath = join(dir, relPath);
+  for (const storedPath of touchedFiles) {
+    // storedPath is a relative path for internal files, absolute for external
+    const isExternal = isAbsolute(storedPath);
+    const workspacePath = isExternal
+      ? storedPath
+      : join(process.cwd(), storedPath);
+    const key = isExternal ? snapshotKey(storedPath) : storedPath;
+    const snapPath = join(dir, key);
 
     if (existsSync(snapPath)) {
       // File existed before this turn — restore from snapshot
       await mkdir(dirname(workspacePath), { recursive: true });
       await cp(snapPath, workspacePath);
-      restored.push(relPath);
+      restored.push(storedPath);
     } else {
       // No snapshot → file was created this turn → delete it
       if (existsSync(workspacePath)) {
         await rm(workspacePath);
-        deleted.push(relPath);
+        deleted.push(storedPath);
       }
     }
   }
@@ -211,10 +247,14 @@ export async function preTurnSnapshot(
   if (!previousTurn || previousTurn.files.length === 0) return;
 
   // Snapshot files from the previous turn under the new turn's messageId
-  for (const relPath of previousTurn.files) {
-    if (!snapshottedThisTurn.has(relPath)) {
-      snapshottedThisTurn.add(relPath);
-      await snapshotFile(sessionId, messageId, relPath);
+  for (const storedPath of previousTurn.files) {
+    const absPath = isAbsolute(storedPath)
+      ? storedPath
+      : join(process.cwd(), storedPath);
+    const key = isAbsolute(storedPath) ? snapshotKey(storedPath) : storedPath;
+    if (!snapshottedThisTurn.has(key)) {
+      snapshottedThisTurn.add(key);
+      await snapshotFile(sessionId, messageId, absPath);
     }
   }
 }
@@ -274,25 +314,42 @@ export async function trackFile(
 // ---------------------------------------------------------------------------
 
 /**
- * File-extracting tool IDs. Both use `filePath` in their args.
+ * File-extracting tool IDs. These tools modify a target file on disk.
  */
 const FILE_TOOLS = new Set(["write", "edit"]);
 
 /**
- * Extract the file path from a tool call's arguments.
- * Returns an absolute path, or null if the tool doesn't modify files.
+ * Extract the canonical, resolved absolute file path from a tool call's arguments.
+ * Returns an absolute path, or null if the tool doesn't modify files or no path is present.
+ *
+ * Accepts both `path` (reference tool convention) and `filePath` (legacy convention).
+ * When both are present, `path` takes precedence.
+ * Relative paths are resolved against the workspace root.
  */
 export function extractFilePath(toolId: string, args: Record<string, unknown>): string | null {
   if (!FILE_TOOLS.has(toolId)) return null;
-  const fp = args.filePath;
-  if (typeof fp !== "string" || fp.length === 0) return null;
-  return fp;
+
+  const pathArg = args.path;
+  const filePathArg = args.filePath;
+
+  const raw = typeof pathArg === "string" && pathArg.length > 0
+    ? pathArg
+    : typeof filePathArg === "string" && filePathArg.length > 0
+      ? filePathArg
+      : null;
+
+  if (!raw) return null;
+
+  return resolve(process.cwd(), raw);
 }
 
 /**
  * Called in toAITool() before a write/edit tool executes.
  * Lazily snapshots the file if not already done this turn,
  * and registers it in the turn tracker.
+ *
+ * `filePath` must be a canonical absolute path.
+ * Both internal (workspace-relative) and external paths are supported.
  */
 export async function toolPreExecute(
   sessionId: string,
@@ -300,16 +357,17 @@ export async function toolPreExecute(
 ): Promise<void> {
   if (!currentTurnMsgId) return;
 
-  const relPath = toRelPath(filePath);
-  if (!relPath) return; // outside workspace
+  // Determine how to store in the tracker: relative for internal, absolute for external
+  const storedPath = toRelPath(filePath) ?? filePath;
 
   // Track the file for this turn
-  await trackFile(sessionId, relPath);
+  await trackFile(sessionId, storedPath);
 
-  // Lazy snapshot — only if not already snapshotted this turn
-  if (!snapshottedThisTurn.has(relPath)) {
-    snapshottedThisTurn.add(relPath);
-    await snapshotFile(sessionId, currentTurnMsgId, relPath);
+  // Lazy snapshot — use the snapshot key (not stored path) for dedup
+  const key = snapshotKey(filePath);
+  if (!snapshottedThisTurn.has(key)) {
+    snapshottedThisTurn.add(key);
+    await snapshotFile(sessionId, currentTurnMsgId, filePath);
   }
 }
 

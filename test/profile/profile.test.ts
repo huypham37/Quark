@@ -1134,14 +1134,12 @@ describe("parsePermissions", () => {
     expect(result).toEqual([{ tool: "read", action: "allow" }])
   })
 
-  test("allows pattern field but silently ignores it (not yet wired)", () => {
-    // The parser only extracts tool + action; pattern is a TODO
+  test("preserves pattern field when present", () => {
     const raw = [
       { tool: "bash", action: "ask", pattern: "/usr/bin/*" },
     ]
     const result = parsePermissions(raw)
-    expect(result).toEqual([{ tool: "bash", action: "ask" }])
-    // pattern is dropped — verified by toEqual which does not include it
+    expect(result).toEqual([{ tool: "bash", action: "ask", pattern: "/usr/bin/*" }])
   })
 })
 

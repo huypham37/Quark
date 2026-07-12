@@ -12,6 +12,7 @@ import { fireHook } from "../plugin/registry"
 import { bus } from "../session/events"
 import { resolveAvailable } from "./registry"
 import type { ToolDef } from "./tool"
+import { extractResourcePath, isInsideWorkspace, getAccessType } from "./workspace-boundary"
 
 export function resolveToolSet(
   agent: AgentConfig,
@@ -22,7 +23,7 @@ export function resolveToolSet(
   const defs = resolveAvailable([...agent.tools])
   const ruleset: Ruleset = (agent.permissions ?? []).map((r) => ({
     tool: r.tool,
-    pattern: "*",
+    pattern: r.pattern ?? "*",
     action: r.action,
   }))
   const result: ToolSet = {}
@@ -69,20 +70,7 @@ function toAITool(
       const callId = options.toolCallId
       const abortSig = options.abortSignal ?? abort
 
-      try {
-        await askPermission({
-          sessionId,
-          tool: def.id,
-          pattern: "*",
-          ruleset,
-        })
-      } catch (e) {
-        if (e instanceof RejectedError || e instanceof CorrectedError) {
-          bus.emit("permission-rejected", { sessionId })
-        }
-        throw e
-      }
-
+      // Parse arguments first — no side effects, so this is safe
       const parseResult = def.parameters.safeParse(args)
       if (!parseResult.success) {
         const msg = parseResult.error.issues
@@ -95,6 +83,42 @@ function toAITool(
         }
       }
       const validatedArgs = parseResult.data as Record<string, unknown>
+
+      // Extract the resource path (e.g. file/directory) from parsed args.
+      // Pass it as the permission pattern so the boundary check uses
+      // the actual target, not "*".
+      const resourcePath = extractResourcePath(def.id, validatedArgs)
+      const pattern = resourcePath ?? "*"
+
+      // Build metadata for the TUI permission prompt
+      const metadata: Record<string, unknown> = {}
+      let permissionRuleset = ruleset
+      if (resourcePath && !isInsideWorkspace(resourcePath)) {
+        metadata.isExternal = true
+        metadata.workspace = process.cwd()
+        metadata.accessType = getAccessType(def.id)
+        // Workspace boundaries always ask first. Session-level approvals are
+        // evaluated after this ruleset and can still allow the exact target.
+        permissionRuleset = [
+          ...ruleset,
+          { tool: def.id, pattern, action: "ask" },
+        ]
+      }
+
+      try {
+        await askPermission({
+          sessionId,
+          tool: def.id,
+          pattern,
+          ruleset: permissionRuleset,
+          metadata,
+        })
+      } catch (e) {
+        if (e instanceof RejectedError || e instanceof CorrectedError) {
+          bus.emit("permission-rejected", { sessionId })
+        }
+        throw e
+      }
 
       try {
         const fp = extractFilePath(def.id, validatedArgs)
