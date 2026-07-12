@@ -26,8 +26,6 @@
     "typecheck": "tsc --project tsconfig.build.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts",
-    "build:web": "bun scripts/build-web.ts",
-    "web": "bun scripts/build-web.ts && bun --preload ./preload.ts src/web/index.ts",
     "prepublishOnly": "bun run build",
     "docs": "typedoc"
   },
