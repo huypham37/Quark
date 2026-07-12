@@ -305,6 +305,7 @@ describe("setConfigField", () => {
     const config = loadConfig()
     expect(config.models).toEqual(["x", "y", "z"])
   })
+
 })
 
 // ---------------------------------------------------------------------------

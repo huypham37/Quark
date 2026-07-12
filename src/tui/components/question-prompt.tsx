@@ -9,7 +9,8 @@
 // State is owned by createQuestionKeyHandler and passed in via props.
 
 import type { Accessor, Component } from "solid-js"
-import { For, Show, createSignal } from "solid-js"
+import { For, Show } from "solid-js"
+import type { TextareaRenderable } from "@opentui/core"
 import type { QuestionRequest } from "../state"
 import { colors } from "../theme"
 import { RGBA } from "@opentui/core"
@@ -22,6 +23,16 @@ export interface QuestionPromptProps {
   selected: Accessor<number>
   /** Reactive accessor for the accumulated answers */
   answers: Accessor<string[][]>
+  /** Whether the custom answer textarea is active */
+  customMode: Accessor<boolean>
+  /** Current custom answer text */
+  customText: Accessor<string>
+  /** Update custom answer text from the textarea */
+  setCustomText: (text: string) => void
+  /** Submit the custom answer */
+  submitCustom: (text?: string) => void
+  /** Expose the custom textarea for global key handling */
+  onCustomRef?: (ref: TextareaRenderable) => void
 }
 
 export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
@@ -32,6 +43,7 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
   const options = () => question()?.options ?? []
   const isMulti = () => question()?.multiple === true
   const isConfirm = () => !single() && props.tab() === questions().length
+  const customIndex = () => options().length
 
   const currentAnswers = () => props.answers()[props.tab()] ?? []
 
@@ -93,6 +105,36 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
                 )
               }}
             </For>
+            <Show when={question()?.custom === true}>
+              <box flexDirection="row">
+                <text fg={props.selected() === customIndex() ? colors.primary : colors.muted}>
+                  {props.selected() === customIndex() ? "❯ " : "  "}
+                </text>
+                <text fg={colors.muted}>{`${customIndex() + 1}. `}</text>
+                <text
+                  fg={props.selected() === customIndex() ? colors.primary : colors.text}
+                  bold={props.selected() === customIndex()}
+                >
+                  Type your own answer
+                </text>
+              </box>
+            </Show>
+            <Show when={props.customMode()}>
+              <text fg={colors.muted}>Custom answer:</text>
+              <textarea
+                ref={(ref: TextareaRenderable) => props.onCustomRef?.(ref)}
+                focused={true}
+                placeholder="Type your own answer..."
+                textColor={colors.text}
+                focusedTextColor={colors.text}
+                placeholderColor={colors.textDim}
+                cursorColor={colors.cursorColor}
+                cursorStyle={{ style: "block", blinking: true }}
+                onContentChange={(value: string) => props.setCustomText(value)}
+                onSubmit={() => props.submitCustom()}
+                keyBindings={[{ name: "return", action: "submit" }]}
+              />
+            </Show>
           </box>
         </box>
       </Show>
@@ -138,136 +180,5 @@ export const QuestionPrompt: Component<QuestionPromptProps> = (props) => {
   )
 }
 
-// Export keyboard handler logic — used by App.tsx's global keyboard handler
-export function createQuestionKeyHandler(props: {
-  request: () => QuestionRequest | undefined
-  onReply: (answers: string[][]) => void
-  onReject: () => void
-}) {
-  const [tab, setTab] = createSignal(0)
-  const [selected, setSelected] = createSignal(0)
-  const [answers, setAnswers] = createSignal<string[][]>([])
-
-  const questions = () => props.request()?.questions ?? []
-  const single = () => questions().length === 1 && questions()[0]?.multiple !== true
-  const question = () => questions()[tab()]
-  const options = () => question()?.options ?? []
-  const isMulti = () => question()?.multiple === true
-  const isConfirm = () => !single() && tab() === questions().length
-
-  function pick(label: string) {
-    const a = [...answers()]
-    a[tab()] = [label]
-    setAnswers(a)
-
-    if (single()) {
-      props.onReply([[label]])
-      return
-    }
-    setTab(tab() + 1)
-    setSelected(0)
-  }
-
-  function toggle(label: string) {
-    const a = [...answers()]
-    const existing = a[tab()] ?? []
-    const next = [...existing]
-    const idx = next.indexOf(label)
-    if (idx === -1) next.push(label)
-    else next.splice(idx, 1)
-    a[tab()] = next
-    setAnswers(a)
-  }
-
-  function reset() {
-    setTab(0)
-    setSelected(0)
-    setAnswers([])
-  }
-
-  /** Returns true if key was consumed */
-  function handleKey(name: string): boolean {
-    if (!props.request()) return false
-
-    if (name === "escape") {
-      props.onReject()
-      reset()
-      return true
-    }
-
-    if (isConfirm()) {
-      if (name === "return") {
-        const finalAnswers = questions().map((_, i) => answers()[i] ?? [])
-        props.onReply(finalAnswers)
-        reset()
-        return true
-      }
-      if (name === "left" || name === "h") {
-        setTab(Math.max(0, tab() - 1))
-        setSelected(0)
-        return true
-      }
-      return false
-    }
-
-    const opts = options()
-    const total = opts.length
-
-    // Number keys for quick select
-    const digit = Number(name)
-    if (!Number.isNaN(digit) && digit >= 1 && digit <= Math.min(total, 9)) {
-      const opt = opts[digit - 1]
-      if (opt) {
-        if (isMulti()) {
-          setSelected(digit - 1)
-          toggle(opt.label)
-        } else {
-          pick(opt.label)
-        }
-      }
-      return true
-    }
-
-    if (name === "up" || name === "k") {
-      setSelected((selected() - 1 + total) % total)
-      return true
-    }
-
-    if (name === "down" || name === "j") {
-      setSelected((selected() + 1) % total)
-      return true
-    }
-
-    if (name === "return") {
-      const opt = opts[selected()]
-      if (opt) {
-        if (isMulti()) {
-          toggle(opt.label)
-        } else {
-          pick(opt.label)
-        }
-      }
-      return true
-    }
-
-    // Tab/left/right for multi-question navigation
-    if (name === "tab" || name === "right" || name === "l") {
-      if (!single() && tab() < questions().length) {
-        setTab(tab() + 1)
-        setSelected(0)
-        return true
-      }
-    }
-    if (name === "left" || name === "h") {
-      if (!single() && tab() > 0) {
-        setTab(tab() - 1)
-        setSelected(0)
-        return true
-      }
-    }
-
-    return false
-  }
-
-  return { tab, selected, answers, handleKey, reset, isConfirm, single }
-}
+// Keyboard handling lives separately so it can be tested without rendering OpenTUI.
+export { createQuestionKeyHandler } from "../question-key-handler"

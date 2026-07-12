@@ -51,6 +51,7 @@ import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { getThinkingNormalizer } from "../../provider/thinking"
+import { resolveProfile, setProfileThinking } from "../../profile/profile"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 
 /** Command handler result */
@@ -84,6 +85,7 @@ interface AppProps {
   initialSessionId?: string
   initialModelName?: string
   initialSkillCount?: number
+  initialThinkingEffort?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,7 @@ export const App: Component<AppProps> = (props) => {
     sessionId: props.initialSessionId ?? null,
     modelName: props.initialModelName ?? "smart",
     skillCount: props.initialSkillCount ?? 0,
+    thinkingEffort: props.initialThinkingEffort,
   })
 
   // Wire event bus to state store
@@ -216,6 +219,7 @@ export const App: Component<AppProps> = (props) => {
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
   let inputRef: TextareaRenderable | undefined
+  let customQuestionRef: TextareaRenderable | undefined
 
   // --- Local UI signals (not in the global store — ephemeral) ---
   const [mention, setMention] = createSignal<MentionState>(MENTION_INACTIVE)
@@ -906,8 +910,6 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", next, state.store.sessionId)
           }
           state.setStore("status", "modelName", next)
-          state.setStore("thinkingEffort", "none")
-          getThinkingNormalizer(next).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: next })
         }
       }
@@ -925,8 +927,6 @@ export const App: Component<AppProps> = (props) => {
             props.onCommand("model", prev, state.store.sessionId)
           }
           state.setStore("status", "modelName", prev)
-          state.setStore("thinkingEffort", "none")
-          getThinkingNormalizer(prev).configure({ enabled: false, effort: "none" })
           bus.emit("model-switched", { modelSpec: prev })
         }
       }
@@ -953,8 +953,22 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Question mode: intercept arrow/number/enter/escape keys
+    // Question mode: custom text entry is handled by its focused textarea.
     if (state.store.question) {
+      if (questionHandler.customMode()) {
+        if (evt.name === "return") {
+          questionHandler.submitCustom(customQuestionRef?.plainText)
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "escape") {
+          questionHandler.handleKey(evt.name)
+          evt.preventDefault()
+          return
+        }
+        return
+      }
+
       const consumed = questionHandler.handleKey(evt.name)
       if (consumed) {
         evt.preventDefault()
@@ -1073,7 +1087,13 @@ export const App: Component<AppProps> = (props) => {
       }
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
-      getThinkingNormalizer(state.store.status.modelName).configure({ enabled: effort !== "none", effort })
+      const profile = resolveProfile(props.getCurrentProfile?.())
+      setProfileThinking(profile.id, { effort, mode: profile.model?.thinking?.mode })
+      getThinkingNormalizer(state.store.status.modelName).configure({
+        effort,
+        mode: profile.model?.thinking?.mode ?? "standard",
+        modeExplicit: profile.model?.thinking?.mode !== undefined,
+      })
       evt.preventDefault()
       return
     }
@@ -1131,6 +1151,11 @@ export const App: Component<AppProps> = (props) => {
             tab={questionHandler.tab}
             selected={questionHandler.selected}
             answers={questionHandler.answers}
+            customMode={questionHandler.customMode}
+            customText={questionHandler.customText}
+            setCustomText={questionHandler.setCustomText}
+            submitCustom={questionHandler.submitCustom}
+            onCustomRef={(ref: TextareaRenderable) => { customQuestionRef = ref }}
           />
         )}
       </Show>

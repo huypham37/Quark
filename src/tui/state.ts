@@ -147,7 +147,7 @@ export type TuiAction =
   | { type: "clear-question" }
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
-  | { type: "model-switched"; modelSpec: string }
+  | { type: "model-switched"; modelSpec: string; thinkingEffort?: ThinkingEffort; thinkingMode?: string }
   | { type: "truncate-messages"; upToMessageId: string }
   // Worktree actions
   | { type: "worktree-switch-start" }
@@ -303,6 +303,7 @@ export function createAppState(initial: {
   sessionId: string | null
   modelName: string
   skillCount: number
+  thinkingEffort?: ThinkingEffort
 }): AppState {
   const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
@@ -317,7 +318,7 @@ export function createAppState(initial: {
     activeWorktree: null,
     activeBranch: null,
     worktreeSwitching: false,
-    thinkingEffort: "none",
+    thinkingEffort: initial.thinkingEffort ?? "none",
     showThinking: false,
     status: {
       tokensUsed: 0,
@@ -723,8 +724,15 @@ export function dispatch(state: AppState, action: TuiAction): void {
       const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
       setStore("status", "modelName", action.modelSpec)
-      setStore("thinkingEffort", "none")
-      getThinkingNormalizer(action.modelSpec).configure({ enabled: false, effort: "none" })
+      if (action.thinkingEffort !== undefined) {
+        setStore("thinkingEffort", action.thinkingEffort)
+      }
+      const mode = action.thinkingMode
+      getThinkingNormalizer(action.modelSpec).configure({
+        effort: action.thinkingEffort ?? state.store.thinkingEffort,
+        mode: mode ?? "standard",
+        modeExplicit: mode !== undefined,
+      })
       break
     }
 

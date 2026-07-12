@@ -250,6 +250,22 @@ describe("doStream — HTTP request", () => {
     expect(capturedBody.reasoning).toEqual({ effort: "high", summary: "auto" })
   })
 
+  test("passes reasoning mode through providerOptions", async () => {
+    let capturedBody: Record<string, unknown> = {}
+    const mockFetch: FetchFn = async (_url, init) => {
+      capturedBody = JSON.parse((init?.body as string) ?? "{}")
+      return mockResponse(simpleTextStream("hello"))
+    }
+    const model = createCodexConsumer({ modelId: "gpt-5.6-terra", jwt: "jwt", accountId: "acct", fetch: mockFetch })
+
+    await collectStream(await model.doStream({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      providerOptions: { codex: { reasoningEffort: "high", reasoningMode: "pro" } },
+    }))
+
+    expect(capturedBody.reasoning).toEqual({ effort: "high", summary: "auto", mode: "pro" })
+  })
+
   test("omits reasoning when providerOptions reasoningEffort is 'none'", async () => {
     let capturedBody: Record<string, unknown> = {}
 

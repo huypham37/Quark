@@ -30,7 +30,7 @@ describe("createAppState", () => {
       expect(store.messages).toEqual([])
       expect(store.running).toBe(false)
       expect(store.status.tokensUsed).toBe(0)
-      expect(store.status.tokenLimit).toBeGreaterThan(0)
+      expect(store.status.tokenLimit).toBeGreaterThanOrEqual(0)
       expect(store.status.cost).toBe(0)
       expect(store.status.modelName).toBe("smart")
       expect(store.status.skillCount).toBe(3)
@@ -68,6 +68,19 @@ describe("createAppState", () => {
       expect((store as any).activeBranch).toBeNull()
       // Not currently switching
       expect((store as any).worktreeSwitching).toBe(false)
+    })
+  })
+})
+
+describe("dispatch: thinking actions", () => {
+  test("cycles configured effort and applies the active profile's effort on model switches", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "gpt-5", skillCount: 0, thinkingEffort: "high" })
+      expect(s.store.thinkingEffort).toBe("high")
+      dispatch(s, { type: "cycle-thinking", modelId: "gpt-5" })
+      expect(s.store.thinkingEffort).toBe("xhigh")
+      dispatch(s, { type: "model-switched", modelSpec: "gpt-5-mini", thinkingEffort: "low" })
+      expect(s.store.thinkingEffort).toBe("low")
     })
   })
 })

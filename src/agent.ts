@@ -23,8 +23,14 @@ export interface AgentConfig {
   skills: string[];
   /** Profile IDs of sub-agents this agent can spawn */
   subAgents?: string[];
-  /** Model string to use for this agent (e.g. `"copilot/gpt-4o"`). Falls back to config `main_model` if omitted. */
-  model?: string;
+  /** Model configuration to use for this agent. Falls back to config `main_model` if omitted. */
+  model?: {
+    id: string;
+    thinking?: {
+      effort: string;
+      mode?: string;
+    };
+  };
   /** Permission rules for this agent's tools.
    *  Each rule matches a tool ID and specifies whether to allow, deny, or ask.
    *  Rules are evaluated with last-match-wins semantics.

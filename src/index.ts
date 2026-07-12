@@ -65,6 +65,7 @@ export {
   resolveProfile,
   readPromptFile,
   listProfiles,
+  setProfileThinking,
   resetProfileCache,
   type ProfileDef,
   type ProfileConfig,

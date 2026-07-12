@@ -1,5 +1,9 @@
 import { describe, test, expect } from "bun:test"
-import { getThinkingNormalizer, getThinkingLevels } from "../../src/provider/thinking"
+import { getThinkingNormalizer, getThinkingLevels, resetThinkingNormalizer } from "../../src/provider/thinking"
+
+import { beforeEach } from "bun:test"
+
+beforeEach(() => resetThinkingNormalizer())
 
 describe("getThinkingLevels", () => {
   test("returns effort levels for gpt-5", () => {
@@ -31,12 +35,40 @@ describe("getThinkingLevels", () => {
     const levels = getThinkingLevels("kimi-k2-thinking")
     expect(levels).toEqual(["none", "thinking"])
   })
+
+  // ── gpt-5.6 models (issue #161) ────────────────────────────────────────
+
+  test("returns effort levels for gpt-5.6", () => {
+    const levels = getThinkingLevels("gpt-5.6")
+    expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+  })
+
+  test("returns effort levels for gpt-5.6-luna", () => {
+    const levels = getThinkingLevels("gpt-5.6-luna")
+    expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+  })
+
+  test("returns effort levels for gpt-5.6-terra", () => {
+    const levels = getThinkingLevels("gpt-5.6-terra")
+    expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+  })
+
+  test("returns effort levels for gpt-5.6-sol", () => {
+    const levels = getThinkingLevels("gpt-5.6-sol")
+    expect(levels).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+  })
 })
 
 describe("ThinkingNormalizer normalize", () => {
+  test("defaults to effort none without an enabled field", () => {
+    const normalizer = getThinkingNormalizer("gpt-5")
+    expect(normalizer.getConfig()).toEqual({ effort: "none", mode: "standard", modeExplicit: false })
+    expect(normalizer.normalize("copilot")).toBeUndefined()
+  })
+
   test("qwen3-max uses correct providerOptions key", () => {
     const normalizer = getThinkingNormalizer("qwen3-max")
-    normalizer.configure({ enabled: true, effort: "thinking" })
+    normalizer.configure({ effort: "thinking" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot).toEqual({ enable_thinking: true })
@@ -44,7 +76,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("gpt-5 uses correct providerOptions key", () => {
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: true, effort: "medium" })
+    normalizer.configure({ effort: "medium" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.reasoningEffort).toBe("medium")
@@ -53,7 +85,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("claude-opus-4-7 uses anthropic key", () => {
     const normalizer = getThinkingNormalizer("claude-opus-4-7")
-    normalizer.configure({ enabled: true, effort: "low" })
+    normalizer.configure({ effort: "low" })
     const result = normalizer.normalize("anthropic")
     expect(result).toBeDefined()
     expect(result!.anthropic!.thinking).toEqual({ type: "adaptive" })
@@ -62,7 +94,7 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("deepseek uses correct key with reasoningEffort and thinking toggle", () => {
     const normalizer = getThinkingNormalizer("deepseek-v4-pro")
-    normalizer.configure({ enabled: true, effort: "high" })
+    normalizer.configure({ effort: "high" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.reasoningEffort).toBe("high")
@@ -71,21 +103,21 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("returns undefined when effort is none", () => {
     const normalizer = getThinkingNormalizer("gpt-5")
-    normalizer.configure({ enabled: true, effort: "none" })
+    normalizer.configure({ effort: "none" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeUndefined()
   })
 
   test("returns undefined for unknown model", () => {
     const normalizer = getThinkingNormalizer("unknown-model")
-    normalizer.configure({ enabled: true, effort: "high" })
+    normalizer.configure({ effort: "high" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeUndefined()
   })
 
   test("kimi uses correct key with thinking type enabled", () => {
     const normalizer = getThinkingNormalizer("kimi-k2.6")
-    normalizer.configure({ enabled: true, effort: "thinking" })
+    normalizer.configure({ effort: "thinking" })
     const result = normalizer.normalize("copilot")
     expect(result).toBeDefined()
     expect(result!.copilot!.thinking).toEqual({ type: "enabled" })
@@ -93,8 +125,80 @@ describe("ThinkingNormalizer normalize", () => {
 
   test("binary model with effort=none returns undefined", () => {
     const normalizer = getThinkingNormalizer("qwen3-max")
-    normalizer.configure({ enabled: true, effort: "none" })
+    normalizer.configure({ effort: "none" })
     const result = normalizer.normalize("copilot")
+    expect(result).toBeUndefined()
+  })
+
+  // ── gpt-5.6 models — codex provider normalizer (issue #161) ────────────
+
+  test("gpt-5.6-luna normalizes for codex provider with reasoningEffort and reasoningSummary", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6-luna")
+    normalizer.configure({ effort: "high" })
+    const result = normalizer.normalize("codex")
+    expect(result).toBeDefined()
+    expect(result!.codex!.reasoningEffort).toBe("high")
+    expect(result!.codex!.reasoningSummary).toBe("auto")
+  })
+
+  test("gpt-5.6-terra normalizes for codex provider with reasoningEffort", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6-terra")
+    normalizer.configure({ effort: "medium" })
+    const result = normalizer.normalize("codex")
+    expect(result).toBeDefined()
+    expect(result!.codex!.reasoningEffort).toBe("medium")
+    expect(result!.codex!.reasoningSummary).toBe("auto")
+  })
+
+  test("gpt-5.6-sol normalizes for codex provider with max effort", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6-sol")
+    normalizer.configure({ effort: "xhigh" })
+    const result = normalizer.normalize("codex")
+    expect(result).toBeDefined()
+    expect(result!.codex!.reasoningEffort).toBe("xhigh")
+    expect(result!.codex!.reasoningSummary).toBe("auto")
+  })
+
+  test("gpt-5.6 emits the default standard mode", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6")
+    normalizer.configure({ effort: "high" })
+    expect(normalizer.normalize("codex")!.codex!.reasoningMode).toBe("standard")
+  })
+
+  test("gpt-5.6 emits an explicit pro mode", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6")
+    normalizer.configure({ effort: "high", mode: "pro", modeExplicit: true })
+    expect(normalizer.normalize("codex")!.codex!.reasoningMode).toBe("pro")
+  })
+
+  test("rejects invalid mode for gpt-5.6", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6")
+    normalizer.configure({ effort: "high", mode: "ultra", modeExplicit: true })
+    expect(() => normalizer.normalize("codex")).toThrow('Invalid thinking_mode "ultra"')
+  })
+
+  test("rejects explicit mode for a model without mode support", () => {
+    const normalizer = getThinkingNormalizer("gpt-5")
+    normalizer.configure({ effort: "high", mode: "pro", modeExplicit: true })
+    expect(() => normalizer.normalize("copilot")).toThrow("thinking_mode is not supported")
+  })
+
+  test("ignores default mode for a model without mode support", () => {
+    const normalizer = getThinkingNormalizer("gpt-5")
+    normalizer.configure({ effort: "high", mode: "standard", modeExplicit: false })
+    expect(normalizer.normalize("copilot")!.copilot!.reasoningMode).toBeUndefined()
+  })
+
+  test("effort none disables mode validation", () => {
+    const normalizer = getThinkingNormalizer("gpt-5")
+    normalizer.configure({ effort: "none", mode: "ultra", modeExplicit: true })
+    expect(normalizer.normalize("copilot")).toBeUndefined()
+  })
+
+  test("gpt-5.6-luna returns undefined when effort is none", () => {
+    const normalizer = getThinkingNormalizer("gpt-5.6-luna")
+    normalizer.configure({ effort: "none" })
+    const result = normalizer.normalize("codex")
     expect(result).toBeUndefined()
   })
 })

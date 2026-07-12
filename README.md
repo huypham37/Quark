@@ -121,6 +121,15 @@ small_model: gpt-4o-mini        # lightweight tasks (title generation, etc.)
 
 max_steps: 100
 
+# Per-agent model configuration
+profiles:
+  coder:
+    model:
+      id: codex/gpt-5.6-luna
+      thinking:
+        effort: high
+        mode: pro
+
 # Auto-branch when the context window fills up
 branching:
   auto: true

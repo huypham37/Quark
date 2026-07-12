@@ -66,11 +66,11 @@ const QuestionInfo = z.object({
   header: z.string().describe("Very short label (max 30 chars)"),
   options: z.array(QuestionOption).describe("Available choices"),
   multiple: z.boolean().optional().describe("Allow selecting multiple choices"),
-  custom: z.boolean().optional().describe("Allow typing a custom answer (default: true)"),
+  custom: z.boolean().optional().describe("Allow typing a custom answer when true"),
 })
 
 const parameters = z.object({
-  questions: z.array(QuestionInfo.omit({ custom: true })).describe("Questions to ask"),
+  questions: z.array(QuestionInfo).describe("Questions to ask"),
 })
 
 export const questionTool = defineTool({
