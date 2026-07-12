@@ -50,8 +50,9 @@ import { StatisticsPanel } from "./statistics-panel"
 import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
+import { resolveProfile } from "../../profile/profile"
 import { getThinkingNormalizer } from "../../provider/thinking"
-import { resolveProfile, setProfileThinking } from "../../profile/profile"
+
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 
 /** Command handler result */
@@ -1086,7 +1087,6 @@ export const App: Component<AppProps> = (props) => {
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
       const effort = state.store.thinkingEffort
       const profile = resolveProfile(props.getCurrentProfile?.())
-      setProfileThinking(profile.id, { effort, mode: profile.thinkingMode })
       getThinkingNormalizer(state.store.status.modelName).configure({
         effort,
         mode: profile.thinkingMode ?? "standard",
