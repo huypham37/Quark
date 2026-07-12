@@ -193,6 +193,23 @@ function lookupThinkingEntry(modelId: string): ThinkingEntry | undefined {
   return undefined
 }
 
+export function validateThinkingEffort(modelId: string, effort: string): void {
+  const entry = lookupThinkingEntry(modelId)
+  if (!entry) {
+    throw new Error(`Thinking is not supported by model "${modelId}".`)
+  }
+  if (!entry.levels.includes(effort)) {
+    throw new Error(
+      `Invalid thinking effort "${effort}" for model "${modelId}". Supported efforts: ${entry.levels.join(", ")}.`,
+    )
+  }
+}
+
+export function getDefaultThinkingEffort(modelId: string): string {
+  const entry = lookupThinkingEntry(modelId)
+  return entry?.levels.includes("none") ? "none" : entry?.levels[0] ?? "none"
+}
+
 /**
  * Get the available effort levels for a model's UI.
  * Returns null if the model doesn't support thinking.
@@ -251,6 +268,8 @@ export class ThinkingNormalizer {
 
     const entry = lookupThinkingEntry(this.modelId)
     if (!entry) return undefined
+
+    validateThinkingEffort(this.modelId, this.config.effort)
 
     if (!entry.modeField) {
       if (this.config.modeExplicit) {

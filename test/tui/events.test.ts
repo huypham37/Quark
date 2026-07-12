@@ -485,6 +485,28 @@ describe("wireEvents: read-only tool body suppression (not event filtering)", ()
 })
 
 // ---------------------------------------------------------------------------
+// Model switching
+// ---------------------------------------------------------------------------
+
+describe("wireEvents: model-switched", () => {
+  test("updates modelName and thinkingEffort from event", () => {
+    const s = setup("s1")
+    bus.emit("model-switched", { modelSpec: "opencode/deepseek-v4-pro", thinkingEffort: "high" })
+    expect(s.store.status.modelName).toBe("opencode/deepseek-v4-pro")
+    expect(s.store.thinkingEffort).toBe("high")
+  })
+
+  test("resets thinkingEffort to none when cycling to an override model", () => {
+    const s = setup("s1")
+    dispatch(s, { type: "model-switched", modelSpec: "gpt-5", thinkingEffort: "high" })
+    expect(s.store.thinkingEffort).toBe("high")
+    bus.emit("model-switched", { modelSpec: "gpt-4o", thinkingEffort: "none" })
+    expect(s.store.status.modelName).toBe("gpt-4o")
+    expect(s.store.thinkingEffort).toBe("none")
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Async panel side-session event routing
 // ---------------------------------------------------------------------------
 

@@ -909,8 +909,7 @@ export const App: Component<AppProps> = (props) => {
           if (props.onCommand) {
             props.onCommand("model", next, state.store.sessionId)
           }
-          state.setStore("status", "modelName", next)
-          bus.emit("model-switched", { modelSpec: next })
+          bus.emit("model-switched", { modelSpec: next, thinkingEffort: "none" })
         }
       }
       evt.preventDefault()
@@ -926,8 +925,7 @@ export const App: Component<AppProps> = (props) => {
           if (props.onCommand) {
             props.onCommand("model", prev, state.store.sessionId)
           }
-          state.setStore("status", "modelName", prev)
-          bus.emit("model-switched", { modelSpec: prev })
+          bus.emit("model-switched", { modelSpec: prev, thinkingEffort: "none" })
         }
       }
       evt.preventDefault()
