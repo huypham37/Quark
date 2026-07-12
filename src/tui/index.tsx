@@ -28,7 +28,7 @@ import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
-import { info as notifyInfo } from "../notification/notification"
+import { dismiss, getActive, info as notifyInfo } from "../notification/notification"
 import { undoLatest } from "../commands/undo"
 import { exportSessionToMarkdown } from "../commands/export"
 import { runGoal } from "../commands/goal/orchestrator"
@@ -63,7 +63,14 @@ function parseProfileArg(): string | undefined {
 // Profile-aware agent setup
 // ---------------------------------------------------------------------------
 const profileArg = parseProfileArg()
-const profile = resolveProfile(profileArg)
+let profile
+try {
+  profile = resolveProfile(profileArg)
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(`Configuration error: ${message}`)
+  process.exit(1)
+}
 const promptResult = readPromptFile(profile)
 let activeAgent: AgentConfig = agentFromProfile(profile, promptResult.content)
 
@@ -81,7 +88,7 @@ bus.on("session-created", ({ sessionId }) => {
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
-const modelName = activeAgent.model?.id ?? loadConfig().main_model
+const modelName = activeAgent.model ?? loadConfig().main_model
 
 // Populate LM Studio model cache (non-blocking)
 refreshLMStudio()
@@ -146,10 +153,14 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
 
   // Emit events
   const discoveredSkills = discoverSkills()
-  const currentModel = modelOverride ?? activeAgent.model?.id ?? loadConfig().main_model
+  const currentModel = modelOverride ?? activeAgent.model ?? loadConfig().main_model
 
   bus.emit("session-reset", { sessionId: null })
-  bus.emit("model-switched", { modelSpec: currentModel })
+  bus.emit("model-switched", {
+    modelSpec: currentModel,
+    thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
+    thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
+  })
   bus.emit("worktree-switched", {
     cwd: target.path,
     activeWorktree,
@@ -248,7 +259,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
     modelOverride = args.trim()
-    bus.emit("model-switched", { modelSpec: modelOverride })
+    bus.emit("model-switched", { modelSpec: modelOverride, thinkingEffort: "none" })
     notifyInfo("Model", `Switched to: ${modelOverride}`, 3000)
     return { handled: true }
   }
@@ -284,9 +295,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     activeAgent = agentFromProfile(newProfile, newPromptResult.content)
     modelOverride = null
     bus.emit("model-switched", {
-      modelSpec: activeAgent.model?.id ?? loadConfig().main_model,
-      thinkingEffort: activeAgent.model?.thinking?.effort ?? "none",
-      thinkingMode: activeAgent.model?.thinking?.mode,
+      modelSpec: activeAgent.model ?? loadConfig().main_model,
+      thinkingEffort: activeAgent.thinkingEffort ?? "none",
+      thinkingMode: activeAgent.thinkingMode,
     })
 
     // Tear down and re-bootstrap with the new profile's tools and skills
@@ -393,9 +404,20 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
   // /reload-config — reload config without restarting (works without an active session)
   if (command === "reload-config") {
+    for (const n of getActive()) {
+      if (n.title === "Thinking configuration") dismiss(n.id)
+    }
     resetConfigCache()
-    const currentModel = modelOverride ?? loadConfig().main_model
-    bus.emit("model-switched", { modelSpec: currentModel })
+    resetProfileCache()
+    const reloadedProfile = resolveProfile(activeAgent.id)
+    const reloadedPrompt = readPromptFile(reloadedProfile)
+    activeAgent = agentFromProfile(reloadedProfile, reloadedPrompt.content)
+    const currentModel = modelOverride ?? activeAgent.model ?? loadConfig().main_model
+    bus.emit("model-switched", {
+      modelSpec: currentModel,
+      thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
+      thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
+    })
     refreshLMStudio()
     notifyInfo("Config", "Config reloaded", 3000)
     return { handled: true }
@@ -598,7 +620,7 @@ function handleGetModels() {
 }
 
 function handleGetCurrentModel() {
-  return modelOverride ?? activeAgent.model?.id ?? loadConfig().main_model
+  return modelOverride ?? activeAgent.model ?? loadConfig().main_model
 }
 
 function handleGetProfiles() {
@@ -684,6 +706,6 @@ render(() => (
     initialSessionId={currentSession?.id}
     initialModelName={modelName}
     initialSkillCount={skills.length}
-    initialThinkingEffort={activeAgent.model?.thinking?.effort}
+    initialThinkingEffort={activeAgent.thinkingEffort}
   />
 ), renderer)
