@@ -1,27 +1,9 @@
 // @jsxImportSource @opentui/solid
-// SubAgentView — renders sub-agent tool activity as a unified card
-//
-// Shows:
-//   ⠋ Summoning Finder · 12.4k tokens (8%) · claude-sonnet-4.5
-//   Task: "research auth flow and find the..." [expand]
-//   ├── ✓ WebSearch "what is AI"
-//   ├── ⠋ Read https://en.wikipedia...
-//   └── ✨ Thinking out loud...
-//
-// When done:
-//   ✓ Finder responded · 24.1k tokens (16%) · claude-sonnet-4.5
-//   Task: "research auth flow..." [expand]
-//
-// When error:
-//   ✗ Finder failed · claude-sonnet-4.5
-//   Task: "research auth flow..." [expand]
-//   (error message)
 
 import type { Component } from "solid-js"
-import { Show, For, createSignal, createEffect, onCleanup, onMount } from "solid-js"
-import { colors, icons } from "../theme"
-import { RGBA } from "@opentui/core"
-import { BRAILLE_CYCLE_FRAMES, BRAILLE_CYCLE_INTERVAL_MS } from "../spinner"
+import { For, Show, createEffect, createSignal } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
+import { colors } from "../theme"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 import { ToolCard } from "./tool-card"
 
@@ -30,219 +12,126 @@ interface SubAgentViewProps {
   parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
 }
 
-// ---------------------------------------------------------------------------
-// Fun streaming labels — cycle every 3s
-// ---------------------------------------------------------------------------
+const MAX_METER_SEGMENTS = 32
+const METER_CELL = "▉"
 
-const STREAMING_LABELS = [
-  "Thinking...",
-] as const
-
-const STREAMING_LABEL_INTERVAL_MS = 3_000
-
-// ---------------------------------------------------------------------------
-// Format token count: 1234 → "1.2k", 123456 → "123.5k"
-// ---------------------------------------------------------------------------
-
-function formatTokens(n: number): string {
-  if (n < 1000) return String(n)
-  if (n < 10000) return (n / 1000).toFixed(1) + "k"
-  return (n / 1000).toFixed(1) + "k"
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return String(tokens)
+  const value = tokens / 1000
+  return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}k`
 }
 
-// ---------------------------------------------------------------------------
-// StatusIndicator — spinner/check/cross
-// ---------------------------------------------------------------------------
-
-const StatusIndicator: Component<{ status: "pending" | "awaiting_approval" | "running" | "completed" | "error" }> = (props) => {
-  const [frameIndex, setFrameIndex] = createSignal(0)
-
-  createEffect(() => {
-    if (props.status === "running" || props.status === "pending") {
-      const id = setInterval(() => {
-        setFrameIndex((i) => (i + 1) % BRAILLE_CYCLE_FRAMES.length)
-      }, BRAILLE_CYCLE_INTERVAL_MS)
-      onCleanup(() => clearInterval(id))
-    }
-  })
-
-  const content = () => {
-    switch (props.status) {
-      case "running":
-      case "pending": return BRAILLE_CYCLE_FRAMES[frameIndex()] + " "
-      case "awaiting_approval": return "? "
-      case "error": return icons.cross + " "
-      default: return icons.checkmark + " "
-    }
-  }
-
-  const color = () => {
-    switch (props.status) {
-      case "running": return colors.textBold
-      case "pending": return colors.textBold
-      case "awaiting_approval": return colors.muted
-      case "error": return colors.error
-      default: return colors.success
-    }
-  }
-
-  return <text fg={color()}>{content()}</text>
-}
-
-// ---------------------------------------------------------------------------
-// ChildToolLine — single tool in the tree
-// ---------------------------------------------------------------------------
-
-const ChildToolLine: Component<{ tool: SubAgentToolPart; isLast: boolean }> = (props) => {
-  const connector = () => props.isLast ? icons.treeCorner : icons.treeTee
-
-  return (
-    <box flexDirection="row">
-      <text fg={colors.muted} flexShrink={0}>{connector()} </text>
-      <box flexDirection="column" flexShrink={1}>
-        <ToolCard
-          tool={props.tool.tool}
-          status={props.tool.status}
-          input={props.tool.input}
-          error={props.tool.error}
-        />
-      </box>
-      <text fg={colors.text}>{displayName}</text>
-      <text> </text>
-      <Show when={label()}>
-        <text fg={colors.toolPath}>{label()}</text>
-      </Show>
-      <Show when={props.tool.error}>
-        <text> </text>
-        <text fg={colors.error}>({props.tool.error})</text>
-      </Show>
-    </box>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// FunStreamingLabel — cycles through quirky labels every 3s
-// ---------------------------------------------------------------------------
-
-const FunStreamingLabel: Component = () => {
-  const [labelIdx, setLabelIdx] = createSignal(0)
-
-  onMount(() => {
-    const id = setInterval(() => {
-      setLabelIdx((i) => (i + 1) % STREAMING_LABELS.length)
-    }, STREAMING_LABEL_INTERVAL_MS)
-    onCleanup(() => clearInterval(id))
-  })
-
-  return <text fg={colors.muted}>{STREAMING_LABELS[labelIdx()] ?? STREAMING_LABELS[0]}</text>
-}
-
-// ---------------------------------------------------------------------------
-// SubAgentView — main component
-// ---------------------------------------------------------------------------
+const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
+  <box paddingLeft={2}>
+    <ToolCard
+      tool={props.tool.tool}
+      status={props.tool.status}
+      input={props.tool.input}
+      error={props.tool.error}
+    />
+  </box>
+)
 
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(true)
+  const dimensions = useTerminalDimensions()
+  const [expanded, setExpanded] = createSignal(!props.subAgent.done)
+
+  createEffect(() => {
+    if (props.subAgent.done) setExpanded(false)
+  })
 
   const profileName = () => {
-    const p = props.subAgent.profile
-    return p.charAt(0).toUpperCase() + p.slice(1)
+    const profile = props.subAgent.profile
+    return profile.charAt(0).toUpperCase() + profile.slice(1)
   }
 
-  const isDone = () => props.subAgent.done
   const isError = () => props.parentStatus === "error"
-
-  const headerStatus = (): "running" | "completed" | "error" => {
-    if (isError()) return "error"
-    if (!isDone()) return "running"
-    return "completed"
-  }
+  const isDone = () => props.subAgent.done
+  const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
+  const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
 
   const headerLabel = () => {
-    const name = profileName()
-    if (isError()) return name + " failed"
-    if (isDone()) return name + " responded"
-    return "Summoning " + name
+    if (isError()) return `${profileName()} failed`
+    if (isDone()) return `${profileName()} responded`
+    return `Summoning ${profileName()}`
   }
 
-  const tokensUsed = () => props.subAgent.tokensUsed
-  const tokenLimit = () => props.subAgent.tokenLimit
-  const tokenPct = () => {
-    if (tokenLimit() <= 0 || tokensUsed() <= 0) return ""
-    const pct = Math.round((tokensUsed() / tokenLimit()) * 100)
-    return ` (${pct}%)`
-  }
-  const hasTokens = () => tokensUsed() > 0
-  const hasModel = () => !!props.subAgent.modelName
-  const headerMeta = () => {
-    const items = []
-    if (hasTokens()) items.push(`${formatTokens(tokensUsed())} tokens${tokenPct()}`)
-    if (hasModel()) items.push(props.subAgent.modelName)
-    return items.join(" · ")
+  const percentage = () => {
+    if (props.subAgent.tokenLimit <= 0) return 0
+    return Math.min(100, Math.round(props.subAgent.tokensUsed / props.subAgent.tokenLimit * 100))
   }
 
-  const hasPrompt = () => !!props.subAgent.prompt
-  const promptText = () => {
-    const p = props.subAgent.prompt ?? ""
-    if (expanded()) return p
-    // Collapsed: truncate aggressively so prompt + toggle fit on one line.
-    // Overhead: "  ├── Task: \"\" [collapse]" ≈ 26 cols. Target terminal ≈ 80 cols.
-    return p.length > 50 ? p.slice(0, 47) + "..." : p
+  const tokenLabel = () => {
+    if (props.subAgent.tokensUsed <= 0) return ""
+    const limit = props.subAgent.tokenLimit > 0 ? ` / ${formatTokens(props.subAgent.tokenLimit)}` : ""
+    return `${formatTokens(props.subAgent.tokensUsed)}${limit} tokens (${percentage()}%)`
   }
-  const toggleLabel = () => expanded() ? "collapse" : "expand"
+  const meterSegments = () => Math.max(
+    4,
+    Math.min(MAX_METER_SEGMENTS, Math.floor((dimensions().width * 0.5 - tokenLabel().length - 6) / METER_CELL.length)),
+  )
+  const filledSegments = () => Math.round(percentage() / 100 * meterSegments())
 
-  const hasTextPreview = () => !isDone() && !!props.subAgent.textPreview
-  const hasChildren = () => props.subAgent.tools.length > 0 || hasTextPreview()
-  const showTree = () => expanded() && hasChildren()
+  const hasDetails = () => !!props.subAgent.prompt || props.subAgent.tools.length > 0 || !!props.subAgent.textPreview
 
   return (
-    <box flexDirection="column">
-      {/* Header: status icon + verb + profile name + tokens + model */}
-      <box flexDirection="row">
-        <box flexShrink={0}>
-          <StatusIndicator status={headerStatus()} />
-        </box>
-        <text fg={colors.text} flexShrink={0}>{headerLabel()}</text>
-        <Show when={headerMeta()}>
-          <text fg={colors.muted} wrap="wrap" flexShrink={1}>{" "}·{" "}{headerMeta()}</text>
+    <box
+      flexDirection="column"
+      width="50%"
+      borderStyle="rounded"
+      borderColor={borderColor()}
+      backgroundColor={colors.commandCardBg}
+      paddingX={1}
+      paddingY={0}
+      marginBottom={1}
+    >
+      <box flexDirection="row" backgroundColor={colors.commandCardBg}>
+        <text fg={statusColor()} flexShrink={0}>● </text>
+        <text bold fg={colors.text} flexShrink={0}>{headerLabel()}</text>
+        <box flexGrow={1} backgroundColor={colors.commandCardBg} />
+        <Show when={props.subAgent.modelName}>
+          <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName}</text>
         </Show>
       </box>
 
-      {/*
-        Body "card" — shared left padding so Task, tree, and preview all align.
-        paddingLeft = 2 (matches spinner char + trailing space in header).
-      */}
-      <Show when={hasPrompt() || hasChildren()}>
-        <box flexDirection="column" paddingLeft={2}>
-            {/* Prompt line — toggle next to label, prompt wraps freely below */}
-            <Show when={hasPrompt()}>
-              <box flexDirection="column" onMouseUp={() => setExpanded((v) => !v)}>
-                <text fg={colors.muted}>Task: [{toggleLabel()}]</text>
-                <text fg={colors.toolPath}>"{promptText()}"</text>
-              </box>
-            </Show>
+      <Show when={tokenLabel()}>
+        <box flexDirection="row" backgroundColor={colors.commandCardBg}>
+          <box flexDirection="row" flexGrow={1} flexBasis={0} minWidth={0} overflow="hidden">
+            <text fg={statusColor()}>{METER_CELL.repeat(filledSegments())}</text>
+            <text fg={colors.border}>{METER_CELL.repeat(meterSegments() - filledSegments())}</text>
+          </box>
+          <text fg={colors.text} flexShrink={0}> {tokenLabel()}</text>
+        </box>
+      </Show>
 
-            {/* Tool tree (visible when expanded) */}
-            <Show when={showTree()}>
-              <box flexDirection="column">
-                <For each={props.subAgent.tools}>
-                  {(tool, i) => (
-                    <ChildToolLine
-                      tool={tool}
-                      isLast={!hasTextPreview() && i() === props.subAgent.tools.length - 1}
-                    />
-                  )}
-                </For>
-                {/* Streaming text preview with fun labels */}
-                <Show when={hasTextPreview()}>
-                  <box flexDirection="row">
-                    <text fg={colors.muted}>{icons.treeCorner} </text>
-                    <FunStreamingLabel />
-                  </box>
-                </Show>
-              </box>
+      <Show when={hasDetails()}>
+        <box flexDirection="column" backgroundColor={colors.commandCardBg}>
+          <box
+            flexDirection="row"
+            backgroundColor={colors.commandCardBg}
+            onMouseUp={() => setExpanded((value) => !value)}
+          >
+            <Show when={expanded()} fallback={<text fg={colors.muted}>▶ Task:</text>}>
+              <text fg={colors.muted} flexShrink={0}>Task:</text>
+              <Show when={props.subAgent.prompt}>
+                <text fg={colors.toolPath} wrap="wrap"> {`"${props.subAgent.prompt}"`}</text>
+              </Show>
+              <text fg={colors.muted} flexShrink={0}> ▼</text>
             </Show>
           </box>
+
+          <Show when={expanded()}>
+            <For each={props.subAgent.tools}>
+              {(tool) => <ChildToolLine tool={tool} />}
+            </For>
+            <Show when={!isDone() && props.subAgent.textPreview}>
+              <box paddingLeft={2}>
+                <text fg={colors.muted}>● Thinking...</text>
+              </box>
+            </Show>
+          </Show>
+
+        </box>
       </Show>
     </box>
   )

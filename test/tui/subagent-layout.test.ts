@@ -24,17 +24,42 @@ function fixture(tools: ToolFixture[]) {
   }
 }
 
-function renderSubAgent(subAgent: ReturnType<typeof fixture>, width: number, height = 16): string[] {
+function renderSubAgent(
+  subAgent: ReturnType<typeof fixture>,
+  width: number,
+  height = 16,
+  parentStatus: "running" | "error" = "error",
+  wrapped = false,
+): string[] {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
     import { SubAgentView } from "./src/tui/components/sub-agent-view.tsx";
+    import { MessageItem } from "./src/tui/components/message-item.tsx";
+
+    const subAgent = ${JSON.stringify(subAgent)};
+    const view = ${JSON.stringify(wrapped)}
+      ? () => createComponent(MessageItem, {
+          message: {
+            id: "m1",
+            role: "assistant",
+            parts: [{
+              type: "tool",
+              tool: "bash",
+              callId: "c1",
+              status: ${JSON.stringify(parentStatus)},
+              input: {},
+              subAgent,
+            }],
+          },
+        })
+      : () => createComponent(SubAgentView, {
+          subAgent,
+          parentStatus: ${JSON.stringify(parentStatus)},
+        });
 
     const setup = await testRender(
-      () => createComponent(SubAgentView, {
-        subAgent: ${JSON.stringify(subAgent)},
-        parentStatus: "error",
-      }),
+      view,
       { width: ${width}, height: ${height}, useConsole: false },
     );
     await setup.renderOnce();
@@ -57,23 +82,78 @@ function renderSubAgent(subAgent: ReturnType<typeof fixture>, width: number, hei
 
 describe("SubAgentView narrow layout", () => {
   test("keeps child tool prefixes and names together", () => {
-    const lines = renderSubAgent(fixture([
+    const subAgent = fixture([
       { tool: "bash", callId: "c1", status: "error", input: { command: "date +%Y-%m-%d_%H:%M:%S_%Z" }, error },
       { tool: "bash", callId: "c2", status: "error", input: { command: "git branch --show-current && echo STATUS && git status --short" }, error },
       { tool: "bash", callId: "c3", status: "error", input: { command: "cd /Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Quark && pm list-epics" }, error },
-    ]), 72)
+    ])
+    subAgent.done = false
+    const lines = renderSubAgent(subAgent, 72, 16, "running")
 
-    const treeRows = lines.filter((line) => /^\s*[├└]/.test(line))
-    expect(treeRows).toHaveLength(3)
-    for (const row of treeRows) expect(row).toContain("✗ Bash")
-    expect(lines.join("\n")).not.toContain("✗Bas")
+    const toolRows = lines.filter((line) => line.includes("● Bash"))
+    expect(toolRows).toHaveLength(3)
+    expect(lines.join("\n")).not.toContain("●Bas")
   })
 
   test("does not split the header status label", () => {
     const lines = renderSubAgent(fixture([
       { tool: "bash", callId: "c1", status: "error", input: { command: "git status --short" }, error },
-    ]), 50, 10)
+    ]), 100, 10)
 
-    expect(lines[0]).toContain("Finder failed")
+    expect(lines[0]).toMatch(/^╭─+╮\s*$/)
+    expect(lines[1]).toContain("Finder failed")
+    expect(lines[1]).toContain("opencode/deepseek-v4-pro")
+  })
+
+  test("starts completed cards collapsed", () => {
+    const lines = renderSubAgent(fixture([
+      { tool: "bash", callId: "c1", status: "completed", input: { command: "git status --short" } },
+    ]), 72, 8, "running")
+
+    expect(lines.join("\n")).toContain("▶ Task:")
+    expect(lines.join("\n")).not.toContain("● Bash")
+  })
+
+  test("renders a responsive meter with one-eighth-cell gaps", () => {
+    const lines = renderSubAgent(fixture([]), 100, 8)
+    const meter = lines.find((line) => line.includes("tokens")) ?? ""
+
+    expect(meter).toContain("▉▉")
+    expect(meter).toContain("3.9k / 1000k tokens (0%)")
+  })
+
+  test("shrinks the meter before widening a narrow card", () => {
+    const lines = renderSubAgent(fixture([]), 100, 8)
+
+    expect(lines[0]).toMatch(/^╭─+╮\s*$/)
+    expect(lines[2]).toContain("3.9k / 1000k tokens (0%)")
+  })
+
+  test("keeps the card's right border inside its message pane", () => {
+    const lines = renderSubAgent(fixture([]), 50, 8, "error", true)
+
+    expect(lines[0]).toMatch(/^ ╭─+╮\s*$/)
+  })
+
+  test("subagent card spans approximately half the assistant message pane width", () => {
+    const width = 80
+    const lines = renderSubAgent(fixture([]), width, 8, "error", true)
+
+    // Assistant pane has marginLeft={1}, so content area starts at column 1
+    const paneContentWidth = width - 1
+
+    // The top border line looks like: " ╭────╮". Measure the card width.
+    const borderLine = lines[0]!
+    const leftBorder = borderLine.indexOf("╭")
+    const rightBorder = borderLine.lastIndexOf("╮")
+    expect(leftBorder).toBeGreaterThan(-1)
+    expect(rightBorder).toBeGreaterThan(-1)
+
+    const cardWidth = rightBorder - leftBorder + 1
+    const ratio = cardWidth / paneContentWidth
+
+    // Card should be roughly 50% of pane width (±15%)
+    expect(ratio).toBeGreaterThan(0.35)
+    expect(ratio).toBeLessThan(0.65)
   })
 })
