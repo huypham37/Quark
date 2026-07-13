@@ -149,7 +149,7 @@ describe("SubAgentView narrow layout", () => {
     // Strip the leading "│ " border/padding and any trailing spaces before the label.
     const prefix = line.slice(2, labelColumn).trimEnd()
 
-    expect(prefix).toMatch(/^▌▉*▐$/)
+    expect(prefix).toMatch(/^▉+$/)
     expect(prefix.length).toBeGreaterThan(20)
   })
 
