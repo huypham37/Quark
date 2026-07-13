@@ -2,23 +2,14 @@
 
 import type { Component } from "solid-js"
 import { For, Show, createEffect, createSignal } from "solid-js"
-import { useTerminalDimensions } from "@opentui/solid"
 import { colors } from "../theme"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 import { ToolCard } from "./tool-card"
+import { SubAgentTokenMeter } from "./sub-agent-token-meter"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
   parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
-}
-
-const MAX_METER_SEGMENTS = 32
-const METER_CELL = "▉"
-
-function formatTokens(tokens: number): string {
-  if (tokens < 1000) return String(tokens)
-  const value = tokens / 1000
-  return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}k`
 }
 
 const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
@@ -33,7 +24,6 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
 )
 
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
-  const dimensions = useTerminalDimensions()
   const [expanded, setExpanded] = createSignal(!props.subAgent.done)
 
   createEffect(() => {
@@ -55,22 +45,6 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     if (isDone()) return `${profileName()} responded`
     return `Summoning ${profileName()}`
   }
-
-  const percentage = () => {
-    if (props.subAgent.tokenLimit <= 0) return 0
-    return Math.min(100, Math.round(props.subAgent.tokensUsed / props.subAgent.tokenLimit * 100))
-  }
-
-  const tokenLabel = () => {
-    if (props.subAgent.tokensUsed <= 0) return ""
-    const limit = props.subAgent.tokenLimit > 0 ? ` / ${formatTokens(props.subAgent.tokenLimit)}` : ""
-    return `${formatTokens(props.subAgent.tokensUsed)}${limit} tokens (${percentage()}%)`
-  }
-  const meterSegments = () => Math.max(
-    4,
-    Math.min(MAX_METER_SEGMENTS, Math.floor((dimensions().width * 0.5 - tokenLabel().length - 6) / METER_CELL.length)),
-  )
-  const filledSegments = () => Math.round(percentage() / 100 * meterSegments())
 
   const hasDetails = () => !!props.subAgent.prompt || props.subAgent.tools.length > 0 || !!props.subAgent.textPreview
 
@@ -94,14 +68,12 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         </Show>
       </box>
 
-      <Show when={tokenLabel()}>
-        <box flexDirection="row" backgroundColor={colors.commandCardBg}>
-          <box flexDirection="row" flexGrow={1} flexBasis={0} minWidth={0} overflow="hidden">
-            <text fg={statusColor()}>{METER_CELL.repeat(filledSegments())}</text>
-            <text fg={colors.border}>{METER_CELL.repeat(meterSegments() - filledSegments())}</text>
-          </box>
-          <text fg={colors.text} flexShrink={0}> {tokenLabel()}</text>
-        </box>
+      <Show when={props.subAgent.tokensUsed > 0}>
+        <SubAgentTokenMeter
+          tokensUsed={props.subAgent.tokensUsed}
+          tokenLimit={props.subAgent.tokenLimit}
+          color={statusColor()}
+        />
       </Show>
 
       <Show when={hasDetails()}>
