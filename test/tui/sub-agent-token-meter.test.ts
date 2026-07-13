@@ -52,12 +52,12 @@ describe("SubAgentTokenMeter", () => {
     expect(text).toContain("50%")
   })
 
-  test("handles zero tokens gracefully", () => {
+  test("renders a zero-token meter immediately", () => {
     const lines = renderMeter(0, 1000000)
     const text = lines.join("\n")
 
-    expect(text).not.toContain("undefined")
-    expect(text).not.toContain("NaN")
+    expect(text).toContain("0 / 1000k tokens")
+    expect(text).toContain("0%")
   })
 
   test("meter extends close to the token label", () => {

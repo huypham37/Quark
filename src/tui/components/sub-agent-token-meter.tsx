@@ -28,7 +28,6 @@ export const SubAgentTokenMeter: Component<SubAgentTokenMeterProps> = (props) =>
   }
 
   const tokenLabel = () => {
-    if (props.tokensUsed <= 0) return ""
     const limit = props.tokenLimit > 0 ? ` / ${formatTokens(props.tokenLimit)}` : ""
     return `${formatTokens(props.tokensUsed)}${limit} tokens (${percentage()}%)`
   }

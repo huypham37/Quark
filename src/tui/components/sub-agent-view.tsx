@@ -69,13 +69,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         </Show>
       </box>
 
-      <Show when={props.subAgent.tokensUsed > 0}>
-        <SubAgentTokenMeter
-          tokensUsed={props.subAgent.tokensUsed}
-          tokenLimit={props.subAgent.tokenLimit}
-          color={statusColor()}
-        />
-      </Show>
+      <SubAgentTokenMeter
+        tokensUsed={props.subAgent.tokensUsed}
+        tokenLimit={props.subAgent.tokenLimit}
+        color={statusColor()}
+      />
 
       <Show when={hasDetails()}>
         <box flexDirection="column" backgroundColor={colors.commandCardBg}>
