@@ -153,10 +153,10 @@ describe("SubAgentView narrow layout", () => {
     expect(prefix.length).toBeGreaterThan(20)
   })
 
-  test("keeps the card's right border inside its message pane", () => {
+  test("card is flush against the left edge", () => {
     const lines = renderSubAgent(fixture([]), 50, 8, "error", true)
 
-    expect(lines[0]).toMatch(/^ ╭─+╮\s*$/)
+    expect(lines[0]).toMatch(/^╭─+╮\s*$/)
   })
 
   test("subagent card spans approximately half the assistant message pane width", () => {
