@@ -39,20 +39,23 @@ export const SubAgentTokenMeter: Component<SubAgentTokenMeterProps> = (props) =>
     return `${formatTokens(props.tokensUsed)}${limit} tokens (${displayPercentage()})`
   }
 
-  const filledFlex = () => {
+  // The meter lives inside a half-width card, so estimate the available width
+  // as roughly half the terminal width minus the label and padding.
+  const meterSegments = () => Math.max(
+    4,
+    Math.floor((dimensions().width - 1) * 0.5 - 5 - tokenLabel().length),
+  )
+
+  const filledSegments = () => {
     if (props.tokensUsed <= 0) return 0
-    return Math.max(1, Math.round(percentage()))
+    return Math.max(1, Math.round(percentage() / 100 * meterSegments()))
   }
-  const emptyFlex = () => 100 - filledFlex()
-  const cellRun = () => METER_CELL.repeat(dimensions().width)
 
   return (
     <box flexDirection="row" height={1} backgroundColor={colors.commandCardBg}>
-      <box flexDirection="row" flexGrow={filledFlex()} flexBasis={0} minWidth={filledFlex() > 0 ? 1 : 0} height={1} overflow="hidden">
-        <text fg={props.color}>{cellRun()}</text>
-      </box>
-      <box flexDirection="row" flexGrow={emptyFlex()} flexBasis={0} minWidth={0} height={1} overflow="hidden">
-        <text fg={colors.border}>{cellRun()}</text>
+      <box flexDirection="row" flexGrow={1} flexBasis={0} minWidth={0} height={1} overflow="hidden">
+        <text fg={props.color}>{METER_CELL.repeat(filledSegments())}</text>
+        <text fg={colors.border}>{METER_CELL.repeat(meterSegments() - filledSegments())}</text>
       </box>
       <text fg={colors.text} flexShrink={0}> {tokenLabel()}</text>
     </box>

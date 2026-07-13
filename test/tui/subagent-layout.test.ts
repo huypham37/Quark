@@ -142,6 +142,17 @@ describe("SubAgentView narrow layout", () => {
     expect(lines[2]).toContain("3.9k / 1000k tokens (0.4%)")
   })
 
+  test("meter cells are contiguous up to the label", () => {
+    const lines = renderSubAgent(fixture([]), 120, 8)
+    const line = lines.find((l) => l.includes("3.9k / 1000k tokens"))!
+    const labelColumn = line.indexOf("3.9k / 1000k tokens")
+    // Strip the leading "│ " border/padding and any trailing spaces before the label.
+    const prefix = line.slice(2, labelColumn).trimEnd()
+
+    expect(prefix).toMatch(/^▉+$/)
+    expect(prefix.length).toBeGreaterThan(20)
+  })
+
   test("keeps the card's right border inside its message pane", () => {
     const lines = renderSubAgent(fixture([]), 50, 8, "error", true)
 
