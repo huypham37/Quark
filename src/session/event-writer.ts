@@ -42,6 +42,12 @@ export function startEventWriter(resolvedModel?: string): () => void {
   // Resolve the model once at startup — use the passed model, fall back to config
   const displayModel = resolvedModel ?? loadConfig().main_model
 
+  // Emit metadata immediately so the parent TUI can show model + context limit
+  // right away, instead of waiting for the first step-finish.
+  const limit = getModelLimit(displayModel)
+  const tokenLimit = limit?.context ?? limit?.input ?? 0
+  emit({ e: "step-finish", tokens: { input: 0, output: 0 }, tokenLimit, model: displayModel })
+
   function on<K extends keyof import("./events").BusEvents>(
     event: K,
     handler: (data: import("./events").BusEvents[K]) => void,

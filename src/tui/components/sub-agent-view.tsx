@@ -64,8 +64,8 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         <text fg={statusColor()} flexShrink={0}>● </text>
         <text bold fg={colors.text} flexShrink={0}>{headerLabel()}</text>
         <box flexGrow={1} backgroundColor={colors.commandCardBg} />
-        <Show when={props.subAgent.modelName}>
-          <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName}</text>
+        <Show when={props.subAgent.modelName || props.subAgent.profile} fallback={null}>
+          <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName ?? profileName()}</text>
         </Show>
       </box>
 

@@ -29,6 +29,8 @@ describe("dispatch: sub-agent eager init at tool-input", () => {
       const part = state.store.messages[0]!.parts[0] as any
       expect(part.subAgent).toBeDefined()
       expect(part.subAgent.profile).toBe("finder")
+      expect(part.subAgent.modelName).toBeDefined()
+      expect(part.subAgent.tokenLimit).toBeGreaterThan(0)
       expect(part.subAgent.tools).toEqual([])
       expect(part.subAgent.done).toBe(false)
     })

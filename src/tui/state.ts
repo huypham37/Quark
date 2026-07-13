@@ -7,6 +7,7 @@ import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
+import { resolveProfile } from "../profile/profile"
 import { type ThinkingEffort, getThinkingLevels, getThinkingNormalizer } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
@@ -193,6 +194,21 @@ function parseSubAgentCommand(cmd: string): { profile: string; prompt?: string }
   return { profile, prompt: prompt?.slice(0, 200) }
 }
 
+// Resolve the model name and token limit for a sub-agent profile so the
+// card can show them immediately, before the first step-finish arrives.
+function resolveSubAgentModelMeta(profileId: string): { modelName: string; tokenLimit: number } {
+  const fallbackModel = loadConfig().main_model
+  try {
+    const profile = resolveProfile(profileId)
+    const model = profile.model ?? fallbackModel
+    const limit = getModelLimit(model)
+    return { modelName: model, tokenLimit: limit?.context ?? limit?.input ?? 0 }
+  } catch {
+    const limit = getModelLimit(fallbackModel)
+    return { modelName: fallbackModel, tokenLimit: limit?.context ?? limit?.input ?? 0 }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Convert persisted DB rows to TuiMessage[] for display
 // ---------------------------------------------------------------------------
@@ -226,7 +242,8 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
           const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
           if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
             const { profile, prompt } = parseSubAgentCommand(cmd)
-            subAgent = { profile, prompt, tools: [], tokensUsed: 0, tokenLimit: 0, done: d.status === "completed" || d.status === "error" }
+            const { modelName, tokenLimit } = resolveSubAgentModelMeta(profile)
+            subAgent = { profile, prompt, modelName, tools: [], tokensUsed: 0, tokenLimit, done: d.status === "completed" || d.status === "error" }
           }
         }
         tuiParts.push({
@@ -493,12 +510,14 @@ export function dispatch(state: AppState, action: TuiAction): void {
         const cmd = action.input.command ?? action.input.cmd
         if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
           const { profile, prompt } = parseSubAgentCommand(cmd)
+          const { modelName, tokenLimit } = resolveSubAgentModelMeta(profile)
           setStore("messages", tiMsgIdx, "parts", tiPartIdx, "subAgent" as any, {
             profile,
             prompt,
+            modelName,
             tools: [],
             tokensUsed: 0,
-            tokenLimit: 0,
+            tokenLimit,
             done: false,
           })
         }
