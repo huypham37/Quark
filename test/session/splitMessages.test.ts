@@ -170,6 +170,64 @@ describe("splitMessages", () => {
     )
   })
 
+  it("strips aborted assistant messages from both old and recent", () => {
+    const messages: MessageRow[] = [
+      msg("u0", "user"),
+      { ...msg("a0", "assistant"), finish: "aborted" as const },
+      msg("u1", "user"),
+      msg("a1", "assistant"),
+    ]
+    const parts: PartRow[] = [
+      textPart("u0", "first"),
+      textPart("a0", "aborted response"),
+      textPart("u1", "second"),
+      textPart("a1", "valid response"),
+    ]
+
+    const result = splitMessages(messages, parts, 4)
+
+    // a0 (aborted) is stripped entirely; remaining are u0, u1, a1
+    expect(result.recentMessages.map((m) => m.id)).toEqual(["u0", "u1", "a1"])
+    expect(result.recentParts.map((p) => p.messageId)).toEqual(["u0", "u1", "a1"])
+    // Aborted text should not appear anywhere
+    const abortedText = result.recentParts.find(
+      (p) => {
+        const d = JSON.parse(p.data) as { text?: string }
+        return d.text === "aborted response"
+      },
+    )
+    expect(abortedText).toBeUndefined()
+    // Old bucket is empty since all fit within keepMessages
+    expect(result.oldMessages.length).toBe(0)
+  })
+
+  it("aborted messages are stripped before the split count", () => {
+    // 5 non-aborted messages + 1 aborted; keep 3 should count only non-aborted
+    const messages: MessageRow[] = [
+      msg("u0", "user"),
+      { ...msg("a0", "assistant"), finish: "aborted" as const },
+      msg("u1", "user"),
+      msg("a1", "assistant"),
+      msg("u2", "user"),
+      msg("a2", "assistant"),
+    ]
+    const parts: PartRow[] = [
+      textPart("u0", "q0"),
+      textPart("a0", "aborted"),
+      textPart("u1", "q1"),
+      textPart("a1", "r1"),
+      textPart("u2", "q2"),
+      textPart("a2", "r2"),
+    ]
+
+    const result = splitMessages(messages, parts, 3)
+
+    // After stripping a0: remaining = [u0, u1, a1, u2, a2] (5 messages)
+    // keep 3 → old = first 2, recent = last 3
+    expect(result.oldMessages.map((m) => m.id)).toEqual(["u0", "u1"])
+    expect(result.recentMessages.map((m) => m.id)).toEqual(["a1", "u2", "a2"])
+  })
+
   it("strips tool and runtime parts before splitting", () => {
     const messages = [
       msg("u0", "user"),

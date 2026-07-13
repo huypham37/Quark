@@ -143,6 +143,145 @@ describe("dispatch: session actions", () => {
   })
 })
 
+describe("dbToTuiMessages and dbToConversationMessages aborted filtering", () => {
+  test("both functions skip aborted assistant messages", () => {
+    const messages = [
+      {
+        id: "m1",
+        sessionId: "s1",
+        role: "user" as const,
+        modelId: null,
+        providerId: null,
+        finish: null as "stop" | "tool-calls" | "length" | "aborted" | null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 1,
+        timeCompleted: 1,
+      },
+      {
+        // Aborted assistant — should be skipped
+        id: "m2",
+        sessionId: "s1",
+        role: "assistant" as const,
+        modelId: "gpt-5",
+        providerId: "copilot",
+        finish: "aborted" as const,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 2,
+        timeCompleted: 2,
+      },
+      {
+        id: "m3",
+        sessionId: "s1",
+        role: "assistant" as const,
+        modelId: "gpt-5",
+        providerId: "copilot",
+        finish: "stop" as const,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 3,
+        timeCompleted: 3,
+      },
+    ];
+    const parts = [
+      { id: "p1", messageId: "m1", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "user query" }) },
+      { id: "p2", messageId: "m2", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "aborted answer" }) },
+      { id: "p3", messageId: "m3", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "real answer" }) },
+    ];
+
+    const tuiResult = dbToTuiMessages(messages, parts);
+    const convResult = dbToConversationMessages(messages, parts);
+
+    // Both should have 2 messages: m1 (user) + m3 (assistant), skipping m2
+    expect(tuiResult.length).toBe(2);
+    expect(tuiResult[0]!.id).toBe("m1");
+    expect(tuiResult[1]!.id).toBe("m3");
+    expect((tuiResult[1]!.parts[0] as any).text).toBe("real answer");
+
+    expect(convResult.length).toBe(2);
+    expect(convResult[0]!.id).toBe("m1");
+    expect(convResult[1]!.id).toBe("m3");
+    expect((convResult[1]!.parts[0] as any).text).toBe("real answer");
+  });
+
+  test("normal messages are still included when aborted messages are present", () => {
+    const messages = [
+      {
+        id: "m1",
+        sessionId: "s1",
+        role: "user" as const,
+        modelId: null,
+        providerId: null,
+        finish: null as "stop" | "tool-calls" | "length" | "aborted" | null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 1,
+        timeCompleted: 1,
+      },
+      {
+        id: "a-aborted",
+        sessionId: "s1",
+        role: "assistant" as const,
+        modelId: "gpt-5",
+        providerId: "copilot",
+        finish: "aborted" as const,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 2,
+        timeCompleted: 2,
+      },
+      {
+        id: "m2",
+        sessionId: "s1",
+        role: "user" as const,
+        modelId: null,
+        providerId: null,
+        finish: null as "stop" | "tool-calls" | "length" | "aborted" | null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 3,
+        timeCompleted: 3,
+      },
+      {
+        id: "a-ok",
+        sessionId: "s1",
+        role: "assistant" as const,
+        modelId: "gpt-5",
+        providerId: "copilot",
+        finish: "stop" as const,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 4,
+        timeCompleted: 4,
+      },
+    ];
+    const parts = [
+      { id: "p1", messageId: "m1", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "q1" }) },
+      { id: "p2", messageId: "a-aborted", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "aborted" }) },
+      { id: "p3", messageId: "m2", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "q2" }) },
+      { id: "p4", messageId: "a-ok", sessionId: "s1", type: "text" as const, data: JSON.stringify({ text: "ok" }) },
+    ];
+
+    const tuiResult = dbToTuiMessages(messages, parts);
+    const convResult = dbToConversationMessages(messages, parts);
+
+    // Both should have 3 messages (user, user, assistant), skipping the aborted one
+    expect(tuiResult.length).toBe(3);
+    expect(tuiResult.map((m) => m.id)).toEqual(["m1", "m2", "a-ok"]);
+
+    expect(convResult.length).toBe(3);
+    expect(convResult.map((m) => m.id)).toEqual(["m1", "m2", "a-ok"]);
+  });
+});
+
 describe("dbToTuiMessages", () => {
   test("preserves the steer display variant", () => {
     const messages = [{

@@ -150,6 +150,7 @@ export type TuiAction =
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string; thinkingEffort?: ThinkingEffort; thinkingMode?: string }
   | { type: "truncate-messages"; upToMessageId: string }
+  | { type: "remove-message"; messageId: string }
   // Worktree actions
   | { type: "worktree-switch-start" }
   | { type: "worktree-switched"; cwd: string; activeWorktree: TuiWorktree | null; activeBranch: string | null; modelSpec: string; skillCount: number }
@@ -225,6 +226,8 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
   const result: TuiMessage[] = []
 
   for (const msg of messages) {
+    // Skip aborted assistant messages — partial content should not appear in the TUI
+    if (msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const tuiParts: TuiPart[] = []
 
@@ -763,6 +766,16 @@ export function dispatch(state: AppState, action: TuiAction): void {
           if (idx !== -1) {
             msgs.splice(idx) // remove from this message onwards
           }
+        }),
+      )
+      break
+
+    case "remove-message":
+      setStore(
+        "messages",
+        produce((msgs: TuiMessage[]) => {
+          const idx = msgs.findIndex((m) => m.id === action.messageId)
+          if (idx !== -1) msgs.splice(idx, 1)
         }),
       )
       break

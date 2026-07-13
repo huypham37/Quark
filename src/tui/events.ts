@@ -324,6 +324,16 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("assistant-message-end", (data) => {
+      if (data.finish === "aborted") {
+        // Remove the aborted partial message from the TUI entirely
+        dispatch(state, { type: "remove-message", messageId: data.messageId })
+        dispatch(state, { type: "set-running", running: false })
+        if (userMsgTime > 0) {
+          dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })
+        }
+        userMsgTime = 0
+        return
+      }
       dispatch(state, { type: "assistant-done", messageId: data.messageId })
       // Unlock input as soon as the final message ends (don't wait for loop-end
       // which may be delayed by compaction / DB writes)

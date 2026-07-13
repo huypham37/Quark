@@ -160,14 +160,17 @@ export function buildTextTranscript(
   parts: PartRow[],
 ): string {
   const roleMap = new Map<string, string>()
+  const abortedIds = new Set<string>()
   for (const msg of messages) {
     roleMap.set(msg.id, msg.role)
+    if (msg.finish === "aborted") abortedIds.add(msg.id)
   }
 
   const chunks: string[] = []
 
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i]!
+    if (abortedIds.has(part.messageId)) continue
     if (part.type !== "text" && part.type !== "summary") continue
 
     const role = roleMap.get(part.messageId)
@@ -387,12 +390,17 @@ function stripForBranch(
   messages: MessageRow[],
   parts: PartRow[],
 ): { messages: MessageRow[]; parts: PartRow[] } {
+  // Exclude aborted messages so partial content is not copied into child sessions
+  const abortedIds = new Set<string>()
+  for (const m of messages) {
+    if (m.finish === "aborted") abortedIds.add(m.id)
+  }
   const keptParts = parts.filter((p) =>
-    p.type === "text" || p.type === "summary"
+    (p.type === "text" || p.type === "summary") && !abortedIds.has(p.messageId)
   )
   const idsWithParts = new Set(keptParts.map((p) => p.messageId))
   return {
-    messages: messages.filter((m) => idsWithParts.has(m.id)),
+    messages: messages.filter((m) => idsWithParts.has(m.id) && !abortedIds.has(m.id)),
     parts: keptParts,
   }
 }
