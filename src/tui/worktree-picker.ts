@@ -30,8 +30,11 @@ export function buildWorktreeRows(
   currentId: string | null,
   sessionCounts: Record<string, number>,
 ): WorktreePickerRow[] {
+  // Filter: hide prunable worktrees entirely
+  const visible = worktrees.filter((wt) => !wt.prunable)
+
   // Sort: root first, then alphabetically
-  const sorted = [...worktrees].sort((a, b) => {
+  const sorted = [...visible].sort((a, b) => {
     if (a.isRoot !== b.isRoot) return a.isRoot ? -1 : 1
     return a.id.localeCompare(b.id)
   })
@@ -40,14 +43,13 @@ export function buildWorktreeRows(
     const count = sessionCounts[wt.id] ?? 0
     const isCurrent = wt.id === currentId
 
-    if (wt.prunable || wt.missing) {
-      const reason = wt.prunable ? "prunable" : "directory missing"
+    if (wt.missing) {
       return {
         type: "disabled" as const,
         id: wt.id,
-        label: `${wt.id} (${reason})`,
+        label: `${wt.id} (directory missing)`,
         branch: wt.branch,
-        reason,
+        reason: "directory missing",
       }
     }
 
