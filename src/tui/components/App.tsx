@@ -1010,6 +1010,8 @@ export const App: Component<AppProps> = (props) => {
           }
         }
       }
+      // When the prompt is focused, let the textarea handle ↑ cursor movement.
+      if (inputRef?.focused) return
       scroll?.scrollBy(-SCROLL_STEP)
       evt.preventDefault()
       return
@@ -1034,6 +1036,8 @@ export const App: Component<AppProps> = (props) => {
           return
         }
       }
+      // When the prompt is focused, let the textarea handle ↓ cursor movement.
+      if (inputRef?.focused) return
       scroll?.scrollBy(SCROLL_STEP)
       evt.preventDefault()
       return
