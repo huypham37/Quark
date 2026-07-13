@@ -1,15 +1,16 @@
 // @jsxImportSource @opentui/solid
-// ThinkingIndicator — shows collapsed thinking block with optional text content
+// ThinkingIndicator — shows thinking block with expandable text content
 //
 // Status indicator: static filled circle (●), color by state (matches ToolCard):
-//   ● Thinking ▶                  (in-progress: light blue)
-//   ● Thought for 5 seconds ▶     (done with timing: green)
-//   ● Thought ▶                   (done, no timing — e.g. loaded from history)
+//   ● Thinking ▶                  (collapsed, click to expand)
+//   ● Thinking ▼                  (expanded — shows thinking text below)
+//   ● Thought for 5s ▼            (done, expanded)
 //
-// When text is present, it is shown below the header in a dimmed/muted style.
+// Click the header row to toggle per-indicator expansion.
+// Ctrl+Shift+T sets the global default; per-item clicks override it.
 
 import type { Component } from "solid-js"
-import { Show } from "solid-js"
+import { Show, createSignal } from "solid-js"
 import { colors, icons } from "../theme"
 
 interface ThinkingIndicatorProps {
@@ -21,7 +22,18 @@ interface ThinkingIndicatorProps {
 }
 
 export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
-  const displayText = () => (props.showText && props.text?.trim()) ? props.text.trim() : ""
+  // Tri-state: undefined → follow global default; true/false → explicit override
+  const [expandedOverride, setExpandedOverride] = createSignal<boolean | undefined>()
+
+  const text = () => props.text?.trim() ?? ""
+  const hasText = () => text().length > 0
+
+  // Single source of truth for both chevron and content visibility
+  const isExpanded = () => expandedOverride() ?? !!props.showText
+
+  const toggleExpanded = () => {
+    if (hasText()) setExpandedOverride(!isExpanded())
+  }
 
   // Header label reflects state:
   //   in-progress → "Thinking"
@@ -43,20 +55,20 @@ export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
 
   return (
     <box flexDirection="column">
-      {/* Header row: status icon + label */}
-      <box flexDirection="row">
+      {/* Header row: status icon + label + expand/collapse indicator */}
+      <box flexDirection="row" onMouseUp={toggleExpanded}>
         <text fg={statusColor()}>● </text>
         <text fg={colors.text}>{props.done ? <i>{label()} </i> : `${label()} `}</text>
-        <text fg={colors.muted}>{icons.arrow}</text>
+        <Show when={hasText()}>
+          <text fg={colors.muted}>{isExpanded() ? "▼" : icons.arrow}</text>
+        </Show>
       </box>
 
-      {/* Thinking content — shown only when showText is true and text is non-empty */}
-      <Show when={displayText()}>
-        {(text: () => string) => (
-          <box flexDirection="column" paddingLeft={2}>
-            <text fg={colors.muted}>{text()}</text>
-          </box>
-        )}
+      {/* Thinking content — shown when has text and is expanded */}
+      <Show when={hasText() && isExpanded()}>
+        <box flexDirection="column" paddingLeft={2}>
+          <text fg={colors.muted}>{text()}</text>
+        </box>
       </Show>
     </box>
   )
