@@ -59,4 +59,15 @@ describe("SubAgentTokenMeter", () => {
     expect(text).not.toContain("undefined")
     expect(text).not.toContain("NaN")
   })
+
+  test("meter extends close to the token label", () => {
+    const width = 120
+    const lines = renderMeter(84200, 1000000, width, 8)
+    const line = lines.find((l) => l.includes("84.2k / 1000k tokens"))!
+    const labelColumn = line.indexOf("84.2k / 1000k tokens")
+    const lastMeterCell = line.lastIndexOf("▉")
+
+    // The last meter cell should sit just before the label (space + label).
+    expect(labelColumn - lastMeterCell).toBeLessThan(5)
+  })
 })
