@@ -30,6 +30,7 @@ function renderSubAgent(
   height = 16,
   parentStatus: "running" | "error" = "error",
   wrapped = false,
+  expanded = false,
 ): string[] {
   const script = `
     import { testRender } from "@opentui/solid";
@@ -56,6 +57,7 @@ function renderSubAgent(
       : () => createComponent(SubAgentView, {
           subAgent,
           parentStatus: ${JSON.stringify(parentStatus)},
+          defaultExpanded: ${JSON.stringify(expanded)},
         });
 
     const setup = await testRender(
@@ -88,7 +90,7 @@ describe("SubAgentView narrow layout", () => {
       { tool: "bash", callId: "c3", status: "error", input: { command: "cd /Users/mac/01-CodeSpace/Personal-Lab/02-Experiment/Quark && pm list-epics" }, error },
     ])
     subAgent.done = false
-    const lines = renderSubAgent(subAgent, 72, 16, "running")
+    const lines = renderSubAgent(subAgent, 72, 16, "running", false, true)
 
     const toolRows = lines.filter((line) => line.includes("● Bash"))
     expect(toolRows).toHaveLength(3)
@@ -109,6 +111,17 @@ describe("SubAgentView narrow layout", () => {
     const lines = renderSubAgent(fixture([
       { tool: "bash", callId: "c1", status: "completed", input: { command: "git status --short" } },
     ]), 72, 8, "running")
+
+    expect(lines.join("\n")).toContain("▶ Task:")
+    expect(lines.join("\n")).not.toContain("● Bash")
+  })
+
+  test("starts running cards collapsed by default", () => {
+    const subAgent = fixture([
+      { tool: "bash", callId: "c1", status: "running", input: { command: "git status --short" } },
+    ])
+    subAgent.done = false
+    const lines = renderSubAgent(subAgent, 72, 8, "running")
 
     expect(lines.join("\n")).toContain("▶ Task:")
     expect(lines.join("\n")).not.toContain("● Bash")

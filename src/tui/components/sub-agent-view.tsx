@@ -10,6 +10,7 @@ import { SubAgentTokenMeter } from "./sub-agent-token-meter"
 interface SubAgentViewProps {
   subAgent: SubAgentState
   parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
+  defaultExpanded?: boolean
 }
 
 const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
@@ -24,7 +25,7 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
 )
 
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(!props.subAgent.done)
+  const [expanded, setExpanded] = createSignal(props.defaultExpanded ?? false)
 
   createEffect(() => {
     if (props.subAgent.done) setExpanded(false)
