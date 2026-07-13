@@ -132,14 +132,14 @@ describe("SubAgentView narrow layout", () => {
     const meter = lines.find((line) => line.includes("tokens")) ?? ""
 
     expect(meter).toContain("▉▉")
-    expect(meter).toContain("3.9k / 1000k tokens (0%)")
+    expect(meter).toContain("3.9k / 1000k tokens (0.4%)")
   })
 
   test("shrinks the meter before widening a narrow card", () => {
     const lines = renderSubAgent(fixture([]), 100, 8)
 
     expect(lines[0]).toMatch(/^╭─+╮\s*$/)
-    expect(lines[2]).toContain("3.9k / 1000k tokens (0%)")
+    expect(lines[2]).toContain("3.9k / 1000k tokens (0.4%)")
   })
 
   test("keeps the card's right border inside its message pane", () => {

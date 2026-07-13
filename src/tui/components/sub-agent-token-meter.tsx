@@ -24,21 +24,31 @@ export const SubAgentTokenMeter: Component<SubAgentTokenMeterProps> = (props) =>
 
   const percentage = () => {
     if (props.tokenLimit <= 0) return 0
-    return Math.min(100, Math.round(props.tokensUsed / props.tokenLimit * 100))
+    return Math.min(100, props.tokensUsed / props.tokenLimit * 100)
+  }
+
+  const displayPercentage = () => {
+    const pct = percentage()
+    if (props.tokensUsed <= 0) return "0%"
+    if (pct < 1) return `${pct.toFixed(1)}%`
+    return `${Math.round(pct)}%`
   }
 
   const tokenLabel = () => {
     const limit = props.tokenLimit > 0 ? ` / ${formatTokens(props.tokenLimit)}` : ""
-    return `${formatTokens(props.tokensUsed)}${limit} tokens (${percentage()}%)`
+    return `${formatTokens(props.tokensUsed)}${limit} tokens (${displayPercentage()})`
   }
 
-  const filledFlex = () => percentage()
-  const emptyFlex = () => 100 - percentage()
+  const filledFlex = () => {
+    if (props.tokensUsed <= 0) return 0
+    return Math.max(1, Math.round(percentage()))
+  }
+  const emptyFlex = () => 100 - filledFlex()
   const cellRun = () => METER_CELL.repeat(dimensions().width)
 
   return (
     <box flexDirection="row" height={1} backgroundColor={colors.commandCardBg}>
-      <box flexDirection="row" flexGrow={filledFlex()} flexBasis={0} minWidth={0} height={1} overflow="hidden">
+      <box flexDirection="row" flexGrow={filledFlex()} flexBasis={0} minWidth={filledFlex() > 0 ? 1 : 0} height={1} overflow="hidden">
         <text fg={props.color}>{cellRun()}</text>
       </box>
       <box flexDirection="row" flexGrow={emptyFlex()} flexBasis={0} minWidth={0} height={1} overflow="hidden">

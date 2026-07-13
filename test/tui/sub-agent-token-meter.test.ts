@@ -41,7 +41,7 @@ describe("SubAgentTokenMeter", () => {
     const text = lines.join("\n")
 
     expect(text).toContain("3.9k / 1000k tokens")
-    expect(text).toContain("0%")
+    expect(text).toContain("0.4%")
   })
 
   test("renders filled and empty meter cells", () => {
@@ -50,6 +50,15 @@ describe("SubAgentTokenMeter", () => {
 
     expect(text).toContain("▉")
     expect(text).toContain("50%")
+  })
+
+  test("shows a non-zero label and some fill for small usage", () => {
+    const lines = renderMeter(3400, 1000000)
+    const text = lines.join("\n")
+
+    expect(text).toContain("3.4k / 1000k tokens")
+    expect(text).not.toContain("(0%)")
+    expect(text).toMatch(/\(0\.[0-9]%\)/)
   })
 
   test("renders a zero-token meter immediately", () => {
