@@ -1,7 +1,7 @@
 // @jsxImportSource @opentui/solid
 
 import type { Component } from "solid-js"
-import { For, Show, createEffect, createSignal } from "solid-js"
+import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { colors } from "../theme"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 import { ToolCard } from "./tool-card"
@@ -24,11 +24,29 @@ const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
   </box>
 )
 
+function formatSeconds(ms: number): string {
+  const secs = Math.max(1, Math.round(ms / 1000))
+  return `${secs}s`
+}
+
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const [expanded, setExpanded] = createSignal(props.defaultExpanded ?? false)
+  const [liveMs, setLiveMs] = createSignal(0)
 
   createEffect(() => {
     if (props.subAgent.done) setExpanded(false)
+  })
+
+  // Live timer: tick every second while running
+  createEffect(() => {
+    if (props.subAgent.done || props.subAgent.startedAt == null) {
+      setLiveMs(0)
+      return
+    }
+    const tick = () => setLiveMs(Date.now() - props.subAgent.startedAt!)
+    tick()
+    const id = setInterval(tick, 1000)
+    onCleanup(() => clearInterval(id))
   })
 
   const profileName = () => {
@@ -40,6 +58,13 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const isDone = () => props.subAgent.done
   const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
   const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
+
+  const durationLabel = () => {
+    if (isDone() && props.subAgent.durationMs != null) return ` (${formatSeconds(props.subAgent.durationMs)})`
+    if (isError() && props.subAgent.durationMs != null) return ` (${formatSeconds(props.subAgent.durationMs)})`
+    if (!isDone() && !isError() && props.subAgent.startedAt != null && liveMs() > 0) return ` (${formatSeconds(liveMs())})`
+    return ""
+  }
 
   const headerLabel = () => {
     if (isError()) return `${profileName()} failed`
@@ -62,7 +87,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     >
       <box flexDirection="row" backgroundColor={colors.commandCardBg}>
         <text fg={statusColor()} flexShrink={0}>● </text>
-        <text bold fg={colors.text} flexShrink={0}>{headerLabel()}</text>
+        <text bold fg={colors.text} flexShrink={0}>{headerLabel()}{durationLabel()}</text>
         <box flexGrow={1} backgroundColor={colors.commandCardBg} />
         <Show when={props.subAgent.modelName || props.subAgent.profile} fallback={null}>
           <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName ?? profileName()}</text>

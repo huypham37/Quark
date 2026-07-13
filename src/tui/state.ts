@@ -60,6 +60,9 @@ export interface SubAgentState {
   // Streaming text preview from the sub-agent
   textPreview?: string
   done: boolean
+  // Running time tracking
+  startedAt?: number
+  durationMs?: number
 }
 
 // Async message panel state — side ephemeral session displayed in overlay
@@ -522,6 +525,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             tokensUsed: 0,
             tokenLimit,
             done: false,
+            startedAt: Date.now(),
           })
         }
       }
@@ -547,6 +551,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             if (part.subAgent) {
               part.subAgent.done = true
               part.subAgent.textPreview = undefined
+              if (part.subAgent.startedAt != null) part.subAgent.durationMs = Date.now() - part.subAgent.startedAt
               const childStatus = action.status === "error" ? "error" as const : "completed" as const
               for (const child of part.subAgent.tools) {
                 if (child.status === "pending" || child.status === "awaiting_approval" || child.status === "running") {
@@ -809,6 +814,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           tokensUsed: 0,
           tokenLimit: 0,
           done: false,
+          startedAt: Date.now(),
         })
       }
       setStore(
@@ -889,6 +895,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           tokensUsed: 0,
           tokenLimit: 0,
           done: false,
+          startedAt: Date.now(),
         })
       }
       setStore(
@@ -919,6 +926,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           tokensUsed: 0,
           tokenLimit: 0,
           done: false,
+          startedAt: Date.now(),
         })
       }
       const text = action.text
@@ -948,12 +956,14 @@ export function dispatch(state: AppState, action: TuiAction): void {
           tokensUsed: 0,
           tokenLimit: 0,
           done: false,
+          startedAt: Date.now(),
         })
       }
       setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((sa: SubAgentState) => {
           sa.done = true
           sa.textPreview = undefined
+          if (sa.startedAt != null) sa.durationMs = Date.now() - sa.startedAt
         })
       )
       // Mark the parent tool part as completed so the InlineSpinner stops animating.
