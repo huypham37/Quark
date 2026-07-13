@@ -83,7 +83,7 @@ export interface PartEvent extends EventBase {
 export interface MessageEndEvent extends EventBase {
   type: "message-end"
   messageId: string
-  finish: "stop" | "tool-calls" | "length"
+  finish: "stop" | "tool-calls" | "length" | "aborted"
   cost: number | null
   tokensIn: number | null
   tokensOut: number | null

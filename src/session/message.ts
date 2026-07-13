@@ -67,7 +67,7 @@ export interface MessageRow {
   role: "user" | "assistant"
   modelId: string | null
   providerId: string | null
-  finish: "stop" | "tool-calls" | "length" | null
+  finish: "stop" | "tool-calls" | "length" | "aborted" | null
   cost: number | null
   tokensIn: number | null
   tokensOut: number | null
@@ -263,7 +263,7 @@ export function updatePart(
 
 export function finishMessage(
   id: string,
-  finish: "stop" | "tool-calls" | "length",
+  finish: "stop" | "tool-calls" | "length" | "aborted",
   usage?: { tokensIn?: number; tokensOut?: number; cost?: number },
   /** Session ID — required for JSONL append. */
   sessionId?: string,
@@ -287,6 +287,10 @@ export function finishMessage(
   appendEvents(sessionId, [event])
 }
 
+export function isAbortedMessage(msg: MessageRow): boolean {
+  return msg.finish === "aborted"
+}
+
 // ---- Load operations ----
 
 export function loadMessages(sessionId: string): {
@@ -307,9 +311,22 @@ export function toModelMessages(
   messages: MessageRow[],
   parts: PartRow[],
 ): ModelMessage[] {
+  // Filter out aborted assistant messages and their parts so partial
+  // content does not pollute the model context on subsequent turns.
+  const abortedIds = new Set<string>()
+  for (const m of messages) {
+    if (m.finish === "aborted") abortedIds.add(m.id)
+  }
+  const filteredMessages = abortedIds.size > 0
+    ? messages.filter((m) => !abortedIds.has(m.id))
+    : messages
+  const filteredParts = abortedIds.size > 0
+    ? parts.filter((p) => !abortedIds.has(p.messageId))
+    : parts
+
   // Group parts by message ID
   const partsByMsg = new Map<string, PartRow[]>()
-  for (const p of parts) {
+  for (const p of filteredParts) {
     const list = partsByMsg.get(p.messageId) ?? []
     list.push(p)
     partsByMsg.set(p.messageId, list)
@@ -322,8 +339,8 @@ export function toModelMessages(
   let cutoffMessageId: string | undefined
   let anchorMessageId: string | undefined
 
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]!
+  for (let i = filteredMessages.length - 1; i >= 0; i--) {
+    const msg = filteredMessages[i]!
     if (msg.providerId !== "compaction") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const summaryPart = msgParts.find((p) => p.type === "summary")
@@ -349,24 +366,24 @@ export function toModelMessages(
   let startIdx = 0
   if (cutoffMessageId) {
     // Find the cutoff message and start after it
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i]!.id === cutoffMessageId) {
+    for (let i = 0; i < filteredMessages.length; i++) {
+      if (filteredMessages[i]!.id === cutoffMessageId) {
         startIdx = i + 1
         break
       }
     }
   } else if (anchorMessageId) {
     // Legacy: no compactedUntilMessageId, skip up to anchor message
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i]!.id === anchorMessageId) {
+    for (let i = 0; i < filteredMessages.length; i++) {
+      if (filteredMessages[i]!.id === anchorMessageId) {
         startIdx = i + 1
         break
       }
     }
   }
 
-  for (let i = startIdx; i < messages.length; i++) {
-    const msg = messages[i]!
+  for (let i = startIdx; i < filteredMessages.length; i++) {
+    const msg = filteredMessages[i]!
     // Skip anchor messages — their content is already injected above
     if (msg.providerId === "compaction") continue
     const msgParts = partsByMsg.get(msg.id) ?? []

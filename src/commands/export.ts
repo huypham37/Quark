@@ -39,6 +39,8 @@ function buildMarkdownEntries(
 
   const entries: { role: "user" | "assistant"; text: string }[] = []
   for (const message of messages) {
+    // Skip aborted messages
+    if (message.finish === "aborted") continue
     const text = (partsByMessage.get(message.id) ?? [])
       .filter((part) => part.type === "text")
       .map((part) => {

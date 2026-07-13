@@ -2,6 +2,175 @@ import { describe, test, expect } from "bun:test";
 import { toModelMessages } from "../../src/session/message";
 import type { MessageRow, PartRow } from "../../src/session/message";
 
+describe("toModelMessages aborted message filtering", () => {
+  test("filters out aborted assistant messages and their parts", () => {
+    const messages: MessageRow[] = [
+      {
+        id: "m1",
+        sessionId: "s1",
+        providerId: "copilot",
+        modelId: "gpt-5",
+        role: "user",
+        finish: null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 1,
+        timeCompleted: 1,
+      },
+      {
+        // Aborted assistant message — should be filtered out
+        id: "m2",
+        sessionId: "s1",
+        providerId: "copilot",
+        modelId: "gpt-5",
+        role: "assistant",
+        finish: "aborted",
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 2,
+        timeCompleted: 2,
+      },
+      {
+        id: "m3",
+        sessionId: "s1",
+        providerId: "copilot",
+        modelId: "gpt-5",
+        role: "user",
+        finish: null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 3,
+        timeCompleted: 3,
+      },
+      {
+        id: "m4",
+        sessionId: "s1",
+        providerId: "copilot",
+        modelId: "gpt-5",
+        role: "assistant",
+        finish: "stop",
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 4,
+        timeCompleted: 4,
+      },
+    ];
+    const parts: PartRow[] = [
+      {
+        id: "p1",
+        messageId: "m1",
+        sessionId: "s1",
+        type: "text",
+        data: JSON.stringify({ text: "Hello" }),
+      },
+      // Aborted message parts — should be filtered
+      {
+        id: "p2",
+        messageId: "m2",
+        sessionId: "s1",
+        type: "text",
+        data: JSON.stringify({ text: "partial aborted text" }),
+      },
+      {
+        id: "p3",
+        messageId: "m2",
+        sessionId: "s1",
+        type: "tool",
+        data: JSON.stringify({
+          tool: "read",
+          callId: "call-aborted",
+          status: "pending",
+          input: { filePath: "/tmp/test" },
+        }),
+      },
+      // Normal parts
+      {
+        id: "p4",
+        messageId: "m3",
+        sessionId: "s1",
+        type: "text",
+        data: JSON.stringify({ text: "Continue please" }),
+      },
+      {
+        id: "p5",
+        messageId: "m4",
+        sessionId: "s1",
+        type: "text",
+        data: JSON.stringify({ text: "Normal response" }),
+      },
+    ];
+
+    const result = toModelMessages(messages, parts);
+
+    // Should produce 3 messages: m1 (user), m3 (user), m4 (assistant)
+    // m2 (aborted) and its parts must be absent
+    expect(result.length).toBe(3);
+    expect(result[0]!.role).toBe("user");
+    expect(result[1]!.role).toBe("user");
+    expect(result[2]!.role).toBe("assistant");
+
+    // Normal user content preserved
+    expect((result[0]! as any).content).toBe("Hello");
+    expect((result[1]! as any).content).toBe("Continue please");
+
+    // Normal assistant content preserved
+    const assistantContent = result[2]!.content as Array<Record<string, unknown>>;
+    expect(assistantContent.length).toBe(1);
+    expect(assistantContent[0]!.type).toBe("text");
+    expect(assistantContent[0]!.text).toBe("Normal response");
+
+    // Verify aborted text does not appear anywhere
+    const allSerialized = JSON.stringify(result);
+    expect(allSerialized).not.toContain("partial aborted text");
+    expect(allSerialized).not.toContain("call-aborted");
+  });
+
+  test("normal messages still work as before when no aborted messages", () => {
+    // Sanity check: the aborted filtering doesn't break normal message flow
+    const messages: MessageRow[] = [
+      {
+        id: "u1",
+        sessionId: "s1",
+        providerId: null,
+        modelId: null,
+        role: "user",
+        finish: null,
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 1,
+        timeCompleted: 1,
+      },
+      {
+        id: "a1",
+        sessionId: "s1",
+        providerId: "copilot",
+        modelId: "gpt-5",
+        role: "assistant",
+        finish: "stop",
+        cost: null,
+        tokensIn: null,
+        tokensOut: null,
+        timeCreated: 2,
+        timeCompleted: 2,
+      },
+    ];
+    const parts: PartRow[] = [
+      { id: "pu1", messageId: "u1", sessionId: "s1", type: "text", data: JSON.stringify({ text: "hi" }) },
+      { id: "pa1", messageId: "a1", sessionId: "s1", type: "text", data: JSON.stringify({ text: "hey" }) },
+    ];
+
+    const result = toModelMessages(messages, parts);
+    expect(result.length).toBe(2);
+    expect(result[0]!.role).toBe("user");
+    expect(result[1]!.role).toBe("assistant");
+  });
+});
+
 describe("toModelMessages reasoning replay", () => {
   test("preserves reasoning content in assistant messages", () => {
     const messages: MessageRow[] = [

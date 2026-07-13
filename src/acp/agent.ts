@@ -90,6 +90,8 @@ function replaySession(sessionId: string, send: (msg: OutgoingMessage) => void):
   }
 
   for (const msg of messages) {
+    // Skip aborted assistant messages
+    if (msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
 
     if (msg.role === "user") {

@@ -44,7 +44,7 @@ export interface BusEvents {
   "step-finish": { sessionId: string; messageId: string; data: StepFinishData }
 
   // Assistant message completed
-  "assistant-message-end": { sessionId: string; messageId: string; finish: "stop" | "tool-calls" | "length" }
+  "assistant-message-end": { sessionId: string; messageId: string; finish: "stop" | "tool-calls" | "length" | "aborted" }
 
   // Agent loop lifecycle
   "loop-start": { sessionId: string }

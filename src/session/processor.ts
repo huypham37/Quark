@@ -383,6 +383,13 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         currentText = undefined
       }
 
+      // User abort — mark the message as aborted so it's excluded from context
+      if (input.abort.aborted) {
+        finishMessage(mid, "aborted", undefined, sid)
+        bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish: "aborted" })
+        return "stop"
+      }
+
       // Context-too-long: signal the loop to branch instead of crashing
       if (isContextTooLong(e)) {
         finishMessage(mid, "stop", undefined, sid)
@@ -464,7 +471,11 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   }
 
   // Should not reach here, but if abort breaks the retry loop
-  finishMessage(mid, "stop", undefined, sid)
+  if (input.abort.aborted) {
+    finishMessage(mid, "aborted", undefined, sid)
+  } else {
+    finishMessage(mid, "stop", undefined, sid)
+  }
   return "stop"
 }
 

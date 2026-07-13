@@ -124,6 +124,46 @@ describe("buildTextTranscript", () => {
     expect(result).toBe("user: first\n\nassistant: second\n\nuser: third")
   })
 
+  it("does not include text from aborted assistant messages", () => {
+    const u1 = msg("u1", "user")
+    const aAborted = { ...msg("a_aborted", "assistant"), finish: "aborted" as const }
+    const u2 = msg("u2", "user")
+    const a1 = msg("a1", "assistant")
+
+    const messages = [u1, aAborted, u2, a1]
+    const parts: PartRow[] = [
+      textPart("u1", "first question"),
+      textPart("a_aborted", "partial aborted text"),
+      textPart("u2", "second question"),
+      textPart("a1", "real answer"),
+    ]
+
+    const result = buildTextTranscript(messages, parts)
+
+    expect(result).toBe(
+      "user: first question\n\nuser: second question\n\nassistant: real answer",
+    )
+    expect(result).not.toContain("partial aborted text")
+    expect(result).not.toContain("aborted")
+  })
+
+  it("normal messages still appear in transcript alongside aborted ones", () => {
+    const u1 = msg("u1", "user")
+    const aAborted = { ...msg("a_aborted", "assistant"), finish: "aborted" as const }
+    const a1 = msg("a1", "assistant")
+
+    const messages = [u1, aAborted, a1]
+    const parts: PartRow[] = [
+      textPart("u1", "hello"),
+      textPart("a_aborted", "incomplete"),
+      textPart("a1", "world"),
+    ]
+
+    const result = buildTextTranscript(messages, parts)
+
+    expect(result).toBe("user: hello\n\nassistant: world")
+  })
+
   it("handles multiple text parts per message", () => {
     const u1 = msg("u1", "user")
     const a1 = msg("a1", "assistant")
