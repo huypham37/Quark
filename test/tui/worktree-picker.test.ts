@@ -103,7 +103,7 @@ describe("buildWorktreeRows", () => {
     }
   })
 
-  test("disables prunable worktrees", () => {
+  test("hides prunable worktrees", () => {
     const worktrees: WorktreeInfo[] = [
       makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true }),
       makeWorktree({ id: "stale", path: `${worktreeBase}/stale`, branch: "stale", prunable: true }),
@@ -112,9 +112,9 @@ describe("buildWorktreeRows", () => {
 
     const rows = buildWorktreeRows(worktrees, "root", {})
 
+    // Prunable worktrees should not appear in the picker at all
     const staleRow = rows.find((r: any) => (r as any).id === "stale")
-    expect(staleRow).toBeDefined()
-    expect(staleRow!.type).toBe("disabled")
+    expect(staleRow).toBeUndefined()
 
     const activeRow = rows.find((r: any) => (r as any).id === "active")
     expect(activeRow).toBeDefined()
@@ -202,12 +202,12 @@ describe("firstSelectableWorktreeRow", () => {
 
   test("skips disabled rows at start", () => {
     const worktrees: WorktreeInfo[] = [
-      makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true, prunable: true }),
+      makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true, missing: true }),
       makeWorktree({ id: "feature-login-auth", path: `${worktreeBase}/feature-login-auth`, branch: "feature/login-auth" }),
       makeWorktree({ id: "refactor-db", path: `${worktreeBase}/refactor-db`, branch: "refactor/db" }),
     ]
 
-    // Root is prunable → disabled, so first selectable should be feature-login-auth
+    // Root is missing → disabled, so first selectable should be feature-login-auth
     const rows = buildWorktreeRows(worktrees, "feature-login-auth", {})
 
     const idx = firstSelectableWorktreeRow(rows)
@@ -222,11 +222,11 @@ describe("firstSelectableWorktreeRow", () => {
 
   test("returns -1 when all rows are disabled", () => {
     const worktrees: WorktreeInfo[] = [
-      makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true, prunable: true }),
+      makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true, missing: true }),
     ]
 
     const rows = buildWorktreeRows(worktrees, "root", {})
-    // Root is prunable → it becomes disabled, leaving no selectable rows
+    // Root is missing → it becomes disabled, leaving no selectable rows
 
     const idx = firstSelectableWorktreeRow(rows)
     expect(idx).toBe(-1)
@@ -241,7 +241,7 @@ describe("moveWorktreeRowSelection", () => {
   function makeRows(): { rows: ReturnType<typeof buildWorktreeRows> } {
     const worktrees: WorktreeInfo[] = [
       makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true }),
-      makeWorktree({ id: "disabled-one", path: `${worktreeBase}/disabled-one`, branch: "stale", prunable: true }),
+      makeWorktree({ id: "disabled-one", path: `${worktreeBase}/disabled-one`, branch: "stale", missing: true }),
       makeWorktree({ id: "feature-login-auth", path: `${worktreeBase}/feature-login-auth`, branch: "feature/login-auth" }),
       makeWorktree({ id: "refactor-db", path: `${worktreeBase}/refactor-db`, branch: "refactor/db" }),
       makeWorktree({ id: "disabled-two", path: `${worktreeBase}/disabled-two`, branch: "deleted", missing: true }),

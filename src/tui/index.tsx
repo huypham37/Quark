@@ -601,7 +601,9 @@ function handleGetWorktrees() {
   const all = listWorktrees(rootProjectDir)
   const projectWorktrees = filterToProjectWorktrees(all, rootProjectDir, worktreeBase)
   const currentPath = process.cwd()
-  return projectWorktrees.map((wt) => ({
+  return projectWorktrees
+    .filter((wt) => !wt.prunable)
+    .map((wt) => ({
     id: wt.id,
     path: wt.path,
     branch: wt.branch ?? getWorktreeBranch(wt),
