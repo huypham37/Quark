@@ -91,7 +91,7 @@ bus.on("session-created", ({ sessionId }) => {
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
-const modelName = activeAgent.model ?? loadConfig().main_model
+const modelName = activeAgent.model
 const startupAuthMessage = firstRunAuthMessage(modelName, await authStatus())
 if (startupAuthMessage) setImmediate(() => notifyInfo("Provider authentication", startupAuthMessage, 8000))
 
@@ -158,7 +158,7 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
 
   // Emit events
   const discoveredSkills = discoverSkills()
-  const currentModel = modelOverride ?? activeAgent.model ?? loadConfig().main_model
+  const currentModel = modelOverride ?? activeAgent.model
 
   bus.emit("session-reset", { sessionId: null })
   bus.emit("model-switched", {
@@ -304,7 +304,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     activeAgent = agentFromProfile(newProfile, newPromptResult.content)
     modelOverride = null
     bus.emit("model-switched", {
-      modelSpec: activeAgent.model ?? loadConfig().main_model,
+      modelSpec: activeAgent.model,
       thinkingEffort: activeAgent.thinkingEffort ?? "none",
       thinkingMode: activeAgent.thinkingMode,
     })
@@ -427,7 +427,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     const reloadedProfile = resolveProfile(activeAgent.id)
     const reloadedPrompt = readPromptFile(reloadedProfile)
     activeAgent = agentFromProfile(reloadedProfile, reloadedPrompt.content)
-    const currentModel = modelOverride ?? activeAgent.model ?? loadConfig().main_model
+    const currentModel = modelOverride ?? activeAgent.model
     bus.emit("model-switched", {
       modelSpec: currentModel,
       thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
@@ -660,7 +660,7 @@ function handleGetModels() {
 }
 
 function handleGetCurrentModel() {
-  return modelOverride ?? activeAgent.model ?? loadConfig().main_model
+  return modelOverride ?? activeAgent.model
 }
 
 function handleGetProfiles() {

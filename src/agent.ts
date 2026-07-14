@@ -23,7 +23,7 @@ export interface AgentConfig {
   skills: string[];
   /** Profile IDs of sub-agents this agent can spawn */
   subAgents?: string[];
-  /** Model string to use for this agent. Falls back to config `main_model` if omitted. */
+  /** Model string to use for this agent. */
   model?: string;
   /** Thinking effort for this agent's effective model. */
   thinkingEffort?: string;

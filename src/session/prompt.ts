@@ -231,9 +231,9 @@ async function loop(
   modelOpt?: string,
 ): Promise<string> {
   // Build the AI SDK model
-  // Priority: explicit modelOpt > agent model > config main_model
+  // Priority: explicit modelOpt > agent model
   // Model is always in "provider/model" format.
-  const agentModelSpec = agent.model ?? loadConfig().main_model;
+  const agentModelSpec = agent.model;
   const modelSpec = modelOpt ?? agentModelSpec;
   const usingAgentModel = modelOpt === undefined || modelOpt === agentModelSpec;
   const resolvedModel = await resolveModelRuntime(modelSpec);

@@ -19,7 +19,6 @@ function representativeConfig() {
   return {
     version: 2,
     models: {
-      main: "openrouter/anthropic/claude-sonnet-4.6",
       small: "openai/gpt-5-mini",
       favorites: ["openrouter/anthropic/claude-sonnet-4.6"],
     },
@@ -36,15 +35,12 @@ function representativeConfig() {
 describe("Config V2", () => {
   test("parses and serializes nested models and a subscription API-key provider", () => {
     const loaded = parseConfigV2(representativeConfig())
-    expect(loaded.modelConfig.main).toBe("openrouter/anthropic/claude-sonnet-4.6")
-    expect(loaded.main_model).toBe(loaded.modelConfig.main)
     expect(loaded.providers["quark-go"]).toEqual({
       base_url: "https://api.quark-go.example/v1",
       api_key_env: "QUARK_GO_API_KEY",
       billing: "subscription",
     })
     const serialized = serializeConfig(loaded)
-    expect(serialized).not.toContain("main_model")
     expect(serialized).not.toContain("credential:")
     expect(serialized).not.toContain("protocol:")
   })
@@ -101,7 +97,7 @@ describe("Config V2", () => {
 
   test("migrates V1 env references without persisting literal secrets", () => {
     const secret = "literal-secret-value"
-    fs.writeFileSync(file, `main_model: gpt-4o\nsmall_model: gpt-4o-mini\nmodels: [gpt-4o]\nproviders:\n  openrouter:\n    baseURL: https://openrouter.ai/api/v1\n    apiKey: env:OPENROUTER_API_KEY\n  company:\n    baseURL: https://company.example/v1\n    apiKey: ${secret}\n`)
+    fs.writeFileSync(file, `small_model: gpt-4o-mini\nmodels: [gpt-4o]\nproviders:\n  openrouter:\n    baseURL: https://openrouter.ai/api/v1\n    apiKey: env:OPENROUTER_API_KEY\n  company:\n    baseURL: https://company.example/v1\n    apiKey: ${secret}\n`)
 
     const migrated = migrateConfigToV2(file)
     const persisted = fs.readFileSync(file, "utf8")

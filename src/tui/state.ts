@@ -5,7 +5,6 @@
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
-import { loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
 import { resolveProfile } from "../profile/profile"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
@@ -209,15 +208,13 @@ function parseSubAgentCommand(cmd: string): { profile: string; prompt?: string }
 // Resolve the model name and token limit for a sub-agent profile so the
 // card can show them immediately, before the first step-finish arrives.
 function resolveSubAgentModelMeta(profileId: string): { modelName: string; tokenLimit: number } {
-  const fallbackModel = loadConfig().main_model
   try {
     const profile = resolveProfile(profileId)
-    const model = profile.model ?? fallbackModel
-    const limit = getModelLimit(model)
-    return { modelName: model, tokenLimit: limit?.context ?? limit?.input ?? 0 }
+    const model = profile.model
+    const limit = model ? getModelLimit(model) : null
+    return { modelName: model ?? "unknown", tokenLimit: limit?.context ?? limit?.input ?? 0 }
   } catch {
-    const limit = getModelLimit(fallbackModel)
-    return { modelName: fallbackModel, tokenLimit: limit?.context ?? limit?.input ?? 0 }
+    return { modelName: "unknown", tokenLimit: 0 }
   }
 }
 

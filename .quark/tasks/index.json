@@ -2670,5 +2670,117 @@
     "profile": "coder",
     "timeCreated": 1784015999521,
     "timeUpdated": 1784016006931
+  },
+  {
+    "id": "task_zNk7yUm7LTP0srju",
+    "title": "Short Story Request",
+    "description": "Short Story Request",
+    "profile": "coder",
+    "timeCreated": 1784016434211,
+    "timeUpdated": 1784016439385
+  },
+  {
+    "id": "task_TApHT10mWpNY1fnG",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1784016715872,
+    "timeUpdated": 1784016720221
+  },
+  {
+    "id": "task_a5ofd7uNFerwL0O3",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1784016718125,
+    "timeUpdated": 1784016721791
+  },
+  {
+    "id": "task_FftR9fkaPq8jcK57",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1784016722338,
+    "timeUpdated": 1784016722338
+  },
+  {
+    "id": "task_uFmq5mLs36hcqaIh",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1784016727341,
+    "timeUpdated": 1784016727341
+  },
+  {
+    "id": "task_ueWv2CHhNILAEGWp",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1784016735356,
+    "timeUpdated": 1784016737730
+  },
+  {
+    "id": "task_4awTTJl8bZmDMS0B",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1784016736674,
+    "timeUpdated": 1784016739234
+  },
+  {
+    "id": "task_JPB6j1Svzkmw8Zgh",
+    "title": "Resume",
+    "description": "Resume",
+    "profile": "coder",
+    "timeCreated": 1784016738473,
+    "timeUpdated": 1784016748005
+  },
+  {
+    "id": "task_zBWJr9oGvzPPLNZM",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1784016743475,
+    "timeUpdated": 1784016743475
+  },
+  {
+    "id": "task_j0seqIXZqGFrdkb6",
+    "title": "Short Story Request",
+    "description": "Short Story Request",
+    "profile": "coder",
+    "timeCreated": 1784017715275,
+    "timeUpdated": 1784017721420
+  },
+  {
+    "id": "task_RBSJwltvRc6Wxp5W",
+    "title": "Create a GitHub issue for the bug where the context percentage meter in the TUI does not update when the /undo command is triggered.",
+    "description": "Create a GitHub issue for the bug where the context percentage meter in the TUI does not update when the /undo command is triggered.",
+    "profile": "coder",
+    "timeCreated": 1784017766399,
+    "timeUpdated": 1784017777794
+  },
+  {
+    "id": "task_gqcIEIMwplY3OT8F",
+    "title": "Quark Build Process",
+    "description": "Quark Build Process",
+    "profile": "coder",
+    "timeCreated": 1784017941965,
+    "timeUpdated": 1784017952832
+  },
+  {
+    "id": "task_RZ4joJoPAAgT49Z6",
+    "title": "Investigate why the TUI initially shows a 353k context window for opencode/deepseek-v4-pro instead of its actual 1M window and fix the leak from the OpenAI GPT model in src/provider/models.ts.",
+    "description": "Investigate why the TUI initially shows a 353k context window for opencode/deepseek-v4-pro instead of its actual 1M window and fix the leak from the OpenAI GPT model in src/provider/models.ts.",
+    "profile": "coder",
+    "timeCreated": 1784018880604,
+    "timeUpdated": 1784018889227
+  },
+  {
+    "id": "task_ps97kn3IEQcVwvZA",
+    "title": "Understand the main_model in src/config/config.ts and ask the oracle for the sunset date of this model.",
+    "description": "Understand the main_model in src/config/config.ts and ask the oracle for the sunset date of this model.",
+    "profile": "coder",
+    "timeCreated": 1784019534262,
+    "timeUpdated": 1784019539992
   }
 ]

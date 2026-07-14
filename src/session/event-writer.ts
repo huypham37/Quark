@@ -9,7 +9,6 @@
 
 import { bus } from "./events"
 import { getModelLimit } from "../provider/models"
-import { loadConfig } from "../config/config"
 
 // Compact event shapes — keep wire size small
 export type SubAgentEvent =
@@ -39,12 +38,12 @@ function emit(event: SubAgentEvent): void {
 export function startEventWriter(resolvedModel?: string): () => void {
   const unsubs: (() => void)[] = []
 
-  // Resolve the model once at startup — use the passed model, fall back to config
-  const displayModel = resolvedModel ?? loadConfig().main_model
+  // Resolve the model once at startup — use the passed model if provided
+  const displayModel = resolvedModel
 
   // Emit metadata immediately so the parent TUI can show model + context limit
   // right away, instead of waiting for the first step-finish.
-  const limit = getModelLimit(displayModel)
+  const limit = displayModel ? getModelLimit(displayModel) : null
   const tokenLimit = limit?.context ?? limit?.input ?? 0
   emit({ e: "step-finish", tokens: { input: 0, output: 0 }, tokenLimit, model: displayModel })
 
@@ -76,7 +75,7 @@ export function startEventWriter(resolvedModel?: string): () => void {
 
   on("step-finish", (data) => {
     // Include the model's token limit so the parent can show context window %
-    const limit = getModelLimit(displayModel)
+    const limit = displayModel ? getModelLimit(displayModel) : null
     const tokenLimit = limit?.context ?? limit?.input ?? 0
     emit({ e: "step-finish", tokens: data.data.tokens, tokenLimit, model: displayModel })
   })

@@ -139,7 +139,12 @@ export async function resolveModelRuntime(
   options: ResolveModelOptions = {},
 ): Promise<ResolvedModel> {
   const cfg = loadConfig()
-  const spec = modelSpec ?? (kind === "main" ? cfg.main_model : cfg.small_model)
+  const spec = modelSpec ?? (kind === "small" ? cfg.small_model : undefined)
+  if (!spec) {
+    throw new Error(
+      "No model specified. Set a model via --model, agent profile, or /model command.",
+    )
+  }
   const parsed = parseModelSpec(spec)
   if (!parsed.provider || !parsed.model) {
     throw new Error(

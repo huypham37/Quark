@@ -37,8 +37,6 @@ const sessions = new Map<string, SessionState>()
 let availableModels: string[] = []
 let agentByProfile = new Map<string, AgentConfig>()
 let defaultProfileId = "coder"
-let defaultModel = "gpt-4o"
-
 // Default agent used when no profile-specific agent matches
 let resolvedAgent: AgentConfig = defaultAgent
 
@@ -242,7 +240,7 @@ function buildSessionMeta(sessionId: string): {
   modes: s.SessionModeState
 } {
   const state = sessions.get(sessionId)
-  const currentModelId = state?.model ?? defaultModel
+  const currentModelId = state?.model
   const currentModeId = state?.profileId ?? defaultProfileId
 
   const availableModes = [...agentByProfile.entries()].map(([id, agent]) => ({
@@ -423,8 +421,8 @@ async function handlePrompt(
   const profileId = state.profileId ?? defaultProfileId
   const agent = agentByProfile.get(profileId) ?? resolvedAgent
 
-  // Pick model: session override → agent config → default
-  const model = state.model ?? agent.model ?? defaultModel
+  // Pick model: session override → agent config
+  const model = state.model ?? agent.model
 
   const { parts, images } = convertContentBlocks(blocks)
 
@@ -565,7 +563,6 @@ export async function runAcpAgent(transport: AcpTransport, profileName?: string)
   // Load config
   const config = loadConfig()
   availableModels = config.models
-  defaultModel = config.main_model
 
   // Pre-cache all profile → agent configs
   const profileIds = listProfiles()
@@ -582,7 +579,7 @@ export async function runAcpAgent(transport: AcpTransport, profileName?: string)
   // Bootstrap default profile
   await ensureBootstrapped(defaultProfileId)
 
-  dlog("acp agent started (profile: %s, model: %s)", defaultProfileId, resolvedAgent.model ?? defaultModel)
+  dlog("acp agent started (profile: %s, model: %s)", defaultProfileId, resolvedAgent.model)
 
   for await (const msg of transport) {
     if (msg.kind === "error") {

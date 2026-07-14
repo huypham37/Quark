@@ -20,7 +20,6 @@ import * as os from "os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 import { warn as notifyWarn } from "../notification/notification"
 import { type Action } from "../permission/permission"
-import { loadConfig } from "../config/config"
 import {
   getDefaultThinkingEffort,
   getThinkingModes,
@@ -49,7 +48,7 @@ export interface ProfileDef {
   skills: string[]
   /** Profile IDs of sub-agents this profile can spawn */
   subAgents?: string[]
-  /** Model string for this profile. Falls back to config `main_model` if omitted. */
+  /** Model string for this profile. */
   model?: string
   /** Thinking effort for this profile's effective model. */
   thinkingEffort?: string
@@ -212,7 +211,8 @@ function parseThinking(
 
   if (!effort && !mode) return {}
 
-  const effectiveModel = modelId ?? fallbackModel ?? loadConfig().main_model
+  const effectiveModel = modelId ?? fallbackModel
+  if (!effectiveModel) return {}
   const result: Pick<ProfileDef, "thinkingEffort" | "thinkingMode"> = {}
 
   if (effort) {

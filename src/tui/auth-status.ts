@@ -10,9 +10,10 @@ export function formatAuthStatuses(statuses: ProviderAuthStatus[]): string[] {
 }
 
 export function firstRunAuthMessage(
-  modelSpec: string,
+  modelSpec: string | undefined,
   statuses: ProviderAuthStatus[],
 ): string | null {
+  if (!modelSpec) return null
   const providerId = modelSpec.includes("/") ? modelSpec.slice(0, modelSpec.indexOf("/")) : ""
   const status = statuses.find((item) => item.providerId === providerId)
   if (!status || status.state === "authenticated" || status.state === "not-required") return null

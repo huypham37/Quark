@@ -49,7 +49,6 @@ export interface ProviderConfig {
 export interface QuarkConfig {
   version: 2
   modelConfig: {
-    main: string
     small: string
     favorites: string[]
   }
@@ -61,7 +60,6 @@ export interface QuarkConfig {
   goal?: GoalConfig
   /** Compatibility projections; never serialized as V2 fields. */
   models: string[]
-  main_model: string
   small_model: string
   /** True when the source file had no version and was read through V1 compatibility. */
   legacy: boolean
@@ -70,7 +68,6 @@ export interface QuarkConfig {
 const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
 const GOAL_DEFAULTS: GoalConfig = { explore_budget: 5, max_planned_tasks: 20 }
 const DEFAULT_MODELS = {
-  main: "openai/gpt-4o",
   small: "openai/gpt-4o-mini",
   favorites: [
     "openai/gpt-4o",
@@ -207,11 +204,10 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
   return result
 }
 
-function withCompatibility(input: Omit<QuarkConfig, "models" | "main_model" | "small_model">): QuarkConfig {
+function withCompatibility(input: Omit<QuarkConfig, "models" | "small_model">): QuarkConfig {
   return {
     ...input,
     models: input.modelConfig.favorites,
-    main_model: input.modelConfig.main,
     small_model: input.modelConfig.small,
   }
 }
@@ -219,13 +215,12 @@ function withCompatibility(input: Omit<QuarkConfig, "models" | "main_model" | "s
 export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
   if (raw.version !== 2) throw new Error(`Unsupported config version "${String(raw.version)}".`)
   if (!raw.models || typeof raw.models !== "object" || Array.isArray(raw.models)) {
-    throw new Error("models must contain main, small, and favorites.")
+    throw new Error("models must contain small and favorites.")
   }
   const models = raw.models as Record<string, unknown>
   const favorites = Array.isArray(models.favorites) && models.favorites.every((item) => typeof item === "string")
     ? models.favorites as string[] : [...DEFAULT_MODELS.favorites]
   const modelConfig = {
-    main: validateModelSpec(nonEmptyString(models.main, DEFAULT_MODELS.main), "models.main"),
     small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
     favorites: favorites.map((model, index) => validateModelSpec(model, `models.favorites[${index}]`)),
   }
@@ -268,10 +263,8 @@ function qualifyLegacyModel(spec: string): string {
 function parseV1(raw: Record<string, unknown>): QuarkConfig {
   const legacyFavorites = Array.isArray(raw.models) && raw.models.every((item) => typeof item === "string")
     ? raw.models as string[] : ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4", "claude-haiku-3.5", "gemini-2.5-pro", "o4-mini"]
-  const legacyMain = nonEmptyString(raw.main_model, "gpt-4o")
   const legacySmall = nonEmptyString(raw.small_model, "gpt-4o-mini")
   const modelConfig = {
-    main: qualifyLegacyModel(legacyMain),
     small: qualifyLegacyModel(legacySmall),
     favorites: legacyFavorites.map(qualifyLegacyModel),
   }
@@ -285,7 +278,6 @@ function parseV1(raw: Record<string, unknown>): QuarkConfig {
     goal: parseGoal(raw.goal),
     legacy: true,
     models: legacyFavorites,
-    main_model: legacyMain,
     small_model: legacySmall,
   }
 }
@@ -387,11 +379,10 @@ export function setConfigField<K extends "max_steps" | "branching" | "hide_reado
   key: K,
   value: QuarkConfig[K],
 ): void
-export function setConfigField(key: "main_model" | "small_model" | "models", value: string | string[]): void
+export function setConfigField(key: "small_model" | "models", value: string | string[]): void
 export function setConfigField(key: string, value: unknown): void {
   const config = loadConfig()
-  if (key === "main_model") config.modelConfig.main = qualifyLegacyModel(value as string)
-  else if (key === "small_model") config.modelConfig.small = qualifyLegacyModel(value as string)
+  if (key === "small_model") config.modelConfig.small = qualifyLegacyModel(value as string)
   else if (key === "models") config.modelConfig.favorites = (value as string[]).map(qualifyLegacyModel)
   else (config as unknown as Record<string, unknown>)[key] = value
   writeConfigV2({ ...withCompatibility({ ...config, legacy: false }), legacy: false })
