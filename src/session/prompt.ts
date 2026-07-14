@@ -290,7 +290,7 @@ async function loop(
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         moveActiveSession(previousSessionId, currentSessionId);
-        await emitSessionSwitch(currentSessionId, agent);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" });
 
         // Re-load after branching so the model sees the task lineage context.
         continue;
@@ -394,7 +394,7 @@ async function loop(
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         moveActiveSession(previousSessionId, currentSessionId);
-        await emitSessionSwitch(currentSessionId, agent);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" });
 
         continue;
       } catch (err) {

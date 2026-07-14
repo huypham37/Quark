@@ -4,7 +4,7 @@ import { generateId, generateText, type LanguageModel, type ModelMessage } from 
 import { getTask } from "../task/task"
 import { getContextWindow, getLastInputTokens, estimateTokens, isOverContextThreshold } from "./context"
 import { createSession, getSession, listAllSessions, updateSession, type Session } from "./session"
-import { saveUserMessage, type MessageRow, type PartRow } from "./message"
+import { saveUserMessage, type MessageRow, type MessageVisibility, type PartRow } from "./message"
 import { appendEvents } from "../storage/session-jsonl"
 import type { MessageEvent, PartEvent, MessageEndEvent } from "../storage/session-format"
 import { warn } from "../notification/notification"
@@ -302,7 +302,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   // 1. Save summary/lineage as the first user message.
   const seedText = lineageContext || summary
   if (seedText) {
-    saveUserMessage({ sessionId: child.id, text: seedText })
+    saveUserMessage({ sessionId: child.id, text: seedText, visibility: "model-only" })
   }
 
   // 2. Replay stripped recent messages into the child session.
@@ -338,6 +338,11 @@ export function createBranch(input: CreateBranchInput): BranchResult {
           data = JSON.parse(part.data)
         } catch {
           continue
+        }
+
+        // Mark replayed text/summary parts as model-only so the TUI hides them
+        if (part.type === "text" || part.type === "summary") {
+          data = { ...(data as Record<string, unknown>), visibility: "model-only" as MessageVisibility }
         }
 
         events.push({

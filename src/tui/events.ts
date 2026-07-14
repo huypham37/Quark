@@ -105,14 +105,24 @@ export function wireEvents(state: AppState) {
     }
     const restored = sessionTokens.get(data.sessionId)
     const incoming = restored ?? data.estimatedTokens ?? 0
-    // CRITICAL: seed the map BEFORE dispatching load-session.
-    // load-session mutates sessionId, which causes createComputed to re-run
-    // synchronously and reset lastInputTokens from sessionTokens.
-    // Seeding first ensures createComputed picks up the correct value.
+    // CRITICAL: seed the map BEFORE dispatching.
+    // load-session / append-branch-session mutates sessionId, which causes
+    // createComputed to re-run synchronously and reset lastInputTokens from
+    // sessionTokens. Seeding first ensures createComputed picks up the
+    // correct value.
     if (incoming > 0) {
       sessionTokens.set(data.sessionId, incoming)
     }
-    dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages })
+    if (data.kind === "branch") {
+      dispatch(state, {
+        type: "append-branch-session",
+        sessionId: data.sessionId,
+        messages: data.messages as any,
+        divider: data.divider,
+      })
+    } else {
+      dispatch(state, { type: "load-session", sessionId: data.sessionId, messages: data.messages as any })
+    }
     // After createComputed re-ran, lastInputTokens is now correctly seeded
     dispatch(state, { type: "update-status", partial: { tokensUsed: lastInputTokens } })
   }

@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { For, createSignal, createEffect, Show } from "solid-js"
+import { For, Index, createSignal, createEffect, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -16,6 +16,7 @@ import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
 import { loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
+import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { PermissionPrompt } from "./permission-prompt"
@@ -1127,9 +1128,19 @@ export const App: Component<AppProps> = (props) => {
         scrollbarOptions={{ visible: false }}
       >
         <box flexGrow={1} minHeight={0} />
-        <For each={state.store.messages}>
-          {(msg) => <MessageItem message={msg} showThinking={state.store.showThinking} />}
-        </For>
+        <Index each={state.store.messages}>
+          {(msg, i) => {
+            const dividers = state.store.steerDividers.filter((d) => d.insertionIndex === i)
+            return (
+              <>
+                {dividers.map((d) => (
+                  <SteerDivider goal={d.goal} width={dims().width} />
+                ))}
+                <MessageItem message={msg()} showThinking={state.store.showThinking} />
+              </>
+            )
+          }}
+        </Index>
       </scrollbox>
 
       {/* Permission prompt */}

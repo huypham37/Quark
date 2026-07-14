@@ -9,7 +9,6 @@
 import type { Component } from "solid-js"
 import { Show, Switch, Match, For } from "solid-js"
 import { UserMessage } from "./user-message"
-import { SteerDivider } from "./steer-divider"
 import { AssistantMessage } from "./assistant-message"
 import { ToolCard } from "./tool-card"
 import { ThinkingIndicator } from "./thinking"
@@ -88,12 +87,7 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
               .map((p) => ({ label: p.label }))
             return (
               <box marginBottom={1}>
-                <Show
-                  when={textPart().variant === "steer"}
-                  fallback={<UserMessage text={textPart().text} images={images()} />}
-                >
-                  <SteerDivider goal={textPart().text} />
-                </Show>
+                <UserMessage text={textPart().text} images={images()} />
               </box>
             )
           }}

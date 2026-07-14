@@ -283,7 +283,7 @@ describe("dbToTuiMessages and dbToConversationMessages aborted filtering", () =>
 });
 
 describe("dbToTuiMessages", () => {
-  test("preserves the steer display variant", () => {
+  test("preserves text from user messages with steer variant", () => {
     const messages = [{
       id: "m1",
       sessionId: "s1",
@@ -305,15 +305,15 @@ describe("dbToTuiMessages", () => {
       data: JSON.stringify({ text: "Improving the TUI", variant: "steer" }),
     }]
 
+    // Steer variant is no longer exposed in TUI parts — it is a DB-only
+    // signal for the branching system. The text is preserved as-is.
     expect(dbToTuiMessages(messages, parts)[0]!.parts[0]).toEqual({
       type: "text",
       text: "Improving the TUI",
-      variant: "steer",
     })
     expect(dbToConversationMessages(messages, parts)[0]!.parts[0]).toEqual({
       type: "text",
       text: "Improving the TUI",
-      variant: "steer",
     })
   })
 })

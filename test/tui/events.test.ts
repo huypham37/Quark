@@ -269,7 +269,7 @@ describe("wireEvents: session-reset and session-switch", () => {
     const msgs = [
       { id: "m1", role: "user" as const, parts: [{ type: "text" as const, text: "hi" }], streaming: false },
     ]
-    bus.emit("session-switch", { sessionId: "s3", messages: msgs })
+    bus.emit("session-switch", { kind: "replace", sessionId: "s3", messages: msgs })
     expect(s.store.sessionId).toBe("s3")
     expect(s.store.messages.length).toBe(1)
     expect(s.store.messages[0]!.id).toBe("m1")
@@ -285,7 +285,7 @@ describe("wireEvents: session-reset and session-switch", () => {
     expect(s.store.status.tokensUsed).toBe(500)
 
     // Switch to a fresh session with no stored tokens — should reset to 0
-    bus.emit("session-switch", { sessionId: "brand-new-session-xyz", messages: [] })
+    bus.emit("session-switch", { kind: "replace", sessionId: "brand-new-session-xyz", messages: [] })
     expect(s.store.status.tokensUsed).toBe(0)
   })
 })

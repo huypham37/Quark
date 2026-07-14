@@ -21,9 +21,12 @@ import type {
 
 // ---- Types for Part data blobs ----
 
+export type MessageVisibility = "model-only"
+
 export interface TextPartData {
   text: string
   variant?: "steer"
+  visibility?: MessageVisibility
 }
 
 export interface ToolPartData {
@@ -97,6 +100,7 @@ export function saveUserMessage(input: {
   text: string
   images?: { mime: string; data: string }[]
   variant?: "steer"
+  visibility?: MessageVisibility
 }): MessageRow {
   const now = Date.now()
   const msgId = generateId()
@@ -122,7 +126,7 @@ export function saveUserMessage(input: {
     messageId: msgId,
     partId,
     partType: "text",
-    data: { text: input.text, variant: input.variant } satisfies TextPartData,
+    data: { text: input.text, variant: input.variant, visibility: input.visibility } satisfies TextPartData,
   }
 
   const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [msgEvent, partEvent]

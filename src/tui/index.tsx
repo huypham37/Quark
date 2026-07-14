@@ -407,7 +407,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       const switchSystemStr = Array.isArray(switchSystem) ? switchSystem.join("\n") : switchSystem
       switchEstimatedTokens = estimateTokens(switchSystemStr, switchModelMessages)
     }
-    bus.emit("session-switch", { sessionId: match.id, messages: tuiMessages, estimatedTokens: switchEstimatedTokens })
+    bus.emit("session-switch", { kind: "replace", sessionId: match.id, messages: tuiMessages as any, estimatedTokens: switchEstimatedTokens })
     return { handled: true }
   }
 
@@ -531,7 +531,13 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         const estimatedTokens = estimateTokens(systemStr, modelMessages)
         bus.emit("steer-end", { sessionId: sid })
         steeringEnded = true
-        bus.emit("session-switch", { sessionId: branch.sessionId, messages: tuiMessages, estimatedTokens })
+        bus.emit("session-switch", {
+          kind: "branch",
+          sessionId: branch.sessionId,
+          messages: tuiMessages as any,
+          estimatedTokens,
+          divider: { id: `branch:${branch.sessionId}`, goal: args.trim() },
+        })
         notifyInfo("Steer", `Branched to new session`, 3000)
       } catch (err) {
         bus.emit("error", {

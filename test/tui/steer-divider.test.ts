@@ -10,6 +10,10 @@ const source = readFileSync(
 describe("SteerDivider", () => {
   test("renders an italic steer label with the goal", () => {
     expect(source).toContain("italic")
-    expect(source).toContain("━━━━━━━━━━━━━━━━━━━━━ Steered · ${props.goal} ━━━━━━━━━━━━━━━━━━━━━")
+    expect(source).toContain("Steered")
+    // Dynamic full-width: accepts a width prop and fills the line
+    expect(source).toContain("width: number")
+    expect(source).toContain("barChar.repeat")
+    expect(source).toContain("left + label + right")
   })
 })

@@ -35,10 +35,17 @@ export interface TuiMessage {
 }
 
 export type TuiPart =
-  | { type: "text"; text: string; streaming?: boolean; variant?: "steer" }
+  | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
+
+/** Standalone divider row inserted into the message list after a branch. */
+export interface TuiSteerDivider {
+  id: string
+  goal: string
+  insertionIndex: number
+}
 
 // Sub-agent observability state — attached to tool parts that spawn sub-agents
 export interface SubAgentToolPart {
@@ -118,6 +125,7 @@ export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string | null }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
+  | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string } }
   | { type: "add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
@@ -237,8 +245,10 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
     for (const p of msgParts) {
       if (p.type === "text" || p.type === "summary") {
         const d = JSON.parse(p.data) as TextPartData
+        // Skip model-only parts — lineage context and transferred messages
+        if (d.visibility === "model-only") continue
         if (d.text) {
-          tuiParts.push({ type: "text", text: d.text, variant: d.variant })
+          tuiParts.push({ type: "text", text: d.text })
         }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
@@ -315,6 +325,8 @@ export interface AppStore {
   question?: QuestionRequest
   questionQueue: QuestionRequest[]
   asyncPanel: AsyncPanel | null
+  /** Divider rows inserted after a branch — interleaved with messages in the scrollbox. */
+  steerDividers: TuiSteerDivider[]
 }
 
 export interface AppState {
@@ -356,6 +368,7 @@ export function createAppState(initial: {
     question: undefined,
     questionQueue: [],
     asyncPanel: null,
+    steerDividers: [],
   })
   return { store, setStore }
 }
@@ -380,6 +393,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.error = undefined
           s.permission = undefined
           s.question = undefined
+          s.steerDividers = []
         }),
       )
       break
@@ -395,6 +409,33 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.cost = 0
           s.error = undefined
           s.permission = undefined
+          s.steerDividers = []
+        }),
+      )
+      break
+
+    case "append-branch-session":
+      setStore(
+        produce((s) => {
+          s.sessionId = action.sessionId
+          s.running = false
+          s.lastDuration = null
+          s.status.tokensUsed = 0
+          s.status.cost = 0
+          s.error = undefined
+          s.permission = undefined
+          // Insert divider if not already present (idempotent)
+          if (!s.steerDividers.some((d) => d.id === action.divider.id)) {
+            s.steerDividers.push({
+              id: action.divider.id,
+              goal: action.divider.goal,
+              insertionIndex: s.messages.length,
+            })
+          }
+          // Append visible child messages after the divider
+          if (action.messages.length > 0) {
+            s.messages.push(...action.messages)
+          }
         }),
       )
       break
@@ -996,6 +1037,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.permissionQueue = []
           s.question = undefined
           s.questionQueue = []
+          s.steerDividers = []
         }),
       )
       break

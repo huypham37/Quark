@@ -94,10 +94,14 @@ export interface BusEvents {
   // Session was reset (e.g. /clear command — TUI should switch to new session)
   "session-reset": { sessionId: string | null }
 
-  // Session was switched (e.g. /sessions <id> — TUI loads existing session)
+  // Session was switched — discriminated by kind:
+  //   "replace" — /sessions <id> replaces the entire transcript
+  //   "branch"  — compaction/steer appends a divider + child messages
   // estimatedTokens: if provided (e.g. after branching), the status bar is
   // updated immediately instead of showing 0 until the next step-finish.
-  "session-switch": { sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number }
+  "session-switch":
+    | { kind: "replace"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number }
+    | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string } }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
   "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
