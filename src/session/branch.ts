@@ -35,6 +35,7 @@ export interface SummarizeForBranchInput {
 export interface AutoBranchInput extends SummarizeForBranchInput {
   sessionId: string
   profile: string
+  prompt?: string
 }
 
 export interface CreateBranchInput {
@@ -246,6 +247,7 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
     profile: input.profile,
     recentMessages,
     recentParts,
+    prompt: input.prompt,
   })
 }
 

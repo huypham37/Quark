@@ -286,6 +286,7 @@ async function loop(
           model,
           profile: agent.id,
           abort,
+          prompt: "Continue",
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
@@ -390,6 +391,7 @@ async function loop(
           model,
           profile: agent.id,
           abort,
+          prompt: "Continue",
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;

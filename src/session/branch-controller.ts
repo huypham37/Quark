@@ -32,6 +32,7 @@ export async function createAutoBranch(input: {
   model: LanguageModel
   profile: string
   abort: AbortSignal
+  prompt?: string
 }): Promise<BranchResult> {
   setForceAgent(true)
   try {
