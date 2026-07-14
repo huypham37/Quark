@@ -75,11 +75,31 @@ describe("wireEvents: message lifecycle", () => {
     expect(part.streaming).toBe(false)
   })
 
-  test("assistant-message-end clears streaming", () => {
+  test("assistant-message-end clears streaming and marks its user message replied", () => {
     const s = setup("s1")
+    bus.emit("user-message", { sessionId: "s1", messageId: "u1", text: "hello" })
     bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
-    bus.emit("assistant-message-end", { sessionId: "s1", messageId: "m1", finish: "stop" })
-    expect(s.store.messages[0]!.streaming).toBe(false)
+    bus.emit("assistant-message-end", { sessionId: "s1", messageId: "m1", userMessageId: "u1", finish: "stop" })
+    expect(s.store.messages[0]!.userStatus).toBe("replied")
+    expect(s.store.messages[1]!.streaming).toBe(false)
+  })
+
+  test("aborted before an assistant message marks the user message", () => {
+    const s = setup("s1")
+    bus.emit("user-message", { sessionId: "s1", messageId: "u1", text: "first" })
+    bus.emit("user-message-status", { sessionId: "s1", messageId: "u1", status: "aborted" })
+    expect(s.store.messages[0]!.userStatus).toBe("aborted")
+  })
+
+  test("aborted completion marks only its originating user message", () => {
+    const s = setup("s1")
+    bus.emit("user-message", { sessionId: "s1", messageId: "u1", text: "first" })
+    bus.emit("user-message", { sessionId: "s1", messageId: "u2", text: "second" })
+    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "a1" })
+    bus.emit("assistant-message-end", { sessionId: "s1", messageId: "a1", userMessageId: "u1", finish: "aborted" })
+
+    expect(s.store.messages.find((message) => message.id === "u1")!.userStatus).toBe("aborted")
+    expect(s.store.messages.find((message) => message.id === "u2")!.userStatus).toBe("sent")
   })
 })
 
@@ -149,10 +169,12 @@ describe("wireEvents: error", () => {
     for (const n of getActive()) dismiss(n.id)
   })
 
-  test("error event triggers notification and does not set store.error", () => {
+  test("error event marks its user message failed and triggers notification", () => {
     const s = setup("s1")
+    bus.emit("user-message", { sessionId: "s1", messageId: "u1", text: "hello" })
     bus.emit("loop-start", { sessionId: "s1" })
-    bus.emit("error", { sessionId: "s1", error: new Error("oops") })
+    bus.emit("error", { sessionId: "s1", userMessageId: "u1", error: new Error("oops") })
+    expect(s.store.messages[0]!.userStatus).toBe("failed")
     expect(s.store.error).toBeUndefined()
     const notifs = getActive()
     expect(notifs.length).toBeGreaterThan(0)
@@ -566,7 +588,7 @@ describe("wireEvents: async-panel side-session routing", () => {
     dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
 
     bus.emit("assistant-message-start", { sessionId: "side-1", messageId: "a1" })
-    bus.emit("assistant-message-end", { sessionId: "side-1", messageId: "a1", finish: "stop" })
+    bus.emit("assistant-message-end", { sessionId: "side-1", messageId: "a1", userMessageId: "u1", finish: "stop" })
 
     expect(s.store.asyncPanel!.done).toBe(true)
     expect(s.store.asyncPanel!.running).toBe(false)

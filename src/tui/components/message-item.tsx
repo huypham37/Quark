@@ -87,7 +87,7 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
               .map((p) => ({ label: p.label }))
             return (
               <box marginBottom={1}>
-                <UserMessage text={textPart().text} images={images()} />
+                <UserMessage text={textPart().text} images={images()} status={props.message.userStatus} />
               </box>
             )
           }}

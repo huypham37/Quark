@@ -54,6 +54,8 @@ export interface ProcessInput {
   abort: AbortSignal
   msg: MessageRow
   sessionId: string
+  /** ID of the user message that initiated this turn. */
+  userMessageId: string
   maxOutputTokens?: number
   /** Provider ID for plugin hooks (e.g. "copilot", "ollama") */
   providerId?: string
@@ -85,6 +87,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
   const sid = input.sessionId
   const mid = input.msg.id
+  const userMessageId = input.userMessageId
 
   while (true) {
     try {
@@ -412,7 +415,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       // User abort — mark the message as aborted so it's excluded from context
       if (input.abort.aborted) {
         finishMessage(mid, "aborted", undefined, sid)
-        bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish: "aborted" })
+        bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, userMessageId, finish: "aborted" })
         return "stop"
       }
 
@@ -429,13 +432,13 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         // If the server says wait > 5 minutes (e.g. monthly quota reset), don't retry — surface it
         if (serverDelay !== undefined && serverDelay > 5 * 60 * 1000) {
           finishMessage(mid, "stop", undefined, sid)
-          bus.emit("error", { sessionId: sid, error: e })
+          bus.emit("error", { sessionId: sid, error: e, userMessageId })
           throw e
         }
 
         if (attempt >= maxRetries) {
           finishMessage(mid, "stop", undefined, sid)
-          bus.emit("error", { sessionId: sid, error: e })
+          bus.emit("error", { sessionId: sid, error: e, userMessageId })
           throw e
         }
         attempt++
@@ -480,7 +483,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
       // Update the message with error state
       finishMessage(mid, "stop", undefined, sid)
-      bus.emit("error", { sessionId: sid, error: e })
+      bus.emit("error", { sessionId: sid, error: e, userMessageId })
       throw e
     }
 
@@ -495,7 +498,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         ...(numericAggregateCost(aggregateCharge) !== undefined ? { cost: numericAggregateCost(aggregateCharge) } : {}),
         aggregate: { tokens: aggregateTokens, charge: aggregateCharge },
       }, sid)
-      bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish: "stop" })
+      bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, userMessageId, finish: "stop" })
       return "branch"
     }
 
@@ -511,7 +514,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       ...(aggregateCost !== undefined ? { cost: aggregateCost } : {}),
       aggregate: { tokens: aggregateTokens, charge: aggregateCharge },
     }, sid)
-    bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish })
+    bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, userMessageId, finish })
 
     dlog(`stream finished: lastFinish=${lastFinish} → returning ${finish === "tool-calls" ? "continue" : "stop"}`)
 
