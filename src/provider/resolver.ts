@@ -1,41 +1,126 @@
-import { createAnthropic } from "@ai-sdk/anthropic"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+import type { LanguageModel } from "ai"
 import {
   getProviderConfig,
   loadConfig,
   parseModelSpec,
   resolveApiKey,
+  type ProviderConfig,
 } from "../config/config"
 import { fireHook } from "../plugin/registry"
-import { createCodexConsumer } from "./codex-consumer"
+import { createProviderAdapter } from "./adapters"
 import {
   CodexTokenStore,
   refreshToken as refreshCodexToken,
   type FetchFn,
 } from "./codex-auth"
-import { loadToken as loadCopilotToken } from "./copilot-auth"
-import { getCustomFetch } from "./custom-fetch"
+import { createDefaultCredentialStore, type CredentialStore } from "./credential-store"
+import {
+  DefaultCredentialResolver,
+  RedactedResolvedCredential,
+  type CredentialProviderDefinition,
+  type ResolvedCredential,
+} from "./credentials"
+import type { ProviderDefinition } from "./definitions"
+import { ModelRegistry, parseModelRef, type ModelDescriptor, type ModelRef, type PricingDescriptor } from "./catalog"
+import { loadLegacyProviderCredential } from "./legacy-credentials"
+import { createBundledProviderRegistry, type ProviderRegistry, type ProviderRuntime } from "./registry"
+
+export interface ResolvedModel {
+  languageModel: LanguageModel
+  ref: ModelRef
+  provider: ProviderRuntime
+  descriptor: ModelDescriptor
+  pricingSnapshot: PricingDescriptor
+  providerOptionsKey: string
+}
 
 export interface ResolveModelOptions {
   codexFetch?: FetchFn
   codexTokenStore?: CodexTokenStore
   refreshCodexToken?: typeof refreshCodexToken
+  credentialStore?: CredentialStore
+  registry?: ProviderRegistry
 }
 
-export async function resolveModel(
+function createLegacyProviderDefinition(id: string, config: ProviderConfig): ProviderDefinition {
+  return {
+    id,
+    name: id,
+    protocol: "openai-compatible",
+    defaultEndpoint: config.baseURL,
+    auth: { type: "api-key", environmentVariables: [] },
+    metadataProviderId: id,
+    providerOptionsKey: id,
+    billing: "unknown",
+  }
+}
+
+function registerLegacyProvider(
+  registry: ProviderRegistry,
+  providerId: string,
+  config: ProviderConfig,
+): void {
+  const definition = createLegacyProviderDefinition(providerId, config)
+  registry.register({
+    definition,
+    adapter: createProviderAdapter(definition),
+    credentialSource: { source: "none" },
+    source: "configured",
+  })
+}
+
+function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
+  if (options.registry) return options.registry
+  const registry = createBundledProviderRegistry((definition) => createProviderAdapter(definition, {
+    codexFetch: options.codexFetch,
+    refreshCodexToken: options.refreshCodexToken,
+    credentialStore: options.credentialStore,
+    onCodexRefresh: options.codexTokenStore
+      ? (token) => options.codexTokenStore!.save(token)
+      : undefined,
+  }))
+  for (const providerId of Object.keys(loadConfig().providers)) {
+    const config = getProviderConfig(providerId)
+    if (config && !registry.get(providerId)) registerLegacyProvider(registry, providerId, config)
+  }
+  return registry
+}
+
+async function resolveCredential(
+  provider: CredentialProviderDefinition,
+  options: ResolveModelOptions,
+): Promise<ResolvedCredential | null> {
+  if (provider.id === "codex" && options.codexTokenStore) {
+    const token = options.codexTokenStore.load()
+    return token
+      ? new RedactedResolvedCredential({
+          type: "oauth",
+          access: token.access,
+          refresh: token.refresh,
+          expiresAt: token.expires,
+          metadata: { accountId: token.accountId },
+        }, "legacy-token-file")
+      : null
+  }
+
+  const store = options.credentialStore ?? await createDefaultCredentialStore()
+  return new DefaultCredentialResolver(
+    store,
+    undefined,
+    process.env,
+    loadLegacyProviderCredential,
+  ).resolve({ provider, source: { source: "auto" }, interactive: false })
+}
+
+export async function resolveModelRuntime(
   modelSpec?: string,
   kind: "main" | "small" = "main",
   options: ResolveModelOptions = {},
-) {
+): Promise<ResolvedModel> {
   const cfg = loadConfig()
   const spec = modelSpec ?? (kind === "main" ? cfg.main_model : cfg.small_model)
   const parsed = parseModelSpec(spec)
-
-  let providerId = parsed.provider
-  let modelId = parsed.model
-
-  if (!providerId) {
+  if (!parsed.provider || !parsed.model) {
     throw new Error(
       `Model spec "${spec}" must include a provider prefix (e.g. "copilot/gpt-4o").`,
     )
@@ -43,84 +128,67 @@ export async function resolveModel(
 
   const beforeOutput = await fireHook(
     "provider.request.before",
-    {
-      provider: providerId,
-      model: modelId,
-      messages: [],
-    },
-    { provider: providerId, model: modelId },
+    { provider: parsed.provider, model: parsed.model, messages: [] },
+    { provider: parsed.provider, model: parsed.model },
   )
-  providerId = beforeOutput.provider
-  modelId = beforeOutput.model
+  const providerId = beforeOutput.provider
+  const modelId = beforeOutput.model
+  if (!providerId || !modelId) {
+    throw new Error("provider.request.before must return a complete provider/model specification.")
+  }
 
-  if (providerId === "copilot") {
-    const getToken = async () => {
-      const token = loadCopilotToken()
-      if (!token) {
-        throw new Error(
-          "No Copilot token found. Run the login flow first (scripts/copilot-login.ts).",
-        )
-      }
-      return token
+  const registry = buildRegistry(options)
+  let runtime = registry.get(providerId)
+  if (!runtime) {
+    const legacyConfig = getProviderConfig(providerId)
+    if (legacyConfig) {
+      registerLegacyProvider(registry, providerId, legacyConfig)
+      runtime = registry.require(providerId)
     }
-    const fetch = getCustomFetch("copilot", { getToken })
-    return createOpenAICompatible({
-      name: "copilot",
-      baseURL: "https://api.githubcopilot.com",
-      apiKey: "copilot",
-      fetch,
-    })(modelId)
+  }
+  if (!runtime) {
+    throw new Error(`Unknown provider "${providerId}".`)
   }
 
-  if (providerId === "codex") {
-    const tokenStore = options.codexTokenStore ?? new CodexTokenStore()
-    let token = tokenStore.load()
-    if (!token) {
-      throw new Error(
-        "No Codex token found. Run the login flow first (scripts/codex-login.ts).",
-      )
+  let credential: ResolvedCredential | null
+  if (runtime.source === "configured") {
+    const custom = loadConfig().providers[providerId]
+    if (custom) {
+      const store = options.credentialStore ?? await createDefaultCredentialStore()
+      credential = await new DefaultCredentialResolver(store, undefined, process.env).resolve({
+        provider: runtime.definition,
+        source: custom.credential,
+        interactive: false,
+      })
+    } else {
+      const config = getProviderConfig(providerId)!
+      const value = resolveApiKey(config.apiKey)
+      credential = value
+        ? new RedactedResolvedCredential({ type: "api-key", value }, config.apiKey.startsWith("env:") ? "environment" : "session")
+        : null
     }
-    const getToken = async () => {
-      if (Date.now() >= token!.expires) {
-        try {
-          const refresh = options.refreshCodexToken ?? refreshCodexToken
-          token = await refresh({ refreshToken: token!.refresh })
-          tokenStore.save(token)
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
-          throw new Error(
-            `Codex login expired. Run scripts/codex-login.ts to sign in again. ${detail}`,
-          )
-        }
-      }
-      return token!.access
-    }
-    return createCodexConsumer({
-      modelId,
-      getToken,
-      getAccountId: async () => token!.accountId,
-      fetch: options.codexFetch,
-    })
+  } else {
+    credential = await resolveCredential(runtime.definition, options)
   }
 
-  const pc = getProviderConfig(providerId)
-  if (!pc) {
-    throw new Error(
-      `Unknown provider "${providerId}". Define it in ~/.config/quark/config.yaml under "providers:".`,
-    )
+  const ref = parseModelRef(`${runtime.definition.id}/${modelId}`)
+  const descriptor = new ModelRegistry().resolve(ref, runtime.definition)
+  const languageModel = await runtime.adapter.createLanguageModel({ modelId, credential })
+  return {
+    languageModel,
+    ref,
+    provider: runtime,
+    descriptor,
+    pricingSnapshot: structuredClone(descriptor.pricing),
+    providerOptionsKey: runtime.definition.providerOptionsKey,
   }
+}
 
-  if (providerId === "openai") {
-    return createOpenAI({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId)
-  }
-  if (providerId === "anthropic") {
-    return createAnthropic({ apiKey: resolveApiKey(pc.apiKey), baseURL: pc.baseURL })(modelId)
-  }
-
-  return createOpenAICompatible({
-    name: providerId,
-    baseURL: pc.baseURL,
-    apiKey: resolveApiKey(pc.apiKey),
-    fetch: getCustomFetch(providerId),
-  })(modelId)
+/** Compatibility wrapper for callers that still consume only the AI SDK model. */
+export async function resolveModel(
+  modelSpec?: string,
+  kind: "main" | "small" = "main",
+  options: ResolveModelOptions = {},
+): Promise<LanguageModel> {
+  return (await resolveModelRuntime(modelSpec, kind, options)).languageModel
 }

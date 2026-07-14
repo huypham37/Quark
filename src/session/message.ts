@@ -11,6 +11,8 @@ import { generateId } from "ai"
 import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from "ai"
 import { appendEvents, replaySessionFile } from "../storage/session-jsonl"
 import type { ToolResultContentPart } from "../tool/tool"
+import type { ModelRef, PricingDescriptor } from "../provider/catalog"
+import type { Charge, TokenUsage, UsageAggregate } from "./accounting"
 import type {
   MessageEvent,
   PartEvent,
@@ -42,7 +44,12 @@ export interface ToolPartData {
 
 export interface StepFinishData {
   reason: string
-  tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  model?: ModelRef
+  tokens?: TokenUsage
+  rawUsage?: Record<string, unknown>
+  pricingSnapshot?: PricingDescriptor
+  charge?: Charge
+  /** Read compatibility only. */
   cost?: number
 }
 
@@ -264,7 +271,7 @@ export function updatePart(
 export function finishMessage(
   id: string,
   finish: "stop" | "tool-calls" | "length" | "aborted",
-  usage?: { tokensIn?: number; tokensOut?: number; cost?: number },
+  usage?: { tokensIn?: number; tokensOut?: number; cost?: number; aggregate?: UsageAggregate },
   /** Session ID — required for JSONL append. */
   sessionId?: string,
 ): void {
@@ -282,6 +289,7 @@ export function finishMessage(
     tokensIn: usage?.tokensIn ?? null,
     tokensOut: usage?.tokensOut ?? null,
     timeCompleted: Date.now(),
+    ...(usage?.aggregate ? { usage: usage.aggregate } : {}),
   }
 
   appendEvents(sessionId, [event])

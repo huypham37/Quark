@@ -27,8 +27,8 @@ export interface PluginContext {
   /**
    * Register an OpenAI-compatible provider at runtime.
    *
-   * Equivalent to adding an entry under `providers:` in `config.yaml`, but stored
-   * in-memory only and takes precedence over config-file entries for the same ID.
+   * @deprecated Register a non-secret provider definition instead. This compatibility
+   * API keeps the key in memory only and rejects collisions.
    *
    * @param id - Provider ID (used in model strings, e.g. `"myprovider/gpt-4o"`)
    * @param config.baseURL - OpenAI-compatible API base URL

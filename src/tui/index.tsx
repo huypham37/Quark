@@ -13,6 +13,7 @@ import { createSession, listProjectSessions, getSession } from "../session/sessi
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
+import { buildModelPickerOptions } from "./model-picker"
 import { estimateTokens, getLastInputTokens } from "../session/context"
 import { summarizeForBranch, createBranch, splitMessages } from "../session/branch"
 import { bus } from "../session/events"
@@ -32,6 +33,8 @@ import { dismiss, getActive, info as notifyInfo } from "../notification/notifica
 import { undoLatest } from "../commands/undo"
 import { exportSessionToMarkdown } from "../commands/export"
 import { runGoal } from "../commands/goal/orchestrator"
+import { authStatus } from "../commands/auth"
+import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
 import { listTasks } from "../task/task"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
@@ -89,6 +92,8 @@ bus.on("session-created", ({ sessionId }) => {
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
 const modelName = activeAgent.model ?? loadConfig().main_model
+const startupAuthMessage = firstRunAuthMessage(modelName, await authStatus())
+if (startupAuthMessage) setImmediate(() => notifyInfo("Provider authentication", startupAuthMessage, 8000))
 
 // Populate LM Studio model cache (non-blocking)
 refreshLMStudio()
@@ -194,6 +199,10 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
 
 function handleCancel(sessionId: string) {
   cancel(sessionId)
+}
+
+function handleThinkingEffortChange(thinkingEffort: string) {
+  activeAgent = { ...activeAgent, thinkingEffort }
 }
 
 async function handleWorktreeCommand(args: string, sid: string | null): Promise<CommandResult> {
@@ -308,6 +317,12 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     // Show toast notification for profile switch (no message in conversation)
     notifyInfo("Profile", `Switched to: ${newProfile.name}`, 3000)
 
+    return { handled: true }
+  }
+
+  if (command === "auth") {
+    const statuses = await authStatus()
+    notifyInfo("Provider authentication", formatAuthStatuses(statuses).join("\n"), 8000)
     return { handled: true }
   }
 
@@ -617,8 +632,7 @@ function handleGetWorktrees() {
 }
 
 function handleGetModels() {
-  const config = loadConfig()
-  return config.models.map((id) => ({ id, name: parseModelSpec(id).model }))
+  return buildModelPickerOptions(loadConfig().models)
 }
 
 function handleGetCurrentModel() {
@@ -695,6 +709,7 @@ render(() => (
   <App
     onSubmit={handleSubmit}
     onCancel={handleCancel}
+    onThinkingEffortChange={handleThinkingEffortChange}
     onCommand={handleCommand}
     onCreateAsyncSession={handleCreateAsyncSession}
     getSessions={handleGetSessions}

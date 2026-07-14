@@ -1,50 +1,19 @@
-// Config loader — reads ~/.config/quark/config.yaml
-//
-// Model-related keys live alongside profile config in the same YAML file:
-//   models:      [claude-sonnet-4.5, gpt-4o, ...]  # user's curated favorites (shown in /model picker)
-//   main_model:  claude-sonnet-4.5                  # main agent loop
-//   small_model: gpt-4o-mini                        # lightweight tasks (title generation, etc.)
-//
-// Provider is always embedded in the model string as "provider/model".
-//
-// Missing file or fields fall back to sensible defaults.
-
-import * as fs from "fs"
-import * as path from "path"
-import * as os from "os"
+// Versioned Quark configuration. V2 never persists credential values.
+import * as fs from "node:fs"
+import * as path from "node:path"
+import * as os from "node:os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
+import type { BillingMode } from "../provider/definitions"
+import type { CredentialSourceConfig } from "../provider/credentials"
 
 const CONFIG_DIR = path.join(os.homedir(), ".config", "quark")
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
-
 export const CONFIG_PATH = CONFIG_FILE
 
 export interface BranchingConfig {
-  /** Fraction of the model's context window at which auto-branching triggers. */
   threshold: number
-  /** Enable auto-branching on context pressure. */
   auto: boolean
 }
-
-const BRANCHING_DEFAULTS: BranchingConfig = {
-  threshold: 0.90,
-  auto: true,
-}
-
-// ---------------------------------------------------------------------------
-// Provider config — user-defined OpenAI-compatible providers
-// ---------------------------------------------------------------------------
-
-export interface ProviderConfig {
-  /** Base URL for the OpenAI-compatible API (e.g. "http://localhost:11434/v1") */
-  baseURL: string
-  /** API key — literal string or "env:VAR_NAME" to read from environment */
-  apiKey: string
-}
-
-// ---------------------------------------------------------------------------
-// Goal config — /goal command settings
-// ---------------------------------------------------------------------------
 
 export interface GoalConfig {
   explore_budget: number
@@ -55,207 +24,343 @@ export interface GoalConfig {
   verbose?: boolean
 }
 
-const GOAL_DEFAULTS: GoalConfig = {
-  explore_budget: 5,
-  max_planned_tasks: 20,
+export interface ProfileConfig {
+  model?: string
+  thinking?: { effort?: string; mode?: string }
 }
 
-// ---------------------------------------------------------------------------
-// QuarkConfig — top-level config
-// ---------------------------------------------------------------------------
+export interface CustomProviderConfig {
+  protocol: "openai-compatible"
+  endpoint: string
+  credential: CredentialSourceConfig
+  billing: BillingMode
+}
 
-const DEFAULTS = {
-  models: [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "claude-sonnet-4",
-    "claude-haiku-3.5",
-    "gemini-2.5-pro",
-    "o4-mini",
-  ] as readonly string[],
-  small_model: "gpt-4o-mini",
-  main_model: "gpt-4o",
-  max_steps: 100,
-  branching: BRANCHING_DEFAULTS,
-  providers: {} as Record<string, ProviderConfig>,
-  hide_readonly_tools: false,
-} as const
+/** Legacy V1 provider shape, retained for read/runtime plugin compatibility only. */
+export interface ProviderConfig {
+  baseURL: string
+  apiKey: string
+}
 
 export interface QuarkConfig {
-  models: string[]
-  small_model: string
-  main_model: string
+  version: 2
+  modelConfig: {
+    main: string
+    small: string
+    favorites: string[]
+  }
   max_steps: number
   branching: BranchingConfig
-  /** User-defined OpenAI-compatible providers (keyed by provider ID) */
-  providers: Record<string, ProviderConfig>
-  /** Hide read-only tool calls (read, grep, glob, websearch, webfetch, etc.) from the conversation view */
+  profiles?: Record<string, ProfileConfig>
+  providers: Record<string, CustomProviderConfig>
   hide_readonly_tools: boolean
-  /** /goal command settings */
   goal?: GoalConfig
+  /** Compatibility projections; never serialized as V2 fields. */
+  models: string[]
+  main_model: string
+  small_model: string
+  /** True when the source file had no version and was read through V1 compatibility. */
+  legacy: boolean
 }
 
-// Cached config — loaded once, reused thereafter
-let cached: QuarkConfig | null = null
+const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
+const GOAL_DEFAULTS: GoalConfig = { explore_budget: 5, max_planned_tasks: 20 }
+const DEFAULT_MODELS = {
+  main: "openai/gpt-4o",
+  small: "openai/gpt-4o-mini",
+  favorites: [
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-sonnet-4",
+    "anthropic/claude-haiku-3.5",
+    "openai/o4-mini",
+  ],
+}
+const BUNDLED_PROVIDER_IDS = new Set([
+  "openai", "anthropic", "openrouter", "copilot", "codex", "ollama", "lmstudio",
+])
+const SECRET_KEYS = /^(apiKey|api_key|token|secret|password)$/i
+const PROVIDER_ID = /^[a-z0-9][a-z0-9-]*$/
+const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]*$/
 
-// Runtime-registered providers — added by plugins, not from config.yaml
+let cached: QuarkConfig | null = null
 const runtimeProviders: Record<string, ProviderConfig> = {}
 
 function readRawConfig(): Record<string, unknown> {
   try {
-    const content = fs.readFileSync(CONFIG_FILE, "utf-8")
-    const raw = parseYAML(content) as Record<string, unknown>
-    return raw && typeof raw === "object" ? raw : {}
+    const parsed = parseYAML(fs.readFileSync(CONFIG_FILE, "utf8")) as unknown
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
   } catch {
     return {}
   }
 }
 
-function parseGoalConfig(raw: unknown): GoalConfig | undefined {
-  if (!raw || typeof raw !== "object") return undefined
-  const r = raw as Record<string, unknown>
-  return {
-    explore_budget:
-      typeof r.explore_budget === "number" && r.explore_budget > 0
-        ? r.explore_budget
-        : GOAL_DEFAULTS.explore_budget,
-    max_planned_tasks:
-      typeof r.max_planned_tasks === "number" && r.max_planned_tasks > 0
-        ? r.max_planned_tasks
-        : GOAL_DEFAULTS.max_planned_tasks,
-    judge_model: typeof r.judge_model === "string" ? r.judge_model : undefined,
-    planner_profile: typeof r.planner_profile === "string" ? r.planner_profile : undefined,
-    executor_profile: typeof r.executor_profile === "string" ? r.executor_profile : undefined,
-    verbose: typeof r.verbose === "boolean" ? r.verbose : undefined,
-  }
+function nonEmptyString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback
 }
 
-function parseBranchingConfig(raw: unknown): BranchingConfig {
+function parseBranching(raw: unknown): BranchingConfig {
   if (!raw || typeof raw !== "object") return { ...BRANCHING_DEFAULTS }
-  const r = raw as Record<string, unknown>
+  const value = raw as Record<string, unknown>
   return {
-    threshold:
-      typeof r.threshold === "number" && r.threshold > 0 && r.threshold <= 1
-        ? r.threshold
-        : BRANCHING_DEFAULTS.threshold,
-    auto: typeof r.auto === "boolean" ? r.auto : BRANCHING_DEFAULTS.auto,
+    auto: typeof value.auto === "boolean" ? value.auto : BRANCHING_DEFAULTS.auto,
+    threshold: typeof value.threshold === "number" && value.threshold > 0 && value.threshold <= 1
+      ? value.threshold
+      : BRANCHING_DEFAULTS.threshold,
   }
 }
 
-function parseProviders(raw: unknown): Record<string, ProviderConfig> {
-  if (!raw || typeof raw !== "object") return {}
-  const result: Record<string, ProviderConfig> = {}
-  for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
-    if (!val || typeof val !== "object") continue
-    const v = val as Record<string, unknown>
-    if (typeof v.baseURL !== "string" || !v.baseURL) continue
+function parseGoal(raw: unknown): GoalConfig | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const value = raw as Record<string, unknown>
+  return {
+    explore_budget: typeof value.explore_budget === "number" && value.explore_budget > 0
+      ? value.explore_budget : GOAL_DEFAULTS.explore_budget,
+    max_planned_tasks: typeof value.max_planned_tasks === "number" && value.max_planned_tasks > 0
+      ? value.max_planned_tasks : GOAL_DEFAULTS.max_planned_tasks,
+    judge_model: typeof value.judge_model === "string" ? value.judge_model : undefined,
+    planner_profile: typeof value.planner_profile === "string" ? value.planner_profile : undefined,
+    executor_profile: typeof value.executor_profile === "string" ? value.executor_profile : undefined,
+    verbose: typeof value.verbose === "boolean" ? value.verbose : undefined,
+  }
+}
+
+function validateModelSpec(spec: string, field: string): string {
+  const slash = spec.indexOf("/")
+  if (slash <= 0 || slash === spec.length - 1) {
+    throw new Error(`${field} must use a complete provider/model specification.`)
+  }
+  return `${spec.slice(0, slash).toLowerCase()}/${spec.slice(slash + 1)}`
+}
+
+function parseCredential(raw: unknown, field: string): CredentialSourceConfig {
+  if (!raw || typeof raw !== "object") throw new Error(`${field} is required.`)
+  const value = raw as Record<string, unknown>
+  const source = value.source
+  if (source === "environment") {
+    if (typeof value.variable !== "string" || !ENVIRONMENT_VARIABLE.test(value.variable)) {
+      throw new Error(`${field}.variable must be an uppercase environment-variable name.`)
+    }
+    return { source, variable: value.variable }
+  }
+  if (source === "auto" || source === "prompt" || source === "store" || source === "none") {
+    return { source }
+  }
+  throw new Error(`${field}.source is invalid.`)
+}
+
+function normalizeEndpoint(raw: unknown, field: string): string {
+  if (typeof raw !== "string") throw new Error(`${field} must be an absolute HTTP(S) URL.`)
+  let url: URL
+  try { url = new URL(raw) } catch { throw new Error(`${field} must be an absolute HTTP(S) URL.`) }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`${field} must use http or https.`)
+  if (url.username || url.password) throw new Error(`${field} must not contain URL user-info.`)
+  return url.toString().replace(/\/$/, "")
+}
+
+export function parseCustomProviders(raw: unknown): Record<string, CustomProviderConfig> {
+  if (raw === undefined) return {}
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("providers must be a mapping.")
+  const result: Record<string, CustomProviderConfig> = {}
+  for (const [rawId, entry] of Object.entries(raw as Record<string, unknown>)) {
+    const id = rawId.toLowerCase()
+    if (!PROVIDER_ID.test(rawId) || rawId !== id) throw new Error(`Invalid custom provider ID "${rawId}".`)
+    if (id === "compaction" || BUNDLED_PROVIDER_IDS.has(id)) {
+      throw new Error(`Custom provider ID "${id}" is reserved or bundled.`)
+    }
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`providers.${id} must be a mapping.`)
+    const value = entry as Record<string, unknown>
+    const secret = Object.keys(value).find((key) => SECRET_KEYS.test(key))
+    if (secret) throw new Error(`Secret field providers.${id}.${secret} is forbidden; choose a credential source.`)
+    if (value.protocol !== "openai-compatible") {
+      throw new Error(`providers.${id}.protocol must be openai-compatible.`)
+    }
+    if (!["metered", "subscription", "free", "unknown"].includes(String(value.billing))) {
+      throw new Error(`providers.${id}.billing is invalid.`)
+    }
     result[id] = {
-      baseURL: v.baseURL,
-      apiKey: typeof v.apiKey === "string" ? v.apiKey : "",
+      protocol: "openai-compatible",
+      endpoint: normalizeEndpoint(value.endpoint, `providers.${id}.endpoint`),
+      credential: parseCredential(value.credential, `providers.${id}.credential`),
+      billing: value.billing as BillingMode,
     }
   }
   return result
 }
 
-/**
- * Resolve an apiKey value. If it starts with "env:", read from the environment.
- * Otherwise return the literal string.
- */
-export function resolveApiKey(raw: string): string {
-  if (raw.startsWith("env:")) {
-    return process.env[raw.slice(4)] ?? ""
+function withCompatibility(input: Omit<QuarkConfig, "models" | "main_model" | "small_model">): QuarkConfig {
+  return {
+    ...input,
+    models: input.modelConfig.favorites,
+    main_model: input.modelConfig.main,
+    small_model: input.modelConfig.small,
   }
-  return raw
 }
 
-/**
- * Load config from disk. Returns defaults for any missing or invalid fields.
- * Never throws — config is best-effort.
- */
+export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
+  if (raw.version !== 2) throw new Error(`Unsupported config version "${String(raw.version)}".`)
+  if (!raw.models || typeof raw.models !== "object" || Array.isArray(raw.models)) {
+    throw new Error("models must contain main, small, and favorites.")
+  }
+  const models = raw.models as Record<string, unknown>
+  const favorites = Array.isArray(models.favorites) && models.favorites.every((item) => typeof item === "string")
+    ? models.favorites as string[] : [...DEFAULT_MODELS.favorites]
+  const modelConfig = {
+    main: validateModelSpec(nonEmptyString(models.main, DEFAULT_MODELS.main), "models.main"),
+    small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
+    favorites: favorites.map((model, index) => validateModelSpec(model, `models.favorites[${index}]`)),
+  }
+  return withCompatibility({
+    version: 2,
+    modelConfig,
+    max_steps: typeof raw.max_steps === "number" ? raw.max_steps : 100,
+    branching: parseBranching(raw.branching),
+    profiles: raw.profiles && typeof raw.profiles === "object"
+      ? raw.profiles as Record<string, ProfileConfig> : undefined,
+    providers: parseCustomProviders(raw.providers),
+    hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
+    goal: parseGoal(raw.goal),
+    legacy: false,
+  })
+}
+
+function parseV1Providers(raw: unknown): Record<string, CustomProviderConfig> {
+  if (!raw || typeof raw !== "object") return {}
+  const result: Record<string, CustomProviderConfig> = {}
+  for (const [id, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (!entry || typeof entry !== "object" || !PROVIDER_ID.test(id) || BUNDLED_PROVIDER_IDS.has(id)) continue
+    const value = entry as Record<string, unknown>
+    if (typeof value.baseURL !== "string") continue
+    const apiKey = typeof value.apiKey === "string" ? value.apiKey : ""
+    result[id] = {
+      protocol: "openai-compatible",
+      endpoint: normalizeEndpoint(value.baseURL, `providers.${id}.baseURL`),
+      credential: apiKey.startsWith("env:") && ENVIRONMENT_VARIABLE.test(apiKey.slice(4))
+        ? { source: "environment", variable: apiKey.slice(4) }
+        : apiKey ? { source: "prompt" } : { source: "none" },
+      billing: "unknown",
+    }
+  }
+  return result
+}
+
+function qualifyLegacyModel(spec: string): string {
+  return spec.includes("/") ? spec : `openai/${spec}`
+}
+
+function parseV1(raw: Record<string, unknown>): QuarkConfig {
+  const legacyFavorites = Array.isArray(raw.models) && raw.models.every((item) => typeof item === "string")
+    ? raw.models as string[] : ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4", "claude-haiku-3.5", "gemini-2.5-pro", "o4-mini"]
+  const legacyMain = nonEmptyString(raw.main_model, "gpt-4o")
+  const legacySmall = nonEmptyString(raw.small_model, "gpt-4o-mini")
+  const modelConfig = {
+    main: qualifyLegacyModel(legacyMain),
+    small: qualifyLegacyModel(legacySmall),
+    favorites: legacyFavorites.map(qualifyLegacyModel),
+  }
+  return {
+    version: 2,
+    modelConfig,
+    max_steps: typeof raw.max_steps === "number" ? raw.max_steps : 100,
+    branching: parseBranching(raw.branching),
+    providers: parseV1Providers(raw.providers),
+    hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
+    goal: parseGoal(raw.goal),
+    legacy: true,
+    models: legacyFavorites,
+    main_model: legacyMain,
+    small_model: legacySmall,
+  }
+}
+
 export function loadConfig(): QuarkConfig {
   if (cached) return cached
-
   const raw = readRawConfig()
+  cached = raw.version === undefined ? parseV1(raw) : parseConfigV2(raw)
+  return cached
+}
 
-  const config: QuarkConfig = {
-    models:
-      Array.isArray(raw.models) && raw.models.every((m: unknown) => typeof m === "string")
-        ? (raw.models as string[])
-        : [...DEFAULTS.models],
-    small_model:
-      typeof raw.small_model === "string" && raw.small_model
-        ? raw.small_model
-        : DEFAULTS.small_model,
-    main_model:
-      typeof raw.main_model === "string" && raw.main_model
-        ? raw.main_model
-        : DEFAULTS.main_model,
-    max_steps:
-      typeof raw.max_steps === "number" ? raw.max_steps : DEFAULTS.max_steps,
-    branching: parseBranchingConfig(raw.branching),
-    providers: parseProviders(raw.providers),
-    hide_readonly_tools:
-      typeof raw.hide_readonly_tools === "boolean"
-        ? raw.hide_readonly_tools
-        : DEFAULTS.hide_readonly_tools,
-    goal: parseGoalConfig(raw.goal),
+export function serializeConfig(config: QuarkConfig): string {
+  return stringifyYAML({
+    version: 2,
+    models: config.modelConfig,
+    max_steps: config.max_steps,
+    branching: config.branching,
+    ...(config.profiles ? { profiles: config.profiles } : {}),
+    providers: config.providers,
+    hide_readonly_tools: config.hide_readonly_tools,
+    ...(config.goal ? { goal: config.goal } : {}),
+  })
+}
+
+export function writeConfigV2(config: QuarkConfig, file = CONFIG_FILE): void {
+  const content = serializeConfig(config)
+  parseConfigV2(parseYAML(content) as Record<string, unknown>)
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  const temporary = `${file}.tmp.${process.pid}.${Date.now()}`
+  try {
+    fs.writeFileSync(temporary, content, { encoding: "utf8", mode: 0o600 })
+    fs.renameSync(temporary, file)
+  } finally {
+    try { fs.rmSync(temporary, { force: true }) } catch {}
   }
-
-  cached = config
-  return config
-}
-
-/**
- * Parse a possibly-namespaced model spec like "copilot/claude-sonnet-4.6"
- * into { provider, model }. If no "/" is present, provider is undefined.
- */
-export function parseModelSpec(spec: string): { provider?: string; model: string } {
-  const idx = spec.indexOf("/")
-  if (idx === -1) return { model: spec }
-  return { provider: spec.slice(0, idx), model: spec.slice(idx + 1) }
-}
-
-/**
- * Look up a provider's config by ID.
- * Checks runtime-registered providers first (added by plugins), then config.yaml.
- * Returns null if not defined in either.
- */
-export function getProviderConfig(id: string): ProviderConfig | null {
-  if (runtimeProviders[id]) return runtimeProviders[id]!
-  const config = loadConfig()
-  return config.providers[id] ?? null
-}
-
-/**
- * Register a provider at runtime (e.g. from a plugin).
- * Takes precedence over config.yaml providers for the same ID.
- * Does NOT persist to disk.
- */
-export function registerProvider(id: string, config: ProviderConfig): void {
-  runtimeProviders[id] = config
-}
-
-/**
- * Update a config field and persist to disk.
- * Merges with existing config — only overwrites the specified field.
- */
-export function setConfigField<K extends keyof QuarkConfig>(
-  key: K,
-  value: QuarkConfig[K],
-): void {
-  const raw = readRawConfig()
-
-  raw[key] = value
-  fs.mkdirSync(CONFIG_DIR, { recursive: true })
-  fs.writeFileSync(CONFIG_FILE, stringifyYAML(raw), "utf-8")
-
-  // Invalidate cache so next read picks up the change
   cached = null
 }
 
-/**
- * Clear cached config — useful if config file changes at runtime.
- */
+/** Rewrite V1 as normalized V2. Literal secrets are replaced by prompt sources, never copied. */
+export function migrateConfigToV2(file = CONFIG_FILE): QuarkConfig {
+  const raw = (() => {
+    try { return parseYAML(fs.readFileSync(file, "utf8")) as Record<string, unknown> } catch { return {} }
+  })()
+  const config = raw.version === 2 ? parseConfigV2(raw) : parseV1(raw)
+  writeConfigV2({ ...config, legacy: false }, file)
+  return { ...config, legacy: false }
+}
+
+export function resolveApiKey(raw: string): string {
+  return raw.startsWith("env:") ? process.env[raw.slice(4)] ?? "" : raw
+}
+
+export function parseModelSpec(spec: string): { provider?: string; model: string } {
+  const index = spec.indexOf("/")
+  return index === -1 ? { model: spec } : { provider: spec.slice(0, index), model: spec.slice(index + 1) }
+}
+
+/** Bridge V2 custom providers into the old resolver/plugin shape. */
+export function getProviderConfig(id: string): ProviderConfig | null {
+  const normalized = id.toLowerCase()
+  if (runtimeProviders[normalized]) return runtimeProviders[normalized]!
+  const provider = loadConfig().providers[normalized]
+  if (!provider) return null
+  const apiKey = provider.credential.source === "environment"
+    ? `env:${provider.credential.variable}` : ""
+  return { baseURL: provider.endpoint, apiKey }
+}
+
+/** @deprecated Runtime-only compatibility API; keys are never serialized. */
+export function registerProvider(id: string, config: ProviderConfig): void {
+  const normalized = id.trim().toLowerCase()
+  if (!PROVIDER_ID.test(normalized) || normalized === "compaction") throw new Error(`Invalid or reserved provider ID "${id}".`)
+  if (BUNDLED_PROVIDER_IDS.has(normalized)) throw new Error(`Provider ID "${normalized}" is bundled and cannot be replaced by a plugin.`)
+  if (runtimeProviders[normalized] || loadConfig().providers[normalized]) throw new Error(`Provider ID "${normalized}" is already registered.`)
+  console.warn("[quark] registerProvider(id, { baseURL, apiKey }) is deprecated; register a non-secret provider definition instead.")
+  runtimeProviders[normalized] = config
+}
+
+export function setConfigField<K extends "max_steps" | "branching" | "hide_readonly_tools" | "goal">(
+  key: K,
+  value: QuarkConfig[K],
+): void
+export function setConfigField(key: "main_model" | "small_model" | "models", value: string | string[]): void
+export function setConfigField(key: string, value: unknown): void {
+  const config = loadConfig()
+  if (key === "main_model") config.modelConfig.main = qualifyLegacyModel(value as string)
+  else if (key === "small_model") config.modelConfig.small = qualifyLegacyModel(value as string)
+  else if (key === "models") config.modelConfig.favorites = (value as string[]).map(qualifyLegacyModel)
+  else (config as unknown as Record<string, unknown>)[key] = value
+  writeConfigV2({ ...withCompatibility({ ...config, legacy: false }), legacy: false })
+}
+
 export function resetConfigCache(): void {
   cached = null
 }

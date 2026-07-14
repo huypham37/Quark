@@ -14,6 +14,16 @@ import {
   type CodexToken,
 } from "../../src/provider/codex-auth"
 import { resolveModel } from "../../src/provider/resolver"
+import type { CredentialStore } from "../../src/provider/credential-store"
+import type { Credential } from "../../src/provider/credentials"
+
+class MemoryCredentialStore implements CredentialStore {
+  value: Credential | null = null
+  async get(): Promise<Credential | null> { return this.value }
+  async set(_providerId: string, credential: Credential): Promise<void> { this.value = credential }
+  async delete(): Promise<void> { this.value = null }
+  async status(): Promise<"present" | "missing"> { return this.value ? "present" : "missing" }
+}
 
 /** A JWT-like access token that encodes a known accountId. */
 function makeAccessToken(accountId: string): string {
@@ -68,6 +78,23 @@ describe("resolveModel(codex/...)", () => {
 
   afterEach(() => {
     fs.rmSync(tokenDir, { recursive: true, force: true })
+  })
+
+  test("resolves a machine-stored OAuth credential without a legacy token file", async () => {
+    const credentialStore = new MemoryCredentialStore()
+    const token = validToken()
+    credentialStore.value = {
+      type: "oauth",
+      access: token.access,
+      refresh: token.refresh,
+      expiresAt: token.expires,
+      metadata: { accountId: token.accountId },
+    }
+
+    const model = await resolveModel("codex/gpt-4o", "main", { credentialStore })
+
+    expect(model.modelId).toBe("gpt-4o")
+    expect(model.provider).toBe("codex-consumer")
   })
 
   test("returns a configured model when codex token is present", async () => {

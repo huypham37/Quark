@@ -276,7 +276,8 @@ describe("setConfigField", () => {
 
     expect(fs.existsSync(configFile)).toBe(true)
     const data = readConfigFile()
-    expect(data.main_model).toBe("new-model")
+    expect(data.version).toBe(2)
+    expect((data.models as Record<string, unknown>).main).toBe("openai/new-model")
   })
 
   test("merges with existing config", () => {
@@ -285,8 +286,9 @@ describe("setConfigField", () => {
     setConfigField("small_model", "tiny")
 
     const data = readConfigFile()
-    expect(data.main_model).toBe("existing-model")
-    expect(data.small_model).toBe("tiny")
+    expect(data.version).toBe(2)
+    expect((data.models as Record<string, unknown>).main).toBe("openai/existing-model")
+    expect((data.models as Record<string, unknown>).small).toBe("openai/tiny")
   })
 
   test("overwrites existing field", () => {
@@ -295,7 +297,7 @@ describe("setConfigField", () => {
     setConfigField("main_model", "new")
 
     const data = readConfigFile()
-    expect(data.main_model).toBe("new")
+    expect((data.models as Record<string, unknown>).main).toBe("openai/new")
   })
 
   test("invalidates cache so next loadConfig reads fresh", () => {
@@ -305,17 +307,17 @@ describe("setConfigField", () => {
 
     setConfigField("main_model", "after")
     const after = loadConfig()
-    expect(after.main_model).toBe("after")
+    expect(after.main_model).toBe("openai/after")
   })
 
   test("can set models array", () => {
     setConfigField("models", ["x", "y", "z"])
 
     const data = readConfigFile()
-    expect(data.models).toEqual(["x", "y", "z"])
+    expect((data.models as Record<string, unknown>).favorites).toEqual(["openai/x", "openai/y", "openai/z"])
 
     const config = loadConfig()
-    expect(config.models).toEqual(["x", "y", "z"])
+    expect(config.models).toEqual(["openai/x", "openai/y", "openai/z"])
   })
 
 })

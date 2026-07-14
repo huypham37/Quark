@@ -34,6 +34,22 @@ describe("getModelLimit", () => {
     })
   })
 
+  test("uses the Codex consumer limit for the supported 5.6 variants", () => {
+    __setModelsDevDataForTest({
+      openai: {
+        id: "openai",
+        models: {
+          "gpt-5.6-sol": { id: "gpt-5.6-sol", limit: { context: 1_050_000, output: 128_000 } },
+        },
+      },
+    })
+
+    expect(getModelLimit("openai/gpt-5.6-sol")?.context).toBe(1_050_000)
+    for (const model of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+      expect(getModelLimit(`codex/${model}`)).toEqual({ context: 353_000, output: 128_000 })
+    }
+  })
+
   test("does not emit provider errors for missing catalog metadata", () => {
     const errors: unknown[] = []
     bus.on("error", (data) => errors.push(data.error))

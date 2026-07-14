@@ -140,6 +140,12 @@ describe("sleep", () => {
 // ---------------------------------------------------------------------------
 
 describe('isContextTooLong', () => {
+  it('detects Codex consumer context errors', () => {
+    expect(isContextTooLong(new Error(
+      'Your input exceeds the context window of this model. Please adjust your input and try again.',
+    ))).toBe(true)
+  })
+
   it('returns true for 400 error with context_length_exceeded message', () => {
     const err = Object.assign(new Error('context_length_exceeded: max context length is 128000'), { status: 400 })
     expect(isContextTooLong(err)).toBe(true)

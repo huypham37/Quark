@@ -35,6 +35,7 @@ const tlogRaw = debug("tool-call:raw")
 function printHelp() {
   console.log(`
 Usage: quark [options] [prompt]
+       quark auth <login|status|logout> [provider]
 
 Options:
   -p, --profile <name>          Profile to use (default: from config)
@@ -144,6 +145,16 @@ function parseArguments(): ParsedArgs {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  if (process.argv[2] === "auth") {
+    try {
+      const { runAuthCommand } = await import("./commands/auth-cli")
+      process.exit(await runAuthCommand(process.argv.slice(3)))
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      process.exit(1)
+    }
+  }
+
   // Route "quark acp" subcommand to ACP agent entry point
   if (process.argv[2] === "acp") {
     const { runAcpEntry } = await import("./acp/entry")

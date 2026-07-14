@@ -2470,5 +2470,197 @@
     "profile": "coder",
     "timeCreated": 1783833991525,
     "timeUpdated": 1783833991525
+  },
+  {
+    "id": "task_a6yQfKJtnnhppYeU",
+    "title": "understand the TUI of usermessage, does it have state? sent, arborted, etc?",
+    "description": "understand the TUI of usermessage, does it have state? sent, arborted, etc?",
+    "profile": "coder",
+    "timeCreated": 1783931873463,
+    "timeUpdated": 1783931873463
+  },
+  {
+    "id": "task_kCCpdep1xP8Nwcjn",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1783933999310,
+    "timeUpdated": 1783934000379
+  },
+  {
+    "id": "task_TacKK8qj6z1NBwpv",
+    "title": "Understand the GitHub issue 189 asking the oracle for the plan.",
+    "description": "Understand the GitHub issue 189 asking the oracle for the plan.",
+    "profile": "coder",
+    "timeCreated": 1783942610337,
+    "timeUpdated": 1783942616106
+  },
+  {
+    "id": "task_7uKa1l4ycyGewqab",
+    "title": "GitHub Issue 191 Inquiry",
+    "description": "GitHub Issue 191 Inquiry",
+    "profile": "coder",
+    "timeCreated": 1783946031050,
+    "timeUpdated": 1783946043146
+  },
+  {
+    "id": "task_y2ezd7ZaHbOJLTGx",
+    "title": "Implement the provider credential model registry v2 according to the referenced specification",
+    "description": "Implement the provider credential model registry v2 according to the referenced specification",
+    "profile": "coder",
+    "timeCreated": 1783954579148,
+    "timeUpdated": 1783954582621
+  },
+  {
+    "id": "task_RlxFnUMyoO2wbk6s",
+    "title": "Begin implementing the provider v2 specification referenced in @specs/provider-...v2",
+    "description": "Begin implementing the provider v2 specification referenced in @specs/provider-...v2",
+    "profile": "coder",
+    "timeCreated": 1783955810456,
+    "timeUpdated": 1783955812808
+  },
+  {
+    "id": "task_kf3mYqse1QqJ00Dl",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1783958237938,
+    "timeUpdated": 1783958237938
+  },
+  {
+    "id": "task_nJ1pXbWObGW8BqZd",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1783958241070,
+    "timeUpdated": 1783958241070
+  },
+  {
+    "id": "task_Muw4X31hsSO4rREM",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1783958242265,
+    "timeUpdated": 1783958242265
+  },
+  {
+    "id": "task_xfkGd2QHuwgJAORu",
+    "title": "resume",
+    "description": "resume",
+    "profile": "coder",
+    "timeCreated": 1783958244347,
+    "timeUpdated": 1783958244347
+  },
+  {
+    "id": "task_bnLZabUSdCMmUt65",
+    "title": "persistent test",
+    "description": "persistent test",
+    "profile": "coder",
+    "timeCreated": 1783958253547,
+    "timeUpdated": 1783958253547
+  },
+  {
+    "id": "task_qJQE4nVXdoXwp5j2",
+    "title": "research this",
+    "description": "research this",
+    "profile": "coder",
+    "timeCreated": 1783958263574,
+    "timeUpdated": 1783958263574
+  },
+  {
+    "id": "task_5nOqmuU2hDJqMeUi",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1783958268578,
+    "timeUpdated": 1783958268578
+  },
+  {
+    "id": "task_EHED4DPtsEWGrVje",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1783958269631,
+    "timeUpdated": 1783958269631
+  },
+  {
+    "id": "task_8v8dGwJxJHvXkJmh",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1783962816157,
+    "timeUpdated": 1783962818117
+  },
+  {
+    "id": "task_zWkRqTVYBukcRuuV",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1783973851449,
+    "timeUpdated": 1783973853802
+  },
+  {
+    "id": "task_oawSoGgkJplS6ghm",
+    "title": "Understand the steering skill, then use terminal control to run an end-to-end test by creating a short session, steering it, and verifying it works.",
+    "description": "Understand the steering skill, then use terminal control to run an end-to-end test by creating a short session, steering it, and verifying it works.",
+    "profile": "coder",
+    "timeCreated": 1783974118938,
+    "timeUpdated": 1783974121795
+  },
+  {
+    "id": "task_q2GtLxyRbLBf5km2",
+    "title": "Ready Command",
+    "description": "Ready Command",
+    "profile": "coder",
+    "timeCreated": 1783974163549,
+    "timeUpdated": 1783974178445
+  },
+  {
+    "id": "task_t1jVJGakLCGrsaTj",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1783974268605,
+    "timeUpdated": 1783974271285
+  },
+  {
+    "id": "task_SU7CNTjceathTh3G",
+    "title": "Review the plan and git diff for the provider v2 changes affecting the model registry and login flows, then summarize them as an announcement-style document.",
+    "description": "Review the plan and git diff for the provider v2 changes affecting the model registry and login flows, then summarize them as an announcement-style document.",
+    "profile": "coder",
+    "timeCreated": 1783975198144,
+    "timeUpdated": 1783975200148
+  },
+  {
+    "id": "task_b6E5ndZ4mBPtuJMf",
+    "title": "Compaction Session Windows",
+    "description": "Compaction Session Windows",
+    "profile": "coder",
+    "timeCreated": 1784004527417,
+    "timeUpdated": 1784004532328
+  },
+  {
+    "id": "task_yLrMOG190XpW7VES",
+    "title": "Plan and implement the work described in GitHub issue 176",
+    "description": "Plan and implement the work described in GitHub issue 176",
+    "profile": "coder",
+    "timeCreated": 1784006006890,
+    "timeUpdated": 1784006008728
+  },
+  {
+    "id": "task_EpaMjYzuUZQDRSJ7",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1784007314548,
+    "timeUpdated": 1784007314548
+  },
+  {
+    "id": "task_Ebd5RXMxS96neANB",
+    "title": "Greeting",
+    "description": "Greeting",
+    "profile": "coder",
+    "timeCreated": 1784007484133,
+    "timeUpdated": 1784007485670
   }
 ]

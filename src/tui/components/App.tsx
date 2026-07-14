@@ -50,9 +50,6 @@ import { StatisticsPanel } from "./statistics-panel"
 import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
-import { resolveProfile } from "../../profile/profile"
-import { getThinkingNormalizer } from "../../provider/thinking"
-
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 
 /** Command handler result */
@@ -63,6 +60,7 @@ export type CommandResult =
 interface AppProps {
   onSubmit: (text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) => void
   onCancel: (sessionId: string) => void
+  onThinkingEffortChange?: (effort: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   onCreateAsyncSession?: () => string
   getSessions?: () => SessionTreeInput[]
@@ -77,7 +75,7 @@ interface AppProps {
     missing: boolean
     sessionCount: number
   }[]
-  getModels?: () => { id: string; name: string }[]
+  getModels?: () => { id: string; name: string; detail?: string }[]
   getCurrentModel?: () => string
   getProfiles?: () => { id: string; name: string }[]
   getCurrentProfile?: () => string
@@ -1089,13 +1087,7 @@ export const App: Component<AppProps> = (props) => {
         return
       }
       dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
-      const effort = state.store.thinkingEffort
-      const profile = resolveProfile(props.getCurrentProfile?.())
-      getThinkingNormalizer(state.store.status.modelName).configure({
-        effort,
-        mode: profile.thinkingMode ?? "standard",
-        modeExplicit: profile.thinkingMode !== undefined,
-      })
+      props.onThinkingEffortChange?.(state.store.thinkingEffort)
       evt.preventDefault()
       return
     }

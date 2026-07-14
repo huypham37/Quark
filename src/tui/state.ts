@@ -8,7 +8,7 @@ import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, Re
 import { loadConfig, parseModelSpec } from "../config/config"
 import { getModelLimit } from "../provider/models"
 import { resolveProfile } from "../profile/profile"
-import { type ThinkingEffort, getThinkingLevels, getThinkingNormalizer } from "../provider/thinking"
+import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
 // Worktree types
@@ -754,12 +754,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
       if (action.thinkingEffort !== undefined) {
         setStore("thinkingEffort", action.thinkingEffort)
       }
-      const mode = action.thinkingMode
-      getThinkingNormalizer(action.modelSpec).configure({
-        effort: action.thinkingEffort ?? state.store.thinkingEffort,
-        mode: mode ?? "standard",
-        modeExplicit: mode !== undefined,
-      })
       break
     }
 

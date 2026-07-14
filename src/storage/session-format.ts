@@ -11,6 +11,7 @@
 //   5. MessageEndEvent     — message completion with usage stats
 
 import type { Session } from "../session/session"
+import type { UsageAggregate } from "../session/accounting"
 
 // ---------------------------------------------------------------------------
 // Part types — same as the existing DB schema enum
@@ -88,6 +89,7 @@ export interface MessageEndEvent extends EventBase {
   tokensIn: number | null
   tokensOut: number | null
   timeCompleted: number
+  usage?: UsageAggregate
 }
 
 // ---------------------------------------------------------------------------

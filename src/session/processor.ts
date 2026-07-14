@@ -29,6 +29,16 @@ import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 import { loadConfig } from "../config/config"
 import { getModelLimit } from "../provider/models"
+import type { ResolvedModel } from "../provider/resolver"
+import {
+  addTokenUsage,
+  aggregateCharges,
+  calculateCharge,
+  normalizeUsage,
+  numericAggregateCost,
+  type Charge,
+  type TokenUsage,
+} from "./accounting"
 import { debug } from "../debug"
 import { generateUnifiedDiff } from "../shared/diff-utils"
 import * as fs from "fs"
@@ -37,6 +47,7 @@ const dlog = debug("processor")
 
 export interface ProcessInput {
   model: LanguageModel
+  resolvedModel?: ResolvedModel
   system: string[]
   messages: ModelMessage[]
   tools: ToolSet
@@ -54,7 +65,10 @@ export interface ProcessInput {
    * Optional callback so provider.request.error plugins can switch provider/model
    * without creating a circular import between processor and prompt.
    */
-  rebuildModel?: (provider: string, model: string) => Promise<LanguageModel>
+  rebuildModel?: (provider: string, model: string) => Promise<{
+    resolvedModel: ResolvedModel
+    providerOptions?: Record<string, JSONObject>
+  }>
 }
 
 export async function processStream(input: ProcessInput): Promise<"stop" | "continue" | "branch"> {
@@ -64,6 +78,8 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   let currentReasoning: { partId: string; data: ReasoningPartData } | undefined
   let lastFinish: string | undefined
   let needsBranch = false
+  const aggregateTokens: TokenUsage = {}
+  const charges: Charge[] = []
   let attempt = 0
   const maxRetries = 5
 
@@ -73,7 +89,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
   while (true) {
     try {
       const result = streamText({
-        model: input.model,
+        model: input.resolvedModel?.languageModel ?? input.model,
         messages: [
           ...input.system.map(
             (s): ModelMessage => ({ role: "system", content: s }),
@@ -262,14 +278,20 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
           case "finish-step": {
             lastFinish = event.finishReason
             const usage = event.usage
+            const normalized = normalizeUsage(usage)
+            const runtime = input.resolvedModel
+            const charge = runtime
+              ? calculateCharge(normalized.tokens, runtime.pricingSnapshot)
+              : { kind: "unknown" as const, reason: "runtime pricing unavailable" }
             const stepData: StepFinishData = {
               reason: event.finishReason,
-              tokens: {
-                input:      usage?.inputTokens,
-                output:     usage?.outputTokens,
-                cacheRead:  usage?.inputTokenDetails?.cacheReadTokens,
-                cacheWrite: usage?.inputTokenDetails?.cacheWriteTokens,
-              },
+              ...(runtime ? {
+                model: runtime.ref,
+                pricingSnapshot: runtime.pricingSnapshot,
+              } : {}),
+              tokens: normalized.tokens,
+              ...(normalized.rawUsage ? { rawUsage: normalized.rawUsage } : {}),
+              charge,
             }
             addPart({
               messageId: mid,
@@ -279,12 +301,16 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             })
             bus.emit("step-finish", { sessionId: sid, messageId: mid, data: stepData })
 
+            addTokenUsage(aggregateTokens, normalized.tokens)
+            charges.push(charge)
+
             // Mid-stream overflow check: if the input tokens from this step
             // exceed the branching threshold, stop before the next tool round.
             if (!needsBranch && usage?.inputTokens) {
               const cfg = loadConfig()
               if (cfg.branching.auto) {
-                const modelLimit = getModelLimit(input.modelId ?? "")
+                const modelLimit = input.resolvedModel?.descriptor.limits
+                  ?? getModelLimit(input.modelId ?? "")
                 const ctxWindow = getContextWindow(modelLimit)
 
                 if (ctxWindow > 0 && isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.branching.threshold)) {
@@ -422,17 +448,28 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
 
       // Plugin hook: provider request error — plugins can request a retry with a new provider/model
       const hookOutput = await fireHook("provider.request.error", {
-        provider: input.providerId ?? "unknown",
-        model: input.modelId ?? "unknown",
+        provider: input.resolvedModel?.ref.providerId ?? input.providerId ?? "unknown",
+        model: input.resolvedModel?.ref.modelId ?? input.modelId ?? "unknown",
         error: e,
         statusCode: (e as any)?.status,
       })
       if (hookOutput.retry) {
         // If the plugin wants to switch provider/model, rebuild the model
         if ((hookOutput.provider || hookOutput.model) && input.rebuildModel) {
-          const newProvider = hookOutput.provider ?? input.providerId ?? "unknown"
-          const newModel = hookOutput.model ?? input.modelId ?? "unknown"
-          input.model = await input.rebuildModel(newProvider, newModel)
+          const newProvider = hookOutput.provider
+            ?? input.resolvedModel?.ref.providerId
+            ?? input.providerId
+            ?? "unknown"
+          const newModel = hookOutput.model
+            ?? input.resolvedModel?.ref.modelId
+            ?? input.modelId
+            ?? "unknown"
+          const rebuilt = await input.rebuildModel(newProvider, newModel)
+          input.resolvedModel = rebuilt.resolvedModel
+          input.model = rebuilt.resolvedModel.languageModel
+          input.providerId = rebuilt.resolvedModel.ref.providerId
+          input.modelId = rebuilt.resolvedModel.ref.modelId
+          input.providerOptions = rebuilt.providerOptions
         }
         attempt++
         const delay = retryDelay(attempt)
@@ -451,7 +488,13 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     // Mid-stream branching: if we broke out of the stream because of overflow,
     // finalize the current message and signal the loop to branch.
     if (needsBranch) {
-      finishMessage(mid, "stop", undefined, sid)
+      const aggregateCharge = aggregateCharges(charges)
+      finishMessage(mid, "stop", {
+        ...(aggregateTokens.input !== undefined ? { tokensIn: aggregateTokens.input } : {}),
+        ...(aggregateTokens.output !== undefined ? { tokensOut: aggregateTokens.output } : {}),
+        ...(numericAggregateCost(aggregateCharge) !== undefined ? { cost: numericAggregateCost(aggregateCharge) } : {}),
+        aggregate: { tokens: aggregateTokens, charge: aggregateCharge },
+      }, sid)
       bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish: "stop" })
       return "branch"
     }
@@ -460,8 +503,14 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
       : lastFinish === "length" ? "length" as const
       : "stop" as const
 
-    // Accumulate total usage from step-finish parts
-    finishMessage(mid, finish, undefined, sid)
+    const aggregateCharge = aggregateCharges(charges)
+    const aggregateCost = numericAggregateCost(aggregateCharge)
+    finishMessage(mid, finish, {
+      ...(aggregateTokens.input !== undefined ? { tokensIn: aggregateTokens.input } : {}),
+      ...(aggregateTokens.output !== undefined ? { tokensOut: aggregateTokens.output } : {}),
+      ...(aggregateCost !== undefined ? { cost: aggregateCost } : {}),
+      aggregate: { tokens: aggregateTokens, charge: aggregateCharge },
+    }, sid)
     bus.emit("assistant-message-end", { sessionId: sid, messageId: mid, finish })
 
     dlog(`stream finished: lastFinish=${lastFinish} → returning ${finish === "tool-calls" ? "continue" : "stop"}`)

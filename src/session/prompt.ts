@@ -27,12 +27,11 @@ import {
   upgradeSessionTitle,
 } from "./initializer";
 import { resolveToolSet } from "../tool/ai-adapter";
-import { getThinkingNormalizer } from "../provider/thinking";
+import { buildProviderOptions } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
-import { resolveModel } from "../provider/resolver";
-import { getModelLimit } from "../provider/models";
+import { resolveModel, resolveModelRuntime } from "../provider/resolver";
 import { defaultAgent, type AgentConfig } from "../agent";
-import { loadConfig, parseModelSpec } from "../config/config";
+import { loadConfig } from "../config/config";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
@@ -222,11 +221,11 @@ async function loop(
   const agentModelSpec = agent.model ?? loadConfig().main_model;
   const modelSpec = modelOpt ?? agentModelSpec;
   const usingAgentModel = modelOpt === undefined || modelOpt === agentModelSpec;
-  const parsedModel = parseModelSpec(modelSpec);
-  const effectiveModel = parsedModel.model;
-  const effectiveProvider = parsedModel.provider;
-  const model = await resolveModel(modelSpec);
-  const modelLimit = getModelLimit(modelSpec);
+  const resolvedModel = await resolveModelRuntime(modelSpec);
+  const effectiveModel = resolvedModel.ref.modelId;
+  const effectiveProvider = resolvedModel.ref.providerId;
+  const model = resolvedModel.languageModel;
+  const modelLimit = resolvedModel.descriptor.limits;
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
@@ -312,7 +311,8 @@ async function loop(
     // 4. Create assistant message row
     const assistantMsg = createAssistantMessage({
       sessionId: currentSessionId,
-      modelId: modelSpec,
+      modelId: resolvedModel.ref.spec,
+      providerId: resolvedModel.ref.providerId,
     });
     bus.emit("assistant-message-start", {
       sessionId: currentSessionId,
@@ -329,22 +329,39 @@ async function loop(
 
     // 6. Stream + process
     const providerId = effectiveProvider;
-    const thinkingNormalizer = getThinkingNormalizer(effectiveModel)
-    thinkingNormalizer.configure({
-      effort: usingAgentModel ? agent.thinkingEffort ?? "none" : "none",
-      mode: usingAgentModel ? agent.thinkingMode ?? "standard" : "standard",
-      modeExplicit: usingAgentModel && agent.thinkingMode !== undefined,
-    })
-    const thinkingProviderOptions = thinkingNormalizer.normalize(providerId ?? "");
+    const thinkingProviderOptions = buildProviderOptions({
+      providerOptionsKey: resolvedModel.providerOptionsKey,
+      modelId: effectiveModel,
+      modelCapability: resolvedModel.descriptor.capabilities.reasoning,
+      thinkingConfig: {
+        effort: usingAgentModel ? agent.thinkingEffort ?? "none" : "none",
+        mode: usingAgentModel ? agent.thinkingMode ?? "standard" : "standard",
+        modeExplicit: usingAgentModel && agent.thinkingMode !== undefined,
+      },
+    });
     const result = await processStream({
       model,
+      resolvedModel,
       system,
       messages: modelMessages,
       tools,
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
-      modelId: modelSpec,
+      providerId: resolvedModel.ref.providerId,
+      modelId: resolvedModel.ref.modelId,
+      rebuildModel: async (provider, modelId) => {
+        const rebuilt = await resolveModelRuntime(`${provider}/${modelId}`)
+        return {
+          resolvedModel: rebuilt,
+          providerOptions: buildProviderOptions({
+            providerOptionsKey: rebuilt.providerOptionsKey,
+            modelId: rebuilt.ref.modelId,
+            modelCapability: rebuilt.descriptor.capabilities.reasoning,
+            thinkingConfig: { effort: "none", mode: "standard", modeExplicit: false },
+          }),
+        }
+      },
       ...(thinkingProviderOptions
         ? { providerOptions: thinkingProviderOptions }
         : {}),

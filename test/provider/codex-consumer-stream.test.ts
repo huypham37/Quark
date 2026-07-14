@@ -902,6 +902,22 @@ describe("parseCodexSSE (standalone)", () => {
     expect(part!.type).toBe("error")
   })
 
+  test("preserves nested Codex error details", () => {
+    const error = parseCodexSSE(JSON.stringify({
+      type: "error",
+      error: { code: "context_length_exceeded", message: "Input exceeds the context window." },
+    }))
+    const failed = parseCodexSSE(JSON.stringify({
+      type: "response.failed",
+      response: { error: { code: "context_length_exceeded", message: "Response context exceeded." } },
+    }))
+
+    expect(error?.type).toBe("error")
+    expect(error?.type === "error" && String(error.error)).toContain("Input exceeds the context window.")
+    expect(failed?.type).toBe("error")
+    expect(failed?.type === "error" && String(failed.error)).toContain("Response context exceeded.")
+  })
+
   test("returns null for unknown event type", () => {
     const event = JSON.stringify({ type: "some.unknown.event" })
     const part = parseCodexSSE(event)

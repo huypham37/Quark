@@ -22,7 +22,15 @@ export interface ModelLimit {
   output: number;
 }
 
-interface ModelsDevModel {
+// The ChatGPT Codex consumer endpoint currently accepts 353K tokens for
+// these variants. models.dev describes the OpenAI API capacity instead.
+const MODEL_LIMIT_OVERRIDES: Record<string, ModelLimit> = {
+  "codex/gpt-5.6-sol": { context: 353_000, output: 128_000 },
+  "codex/gpt-5.6-terra": { context: 353_000, output: 128_000 },
+  "codex/gpt-5.6-luna": { context: 353_000, output: 128_000 },
+}
+
+export interface ModelsDevModel {
   id: string;
   limit: { context: number; input?: number; output: number };
   [key: string]: unknown;
@@ -74,6 +82,10 @@ function getData(): ModelsDevData {
   if (cached) return cached;
   cached = readCache() ?? ({} as ModelsDevData);
   return cached;
+}
+
+export function getModelsDevModel(providerId: string, modelId: string): Record<string, unknown> | null {
+  return getData()[providerId]?.models?.[modelId] ?? null;
 }
 
 // Known renames between user-facing provider IDs and models.dev IDs
@@ -139,6 +151,9 @@ export function getModelLimit(modelSpec: string): ModelLimit | null {
     dlog("%s → missing provider prefix", modelSpec);
     return null;
   }
+
+  const override = MODEL_LIMIT_OVERRIDES[`${parsed.provider}/${parsed.model}`]
+  if (override) return { ...override }
 
   // 0. LM Studio — check local cache first
   if (parsed.provider === "lmstudio") {

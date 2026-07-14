@@ -110,34 +110,36 @@ Config lives at `~/.config/quark/config.yaml`. Missing files and fields fall
 back to sensible defaults. Models are always written as `provider/model`.
 
 ```yaml
-# Curated models shown in the /model picker
-models:
-  - claude-sonnet-4.5
-  - gpt-4o
-  - copilot/claude-sonnet-4.5
+version: 2
 
-main_model: claude-sonnet-4.5   # main agent loop
-small_model: gpt-4o-mini        # lightweight tasks (title generation, etc.)
+models:
+  main: openrouter/anthropic/claude-sonnet-4.6
+  small: openai/gpt-5-mini
+  favorites:
+    - openrouter/anthropic/claude-sonnet-4.6
+    - openai/gpt-5
+    - copilot/claude-sonnet-4.6
 
 max_steps: 100
 
-# Per-agent model configuration
-profiles:
-  coder:
-    model: codex/gpt-5.6-luna
-    thinking_effort: high
-
-# Auto-branch when the context window fills up
 branching:
   auto: true
   threshold: 0.90
 
-# Custom OpenAI-compatible providers
+# Only endpoints Quark does not bundle belong here.
 providers:
-  ollama:
-    baseURL: http://localhost:11434/v1
-    apiKey: "env:OLLAMA_API_KEY"   # literal value, or "env:VAR" to read from env
+  quark-go:
+    protocol: openai-compatible
+    endpoint: https://api.quark-go.example/v1
+    credential:
+      source: environment
+      variable: QUARK_GO_API_KEY
+    billing: subscription
 ```
+
+Standard providers require no `providers:` entry. Authenticate interactively with
+`quark auth login openrouter`, or set a user-managed environment variable for
+headless use. API-key values are never accepted in V2 configuration.
 
 Some models support an additional reasoning mode. For those models—currently
 the GPT-5.6 family—set `thinking_mode: pro` alongside `thinking_effort`. Quark
@@ -149,8 +151,10 @@ the flat form shown above.
 
 Per-project overrides go in `.quark/config.yaml` at the repo root.
 
-Set provider API keys via environment variables (e.g. `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`) or reference them from config using the `env:VAR_NAME` syntax.
+Set provider API keys through `quark auth login`, or use provider-standard
+environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
+`OPENROUTER_API_KEY`. Quark reads environment variables but never edits shell
+startup files.
 
 ---
 

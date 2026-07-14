@@ -149,12 +149,21 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function saveToken(token: string, domain: string = "github.com"): void {
-  fs.mkdirSync(TOKEN_DIR, { recursive: true })
-  fs.writeFileSync(
-    TOKEN_FILE,
-    JSON.stringify({ token, domain, savedAt: Date.now() }),
-    "utf-8",
-  )
+  fs.mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 })
+  const temporary = `${TOKEN_FILE}.tmp.${process.pid}.${Date.now()}`
+  try {
+    fs.writeFileSync(
+      temporary,
+      JSON.stringify({ token, domain, savedAt: Date.now() }),
+      { encoding: "utf-8", mode: 0o600 },
+    )
+    fs.renameSync(temporary, TOKEN_FILE)
+    if (process.platform !== "win32") fs.chmodSync(TOKEN_FILE, 0o600)
+  } finally {
+    try {
+      fs.rmSync(temporary, { force: true })
+    } catch {}
+  }
 }
 
 export function loadToken(): string | null {

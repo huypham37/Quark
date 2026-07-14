@@ -888,14 +888,11 @@ export function parseCodexSSE(data: string): LanguageModelV3StreamPart | null {
 		}
 
 		case "response.failed": {
-			const error = event.error as Record<string, unknown> | undefined
-			const message = error && typeof error.message === "string" ? error.message : "Codex response failed"
-			return { type: "error", error: new Error(message) }
+			return { type: "error", error: new Error(codexErrorMessage(event, "Codex response failed")) }
 		}
 
 		case "error": {
-			const message = typeof event.message === "string" ? event.message : "Codex error"
-			return { type: "error", error: new Error(message) }
+			return { type: "error", error: new Error(codexErrorMessage(event, "Codex error")) }
 		}
 
 		default:
@@ -903,12 +900,33 @@ export function parseCodexSSE(data: string): LanguageModelV3StreamPart | null {
 	}
 }
 
+function codexErrorMessage(event: Record<string, unknown>, fallback: string): string {
+	if (typeof event.message === "string") return event.message
+	if (typeof event.error === "string") return event.error
+	const error = event.error as Record<string, unknown> | undefined
+	if (typeof error?.message === "string") return error.message
+	const response = event.response as Record<string, unknown> | undefined
+	const responseError = response?.error as Record<string, unknown> | undefined
+	return typeof responseError?.message === "string" ? responseError.message : fallback
+}
+
 function mapUsage(usage?: Record<string, unknown>): LanguageModelV3StreamPart & { type: "finish" } extends infer U ? (U extends { usage: infer V } ? V : never) : never {
 	const inputTokens = typeof usage?.input_tokens === "number" ? usage.input_tokens : 0
 	const outputTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : 0
+	const inputDetails = usage?.input_tokens_details as Record<string, unknown> | undefined
+	const outputDetails = usage?.output_tokens_details as Record<string, unknown> | undefined
+	const cacheRead = typeof inputDetails?.cached_tokens === "number" ? inputDetails.cached_tokens : 0
+	const cacheWrite = typeof inputDetails?.cache_write_tokens === "number" ? inputDetails.cache_write_tokens : 0
+	const reasoning = typeof outputDetails?.reasoning_tokens === "number" ? outputDetails.reasoning_tokens : 0
 	return {
-		inputTokens: { total: inputTokens, noCache: inputTokens, cacheRead: 0, cacheWrite: 0 },
-		outputTokens: { total: outputTokens, text: outputTokens, reasoning: 0 },
+		inputTokens: {
+			total: inputTokens,
+			noCache: Math.max(0, inputTokens - cacheRead - cacheWrite),
+			cacheRead,
+			cacheWrite,
+		},
+		outputTokens: { total: outputTokens, text: Math.max(0, outputTokens - reasoning), reasoning },
+		raw: usage ?? {},
 	} as any
 }
 

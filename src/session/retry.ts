@@ -128,6 +128,7 @@ export function isContextTooLong(error: unknown): boolean {
   if (lower.includes("context_length_exceeded")) return true
   if (lower.includes("context length")) return true
   if (lower.includes("context window exceeded")) return true
+  if (lower.includes("exceeds the context window")) return true
   if (lower.includes("too many tokens")) return true
   if (lower.includes("prompt_too_long")) return true
   return false

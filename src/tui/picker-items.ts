@@ -1,6 +1,7 @@
 export interface PickerOption {
   id: string
   name: string
+  detail?: string
 }
 
 export interface PickerEntry {
@@ -33,7 +34,7 @@ export function buildPickerItems(
     .map((o) => ({
       id: o.id,
       label: o.name,
-      detail: "",
+      detail: o.detail ?? "",
       isCurrent: o.id === currentId,
     }))
     .sort((a, b) => (a.isCurrent ? -1 : b.isCurrent ? 1 : 0))

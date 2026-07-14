@@ -6,7 +6,7 @@
 // are stream-parsed: only message + step-finish events are processed, skipping
 // all text/tool/reasoning parts.
 
-import { readFileSync, writeFileSync, renameSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { scanSessionMetas } from "../storage/session-jsonl"
@@ -18,7 +18,14 @@ import { getSessionLogPath } from "../storage/session-path"
 
 export interface ModelStats {
   input: number
+  inputNoCache: number
+  cacheRead: number
+  cacheWrite: number
   output: number
+  reasoning: number
+  reportedUsd: number
+  estimatedUsd: number
+  charges: Record<string, number>
   messageCount: number
 }
 
@@ -31,22 +38,31 @@ export interface DailyBucket {
 export interface TokenStats {
   daily: Record<string, DailyBucket>
   modelTotals: Record<string, ModelStats>
-  grandTotal: { input: number; output: number; messageCount: number }
+  providerTotals: Record<string, ModelStats>
+  grandTotal: ModelStats
   sessionCount: number
   dateRange: { earliest: string | null; latest: string | null }
 }
 
 /** Per-model, per-day token contribution from a single session. */
-interface SessionDigest {
+export interface SessionDigest {
   modelId: string
-  date: string // "YYYY-MM-DD"
+  providerId: string
+  date: string
   input: number
+  inputNoCache: number
+  cacheRead: number
+  cacheWrite: number
   output: number
+  reasoning: number
+  reportedUsd: number
+  estimatedUsd: number
+  chargeKind: string
 }
 
 /** On-disk cache structure. */
 interface StatsCacheFile {
-  v: 1
+  v: 2
   sessions: Record<string, {
     timeUpdated: number
     digest: SessionDigest[]
@@ -63,15 +79,17 @@ function readStatsCache(): StatsCacheFile {
   try {
     const raw = readFileSync(CACHE_PATH, "utf-8")
     const parsed = JSON.parse(raw)
-    if (parsed.v === 1 && parsed.sessions) return parsed as StatsCacheFile
+    if (parsed.v === 2 && parsed.sessions) return parsed as StatsCacheFile
   } catch {
     // Missing or corrupt — start fresh
   }
-  return { v: 1, sessions: {} }
+  return { v: 2, sessions: {} }
 }
 
 function writeStatsCache(cache: StatsCacheFile): void {
   const tmpPath = CACHE_PATH + ".tmp"
+  const directory = join(homedir(), ".config", "quark")
+  mkdirSync(directory, { recursive: true })
   writeFileSync(tmpPath, JSON.stringify(cache, null, 2))
   renameSync(tmpPath, CACHE_PATH)
 }
@@ -88,7 +106,7 @@ function writeStatsCache(cache: StatsCacheFile): void {
  *
  * No PartRow objects are materialized; text content never enters memory.
  */
-function extractSessionDigest(sessionId: string): SessionDigest[] {
+export function extractSessionDigest(sessionId: string): SessionDigest[] {
   let raw: string
   try {
     raw = readFileSync(getSessionLogPath(sessionId), "utf-8")
@@ -104,8 +122,7 @@ function extractSessionDigest(sessionId: string): SessionDigest[] {
     timeCreated: number
   }>()
 
-  // messageId → cumulative { input, output } across all step-finish parts
-  const msgTokens = new Map<string, { input: number; output: number }>()
+  const stepEvents = new Map<string, any>()
 
   for (const line of raw.split("\n")) {
     if (!line) continue
@@ -128,18 +145,7 @@ function extractSessionDigest(sessionId: string): SessionDigest[] {
       try {
         const evt = JSON.parse(line)
         if (evt.type === "part" && evt.partType === "step-finish") {
-          const tokens = (evt.data as any)?.tokens
-          if (tokens) {
-            const input = tokens.input ?? 0
-            const output = tokens.output ?? 0
-            if (input > 0 || output > 0) {
-              const prev = msgTokens.get(evt.messageId) ?? { input: 0, output: 0 }
-              msgTokens.set(evt.messageId, {
-                input: prev.input + input,
-                output: prev.output + output,
-              })
-            }
-          }
+          stepEvents.set(evt.partId ?? `${evt.messageId}:${stepEvents.size}`, evt)
         }
       } catch {
         // Malformed line — skip
@@ -148,18 +154,35 @@ function extractSessionDigest(sessionId: string): SessionDigest[] {
     // All other event types skipped
   }
 
-  // Build digest entries from messages that have tokens
   const digests: SessionDigest[] = []
-  for (const [messageId, tokens] of msgTokens) {
-    const meta = msgMeta.get(messageId)
+  for (const evt of stepEvents.values()) {
+    const data = evt.data as any
+    const tokens = data?.tokens
+    if (!tokens) continue
+    const meta = msgMeta.get(evt.messageId)
     if (!meta || meta.role !== "assistant") continue
-
-    const modelId = meta.modelId || meta.providerId || "unknown"
-    const date = new Date(meta.timeCreated).toISOString().slice(0, 10)
-
-    digests.push({ modelId, date, input: tokens.input, output: tokens.output })
+    const model = data.model
+    const modelId = model?.spec
+      ?? (meta.modelId?.includes("/") ? meta.modelId : meta.providerId && meta.providerId !== "compaction"
+        ? `${meta.providerId}/${meta.modelId ?? "unknown"}` : meta.modelId ?? "unknown")
+    const providerId = model?.providerId
+      ?? (modelId.includes("/") ? modelId.slice(0, modelId.indexOf("/")) : meta.providerId ?? "unknown")
+    const charge = data.charge
+    digests.push({
+      modelId,
+      providerId,
+      date: new Date(meta.timeCreated).toISOString().slice(0, 10),
+      input: tokens.input ?? 0,
+      inputNoCache: tokens.inputNoCache ?? 0,
+      cacheRead: tokens.cacheRead ?? 0,
+      cacheWrite: tokens.cacheWrite ?? 0,
+      output: tokens.output ?? 0,
+      reasoning: tokens.reasoning ?? 0,
+      reportedUsd: charge?.kind === "reported" ? charge.usd ?? 0 : 0,
+      estimatedUsd: charge?.kind === "estimated" ? charge.usd ?? 0 : 0,
+      chargeKind: charge?.kind ?? "unknown",
+    })
   }
-
   return digests
 }
 
@@ -167,12 +190,17 @@ function extractSessionDigest(sessionId: string): SessionDigest[] {
 // Aggregate & collect (with cache)
 // ---------------------------------------------------------------------------
 
-function buildAggregate(
+export function buildAggregate(
   sessions: Record<string, { digest: SessionDigest[] }>,
 ): TokenStats {
   const daily: Record<string, DailyBucket> = {}
   const modelTotals: Record<string, ModelStats> = {}
-  const grandTotal = { input: 0, output: 0, messageCount: 0 }
+  const providerTotals: Record<string, ModelStats> = {}
+  const emptyStats = (): ModelStats => ({
+    input: 0, inputNoCache: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0,
+    reportedUsd: 0, estimatedUsd: 0, charges: {}, messageCount: 0,
+  })
+  const grandTotal = emptyStats()
   let earliestDate: string | null = null
   let latestDate: string | null = null
 
@@ -191,17 +219,22 @@ function buildAggregate(
       daily[entry.date]!.byModel[entry.modelId]!.output += entry.output
 
       // Model totals
-      if (!modelTotals[entry.modelId]) {
-        modelTotals[entry.modelId] = { input: 0, output: 0, messageCount: 0 }
+      if (!modelTotals[entry.modelId]) modelTotals[entry.modelId] = emptyStats()
+      if (!providerTotals[entry.providerId]) providerTotals[entry.providerId] = emptyStats()
+      const model = modelTotals[entry.modelId]!
+      const provider = providerTotals[entry.providerId]!
+      for (const stats of [model, provider, grandTotal]) {
+        stats.input += entry.input
+        stats.inputNoCache += entry.inputNoCache
+        stats.cacheRead += entry.cacheRead
+        stats.cacheWrite += entry.cacheWrite
+        stats.output += entry.output
+        stats.reasoning += entry.reasoning
+        stats.reportedUsd += entry.reportedUsd
+        stats.estimatedUsd += entry.estimatedUsd
+        stats.charges[entry.chargeKind] = (stats.charges[entry.chargeKind] ?? 0) + 1
+        stats.messageCount++
       }
-      modelTotals[entry.modelId]!.input += entry.input
-      modelTotals[entry.modelId]!.output += entry.output
-      modelTotals[entry.modelId]!.messageCount++
-
-      // Grand total
-      grandTotal.input += entry.input
-      grandTotal.output += entry.output
-      grandTotal.messageCount++
 
       // Date range
       if (earliestDate === null || entry.date < earliestDate) earliestDate = entry.date
@@ -212,6 +245,7 @@ function buildAggregate(
   return {
     daily,
     modelTotals,
+    providerTotals,
     grandTotal,
     sessionCount: Object.keys(sessions).length,
     dateRange: { earliest: earliestDate, latest: latestDate },
@@ -327,6 +361,13 @@ export function renderStatisticsChart(stats: TokenStats): string {
     : "N/A"
   lines.push(`  Sessions: ${stats.sessionCount}  |  Messages: ${stats.grandTotal.messageCount}  |  Range: ${rangeText}`)
   lines.push(`  Total tokens: ${formatTokens(stats.grandTotal.input + stats.grandTotal.output)}  (in: ${formatTokens(stats.grandTotal.input)}, out: ${formatTokens(stats.grandTotal.output)})`)
+  if (stats.grandTotal.reportedUsd > 0) lines.push(`  Provider-reported: ${stats.grandTotal.reportedUsd.toFixed(6)}`)
+  if (stats.grandTotal.estimatedUsd > 0) lines.push(`  Estimated: ${stats.grandTotal.estimatedUsd.toFixed(6)}`)
+  const labels: string[] = []
+  if (stats.grandTotal.charges.subscription) labels.push(`Subscription: ${stats.grandTotal.charges.subscription}`)
+  if (stats.grandTotal.charges.free) labels.push(`Free: ${stats.grandTotal.charges.free}`)
+  if (stats.grandTotal.charges.unknown) labels.push(`Unknown: ${stats.grandTotal.charges.unknown}`)
+  if (labels.length > 0) lines.push(`  ${labels.join("  |  ")}`)
   lines.push("")
 
   // Per-model table

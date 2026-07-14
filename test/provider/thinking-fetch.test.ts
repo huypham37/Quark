@@ -6,7 +6,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { createCopilotFetch } from "../../src/provider/copilot-fetch"
-import { getThinkingNormalizer } from "../../src/provider/thinking"
+import { ThinkingNormalizer } from "../../src/provider/thinking"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { generateText } from "ai"
 
@@ -136,7 +136,7 @@ describe("thinking providerOptions land in request body", () => {
       fetch: mock.fetch,
     })
 
-    const normalizer = getThinkingNormalizer("gpt-5")
+    const normalizer = new ThinkingNormalizer("gpt-5")
     normalizer.configure({ effort: "high" })
 
     await generateText({
@@ -161,7 +161,7 @@ describe("thinking providerOptions land in request body", () => {
       fetch: mock.fetch,
     })
 
-    const normalizer = getThinkingNormalizer("qwen3-max")
+    const normalizer = new ThinkingNormalizer("qwen3-max")
     normalizer.configure({ effort: "thinking" })
 
     await generateText({
@@ -184,7 +184,7 @@ describe("thinking providerOptions land in request body", () => {
       fetch: mock.fetch,
     })
 
-    const normalizer = getThinkingNormalizer("deepseek-v4-pro")
+    const normalizer = new ThinkingNormalizer("deepseek-v4-pro")
     normalizer.configure({ effort: "max" })
 
     await generateText({
@@ -203,7 +203,7 @@ describe("thinking providerOptions land in request body", () => {
   test("gpt-5.6 — default standard mode and effort reach the body", async () => {
     const mock = makeCapturingFetch()
     const provider = createOpenAICompatible({ name: "test", baseURL: "https://mock.example.com/v1", apiKey: "test", fetch: mock.fetch })
-    const normalizer = getThinkingNormalizer("gpt-5.6")
+    const normalizer = new ThinkingNormalizer("gpt-5.6")
     normalizer.configure({ effort: "high" })
 
     await generateText({ model: provider("gpt-5.6"), prompt: "Hello", providerOptions: normalizer.normalize("test") })
@@ -222,7 +222,7 @@ describe("thinking providerOptions land in request body", () => {
       fetch: mock.fetch,
     })
 
-    const normalizer = getThinkingNormalizer("gpt-5")
+    const normalizer = new ThinkingNormalizer("gpt-5")
     normalizer.configure({ effort: "none" })
 
     const opts = normalizer.normalize("test")
