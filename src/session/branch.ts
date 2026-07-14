@@ -23,6 +23,8 @@ export interface BranchResult {
   sessionId: string
   created: boolean
   summary: string
+  /** ID of the persisted steer prompt, when this branch was created by /steer. */
+  promptMessageId?: string
 }
 
 export interface SummarizeForBranchInput {
@@ -35,7 +37,6 @@ export interface SummarizeForBranchInput {
 export interface AutoBranchInput extends SummarizeForBranchInput {
   sessionId: string
   profile: string
-  prompt?: string
 }
 
 export interface CreateBranchInput {
@@ -247,7 +248,6 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
     profile: input.profile,
     recentMessages,
     recentParts,
-    prompt: input.prompt,
   })
 }
 
@@ -380,11 +380,11 @@ export function createBranch(input: CreateBranchInput): BranchResult {
 
   // 3. Append the steer goal as the final user message
   const prompt = input.prompt?.trim()
-  if (prompt) {
-    saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" })
-  }
+  const promptMessageId = prompt
+    ? saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" }).id
+    : undefined
 
-  return { sessionId: child.id, created: true, summary }
+  return { sessionId: child.id, created: true, summary, promptMessageId }
 }
 
 function fallbackSummary(messages: MessageRow[], parts: PartRow[]): string {

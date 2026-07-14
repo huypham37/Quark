@@ -8,7 +8,7 @@ import { render } from "@opentui/solid"
 import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
-import { prompt, cancel, isActive, resolveModel } from "../session/prompt"
+import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
 import { createSession, listProjectSessions, getSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
@@ -537,6 +537,24 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           messages: tuiMessages as any,
           estimatedTokens,
           divider: { id: `branch:${branch.sessionId}`, goal: args.trim() },
+        })
+
+        // The steer prompt is already persisted by createBranch. Start the
+        // child turn after switching the TUI, without saving it again.
+        if (!branch.promptMessageId) {
+          throw new Error("Steer branch was created without a prompt message")
+        }
+        runSeededSession({
+          sessionId: branch.sessionId,
+          userMessageId: branch.promptMessageId,
+          userText: args.trim(),
+          model: modelOverride ?? undefined,
+          agent: activeAgent,
+        }).then(({ sessionId }) => {
+          currentSession = { id: sessionId }
+          process.env.QUARK_SESSION_ID = sessionId
+        }).catch((err) => {
+          bus.emit("error", { sessionId: branch.sessionId, error: err })
         })
         notifyInfo("Steer", `Branched to new session`, 3000)
       } catch (err) {

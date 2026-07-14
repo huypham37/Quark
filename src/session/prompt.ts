@@ -106,69 +106,84 @@ export async function prompt(input: {
     fireHook("session.created", { sessionId }).catch(() => {});
   }
 
-  // Set QUARK_SESSION_ID so child processes (bash tool) can inherit it
-  process.env.QUARK_SESSION_ID = sessionId;
-
-  touchSession(sessionId);
-
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n");
   const userMsg = saveUserMessage({ sessionId, text, images: input.images });
   bus.emit("user-message", { sessionId, messageId: userMsg.id, text });
 
-  // Undo: set current turn and proactively snapshot files from the previous turn
-  setCurrentTurn(sessionId, userMsg.id);
-  preTurnSnapshot(sessionId, userMsg.id).catch(() => {
-    // Pre-turn snapshot is best-effort — never fail the session
+  return runTurn({
+    sessionId,
+    userMessageId: userMsg.id,
+    userText: text,
+    model: input.model,
+    agent,
+    forceAgent: !!input.parentSessionId,
   });
+}
 
-  // Enter the loop
-  const isSubAgent = !!input.parentSessionId;
-  if (isSubAgent) setForceAgent(true);
+/**
+ * Run a turn whose user message has already been persisted. Used by /steer so
+ * the child branch responds to its saved steer prompt without duplicating it.
+ */
+export async function runSeededSession(input: {
+  sessionId: string
+  userMessageId: string
+  userText: string
+  model?: string
+  agent?: AgentConfig
+}) {
+  getSession(input.sessionId)
+  return runTurn({
+    sessionId: input.sessionId,
+    userMessageId: input.userMessageId,
+    userText: input.userText,
+    model: input.model,
+    agent: input.agent ?? defaultAgent,
+  })
+}
 
-  const controller = new AbortController();
-  active.set(sessionId, controller);
-  bus.emit("loop-start", { sessionId });
-  let finalSessionId = sessionId;
+async function runTurn(input: {
+  sessionId: string
+  userMessageId: string
+  userText: string
+  model?: string
+  agent: AgentConfig
+  forceAgent?: boolean
+}) {
+  const { sessionId, userMessageId, userText, model, agent } = input
+  process.env.QUARK_SESSION_ID = sessionId
+  touchSession(sessionId)
+
+  // Undo: use the existing message as the turn boundary and snapshot files.
+  setCurrentTurn(sessionId, userMessageId)
+  preTurnSnapshot(sessionId, userMessageId).catch(() => {})
+
+  if (input.forceAgent) setForceAgent(true)
+  const controller = new AbortController()
+  active.set(sessionId, controller)
+  bus.emit("loop-start", { sessionId })
+  let finalSessionId = sessionId
   try {
-    // Initialize title + task. taskId is assigned synchronously here so it is
-    // guaranteed to exist before any subsequent action (e.g. /steer). The
-    // LLM-driven title upgrade then runs in the background; it never touches
-    // taskId.
-    const session = getSession(sessionId);
-    if (session.kind !== "ephemeral") {
-      if (!session.taskId) {
-        initializeSessionFromMessage({
-          sessionId,
-          message: text,
-          profile: agent.id,
-        });
-        resolveModel(input.model ?? loadConfig().small_model, "small")
-          .then((model) =>
-            upgradeSessionTitle({ sessionId, message: text, model }),
-          )
-          .catch(() => {
-            // best-effort upgrade — fallback title from sync init is kept
-          });
-      }
+    // Child branches inherit a task. This remains for normal new sessions.
+    const session = getSession(sessionId)
+    if (session.kind !== "ephemeral" && !session.taskId) {
+      initializeSessionFromMessage({ sessionId, message: userText, profile: agent.id })
+      resolveModel(model ?? loadConfig().small_model, "small")
+        .then((smallModel) => upgradeSessionTitle({ sessionId, message: userText, model: smallModel }))
+        .catch(() => {})
     }
 
-    finalSessionId = await loop(
-      sessionId,
-      controller.signal,
-      agent,
-      input.model,
-    );
+    finalSessionId = await loop(sessionId, controller.signal, agent, model)
   } finally {
-    if (isSubAgent) setForceAgent(false);
+    if (input.forceAgent) setForceAgent(false)
     for (const [id, activeController] of active) {
-      if (activeController === controller) active.delete(id);
+      if (activeController === controller) active.delete(id)
     }
-    bus.emit("loop-end", { sessionId: finalSessionId });
-    fireHook("session.idle", { sessionId: finalSessionId }).catch(() => {});
+    bus.emit("loop-end", { sessionId: finalSessionId })
+    fireHook("session.idle", { sessionId: finalSessionId }).catch(() => {})
   }
 
-  return { sessionId: finalSessionId };
+  return { sessionId: finalSessionId }
 }
 
 /**
@@ -286,7 +301,6 @@ async function loop(
           model,
           profile: agent.id,
           abort,
-          prompt: "Continue",
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
@@ -391,7 +405,6 @@ async function loop(
           model,
           profile: agent.id,
           abort,
-          prompt: "Continue",
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;

@@ -105,6 +105,7 @@ describe("session branching", () => {
     expect(text).toContain("Session")
     expect(text).toContain("Parent did the first half")
     expect(lastUser).toBe("Finish the second half")
+    expect(result.promptMessageId).toBe(lastText!.messageId)
     expect(JSON.parse(lastText!.data)).toEqual({
       text: "Finish the second half",
       variant: "steer",
