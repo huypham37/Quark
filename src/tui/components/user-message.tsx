@@ -8,29 +8,35 @@ import type { Component } from "solid-js"
 import { Show, For } from "solid-js"
 import { colors } from "../theme"
 import { parseContextBlocks } from "./mention-chips"
+import type { UserMessageStatus } from "../state"
 
 interface UserMessageProps {
   text: string
   images?: { label: string }[]
+  status?: UserMessageStatus
 }
 
 export const UserMessage: Component<UserMessageProps> = (props) => {
   const cleaned = () => parseContextBlocks(props.text).cleaned
+  const failed = () => props.status === "aborted" || props.status === "failed"
+  const italic = () => props.status !== undefined && props.status !== "sent"
+  const foreground = () => failed() ? colors.error : colors.text
+  const barColor = () => failed() ? colors.error : colors.userBar
 
   return (
     <box flexDirection="column">
       {/* Text line */}
       <box flexDirection="row">
-        <text fg={colors.userBar}>| </text>
-        <text fg={colors.text}>{cleaned()}</text>
+        <text fg={barColor()} italic={italic()}>| </text>
+        <text fg={foreground()} italic={italic()}>{cleaned()}</text>
       </box>
 
       {/* Image chips */}
       <Show when={(props.images?.length ?? 0) > 0}>
         <box flexDirection="row">
-          <text fg={colors.userBar}>| </text>
+          <text fg={barColor()} italic={italic()}>| </text>
           <For each={props.images}>
-            {(img) => <text fg={colors.success}>[{img.label}] </text>}
+            {(img) => <text fg={failed() ? colors.error : colors.success} italic={italic()}>[{img.label}] </text>}
           </For>
         </box>
       </Show>

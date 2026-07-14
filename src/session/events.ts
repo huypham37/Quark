@@ -44,7 +44,10 @@ export interface BusEvents {
   "step-finish": { sessionId: string; messageId: string; data: StepFinishData }
 
   // Assistant message completed
-  "assistant-message-end": { sessionId: string; messageId: string; finish: "stop" | "tool-calls" | "length" | "aborted" }
+  "assistant-message-end": { sessionId: string; messageId: string; userMessageId: string; finish: "stop" | "tool-calls" | "length" | "aborted" }
+
+  // A user message lifecycle changed before an assistant message was created.
+  "user-message-status": { sessionId: string; messageId: string; status: "aborted" }
 
   // Agent loop lifecycle
   "loop-start": { sessionId: string }
@@ -73,7 +76,7 @@ export interface BusEvents {
   "retry": { sessionId: string; attempt: number; delayMs: number; error: unknown }
 
   // Error
-  "error": { sessionId: string; error: unknown }
+  "error": { sessionId: string; error: unknown; userMessageId?: string }
 
   // Context-too-long — provider rejected the request because prompt exceeds context window
   "context-too-long": { sessionId: string; error: unknown }

@@ -319,15 +319,28 @@ describe("dbToTuiMessages", () => {
 })
 
 describe("dispatch: message lifecycle", () => {
-  test("add-user-message appends a user message", () => {
+  test("add-user-message appends a sent user message", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(s, { type: "add-user-message", id: "m1", text: "hello world" })
       expect(s.store.messages.length).toBe(1)
       expect(s.store.messages[0]!.role).toBe("user")
+      expect(s.store.messages[0]!.userStatus).toBe("sent")
       expect(s.store.messages[0]!.parts.length).toBe(1)
       expect(s.store.messages[0]!.parts[0]!.type).toBe("text")
       expect((s.store.messages[0]!.parts[0] as any).text).toBe("hello world")
+    })
+  })
+
+  test("updates only the targeted user message lifecycle status", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "add-user-message", id: "u1", text: "first" })
+      dispatch(s, { type: "add-user-message", id: "u2", text: "second" })
+      dispatch(s, { type: "set-user-message-status", messageId: "u1", status: "aborted" })
+
+      expect(s.store.messages[0]!.userStatus).toBe("aborted")
+      expect(s.store.messages[1]!.userStatus).toBe("sent")
     })
   })
 

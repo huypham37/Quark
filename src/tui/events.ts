@@ -132,6 +132,9 @@ export function wireEvents(state: AppState) {
   // errors emitted anywhere — during startup, model switching, or inside
   // the loop — regardless of session state.
   const handleError = (data: BusEvents["error"]) => {
+    if (data.sessionId === state.store.sessionId && data.userMessageId) {
+      dispatch(state, { type: "set-user-message-status", messageId: data.userMessageId, status: "failed" })
+    }
     const result = categorizeError(data.error)
     if (result) {
       const msg = result.message.length > 120
@@ -267,6 +270,10 @@ export function wireEvents(state: AppState) {
       dispatch(state, { type: "add-assistant-message", id: data.messageId })
     }))
 
+    unsubs.push(on("user-message-status", (data) => {
+      dispatch(state, { type: "set-user-message-status", messageId: data.messageId, status: data.status })
+    }))
+
     unsubs.push(on("text-start", (data) => {
       dispatch(state, { type: "text-start", messageId: data.messageId })
     }))
@@ -334,6 +341,13 @@ export function wireEvents(state: AppState) {
     }))
 
     unsubs.push(on("assistant-message-end", (data) => {
+      if (data.finish !== "tool-calls") {
+        dispatch(state, {
+          type: "set-user-message-status",
+          messageId: data.userMessageId,
+          status: data.finish === "aborted" ? "aborted" : "replied",
+        })
+      }
       if (data.finish === "aborted") {
         // Remove the aborted partial message from the TUI entirely
         dispatch(state, { type: "remove-message", messageId: data.messageId })

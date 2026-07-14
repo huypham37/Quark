@@ -173,8 +173,11 @@ async function runTurn(input: {
         .catch(() => {})
     }
 
-    finalSessionId = await loop(sessionId, controller.signal, agent, model)
+    finalSessionId = await loop(sessionId, userMessageId, controller.signal, agent, model)
   } finally {
+    if (controller.signal.aborted) {
+      bus.emit("user-message-status", { sessionId: finalSessionId, messageId: userMessageId, status: "aborted" })
+    }
     if (input.forceAgent) setForceAgent(false)
     for (const [id, activeController] of active) {
       if (activeController === controller) active.delete(id)
@@ -226,6 +229,7 @@ function moveActiveSession(from: string, to: string): void {
 // ---------------------------------------------------------------------------
 async function loop(
   sessionId: string,
+  userMessageId: string,
   abort: AbortSignal,
   agent: AgentConfig,
   modelOpt?: string,
@@ -314,7 +318,7 @@ async function loop(
           "[prompt] auto-branch FAILED:",
           err instanceof Error ? err.stack : String(err),
         );
-        bus.emit("error", { sessionId: currentSessionId, error: err });
+        bus.emit("error", { sessionId: currentSessionId, error: err, userMessageId });
         fireHook("session.error", {
           sessionId: currentSessionId,
           error: err,
@@ -363,6 +367,7 @@ async function loop(
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
+      userMessageId,
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       rebuildModel: async (provider, modelId) => {
@@ -417,7 +422,7 @@ async function loop(
           "[prompt] context-too-long branch FAILED:",
           err instanceof Error ? err.stack : String(err),
         );
-        bus.emit("error", { sessionId: currentSessionId, error: err });
+        bus.emit("error", { sessionId: currentSessionId, error: err, userMessageId });
         break;
       }
     }

@@ -27,10 +27,14 @@ export interface TuiWorktree {
 // TUI data model types
 // ---------------------------------------------------------------------------
 
+export type UserMessageStatus = "sent" | "replied" | "aborted" | "failed"
+
 export interface TuiMessage {
   id: string
   role: "user" | "assistant"
   parts: TuiPart[]
+  /** Lifecycle state for user messages. */
+  userStatus?: UserMessageStatus
   streaming?: boolean // true while assistant is streaming
 }
 
@@ -127,6 +131,7 @@ export type TuiAction =
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
   | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string } }
   | { type: "add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
+  | { type: "set-user-message-status"; messageId: string; status: Exclude<UserMessageStatus, "sent"> }
   | { type: "add-assistant-message"; id: string }
   | { type: "text-start"; messageId: string }
   | { type: "text-delta"; messageId: string; delta: string; text: string }
@@ -291,6 +296,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         id: msg.id,
         role: msg.role,
         parts: tuiParts,
+        ...(msg.role === "user" ? { userStatus: "replied" as const } : {}),
         streaming: false,
       })
     }
@@ -447,6 +453,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         {
           id: action.id,
           role: "user",
+          userStatus: "sent",
           parts: [
             { type: "text", text: action.text },
             ...(action.images ?? []).map((img, i) => ({
@@ -457,6 +464,15 @@ export function dispatch(state: AppState, action: TuiAction): void {
             })),
           ],
         },
+      )
+      break
+
+    case "set-user-message-status":
+      setStore(
+        "messages",
+        (message) => message.id === action.messageId && message.role === "user",
+        "userStatus",
+        action.status,
       )
       break
 

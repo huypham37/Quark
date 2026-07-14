@@ -87,6 +87,7 @@ describe("processor usage persistence", () => {
       abort: new AbortController().signal,
       msg: message,
       sessionId: session.id,
+      userMessageId: "user-message",
       providerId: "codex",
       modelId: "gpt-5.5",
     })
