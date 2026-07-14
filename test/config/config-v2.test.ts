@@ -25,9 +25,8 @@ function representativeConfig() {
     },
     providers: {
       "quark-go": {
-        protocol: "openai-compatible",
-        endpoint: "https://api.quark-go.example/v1/",
-        credential: { source: "environment", variable: "QUARK_GO_API_KEY" },
+        base_url: "https://api.quark-go.example/v1/",
+        api_key_env: "QUARK_GO_API_KEY",
         billing: "subscription",
       },
     },
@@ -40,12 +39,14 @@ describe("Config V2", () => {
     expect(loaded.modelConfig.main).toBe("openrouter/anthropic/claude-sonnet-4.6")
     expect(loaded.main_model).toBe(loaded.modelConfig.main)
     expect(loaded.providers["quark-go"]).toEqual({
-      protocol: "openai-compatible",
-      endpoint: "https://api.quark-go.example/v1",
-      credential: { source: "environment", variable: "QUARK_GO_API_KEY" },
+      base_url: "https://api.quark-go.example/v1",
+      api_key_env: "QUARK_GO_API_KEY",
       billing: "subscription",
     })
-    expect(serializeConfig(loaded)).not.toContain("main_model")
+    const serialized = serializeConfig(loaded)
+    expect(serialized).not.toContain("main_model")
+    expect(serialized).not.toContain("credential:")
+    expect(serialized).not.toContain("protocol:")
   })
 
   test("rejects provider secret fields without echoing their values", () => {
@@ -60,17 +61,42 @@ describe("Config V2", () => {
 
   test("validates environment names and rejects endpoint user-info", () => {
     expect(() => parseCustomProviders({ bad: {
-      protocol: "openai-compatible",
-      endpoint: "https://example.com/v1",
-      credential: { source: "environment", variable: "not-valid" },
-      billing: "unknown",
+      base_url: "https://example.com/v1",
+      api_key_env: "not-valid",
     } })).toThrow(/uppercase environment-variable/)
     expect(() => parseCustomProviders({ bad: {
-      protocol: "openai-compatible",
-      endpoint: "https://secret@example.com/v1",
-      credential: { source: "none" },
-      billing: "free",
+      base_url: "https://secret@example.com/v1",
+      api_key_env: "BAD_API_KEY",
     } })).toThrow(/user-info/)
+  })
+
+  test("defaults optional custom provider billing and canonicalizes legacy environment config", () => {
+    const providers = parseCustomProviders({
+      current: { base_url: "https://current.example/v1", api_key_env: "CURRENT_API_KEY" },
+      legacy: {
+        protocol: "openai-compatible",
+        endpoint: "https://legacy.example/v1",
+        credential: { source: "environment", variable: "LEGACY_API_KEY" },
+      },
+    })
+    expect(providers.current.billing).toBe("unknown")
+    expect(providers.legacy).toEqual({
+      base_url: "https://legacy.example/v1",
+      api_key_env: "LEGACY_API_KEY",
+      billing: "unknown",
+    })
+  })
+
+  test("preserves legacy store credentials for runtime compatibility", () => {
+    expect(parseCustomProviders({ bad: {
+      protocol: "openai-compatible",
+      endpoint: "https://example.com/v1",
+      credential: { source: "store" },
+    } }).bad).toEqual({
+      base_url: "https://example.com/v1",
+      legacyCredentialSource: { source: "store" },
+      billing: "unknown",
+    })
   })
 
   test("migrates V1 env references without persisting literal secrets", () => {
@@ -83,7 +109,7 @@ describe("Config V2", () => {
     expect(migrated.legacy).toBe(false)
     expect(parsed.version).toBe(2)
     expect(parsed.providers.openrouter).toBeUndefined()
-    expect(parsed.providers.company.credential).toEqual({ source: "prompt" })
+    expect(parsed.providers.company).toBeUndefined()
     expect(persisted).not.toContain(secret)
     expect(persisted).not.toContain("apiKey")
   })

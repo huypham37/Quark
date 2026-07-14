@@ -1,3 +1,4 @@
+import { loadConfig } from "../config/config"
 import type { ProviderAuthStatus } from "../provider/credentials"
 
 export function formatAuthStatuses(statuses: ProviderAuthStatus[]): string[] {
@@ -15,5 +16,8 @@ export function firstRunAuthMessage(
   const providerId = modelSpec.includes("/") ? modelSpec.slice(0, modelSpec.indexOf("/")) : ""
   const status = statuses.find((item) => item.providerId === providerId)
   if (!status || status.state === "authenticated" || status.state === "not-required") return null
-  return `Authentication for ${providerId} is ${status.state}. Run: quark auth login ${providerId}`
+  const custom = loadConfig().providers[providerId]
+  return custom?.api_key_env
+    ? `Authentication for ${providerId} is ${status.state}. Set ${custom.api_key_env}.`
+    : `Authentication for ${providerId} is ${status.state}. Run: quark auth login ${providerId}`
 }

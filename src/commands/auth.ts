@@ -43,11 +43,9 @@ function definition(providerId: string): ProviderDefinition {
   return {
     id: normalized,
     name: normalized,
-    protocol: custom.protocol,
-    defaultEndpoint: custom.endpoint,
-    auth: custom.credential.source === "none"
-      ? { type: "none" }
-      : { type: "api-key", environmentVariables: custom.credential.source === "environment" ? [custom.credential.variable] : [] },
+    protocol: "openai-compatible",
+    defaultEndpoint: custom.base_url,
+    auth: { type: "api-key", environmentVariables: custom.api_key_env ? [custom.api_key_env] : [] },
     metadataProviderId: normalized,
     providerOptionsKey: normalized,
     billing: custom.billing,
@@ -160,7 +158,9 @@ export async function authStatus(services: AuthServices = {}): Promise<ProviderA
     const custom = loadConfig().providers[providerId]
     return resolve.status({
       provider,
-      source: custom?.credential ?? { source: "auto" },
+      source: custom?.api_key_env
+        ? { source: "environment", variable: custom.api_key_env }
+        : custom?.legacyCredentialSource ?? { source: "auto" },
     })
   }))
 }

@@ -30,9 +30,13 @@ export interface ProfileConfig {
 }
 
 export interface CustomProviderConfig {
-  protocol: "openai-compatible"
-  endpoint: string
-  credential: CredentialSourceConfig
+  /** OpenAI-compatible endpoint supplied by the user. */
+  base_url: string
+  /** Environment variable containing this provider's API key. */
+  api_key_env?: string
+  /** Read-only compatibility for pre-v2.1 custom credential configuration. */
+  legacyCredentialSource?: CredentialSourceConfig
+  /** Optional cost-tracking metadata; it never affects authentication. */
   billing: BillingMode
 }
 
@@ -133,20 +137,18 @@ function validateModelSpec(spec: string, field: string): string {
   return `${spec.slice(0, slash).toLowerCase()}/${spec.slice(slash + 1)}`
 }
 
-function parseCredential(raw: unknown, field: string): CredentialSourceConfig {
-  if (!raw || typeof raw !== "object") throw new Error(`${field} is required.`)
-  const value = raw as Record<string, unknown>
-  const source = value.source
-  if (source === "environment") {
-    if (typeof value.variable !== "string" || !ENVIRONMENT_VARIABLE.test(value.variable)) {
-      throw new Error(`${field}.variable must be an uppercase environment-variable name.`)
-    }
-    return { source, variable: value.variable }
+function parseEnvironmentVariable(value: unknown, field: string): string {
+  if (typeof value !== "string" || !ENVIRONMENT_VARIABLE.test(value)) {
+    throw new Error(`${field} must be an uppercase environment-variable name.`)
   }
-  if (source === "auto" || source === "prompt" || source === "store" || source === "none") {
-    return { source }
+  return value
+}
+
+function parseBilling(value: unknown, field: string): BillingMode {
+  if (!["metered", "subscription", "free", "unknown"].includes(String(value))) {
+    throw new Error(`${field} is invalid.`)
   }
-  throw new Error(`${field}.source is invalid.`)
+  return value as BillingMode
 }
 
 function normalizeEndpoint(raw: unknown, field: string): string {
@@ -172,17 +174,34 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
     const value = entry as Record<string, unknown>
     const secret = Object.keys(value).find((key) => SECRET_KEYS.test(key))
     if (secret) throw new Error(`Secret field providers.${id}.${secret} is forbidden; choose a credential source.`)
+    const hasCanonicalFields = "base_url" in value || "api_key_env" in value
+    const hasLegacyFields = "protocol" in value || "endpoint" in value || "credential" in value
+    if (hasCanonicalFields && hasLegacyFields) {
+      throw new Error(`providers.${id} cannot mix base_url/api_key_env with legacy credential fields.`)
+    }
+    if (hasCanonicalFields) {
+      result[id] = {
+        base_url: normalizeEndpoint(value.base_url, `providers.${id}.base_url`),
+        api_key_env: parseEnvironmentVariable(value.api_key_env, `providers.${id}.api_key_env`),
+        billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
+      }
+      continue
+    }
     if (value.protocol !== "openai-compatible") {
       throw new Error(`providers.${id}.protocol must be openai-compatible.`)
     }
-    if (!["metered", "subscription", "free", "unknown"].includes(String(value.billing))) {
-      throw new Error(`providers.${id}.billing is invalid.`)
+    const credential = value.credential as Record<string, unknown> | undefined
+    const source = credential?.source
+    if (!["environment", "auto", "prompt", "store", "none"].includes(String(source))) {
+      throw new Error(`providers.${id}.credential.source is invalid.`)
     }
+    const legacyCredentialSource: CredentialSourceConfig = source === "environment"
+      ? { source, variable: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) }
+      : { source: source as "auto" | "prompt" | "store" | "none" }
     result[id] = {
-      protocol: "openai-compatible",
-      endpoint: normalizeEndpoint(value.endpoint, `providers.${id}.endpoint`),
-      credential: parseCredential(value.credential, `providers.${id}.credential`),
-      billing: value.billing as BillingMode,
+      base_url: normalizeEndpoint(value.endpoint, `providers.${id}.endpoint`),
+      ...(source === "environment" ? { api_key_env: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) } : { legacyCredentialSource }),
+      billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
     }
   }
   return result
@@ -232,12 +251,10 @@ function parseV1Providers(raw: unknown): Record<string, CustomProviderConfig> {
     const value = entry as Record<string, unknown>
     if (typeof value.baseURL !== "string") continue
     const apiKey = typeof value.apiKey === "string" ? value.apiKey : ""
+    if (!apiKey.startsWith("env:") || !ENVIRONMENT_VARIABLE.test(apiKey.slice(4))) continue
     result[id] = {
-      protocol: "openai-compatible",
-      endpoint: normalizeEndpoint(value.baseURL, `providers.${id}.baseURL`),
-      credential: apiKey.startsWith("env:") && ENVIRONMENT_VARIABLE.test(apiKey.slice(4))
-        ? { source: "environment", variable: apiKey.slice(4) }
-        : apiKey ? { source: "prompt" } : { source: "none" },
+      base_url: normalizeEndpoint(value.baseURL, `providers.${id}.baseURL`),
+      api_key_env: apiKey.slice(4),
       billing: "unknown",
     }
   }
@@ -281,13 +298,29 @@ export function loadConfig(): QuarkConfig {
 }
 
 export function serializeConfig(config: QuarkConfig): string {
+  const providers = Object.fromEntries(Object.entries(config.providers).map(([id, provider]) => {
+    if (provider.api_key_env) {
+      return [id, {
+        base_url: provider.base_url,
+        api_key_env: provider.api_key_env,
+        ...(provider.billing === "unknown" ? {} : { billing: provider.billing }),
+      }]
+    }
+    // Preserve legacy entries during unrelated writes; do not silently change their credential behavior.
+    return [id, {
+      protocol: "openai-compatible",
+      endpoint: provider.base_url,
+      credential: provider.legacyCredentialSource,
+      ...(provider.billing === "unknown" ? {} : { billing: provider.billing }),
+    }]
+  }))
   return stringifyYAML({
     version: 2,
     models: config.modelConfig,
     max_steps: config.max_steps,
     branching: config.branching,
     ...(config.profiles ? { profiles: config.profiles } : {}),
-    providers: config.providers,
+    providers,
     hide_readonly_tools: config.hide_readonly_tools,
     ...(config.goal ? { goal: config.goal } : {}),
   })
@@ -332,9 +365,12 @@ export function getProviderConfig(id: string): ProviderConfig | null {
   if (runtimeProviders[normalized]) return runtimeProviders[normalized]!
   const provider = loadConfig().providers[normalized]
   if (!provider) return null
-  const apiKey = provider.credential.source === "environment"
-    ? `env:${provider.credential.variable}` : ""
-  return { baseURL: provider.endpoint, apiKey }
+  const apiKey = provider.api_key_env
+    ? `env:${provider.api_key_env}`
+    : provider.legacyCredentialSource?.source === "environment"
+      ? `env:${provider.legacyCredentialSource.variable}`
+      : ""
+  return { baseURL: provider.base_url, apiKey }
 }
 
 /** @deprecated Runtime-only compatibility API; keys are never serialized. */

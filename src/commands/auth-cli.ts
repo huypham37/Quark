@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import { authStatus, loginApiKey, loginOAuth, logoutProvider } from "./auth"
 import { BUNDLED_PROVIDER_DEFINITIONS } from "../provider/definitions"
+import { loadConfig } from "../config/config"
 
 export async function runAuthCommand(args: string[]): Promise<number> {
   const command = args[0]
@@ -24,15 +25,33 @@ export async function runAuthCommand(args: string[]): Promise<number> {
   if (command === "login") {
     const providerId = args[1]
     if (!providerId) throw new Error("Usage: quark auth login <provider> [--session]")
+    const normalized = providerId.toLowerCase()
+    const provider = BUNDLED_PROVIDER_DEFINITIONS[normalized as keyof typeof BUNDLED_PROVIDER_DEFINITIONS]
+    if (!provider) {
+      const configured = loadConfig().providers[normalized]
+      if (configured) {
+        throw new Error(
+          configured.api_key_env
+            ? `"${providerId}" is a custom provider and does not support \`quark auth login\`. Set ${configured.api_key_env} as configured by providers.${normalized}.api_key_env.`
+            : `"${providerId}" is a legacy custom provider and does not support \`quark auth login\`. Migrate it to base_url and api_key_env.`,
+        )
+      }
+      throw new Error(
+        `"${providerId}" is not a supported provider. Configure an OpenAI-compatible custom provider with base_url and api_key_env instead. Supported providers: ${Object.keys(BUNDLED_PROVIDER_DEFINITIONS).join(", ")}.`,
+      )
+    }
+    if (provider.auth.type === "none") {
+      console.log(`${provider.name} requires no authentication.`)
+      return 0
+    }
     if (!process.stdin.isTTY) {
       throw new Error(
-        `Authentication login for "${providerId}" requires an interactive terminal. Run this command in a TTY, or configure a machine-store credential for headless use.`,
+        `Authentication login for "${providerId}" requires an interactive terminal. Set the provider's standard environment variable for headless use.`,
       )
     }
 
-    const provider = BUNDLED_PROVIDER_DEFINITIONS[providerId.toLowerCase() as keyof typeof BUNDLED_PROVIDER_DEFINITIONS]
     const persistence = args.includes("--session") ? "session" : "store"
-    if (provider?.auth.type === "oauth-device") {
+    if (provider.auth.type === "oauth-device") {
       await runOAuthLogin(provider.id, provider.auth.implementation, persistence, args)
     } else {
       const apiKey = await readMaskedLine(`API key for ${providerId}: `)

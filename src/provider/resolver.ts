@@ -48,7 +48,10 @@ function createLegacyProviderDefinition(id: string, config: ProviderConfig): Pro
     name: id,
     protocol: "openai-compatible",
     defaultEndpoint: config.baseURL,
-    auth: { type: "api-key", environmentVariables: [] },
+    auth: {
+      type: "api-key",
+      environmentVariables: config.apiKey.startsWith("env:") ? [config.apiKey.slice(4)] : [],
+    },
     metadataProviderId: id,
     providerOptionsKey: id,
     billing: "unknown",
@@ -79,9 +82,27 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
       ? (token) => options.codexTokenStore!.save(token)
       : undefined,
   }))
-  for (const providerId of Object.keys(loadConfig().providers)) {
-    const config = getProviderConfig(providerId)
-    if (config && !registry.get(providerId)) registerLegacyProvider(registry, providerId, config)
+  for (const [providerId, config] of Object.entries(loadConfig().providers)) {
+    if (!registry.get(providerId)) {
+      const definition: ProviderDefinition = {
+        id: providerId,
+        name: providerId,
+        protocol: "openai-compatible",
+        defaultEndpoint: config.base_url,
+        auth: { type: "api-key", environmentVariables: config.api_key_env ? [config.api_key_env] : [] },
+        metadataProviderId: providerId,
+        providerOptionsKey: providerId,
+        billing: config.billing,
+      }
+      registry.register({
+        definition,
+        adapter: createProviderAdapter(definition),
+        credentialSource: config.api_key_env
+          ? { source: "environment", variable: config.api_key_env }
+          : config.legacyCredentialSource!,
+        source: "configured",
+      })
+    }
   }
   return registry
 }
@@ -152,21 +173,12 @@ export async function resolveModelRuntime(
 
   let credential: ResolvedCredential | null
   if (runtime.source === "configured") {
-    const custom = loadConfig().providers[providerId]
-    if (custom) {
-      const store = options.credentialStore ?? await createDefaultCredentialStore()
-      credential = await new DefaultCredentialResolver(store, undefined, process.env).resolve({
-        provider: runtime.definition,
-        source: custom.credential,
-        interactive: false,
-      })
-    } else {
-      const config = getProviderConfig(providerId)!
-      const value = resolveApiKey(config.apiKey)
-      credential = value
-        ? new RedactedResolvedCredential({ type: "api-key", value }, config.apiKey.startsWith("env:") ? "environment" : "session")
-        : null
-    }
+    const store = options.credentialStore ?? await createDefaultCredentialStore()
+    credential = await new DefaultCredentialResolver(store, undefined, process.env).resolve({
+      provider: runtime.definition,
+      source: runtime.credentialSource,
+      interactive: false,
+    })
   } else {
     credential = await resolveCredential(runtime.definition, options)
   }
