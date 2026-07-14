@@ -5,7 +5,17 @@ const ROOT = resolve(import.meta.dir, "../..")
 
 type Status = "sent" | "replied" | "aborted" | "failed"
 
-function renderUserMessage(status: Status): string {
+interface SpanInfo {
+  text: string
+  attributes: number
+  fg?: { buffer: number[] }
+}
+
+interface CaptureResult {
+  lines: { spans: SpanInfo[] }[]
+}
+
+function renderUserMessage(status: Status): { frame: string; spans: SpanInfo[] } {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
@@ -20,7 +30,8 @@ function renderUserMessage(status: Status): string {
       { width: 60, height: 6, useConsole: false },
     );
     await setup.renderOnce();
-    console.log(setup.captureCharFrame());
+    const capture = setup.captureSpans();
+    console.log(JSON.stringify({ frame: setup.captureCharFrame(), spans: capture.lines[0].spans }));
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
@@ -30,19 +41,24 @@ function renderUserMessage(status: Status): string {
     stderr: "pipe",
   })
   if (!proc.success) throw new Error(proc.stderr.toString())
-  return proc.stdout.toString()
+  const parsed = JSON.parse(proc.stdout.toString()) as { frame: string; spans: SpanInfo[] }
+  return parsed
 }
 
+const ITALIC_ATTR = 1 << 2
+
 describe("UserMessage lifecycle presentation", () => {
-  test("renders a sent message and its image chip", () => {
-    const frame = renderUserMessage("sent")
+  test("renders a sent message without italic", () => {
+    const { frame, spans } = renderUserMessage("sent")
     expect(frame).toContain("| lifecycle fixture")
     expect(frame).toContain("| [Image 1]")
+    expect(spans.some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(false)
   })
 
-  test.each(["replied", "aborted", "failed"] as const)("keeps a %s message and its image chip visible", (status) => {
-    const frame = renderUserMessage(status)
+  test.each(["replied", "aborted", "failed"] as const)("renders a %s message italic and keeps content visible", (status) => {
+    const { frame, spans } = renderUserMessage(status)
     expect(frame).toContain("| lifecycle fixture")
     expect(frame).toContain("| [Image 1]")
+    expect(spans.some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(true)
   })
 })

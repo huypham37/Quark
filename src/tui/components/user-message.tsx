@@ -6,6 +6,7 @@
 
 import type { Component } from "solid-js"
 import { Show, For } from "solid-js"
+import { createTextAttributes } from "@opentui/core"
 import { colors } from "../theme"
 import { parseContextBlocks } from "./mention-chips"
 import type { UserMessageStatus } from "../state"
@@ -22,21 +23,22 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const italic = () => props.status !== undefined && props.status !== "sent"
   const foreground = () => failed() ? colors.error : colors.text
   const barColor = () => failed() ? colors.error : colors.userBar
+  const attributes = () => createTextAttributes({ italic: italic() })
 
   return (
     <box flexDirection="column">
       {/* Text line */}
       <box flexDirection="row">
-        <text fg={barColor()} italic={italic()}>| </text>
-        <text fg={foreground()} italic={italic()}>{cleaned()}</text>
+        <text fg={barColor()} attributes={attributes()}>| </text>
+        <text fg={foreground()} attributes={attributes()}>{cleaned()}</text>
       </box>
 
       {/* Image chips */}
       <Show when={(props.images?.length ?? 0) > 0}>
         <box flexDirection="row">
-          <text fg={barColor()} italic={italic()}>| </text>
+          <text fg={barColor()} attributes={attributes()}>| </text>
           <For each={props.images}>
-            {(img) => <text fg={failed() ? colors.error : colors.success} italic={italic()}>[{img.label}] </text>}
+            {(img) => <text fg={failed() ? colors.error : colors.success} attributes={attributes()}>[{img.label}] </text>}
           </For>
         </box>
       </Show>
