@@ -14,7 +14,6 @@ import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
-import { loadConfig } from "../../config/config"
 import { MessageItem } from "./message-item"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
@@ -211,7 +210,7 @@ export const App: Component<AppProps> = (props) => {
 
   // Update tokenLimit once models.dev data is available
   modelsReady.then(() => {
-    const lim = getModelLimit(loadConfig().main_model)
+    const lim = getModelLimit(state.store.status.modelName)
     const limit = lim?.context ?? lim?.input
     if (limit) state.setStore("status", "tokenLimit", limit)
   })

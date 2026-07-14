@@ -357,7 +357,7 @@ export function createAppState(initial: {
     showThinking: false,
     status: {
       tokensUsed: 0,
-      tokenLimit: (() => { const ms = loadConfig().main_model; const lim = getModelLimit(ms); return lim?.context ?? lim?.input ?? 0 })(),
+      tokenLimit: (() => { const lim = getModelLimit(initial.modelName); return lim?.context ?? lim?.input ?? 0 })(),
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,
