@@ -3,7 +3,7 @@
 // Verifies:
 // - ToolCard exists and old components (ToolResultView, ToolInvocationBlock) are removed
 // - message-item.tsx uses ToolCard (collapsed Match cases)
-// - Bash sub-agent rendering uses ToolCard
+// - First-class subagent rendering uses the shared subagent card contract
 // - All tool parts share the same data shape compatible with ToolCard
 
 import { describe, test, expect } from "bun:test"
@@ -58,23 +58,21 @@ describe("ToolCard migration (ToolResultView + ToolInvocationBlock → ToolCard)
 })
 
 // ---------------------------------------------------------------------------
-// Bash sub-agent rendering conformance
+// First-class subagent rendering conformance
 // ---------------------------------------------------------------------------
 
-describe("bash sub-agent rendering uses ToolCard", () => {
-  test("completed bash sub-agent part has status compatible with ToolCard", () => {
+describe("first-class subagent rendering contract", () => {
+  test("completed subagent part reaches a terminal card state", () => {
     withRoot(() => {
       const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(state, { type: "add-assistant-message", id: "m1" })
-      dispatch(state, { type: "tool-start", messageId: "m1", tool: "bash", callId: "parent-1" })
+      dispatch(state, { type: "tool-start", messageId: "m1", tool: "subagent", callId: "parent-1" })
       dispatch(state, {
         type: "tool-input",
         messageId: "m1",
         callId: "parent-1",
-        input: { command: 'quark --sub-agent --profile finder --prompt "explore"' },
+        input: { profile: "finder", prompt: "explore" },
       })
-
-      // Complete the parent bash tool
       dispatch(state, {
         type: "tool-end",
         messageId: "m1",
@@ -85,40 +83,46 @@ describe("bash sub-agent rendering uses ToolCard", () => {
 
       const part = state.store.messages[0]!.parts[0] as any
       expect(part.type).toBe("tool")
-      expect(part.tool).toBe("bash")
+      expect(part.tool).toBe("subagent")
       expect(part.status).toBe("completed")
       expect(part.subAgent).toBeDefined()
       expect(part.subAgent.done).toBe(true)
     })
   })
 
-  test("errored bash sub-agent part has error status compatible with ToolCard", () => {
+  test("errored subagent part preserves structured card failure state", () => {
     withRoot(() => {
       const state = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(state, { type: "add-assistant-message", id: "m1" })
-      dispatch(state, { type: "tool-start", messageId: "m1", tool: "bash", callId: "parent-1" })
+      dispatch(state, { type: "tool-start", messageId: "m1", tool: "subagent", callId: "parent-1" })
       dispatch(state, {
         type: "tool-input",
         messageId: "m1",
         callId: "parent-1",
-        input: { command: 'quark --sub-agent --profile finder --prompt "explore"' },
+        input: { profile: "finder", prompt: "explore" },
       })
-
-      // Error the parent bash tool
+      dispatch(state, {
+        type: "subagent-error",
+        messageId: "m1",
+        parentCallId: "parent-1",
+        profile: "finder",
+        kind: "provider",
+        message: "unavailable",
+      })
       dispatch(state, {
         type: "tool-end",
         messageId: "m1",
         callId: "parent-1",
         status: "error",
-        error: "aborted",
+        error: "unavailable",
       })
 
       const part = state.store.messages[0]!.parts[0] as any
       expect(part.type).toBe("tool")
-      expect(part.tool).toBe("bash")
+      expect(part.tool).toBe("subagent")
       expect(part.status).toBe("error")
-      expect(part.subAgent).toBeDefined()
       expect(part.subAgent.done).toBe(true)
+      expect(part.subAgent.error).toEqual({ kind: "provider", message: "unavailable" })
     })
   })
 })
@@ -199,29 +203,24 @@ describe("unified render contract for completed/error tools", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCard header states", () => {
-  test("ToolCard header renders pending state with braille cycle spinner", () => {
-    expect(TOOL_CARD_SRC).toContain("pendingFrame")
-    expect(TOOL_CARD_SRC).toContain("BRAILLE_CYCLE_FRAMES")
-    expect(TOOL_CARD_SRC).toContain("isPending()")
+  test("uses one stable status marker for every lifecycle state", () => {
+    expect(TOOL_CARD_SRC).toContain('<text fg={statusColor()}>● </text>')
+    expect(TOOL_CARD_SRC).toContain('status: "pending" | "awaiting_approval" | "running" | "completed" | "error"')
   })
 
-  test("ToolCard header renders awaiting_approval with pause symbol", () => {
-    expect(TOOL_CARD_SRC).toContain("⏸ ")
-    expect(TOOL_CARD_SRC).toContain("isAwaiting()")
+  test("maps terminal and running states to their semantic colors", () => {
+    expect(TOOL_CARD_SRC).toContain('case "completed":')
+    expect(TOOL_CARD_SRC).toContain("return colors.success")
+    expect(TOOL_CARD_SRC).toContain('case "error":')
+    expect(TOOL_CARD_SRC).toContain("return colors.error")
+    expect(TOOL_CARD_SRC).toContain('case "running":')
+    expect(TOOL_CARD_SRC).toContain("return colors.warning")
   })
 
-  test("ToolCard header renders running with InlineSpinner", () => {
-    expect(TOOL_CARD_SRC).toContain("InlineSpinner")
-    expect(TOOL_CARD_SRC).toContain("isRunning()")
-  })
-
-  test("ToolCard header renders completed with green check", () => {
-    expect(TOOL_CARD_SRC).toContain("✓ ")
-  })
-
-  test("ToolCard header renders error with red cross", () => {
-    expect(TOOL_CARD_SRC).toContain("✗ ")
-    expect(TOOL_CARD_SRC).toContain("isError()")
+  test("maps pending and awaiting approval to the informational color", () => {
+    expect(TOOL_CARD_SRC).toContain('case "pending":')
+    expect(TOOL_CARD_SRC).toContain('case "awaiting_approval":')
+    expect(TOOL_CARD_SRC).toContain("return colors.info")
   })
 })
 

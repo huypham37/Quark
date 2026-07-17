@@ -215,7 +215,7 @@ describe("wireEvents: permission", () => {
       tool: "bash",
       input: { cmd: "ls" },
     })
-    expect(s.store.permission).toEqual({ requestId: "r1", tool: "bash", input: { cmd: "ls" } })
+    expect(s.store.permission).toEqual({ requestId: "r1", sessionId: "s1", tool: "bash", input: { cmd: "ls" } })
     expect(s.store.running).toBe(false)
   })
 })

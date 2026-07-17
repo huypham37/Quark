@@ -15,7 +15,7 @@ import { bootstrap } from "../bootstrap"
 import { loadConfig } from "../config/config"
 import { debug } from "../debug"
 import { bus } from "../session/events"
-import { respond as respondPermission } from "../permission/permission"
+import { respondPermission } from "../permission/broker"
 import type { PartRow } from "../session/message"
 
 const dlog = debug("acp")

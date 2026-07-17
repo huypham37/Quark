@@ -400,8 +400,18 @@ export function wireEvents(state: AppState) {
     unsubs.push(on("permission-request", (data) => {
       dispatch(state, {
         type: "set-permission",
-        request: { requestId: data.requestId, tool: data.tool, input: data.input },
+        request: {
+          requestId: data.requestId,
+          sessionId: data.sessionId,
+          tool: data.tool,
+          input: data.input,
+          origin: data.origin,
+        },
       })
+    }))
+
+    unsubs.push(on("permission-dismiss", (data) => {
+      dispatch(state, { type: "dismiss-permissions", requestIds: data.requestIds })
     }))
 
     unsubs.push(on("tool-running", (data) => {
@@ -466,6 +476,16 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("subagent-tool-running", (data) => {
+      dispatch(state, {
+        type: "subagent-tool-running",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        callId: data.callId,
+      })
+    }))
+
     unsubs.push(on("subagent-tool-end", (data) => {
       dispatch(state, {
         type: "subagent-tool-end",
@@ -507,6 +527,17 @@ export function wireEvents(state: AppState) {
         messageId: data.messageId,
         parentCallId: data.parentCallId,
         profile: data.profile,
+      })
+    }))
+
+    unsubs.push(on("subagent-error", (data) => {
+      dispatch(state, {
+        type: "subagent-error",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        kind: data.kind,
+        message: data.message,
       })
     }))
 

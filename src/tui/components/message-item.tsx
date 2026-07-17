@@ -38,7 +38,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
         )}
       </Match>
 
-      {/* Sub-agent: bash tool with subAgent state — render unified SubAgentView */}
+      {/* First-class subagent calls and legacy replay state use the same view. */}
       <Match when={props.part.type === "tool" && asTool().subAgent}>
         <box marginBottom={1}>
           <SubAgentView subAgent={asTool().subAgent!} parentStatus={asTool().status} />

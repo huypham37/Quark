@@ -36,6 +36,14 @@ export interface ToolPartData {
   input: Record<string, unknown>
   output?: string
   error?: string
+  /** Structured first-class subagent metadata used to reconstruct persisted cards. */
+  subAgent?: {
+    profile: string
+    prompt?: string
+    childSessionId?: string
+    modelName?: string
+    tokenLimit?: number
+  }
   /** Multi-modal content parts (text + images) for LLM replay.
    *  When present, toModelMessages uses { type: "content", value: [...] }
    *  instead of { type: "text", value: string }. */

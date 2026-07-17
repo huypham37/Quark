@@ -230,7 +230,7 @@ describe("session branching", () => {
     expect(second.summary).toBe("First snapshot — written by initial steer")
   })
 
-  test("throws when parent has no taskId — invariant violation", () => {
+  test("throws when persistent parent has no taskId — invariant violation", () => {
     const parent = createSession()
     expect(() =>
       createBranch({
@@ -240,6 +240,26 @@ describe("session branching", () => {
         profile: "coder",
       }),
     ).toThrow(/parent has no taskId/)
+  })
+
+  test("branches ephemeral sessions without persisting or requiring a task", () => {
+    const parent = createSession({ ephemeral: true })
+    saveUserMessage({ sessionId: parent.id, text: "Investigate the codebase" })
+
+    const result = createBranch({
+      sessionId: parent.id,
+      summary: "Continue the investigation",
+      profile: "finder",
+    })
+    const child = getSession(result.sessionId)
+    const { messages } = loadMessages(child.id)
+
+    expect(child.kind).toBe("ephemeral")
+    expect(child.parentSessionId).toBe(parent.id)
+    expect(child.taskId).toBeNull()
+    expect(child.parentSummary).toBe("Continue the investigation")
+    expect(messages.length).toBeGreaterThan(0)
+    expect(listSessions().some((session) => session.id === child.id)).toBe(false)
   })
 
   test("child taskId is immutable — branching never rewrites the parent's taskId", () => {

@@ -267,7 +267,8 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
 export function createBranch(input: CreateBranchInput): BranchResult {
   const parent = getSession(input.sessionId)
   const taskId = parent.taskId
-  if (!taskId) {
+  const ephemeral = parent.kind === "ephemeral"
+  if (!taskId && !ephemeral) {
     throw new Error(
       `Cannot branch session ${parent.id}: parent has no taskId. ` +
         `initializeSessionFromMessage must run before branching.`,
@@ -292,8 +293,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   const child = createSession({
     directory: parent.directory ?? undefined,
     parentSessionId: parent.id,
-    kind: "main",
-    taskId,
+    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const, taskId }),
     parentSummary: summary || null,
     filesModified,
   })

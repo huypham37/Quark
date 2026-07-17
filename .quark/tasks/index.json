@@ -2806,5 +2806,117 @@
     "profile": "coder",
     "timeCreated": 1784021803966,
     "timeUpdated": 1784021805748
+  },
+  {
+    "id": "task_qTI0atIKLFDTfUW8",
+    "title": "Current Subagent Architecture",
+    "description": "Current Subagent Architecture",
+    "profile": "coder",
+    "timeCreated": 1784060146440,
+    "timeUpdated": 1784060153983
+  },
+  {
+    "id": "task_1ZqcrfVMtu7gjNkC",
+    "title": "Understand subagent architecture",
+    "description": "Understand subagent architecture",
+    "profile": "coder",
+    "timeCreated": 1784060559653,
+    "timeUpdated": 1784060562938
+  },
+  {
+    "id": "task_3fDKPNf4jyyAVBto",
+    "title": "Implement the subagent tool migration specification across tooling, protocol, supervision, permissions, CLI, session events, and TUI components.",
+    "description": "Implement the subagent tool migration specification across tooling, protocol, supervision, permissions, CLI, session events, and TUI components.",
+    "profile": "coder",
+    "timeCreated": 1784225901114,
+    "timeUpdated": 1784225903973
+  },
+  {
+    "id": "task_uE4ESZTiwjOzhoB0",
+    "title": "research this",
+    "description": "research this",
+    "profile": "coder",
+    "timeCreated": 1784263054975,
+    "timeUpdated": 1784263054975
+  },
+  {
+    "id": "task_4BjLT3SedtJmlDfL",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1784263054980,
+    "timeUpdated": 1784263054980
+  },
+  {
+    "id": "task_kY9oFUZyeFtWLcyG",
+    "title": "hello",
+    "description": "hello",
+    "profile": "coder",
+    "timeCreated": 1784263054982,
+    "timeUpdated": 1784263054982
+  },
+  {
+    "id": "task_y0bvNCQY1XRjt6YQ",
+    "title": "Finder Call Inquiry",
+    "description": "Finder Call Inquiry",
+    "profile": "coder",
+    "timeCreated": 1784263371153,
+    "timeUpdated": 1784263376681
+  },
+  {
+    "id": "task_nsGgdDUcNg9naWu0",
+    "title": "Check whether @subagent references appear in the specifications.",
+    "description": "Check whether @subagent references appear in the specifications.",
+    "profile": "coder",
+    "timeCreated": 1784296178143,
+    "timeUpdated": 1784296181587
+  },
+  {
+    "id": "task_7YyRYWjwbhFO9KQq",
+    "title": "Implement the subagent migration tool described in the referenced specification",
+    "description": "Implement the subagent migration tool described in the referenced specification",
+    "profile": "coder",
+    "timeCreated": 1784296773845,
+    "timeUpdated": 1784296778605
+  },
+  {
+    "id": "task_buhxJh8S0byyoHEA",
+    "title": "persistent test",
+    "description": "persistent test",
+    "profile": "coder",
+    "timeCreated": 1784296877394,
+    "timeUpdated": 1784296877394
+  },
+  {
+    "id": "task_rsRP1oiHWWqBrUUg",
+    "title": "Break the @/specssubagent-migration-tool problem into concise subproblems with one bullet point per problem.",
+    "description": "Break the @/specssubagent-migration-tool problem into concise subproblems with one bullet point per problem.",
+    "profile": "coder",
+    "timeCreated": 1784300340732,
+    "timeUpdated": 1784300343615
+  },
+  {
+    "id": "task_Dfk7OSJqUzstjsUN",
+    "title": "Fix cyan pipe styling so it spans wrapped message height and apply cyan color to all message text and the pipe in replied/responded states.",
+    "description": "Fix cyan pipe styling so it spans wrapped message height and apply cyan color to all message text and the pipe in replied/responded states.",
+    "profile": "coder",
+    "timeCreated": 1784300686071,
+    "timeUpdated": 1784300692629
+  },
+  {
+    "id": "task_0NjSv7tby8aSUWOq",
+    "title": "TypeScript Spread Operator",
+    "description": "TypeScript Spread Operator",
+    "profile": "coder",
+    "timeCreated": 1784301991967,
+    "timeUpdated": 1784301997623
+  },
+  {
+    "id": "task_v7t3QtnJDmzWUvT1",
+    "title": "Explain the functionality of the src/subagent/executable.ts file.",
+    "description": "Explain the functionality of the src/subagent/executable.ts file.",
+    "profile": "coder",
+    "timeCreated": 1784302513986,
+    "timeUpdated": 1784302523985
   }
 ]
