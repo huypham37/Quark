@@ -122,6 +122,9 @@ models:
 
 max_steps: 100
 
+# Used for /settings and clickable file links. Defaults to $EDITOR, $VISUAL, then nvim.
+editor: nvim
+
 branching:
   auto: true
   threshold: 0.90

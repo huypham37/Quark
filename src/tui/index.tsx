@@ -25,6 +25,7 @@ import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from 
 import { detectFromConfigOrOS } from "./terminal-bg"
 import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
+import { buildEditorArgv, resolveEditor, type FileTarget } from "./editor"
 import { clearCache as clearSkillCache } from "../skill/skill"
 import { register, clear as clearRegistry } from "../tool/registry"
 import { buildSkillTool } from "../tool/skill"
@@ -593,29 +594,24 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   }
 }
 
-// Suspend the TUI, spawn $EDITOR (default nvim) on the config file, then resume
-// and reload the config cache. The editor inherits the terminal directly, so it
-// renders in the same window like `git commit` opening vim.
-async function openEditor(sid: string | null): Promise<void> {
-  const editor = process.env.EDITOR ?? process.env.VISUAL ?? "nvim"
+// The editor inherits the terminal directly, so it renders in the same window
+// like `git commit` opening vim. This is shared by /settings and file links.
+let openingEditor = false
+async function openEditor(sid: string | null, target: FileTarget = { filePath: CONFIG_PATH }): Promise<void> {
+  if (openingEditor) return
+  openingEditor = true
+  const editor = resolveEditor(loadConfig().editor)
 
   renderer.suspend()
   try {
-    const proc = Bun.spawn([editor, CONFIG_PATH], {
+    if (!fs.existsSync(target.filePath)) throw new Error(`File not found: ${target.filePath}`)
+    const proc = Bun.spawn(buildEditorArgv(editor, target), {
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
     })
     const code = await proc.exited
-    if (code !== 0) {
-      // Editor exited non-zero — surface once TUI is back
-      setImmediate(() => {
-        bus.emit("error", {
-          sessionId: sid ?? "unknown",
-          error: new Error(`${editor} exited with code ${code}`),
-        })
-      })
-    }
+    if (code !== 0) throw new Error(`${editor} exited with code ${code}`)
   } catch (err) {
     setImmediate(() => {
       bus.emit("error", {
@@ -625,6 +621,7 @@ async function openEditor(sid: string | null): Promise<void> {
     })
   } finally {
     renderer.resume()
+    openingEditor = false
   }
 }
 
@@ -736,6 +733,7 @@ render(() => (
     onThinkingEffortChange={handleThinkingEffortChange}
     onCommand={handleCommand}
     onCreateAsyncSession={handleCreateAsyncSession}
+    onOpenFile={(target) => { void openEditor(currentSession?.id ?? null, target) }}
     getSessions={handleGetSessions}
     getWorktrees={handleGetWorktrees}
     getModels={handleGetModels}

@@ -51,6 +51,7 @@ import { AsyncPanel } from "./async-panel"
 import { info as notifyInfo, warn as notifyWarn } from "../../notification/notification"
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
+import type { FileTarget } from "../editor"
 
 /** Command handler result */
 export type CommandResult =
@@ -63,6 +64,7 @@ interface AppProps {
   onThinkingEffortChange?: (effort: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   onCreateAsyncSession?: () => string
+  onOpenFile?: (target: FileTarget) => void
   getSessions?: () => SessionTreeInput[]
   getWorktrees?: () => {
     id: string
@@ -1135,7 +1137,7 @@ export const App: Component<AppProps> = (props) => {
                 {dividers.map((d) => (
                   <SteerDivider goal={d.goal} width={dims().width} />
                 ))}
-                <MessageItem message={msg()} showThinking={state.store.showThinking} />
+                <MessageItem message={msg()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
               </>
             )
           }}

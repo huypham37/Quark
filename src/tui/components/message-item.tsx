@@ -15,13 +15,15 @@ import { ThinkingIndicator } from "./thinking"
 import { SubAgentView } from "./sub-agent-view"
 import { colors } from "../theme"
 import type { TuiMessage, TuiPart } from "../state"
+import type { FileTarget } from "../editor"
 
 interface MessageItemProps {
   message: TuiMessage
   showThinking?: boolean
+  onOpenFile?: (target: FileTarget) => void
 }
 
-const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: boolean }> = (props) => {
+const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: boolean; onOpenFile?: (target: FileTarget) => void }> = (props) => {
   // Helper to cast tool parts
   const asTool = () => props.part as Extract<TuiPart, { type: "tool" }>
 
@@ -33,6 +35,7 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
             <AssistantMessage
               text={(part() as Extract<TuiPart, { type: "text" }>).text}
               streaming={(part() as Extract<TuiPart, { type: "text" }>).streaming}
+              onOpenFile={props.onOpenFile}
             />
           </box>
         )}
@@ -98,7 +101,7 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
       <box flexDirection="column">
         <For each={props.message.parts}>
           {(part) => (
-            <PartView part={part} isStreaming={!!props.message.streaming} showThinking={props.showThinking} />
+            <PartView part={part} isStreaming={!!props.message.streaming} showThinking={props.showThinking} onOpenFile={props.onOpenFile} />
           )}
         </For>
       </box>

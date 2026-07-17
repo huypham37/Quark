@@ -45,6 +45,14 @@ describe("Config V2", () => {
     expect(serialized).not.toContain("protocol:")
   })
 
+  test("preserves an optional editor setting", () => {
+    const raw = representativeConfig() as Record<string, unknown>
+    raw.editor = "code"
+    const config = parseConfigV2(raw)
+    expect(config.editor).toBe("code")
+    expect(serializeConfig(config)).toContain("editor: code")
+  })
+
   test("rejects provider secret fields without echoing their values", () => {
     const secret = "sk-must-never-appear"
     const raw = representativeConfig() as any

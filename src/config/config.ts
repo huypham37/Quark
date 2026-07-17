@@ -58,6 +58,8 @@ export interface QuarkConfig {
   providers: Record<string, CustomProviderConfig>
   hide_readonly_tools: boolean
   goal?: GoalConfig
+  /** Optional executable name/path used to open local file links. */
+  editor?: string
   /** Compatibility projections; never serialized as V2 fields. */
   models: string[]
   small_model: string
@@ -234,6 +236,7 @@ export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
     providers: parseCustomProviders(raw.providers),
     hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
     goal: parseGoal(raw.goal),
+    editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
     legacy: false,
   })
 }
@@ -276,6 +279,7 @@ function parseV1(raw: Record<string, unknown>): QuarkConfig {
     providers: parseV1Providers(raw.providers),
     hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
     goal: parseGoal(raw.goal),
+    editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
     legacy: true,
     models: legacyFavorites,
     small_model: legacySmall,
@@ -315,6 +319,7 @@ export function serializeConfig(config: QuarkConfig): string {
     providers,
     hide_readonly_tools: config.hide_readonly_tools,
     ...(config.goal ? { goal: config.goal } : {}),
+    ...(config.editor ? { editor: config.editor } : {}),
   })
 }
 
