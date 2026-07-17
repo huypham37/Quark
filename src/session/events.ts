@@ -7,6 +7,7 @@
 import { EventEmitter } from "events"
 import type { StepFinishData } from "./message"
 import type { ConversationMessage } from "../shared/conversation-view"
+import type { SubagentErrorKind } from "../subagent/protocol"
 
 // ---- Event types ----
 
@@ -54,7 +55,21 @@ export interface BusEvents {
   "loop-end": { sessionId: string }
 
   // Permission request (TUI needs to prompt user)
-  "permission-request": { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }
+  "permission-request": {
+    sessionId: string
+    requestId: string
+    tool: string
+    input: Record<string, unknown>
+    origin?: {
+      kind: "subagent"
+      parentCallId: string
+      profile: string
+      childSessionId: string
+    }
+  }
+
+  // Remove child-process permission prompts that can no longer be answered.
+  "permission-dismiss": { sessionId: string; requestIds: string[] }
 
   // Permission was rejected by the user — abort the agent loop
   "permission-rejected": { sessionId: string }
@@ -135,6 +150,12 @@ export interface BusEvents {
     profile: string; tool: string; callId: string; input: Record<string, unknown>
   }
 
+  // A child tool passed its permission gate and began executing
+  "subagent-tool-running": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; callId: string
+  }
+
   // Tool completed/errored in the sub-agent
   "subagent-tool-end": {
     sessionId: string; messageId: string; parentCallId: string
@@ -160,6 +181,12 @@ export interface BusEvents {
   "subagent-done": {
     sessionId: string; messageId: string; parentCallId: string
     profile: string
+  }
+
+  // Structured child provider/process/protocol failure
+  "subagent-error": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; kind: SubagentErrorKind; message: string
   }
 
   // Worktree switch — TUI resets session state and updates cwd/branch

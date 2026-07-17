@@ -10,15 +10,18 @@
 //   quark acp                       Start ACP agent (JSON-RPC over stdio)
 
 import { parseArgs } from "util"
+import { createInterface } from "node:readline"
 import { bootstrap } from "./bootstrap"
 import { prompt } from "./session/prompt"
 import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
-import { startEventWriter } from "./session/event-writer"
+import { emitSubagentError, startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
 import { setVerbose, debug } from "./debug"
 import { formatArgs } from "./debug/format-tool-args"
+import { respondPermission } from "./permission/broker"
+import { parseParentControlLine } from "./subagent/protocol"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -27,6 +30,31 @@ const dlog = debug("cli")
 const tlogCall = debug("tool-call")
 const tlogResult = debug("tool-result")
 const tlogRaw = debug("tool-call:raw")
+
+function startSubagentControlReader(): () => void {
+  const reader = createInterface({ input: process.stdin, terminal: false })
+  const onLine = (line: string) => {
+    if (!line.trim()) return
+    try {
+      const message = parseParentControlLine(line)
+      respondPermission({
+        requestId: message.requestId,
+        reply: message.reply,
+        ...(message.message ? { message: message.message } : {}),
+      })
+    } catch (error) {
+      emitSubagentError(
+        "protocol",
+        `Invalid parent control message: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+  reader.on("line", onLine)
+  return () => {
+    reader.off("line", onLine)
+    reader.close()
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
@@ -210,8 +238,13 @@ async function main() {
   // When running as a sub-agent, stream structured events to stderr
   // so the parent's Bash tool can render sub-agent activity in the TUI.
   let cleanupEventWriter: (() => void) | undefined
+  let cleanupControlReader: (() => void) | undefined
   if (args.subAgent) {
-    cleanupEventWriter = startEventWriter()
+    cleanupEventWriter = startEventWriter({
+      resolvedModel: args.model ?? profile.model,
+      profile: profile.id,
+    })
+    cleanupControlReader = startSubagentControlReader()
   }
 
   // Wire up basic event output for CLI
@@ -279,10 +312,12 @@ async function main() {
     })
 
     dlog(`session: ${result.sessionId}`)
+    cleanupControlReader?.()
     cleanupEventWriter?.()
     process.exit(0)
   } catch (err: any) {
     console.error("Error:", err.message)
+    cleanupControlReader?.()
     cleanupEventWriter?.()
     process.exit(1)
   }

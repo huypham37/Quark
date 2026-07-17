@@ -1,6 +1,6 @@
 // Tests for #108: sub-agent tool spinners should stop after main agent abort
 //
-// When tool-end fires with status "error" on a parent bash tool that has a
+// When tool-end fires with status "error" on a parent subagent tool that has a
 // subAgent, the reducer must cascade the error to subAgent.done and mark
 // all pending/running child tools as "error".
 
@@ -17,17 +17,17 @@ function withRoot<T>(fn: () => T): T {
   return result
 }
 
-/** Helper: set up a parent bash tool with a sub-agent containing child tools */
+/** Helper: set up a first-class subagent tool containing child tools */
 function setupSubAgent(state: ReturnType<typeof createAppState>, opts?: {
   childTools?: Array<{ tool: string; callId: string; endStatus?: "completed" | "error" }>
 }) {
   dispatch(state, { type: "add-assistant-message", id: "m1" })
-  dispatch(state, { type: "tool-start", messageId: "m1", tool: "bash", callId: "parent-1" })
+  dispatch(state, { type: "tool-start", messageId: "m1", tool: "subagent", callId: "parent-1" })
   dispatch(state, {
     type: "tool-input",
     messageId: "m1",
     callId: "parent-1",
-    input: { command: 'quark --sub-agent --profile finder --prompt "explore"' },
+    input: { profile: "finder", prompt: "explore" },
   })
 
   const children = opts?.childTools ?? [
@@ -44,7 +44,7 @@ function setupSubAgent(state: ReturnType<typeof createAppState>, opts?: {
       tool: child.tool,
       callId: child.callId,
     })
-    // Move to running
+    // Resolve input, then pass the child permission gate.
     dispatch(state, {
       type: "subagent-tool-input",
       messageId: "m1",
@@ -53,6 +53,13 @@ function setupSubAgent(state: ReturnType<typeof createAppState>, opts?: {
       tool: child.tool,
       callId: child.callId,
       input: {},
+    })
+    dispatch(state, {
+      type: "subagent-tool-running",
+      messageId: "m1",
+      parentCallId: "parent-1",
+      profile: "finder",
+      callId: child.callId,
     })
     // If this child should be pre-completed
     if (child.endStatus) {

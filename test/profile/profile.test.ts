@@ -1525,7 +1525,7 @@ describe("buildSystem with subAgents", () => {
     expect(joined).toContain("# Available Sub-Agents")
     expect(joined).toContain("Coder")
     expect(joined).toContain("`coder`")
-    expect(joined).toContain("--sub-agent --profile")
+    expect(joined).toContain("Use the `subagent` tool")
   })
 
   test("sub-agent block appears after skill block and before environment", () => {

@@ -40,7 +40,6 @@ export type { BusEvents, BusEventName } from "./session/events"
 export {
   evaluate as evaluatePermission,
   ask as askPermission,
-  respond as respondPermission,
   listPending as listPendingPermissions,
   clearSession as clearPermissionSession,
   disabled as disabledTools,
@@ -53,6 +52,7 @@ export {
   RejectedError,
   CorrectedError,
 } from "./permission/permission"
+export { respondPermission } from "./permission/broker"
 
 // Question tool
 export { respondQuestion, type QuestionResponse } from "./tool/question"

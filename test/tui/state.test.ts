@@ -654,6 +654,21 @@ describe("dispatch: running, status, error, permission", () => {
       expect(s.store.permission).toBeUndefined()
     })
   })
+
+  test("dismiss-permissions removes visible and queued child requests precisely", () => {
+    withRoot(() => {
+      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
+      dispatch(s, { type: "set-running", running: true })
+      dispatch(s, { type: "set-permission", request: { requestId: "remote-1", tool: "read", input: {} } })
+      dispatch(s, { type: "set-permission", request: { requestId: "remote-2", tool: "write", input: {} } })
+      dispatch(s, { type: "set-permission", request: { requestId: "local-1", tool: "bash", input: {} } })
+
+      dispatch(s, { type: "dismiss-permissions", requestIds: ["remote-1", "remote-2"] })
+      expect(s.store.permission?.requestId).toBe("local-1")
+      expect(s.store.permissionQueue).toEqual([])
+      expect(s.store.running).toBe(false)
+    })
+  })
 })
 
 describe("dispatch: full streaming lifecycle", () => {

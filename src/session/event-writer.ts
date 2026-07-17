@@ -9,14 +9,20 @@
 
 import { bus } from "./events"
 import { getModelLimit } from "../provider/models"
+import type { SubagentErrorKind } from "../subagent/protocol"
 
 // Compact event shapes — keep wire size small
 export type SubAgentEvent =
+  | { e: "ready"; sessionId: string; profile: string; model?: string; tokenLimit?: number }
   | { e: "tool-start"; t: string; id: string }
   | { e: "tool-input"; t: string; id: string; in: Record<string, unknown> }
+  | { e: "tool-running"; id: string }
   | { e: "tool-end"; t: string; id: string; s: "completed" | "error"; err?: string }
   | { e: "step-finish"; tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }; tokenLimit?: number; model?: string }
   | { e: "text-delta"; d: string }
+  | { e: "permission-request"; id: string; sessionId: string; tool: string; pattern: string; metadata?: Record<string, unknown> }
+  | { e: "permission-dismiss"; ids: string[] }
+  | { e: "error"; kind: SubagentErrorKind; message: string }
   | { e: "loop-end" }
 
 const PREFIX = "QUARK_EVENT:"
@@ -29,17 +35,22 @@ function emit(event: SubAgentEvent): void {
   }
 }
 
+export function emitSubagentError(kind: SubagentErrorKind, message: string): void {
+  emit({ e: "error", kind, message })
+}
+
 /**
  * Start writing events to stderr.
  * Call once at startup when running as a sub-agent.
  * @param resolvedModel - The actual model string being used (resolved from CLI flag > profile > config), used for display in the parent TUI.
  * Returns a cleanup function to unsubscribe.
  */
-export function startEventWriter(resolvedModel?: string): () => void {
+export function startEventWriter(options?: { resolvedModel?: string; profile?: string }): () => void {
   const unsubs: (() => void)[] = []
 
   // Resolve the model once at startup — use the passed model if provided
-  const displayModel = resolvedModel
+  const displayModel = options?.resolvedModel
+  const profile = options?.profile ?? "sub-agent"
 
   // Emit metadata immediately so the parent TUI can show model + context limit
   // right away, instead of waiting for the first step-finish.
@@ -63,6 +74,10 @@ export function startEventWriter(resolvedModel?: string): () => void {
     emit({ e: "tool-input", t: data.tool, id: data.callId, in: data.input })
   })
 
+  on("tool-running", (data) => {
+    emit({ e: "tool-running", id: data.callId })
+  })
+
   on("tool-end", (data) => {
     emit({
       e: "tool-end",
@@ -78,6 +93,35 @@ export function startEventWriter(resolvedModel?: string): () => void {
     const limit = displayModel ? getModelLimit(displayModel) : null
     const tokenLimit = limit?.context ?? limit?.input ?? 0
     emit({ e: "step-finish", tokens: data.data.tokens, tokenLimit, model: displayModel })
+  })
+
+  on("session-created", (data) => {
+    emit({ e: "ready", sessionId: data.sessionId, profile, model: displayModel, tokenLimit })
+  })
+
+  on("permission-request", (data) => {
+    const { pattern, ...metadata } = data.input
+    emit({
+      e: "permission-request",
+      id: data.requestId,
+      sessionId: data.origin?.childSessionId ?? data.sessionId,
+      tool: data.tool,
+      pattern: typeof pattern === "string" ? pattern : "*",
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    })
+  })
+
+  on("permission-dismiss", (data) => {
+    emit({ e: "permission-dismiss", ids: data.requestIds })
+  })
+
+  on("permission-rejected", () => {
+    emitSubagentError("process", "The user rejected a permission request; the subagent was cancelled.")
+  })
+
+  on("error", (data) => {
+    const message = data.error instanceof Error ? data.error.message : String(data.error)
+    emitSubagentError("provider", message)
   })
 
   // Batch text deltas — emit at most every 200ms to avoid flooding

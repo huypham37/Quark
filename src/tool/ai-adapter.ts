@@ -13,6 +13,7 @@ import { bus } from "../session/events"
 import { resolveAvailable } from "./registry"
 import type { ToolDef } from "./tool"
 import { extractResourcePath, isInsideWorkspace, getAccessType } from "./workspace-boundary"
+import { createSubagentTool } from "./subagent"
 
 export function resolveToolSet(
   agent: AgentConfig,
@@ -21,6 +22,9 @@ export function resolveToolSet(
   abort: AbortSignal,
 ): ToolSet {
   const defs = resolveAvailable([...agent.tools])
+  if (agent.subAgents && agent.subAgents.length > 0) {
+    defs.push(createSubagentTool([...agent.subAgents]))
+  }
   const ruleset: Ruleset = (agent.permissions ?? []).map((r) => ({
     tool: r.tool,
     pattern: r.pattern ?? "*",
