@@ -204,7 +204,7 @@ export type BusEventName = keyof BusEvents
 
 // ---- Singleton bus ----
 
-class TypedBus {
+export class TypedBus {
   private emitter = new EventEmitter()
 
   constructor() {

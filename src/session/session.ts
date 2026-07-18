@@ -163,22 +163,24 @@ export function updateSession(id: string, patch: SessionPatch): void {
   const ephemeral = ephemeralStore.get(id)
   if (ephemeral) {
     Object.assign(ephemeral, fullPatch)
-    return
+  } else {
+    const event: SessionUpdateEvent = {
+      v: 1,
+      ts: now,
+      sessionId: id,
+      type: "session-update",
+      patch: fullPatch,
+    }
+    appendEvents(id, [event], fullPatch)
   }
 
-  const event: SessionUpdateEvent = {
-    v: 1,
-    ts: now,
-    sessionId: id,
-    type: "session-update",
-    patch: fullPatch,
+  if (patch.title !== undefined) {
+    bus.emit("session-title-changed", { sessionId: id, title: patch.title, updatedAt: fullPatch.timeUpdated })
   }
-  appendEvents(id, [event], fullPatch)
 }
 
 export function setSessionTitle(id: string, title: string): void {
   updateSession(id, { title })
-  bus.emit("session-title-changed", { sessionId: id, title, updatedAt: Date.now() })
 }
 
 /** List user-facing sessions only (main sessions and branches), most recently updated first */
