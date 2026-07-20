@@ -32,6 +32,7 @@ import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel, resolveModelRuntime } from "../provider/resolver";
 import { defaultAgent, type AgentConfig } from "../agent";
 import { loadConfig } from "../config/config";
+import type { ToolSet } from "ai";
 
 import { bus } from "./events";
 import { fireHook } from "../plugin/registry";
@@ -85,6 +86,7 @@ export async function prompt(input: {
   images?: { mime: string; data: string }[];
   model?: string;
   agent?: AgentConfig;
+  tools?: ToolSet;
 }) {
   const agent = input.agent ?? defaultAgent;
 
@@ -118,6 +120,7 @@ export async function prompt(input: {
     model: input.model,
     agent,
     forceAgent: !!input.parentSessionId,
+    tools: input.tools,
   });
 }
 
@@ -149,8 +152,9 @@ async function runTurn(input: {
   model?: string
   agent: AgentConfig
   forceAgent?: boolean
+  tools?: ToolSet
 }) {
-  const { sessionId, userMessageId, userText, model, agent } = input
+  const { sessionId, userMessageId, userText, model, agent, tools } = input
   process.env.QUARK_SESSION_ID = sessionId
   touchSession(sessionId)
 
@@ -173,7 +177,7 @@ async function runTurn(input: {
         .catch(() => {})
     }
 
-    finalSessionId = await loop(sessionId, userMessageId, controller.signal, agent, model)
+    finalSessionId = await loop(sessionId, userMessageId, controller.signal, agent, model, tools)
   } finally {
     if (controller.signal.aborted) {
       bus.emit("user-message-status", { sessionId: finalSessionId, messageId: userMessageId, status: "aborted" })
@@ -233,6 +237,7 @@ async function loop(
   abort: AbortSignal,
   agent: AgentConfig,
   modelOpt?: string,
+  extraTools?: ToolSet,
 ): Promise<string> {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -344,6 +349,7 @@ async function loop(
       currentSessionId,
       assistantMsg.id,
       abort,
+      extraTools,
     );
 
     // 6. Stream + process

@@ -17,6 +17,7 @@ import { debug } from "../debug"
 import { bus } from "../session/events"
 import { respondPermission } from "../permission/broker"
 import type { PartRow } from "../session/message"
+import { McpSession } from "./mcp"
 
 const dlog = debug("acp")
 
@@ -29,6 +30,7 @@ interface SessionState {
   bridges: BridgeHandle[]
   model?: string          // "provider/model" e.g. "deepseek/deepseek-v4-pro"
   profileId?: string      // e.g. "coder", "finder"
+  mcp?: McpSession
 }
 
 const sessions = new Map<string, SessionState>()
@@ -293,6 +295,7 @@ function handleInitialize(
         },
         mcpCapabilities: {
           http: true,
+          sse: true,
         },
         sessionCapabilities: {
           resume: {},
@@ -309,11 +312,11 @@ function handleInitialize(
   })
 }
 
-function handleNewSession(
+async function handleNewSession(
   id: s.RequestId,
   params: unknown,
   send: (msg: OutgoingMessage) => void,
-): void {
+): Promise<void> {
   const parsed = s.NewSessionRequest.shape.params.safeParse(params)
   if (!parsed.success) {
     send({
@@ -324,8 +327,17 @@ function handleNewSession(
     return
   }
 
+  let mcp: McpSession
+  try {
+    mcp = await McpSession.connect(parsed.data.mcpServers)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    send({ jsonrpc: "2.0", id, error: { code: s.ErrorCodes.InvalidParams, message: `Unable to connect MCP servers: ${message}` } })
+    return
+  }
+
   const session = createSession({ directory: parsed.data.cwd })
-  sessions.set(session.id, { bridges: [] })
+  sessions.set(session.id, { bridges: [], mcp })
 
   const meta = buildSessionMeta(session.id)
 
@@ -340,11 +352,11 @@ function handleNewSession(
   })
 }
 
-function handleLoadSession(
+async function handleLoadSession(
   id: s.RequestId,
   params: unknown,
   send: (msg: OutgoingMessage) => void,
-): void {
+): Promise<void> {
   const parsed = s.LoadSessionRequest.shape.params.safeParse(params)
   if (!parsed.success) {
     send({
@@ -366,12 +378,24 @@ function handleLoadSession(
     return
   }
 
-  replaySession(sessionId, send)
-
-  if (!sessions.has(sessionId)) {
-    sessions.set(sessionId, { bridges: [] })
+  let mcp: McpSession
+  try {
+    mcp = await McpSession.connect(parsed.data.mcpServers)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    send({ jsonrpc: "2.0", id, error: { code: s.ErrorCodes.InvalidParams, message: `Unable to connect MCP servers: ${message}` } })
+    return
   }
 
+  const state = sessions.get(sessionId)
+  if (state) {
+    await state.mcp?.close()
+    state.mcp = mcp
+  } else {
+    sessions.set(sessionId, { bridges: [], mcp })
+  }
+
+  replaySession(sessionId, send)
   const meta = buildSessionMeta(sessionId)
 
   send({
@@ -442,6 +466,7 @@ async function handlePrompt(
       images: images.length > 0 ? images : undefined,
       agent,
       model,
+      tools: state.mcp?.tools,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -605,10 +630,10 @@ export async function runAcpAgent(transport: AcpTransport, profileName?: string)
           handleInitialize(id, params, transport.send)
           break
         case "session/new":
-          handleNewSession(id, params, transport.send)
+          await handleNewSession(id, params, transport.send)
           break
         case "session/load":
-          handleLoadSession(id, params, transport.send)
+          await handleLoadSession(id, params, transport.send)
           break
         case "session/prompt": {
           // Re-bootstrap if the session's profile differs, then dispatch
@@ -663,11 +688,12 @@ export async function runAcpAgent(transport: AcpTransport, profileName?: string)
     }
   }
 
-  // Clean up all bridges
+  // Clean up all session-scoped resources.
   for (const [, state] of sessions) {
     for (const bridge of state.bridges) {
       bridge.close()
     }
+    await state.mcp?.close()
   }
   sessions.clear()
   dlog("acp agent stopped")

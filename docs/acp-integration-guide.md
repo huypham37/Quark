@@ -100,7 +100,7 @@ Quark responds with its capabilities:
         "image": true,
         "embeddedContext": true
       },
-      "mcpCapabilities": { "http": true },
+      "mcpCapabilities": { "http": true, "sse": true },
       "sessionCapabilities": {
         "resume": {},
         "close": {}
@@ -130,6 +130,8 @@ Quark responds with its capabilities:
   }
 }
 ```
+
+Quark connects to every configured MCP server before returning the session id. Servers may use local stdio (`command`, `args`, optional `env`), Streamable HTTP (`type: "http"`), or SSE (`type: "sse"`). Stdio `env` supplements the ACP process environment. Discovered tools are exposed only in that session as `mcp_<server-name>_<tool-name>`; they use the normal permission and tool-event flow. A failed connection or name conflict rejects the request and closes all connections opened for it. Loading a session replaces and closes its previous MCP connections; all are closed when ACP exits.
 
 Quark creates the session and returns its id plus available config:
 
