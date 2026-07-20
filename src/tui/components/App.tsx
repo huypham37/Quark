@@ -23,7 +23,7 @@ import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
 import { colors } from "../theme"
-import { respond as respondPermission } from "../../permission/permission"
+import { respondPermission } from "../../permission/broker"
 import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter, clearFileCache } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
@@ -945,8 +945,10 @@ export const App: Component<AppProps> = (props) => {
         dispatch(state, { type: "clear-permission" })
         dispatch(state, { type: "set-running", running: true })
       } else if (lower === "r") {
+        const remote = state.store.permission.origin?.kind === "subagent"
         respondPermission({ requestId: state.store.permission.requestId, reply: "reject" })
         dispatch(state, { type: "clear-permission" })
+        if (remote) dispatch(state, { type: "set-running", running: true })
       }
       evt.preventDefault()
       return

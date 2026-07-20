@@ -230,6 +230,8 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
               }
               // Extract diff from metadata if present
               const diff = extractDiff(out)
+              const subAgent = extractSubAgentMetadata(out)
+              if (subAgent) match.data.subAgent = subAgent
               updatePart(match.partId, match.data, sid, mid, "tool")
               bus.emit("tool-end", {
                 sessionId: sid,
@@ -576,6 +578,19 @@ function extractDiff(out: unknown): string | undefined {
     }
   }
   return undefined
+}
+
+function extractSubAgentMetadata(out: unknown): ToolPartData["subAgent"] | undefined {
+  if (!out || typeof out !== "object") return undefined
+  const value = (out as any).metadata?.subAgent
+  if (!value || typeof value !== "object" || typeof value.profile !== "string") return undefined
+  return {
+    profile: value.profile,
+    ...(typeof value.prompt === "string" ? { prompt: value.prompt } : {}),
+    ...(typeof value.childSessionId === "string" ? { childSessionId: value.childSessionId } : {}),
+    ...(typeof value.modelName === "string" ? { modelName: value.modelName } : {}),
+    ...(typeof value.tokenLimit === "number" ? { tokenLimit: value.tokenLimit } : {}),
+  }
 }
 
 // Extract string output from tool result (which may be various formats)

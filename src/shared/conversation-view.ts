@@ -32,10 +32,12 @@ export interface ConversationSubAgentState {
   profile: string
   modelName?: string
   prompt?: string
+  childSessionId?: string
   tools: ConversationSubAgentToolPart[]
   tokensUsed: number
   tokenLimit: number
   textPreview?: string
+  error?: { kind: "provider" | "process" | "protocol"; message: string }
   done: boolean
 }
 
@@ -68,7 +70,22 @@ export function dbToConversationMessages(
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
         let subAgent: ConversationSubAgentState | undefined
-        if (d.tool === "bash") {
+        if (d.tool === "subagent") {
+          const profile = d.subAgent?.profile ?? (typeof d.input.profile === "string" ? d.input.profile : "sub-agent")
+          const prompt = d.subAgent?.prompt ?? (typeof d.input.prompt === "string" ? d.input.prompt : undefined)
+          subAgent = {
+            profile,
+            prompt,
+            childSessionId: d.subAgent?.childSessionId,
+            modelName: d.subAgent?.modelName,
+            tools: [],
+            tokensUsed: 0,
+            tokenLimit: d.subAgent?.tokenLimit ?? 0,
+            ...(d.status === "error" && d.error ? { error: { kind: "process" as const, message: d.error } } : {}),
+            done: d.status === "completed" || d.status === "error",
+          }
+        } else if (d.tool === "bash") {
+          // Read-only replay compatibility for historical Bash-based delegation.
           const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
           if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
             const { profile, prompt } = parseSubAgentCommand(cmd)

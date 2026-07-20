@@ -8,14 +8,10 @@ type Status = "sent" | "replied" | "aborted" | "failed"
 interface SpanInfo {
   text: string
   attributes: number
-  fg?: { buffer: number[] }
+  fg?: { buffer: Record<number, number> }
 }
 
-interface CaptureResult {
-  lines: { spans: SpanInfo[] }[]
-}
-
-function renderUserMessage(status: Status): { frame: string; spans: SpanInfo[] } {
+function renderUserMessage(status: Status, text = "lifecycle fixture", width = 60): { frame: string; lines: { spans: SpanInfo[] }[] } {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
@@ -23,15 +19,15 @@ function renderUserMessage(status: Status): { frame: string; spans: SpanInfo[] }
 
     const setup = await testRender(
       () => createComponent(UserMessage, {
-        text: "lifecycle fixture",
+        text: ${JSON.stringify(text)},
         images: [{ label: "Image 1" }],
         status: ${JSON.stringify(status)},
       }),
-      { width: 60, height: 6, useConsole: false },
+      { width: ${width}, height: 8, useConsole: false },
     );
     await setup.renderOnce();
     const capture = setup.captureSpans();
-    console.log(JSON.stringify({ frame: setup.captureCharFrame(), spans: capture.lines[0].spans }));
+    console.log(JSON.stringify({ frame: setup.captureCharFrame(), lines: capture.lines }));
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
@@ -41,24 +37,39 @@ function renderUserMessage(status: Status): { frame: string; spans: SpanInfo[] }
     stderr: "pipe",
   })
   if (!proc.success) throw new Error(proc.stderr.toString())
-  const parsed = JSON.parse(proc.stdout.toString()) as { frame: string; spans: SpanInfo[] }
-  return parsed
+  return JSON.parse(proc.stdout.toString()) as { frame: string; lines: { spans: SpanInfo[] }[] }
 }
 
 const ITALIC_ATTR = 1 << 2
 
 describe("UserMessage lifecycle presentation", () => {
   test("renders a sent message without italic", () => {
-    const { frame, spans } = renderUserMessage("sent")
-    expect(frame).toContain("| lifecycle fixture")
-    expect(frame).toContain("| [Image 1]")
-    expect(spans.some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(false)
+    const { frame, lines } = renderUserMessage("sent")
+    expect(frame).toContain("│ lifecycle fixture")
+    expect(frame).toContain("│ [Image 1]")
+    expect(lines.flatMap((line) => line.spans).some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(false)
   })
 
   test.each(["replied", "aborted", "failed"] as const)("renders a %s message italic and keeps content visible", (status) => {
-    const { frame, spans } = renderUserMessage(status)
-    expect(frame).toContain("| lifecycle fixture")
-    expect(frame).toContain("| [Image 1]")
-    expect(spans.some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(true)
+    const { frame, lines } = renderUserMessage(status)
+    expect(frame).toContain("│ lifecycle fixture")
+    expect(frame).toContain("│ [Image 1]")
+    expect(lines.flatMap((line) => line.spans).some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(true)
+  })
+
+  test("renders a left border on every wrapped text line", () => {
+    const { frame } = renderUserMessage("sent", "one two three four five six seven", 14)
+    const messageLines = frame.split("\n").filter((line) => /\w/.test(line))
+    expect(messageLines.length).toBeGreaterThan(1)
+    expect(messageLines.every((line) => line.startsWith("│"))).toBe(true)
+  })
+
+  test("colors replied text with the user bar color", () => {
+    const { lines } = renderUserMessage("replied")
+    const textSpan = lines[0]?.spans.find((span) => span.text.includes("lifecycle fixture"))
+    expect(textSpan?.fg?.buffer?.[0]).toBe(0)
+    expect(textSpan?.fg?.buffer?.[1]).toBeCloseTo(215 / 255)
+    expect(textSpan?.fg?.buffer?.[2]).toBeCloseTo(215 / 255)
+    expect(textSpan?.fg?.buffer?.[3]).toBe(1)
   })
 })

@@ -23,6 +23,7 @@ import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { detectFromConfigOrOS } from "./terminal-bg"
+import { createGhosttyTitleController, isGhostty } from "./ghostty-title"
 import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { buildEditorArgv, resolveEditor, type FileTarget } from "./editor"
@@ -199,6 +200,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
 }
 
 function handleCancel(sessionId: string) {
+  ghosttyTitle.markStopped(sessionId)
   cancel(sessionId)
 }
 
@@ -621,6 +623,7 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
     })
   } finally {
     renderer.resume()
+    ghosttyTitle.refresh()
     openingEditor = false
   }
 }
@@ -694,6 +697,14 @@ const renderer = await createCliRenderer({
       })
     },
   },
+})
+
+const ghosttyTitle = createGhosttyTitleController({
+  bus,
+  renderer,
+  getSession,
+  initialSessionId: currentSession?.id,
+  enabled: isGhostty(),
 })
 
 // ---------------------------------------------------------------------------

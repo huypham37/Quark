@@ -13,14 +13,19 @@ import { bus } from "../session/events"
 import { resolveAvailable } from "./registry"
 import type { ToolDef } from "./tool"
 import { extractResourcePath, isInsideWorkspace, getAccessType } from "./workspace-boundary"
+import { createSubagentTool } from "./subagent"
 
 export function resolveToolSet(
   agent: AgentConfig,
   sessionId: string,
   messageId: string,
   abort: AbortSignal,
+  extraTools?: ToolSet,
 ): ToolSet {
   const defs = resolveAvailable([...agent.tools])
+  if (agent.subAgents && agent.subAgents.length > 0) {
+    defs.push(createSubagentTool([...agent.subAgents]))
+  }
   const ruleset: Ruleset = (agent.permissions ?? []).map((r) => ({
     tool: r.tool,
     pattern: r.pattern ?? "*",
@@ -32,7 +37,47 @@ export function resolveToolSet(
     result[def.id] = toAITool(def, sessionId, messageId, abort, ruleset)
   }
 
+  // MCP tools are already AI SDK tools. Wrap them in the same execution path as
+  // profile tools so permission prompts, plugin hooks, event streaming, result
+  // persistence, and cancellation keep their normal semantics.
+  for (const [id, tool] of Object.entries(extraTools ?? {})) {
+    if (result[id]) throw new Error(`Tool name conflicts with profile tool: ${id}`)
+    result[id] = toAIExternalTool(id, tool, sessionId, messageId, abort, ruleset)
+  }
+
   return result
+}
+
+function toAIExternalTool(
+  id: string,
+  external: ToolSet[string],
+  sessionId: string,
+  messageId: string,
+  abort: AbortSignal,
+  ruleset: Ruleset,
+) {
+  return {
+    ...external,
+    async execute(args: any, options: ToolExecutionOptions) {
+      const abortSig = options.abortSignal ?? abort
+      try {
+        await askPermission({ sessionId, tool: id, pattern: "*", ruleset })
+      } catch (error) {
+        if (error instanceof RejectedError || error instanceof CorrectedError) {
+          bus.emit("permission-rejected", { sessionId })
+        }
+        throw error
+      }
+      bus.emit("tool-running", { sessionId, messageId, callId: options.toolCallId })
+      const beforeArgs = await fireHook("tool.execute.before", { tool: id, args }, { args })
+      const result = await Promise.race([
+        external.execute!(beforeArgs.args, { ...options, abortSignal: abortSig }),
+        abortSignalToPromise(abortSig),
+      ])
+      await fireHook("tool.execute.after", { tool: id, args: beforeArgs.args, result: JSON.stringify(result) })
+      return result
+    },
+  }
 }
 
 function abortSignalToPromise(signal: AbortSignal): Promise<never> {

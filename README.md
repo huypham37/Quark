@@ -32,6 +32,9 @@ best experience for both writing code and doing research.
   instructions → resources) keeps the context window lean.
 - **Session persistence** — per-session JSONL storage with resume, ephemeral
   (`--no-store`) runs, and parent–child session linking for subagents.
+- **ACP MCP tools** — ACP clients can attach stdio, Streamable HTTP, or SSE MCP
+  servers per session; discovered tools remain session-scoped and use Quark’s
+  existing permission flow.
 
 ---
 

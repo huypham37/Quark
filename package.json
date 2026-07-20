@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/mcp": "^1.0.63",
     "@ai-sdk/openai": "^3.0.41",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@opentui/core": "^0.1.86",
