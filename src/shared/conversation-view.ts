@@ -56,7 +56,7 @@ export function dbToConversationMessages(
 
   for (const msg of messages) {
     // Skip aborted assistant messages
-    if (msg.finish === "aborted") continue
+    if (msg.role === "assistant" && msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const viewParts: ConversationPart[] = []
 

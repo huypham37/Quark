@@ -25,6 +25,8 @@ export interface BranchResult {
   summary: string
   /** ID of the persisted steer prompt, when this branch was created by /steer. */
   promptMessageId?: string
+  /** Source message ID to replayed child message ID. */
+  replayedMessageIds?: Record<string, string>
 }
 
 export interface SummarizeForBranchInput {
@@ -149,7 +151,7 @@ export function extractLastUserText(messages: MessageRow[], parts: PartRow[]): s
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]!
-    if (msg.role !== "user") continue
+    if (msg.role !== "user" || msg.finish === "aborted") continue
     const text = textForMessage(msg.id, byMessage)
     if (text) return text
   }
@@ -308,6 +310,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   }
 
   // 2. Replay stripped recent messages into the child session.
+  const replayedMessageIds: Record<string, string> = {}
   if (input.recentMessages && input.recentMessages.length > 0) {
     const strippedRecent = stripForBranch(input.recentMessages, input.recentParts ?? [])
     const recentParts = strippedRecent.parts
@@ -320,6 +323,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
 
     for (const msg of strippedRecent.messages) {
       const messageId = generateId()
+      replayedMessageIds[msg.id] = messageId
       const events: (MessageEvent | PartEvent | MessageEndEvent)[] = []
 
       events.push({
@@ -384,7 +388,13 @@ export function createBranch(input: CreateBranchInput): BranchResult {
     ? saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" }).id
     : undefined
 
-  return { sessionId: child.id, created: true, summary, promptMessageId }
+  return {
+    sessionId: child.id,
+    created: true,
+    summary,
+    promptMessageId,
+    ...(Object.keys(replayedMessageIds).length > 0 ? { replayedMessageIds } : {}),
+  }
 }
 
 function fallbackSummary(messages: MessageRow[], parts: PartRow[]): string {

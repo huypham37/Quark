@@ -15,6 +15,7 @@ import { createSession, getSession, touchSession } from "./session";
 import {
   saveUserMessage,
   createAssistantMessage,
+  finishMessage,
   loadMessages,
   toModelMessages,
 } from "./message";
@@ -163,6 +164,7 @@ async function runTurn(input: {
   active.set(sessionId, controller)
   bus.emit("loop-start", { sessionId })
   let finalSessionId = sessionId
+  const turnMessageIds = new Map<string, string>([[sessionId, userMessageId]])
   try {
     // Child branches inherit a task. This remains for normal new sessions.
     const session = getSession(sessionId)
@@ -173,10 +175,30 @@ async function runTurn(input: {
         .catch(() => {})
     }
 
-    finalSessionId = await loop(sessionId, userMessageId, controller.signal, agent, model)
+    finalSessionId = await loop(
+      sessionId,
+      userMessageId,
+      controller.signal,
+      agent,
+      model,
+      turnMessageIds,
+    )
   } finally {
+    // loop() can throw after moving to an automatic child branch, before its
+    // return value updates finalSessionId. The newest mapping is authoritative.
+    finalSessionId = Array.from(turnMessageIds.keys()).at(-1) ?? finalSessionId
     if (controller.signal.aborted) {
-      bus.emit("user-message-status", { sessionId: finalSessionId, messageId: userMessageId, status: "aborted" })
+      // Exclude the initiating prompt from future context in the original
+      // session and in every child session created by automatic branching.
+      for (const [turnSessionId, turnMessageId] of turnMessageIds) {
+        finishMessage(turnMessageId, "aborted", undefined, turnSessionId)
+      }
+      const finalUserMessageId = turnMessageIds.get(finalSessionId) ?? userMessageId
+      bus.emit("user-message-status", {
+        sessionId: finalSessionId,
+        messageId: finalUserMessageId,
+        status: "aborted",
+      })
     }
     if (input.forceAgent) setForceAgent(false)
     for (const [id, activeController] of active) {
@@ -232,7 +254,8 @@ async function loop(
   userMessageId: string,
   abort: AbortSignal,
   agent: AgentConfig,
-  modelOpt?: string,
+  modelOpt: string | undefined,
+  turnMessageIds: Map<string, string>,
 ): Promise<string> {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -248,6 +271,7 @@ async function loop(
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
+  let currentUserMessageId = userMessageId;
 
   let step = 0;
   while (true) {
@@ -308,6 +332,11 @@ async function loop(
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
+        const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
+        if (replayedUserMessageId) {
+          currentUserMessageId = replayedUserMessageId
+          turnMessageIds.set(currentSessionId, currentUserMessageId)
+        }
         moveActiveSession(previousSessionId, currentSessionId);
         await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" });
 
@@ -367,7 +396,7 @@ async function loop(
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
-      userMessageId,
+      userMessageId: currentUserMessageId,
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       rebuildModel: async (provider, modelId) => {
@@ -413,6 +442,11 @@ async function loop(
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
+        const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
+        if (replayedUserMessageId) {
+          currentUserMessageId = replayedUserMessageId
+          turnMessageIds.set(currentSessionId, currentUserMessageId)
+        }
         moveActiveSession(previousSessionId, currentSessionId);
         await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" });
 

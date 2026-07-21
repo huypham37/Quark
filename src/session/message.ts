@@ -331,8 +331,8 @@ export function toModelMessages(
   messages: MessageRow[],
   parts: PartRow[],
 ): ModelMessage[] {
-  // Filter out aborted assistant messages and their parts so partial
-  // content does not pollute the model context on subsequent turns.
+  // Filter out every aborted message and its parts. This removes both the
+  // cancelled user prompt and any partial assistant response from later turns.
   const abortedIds = new Set<string>()
   for (const m of messages) {
     if (m.finish === "aborted") abortedIds.add(m.id)

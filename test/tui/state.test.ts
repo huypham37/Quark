@@ -144,7 +144,7 @@ describe("dispatch: session actions", () => {
 })
 
 describe("dbToTuiMessages and dbToConversationMessages aborted filtering", () => {
-  test("both functions skip aborted assistant messages", () => {
+  test("both functions keep aborted user prompts visible but skip aborted assistant messages", () => {
     const messages = [
       {
         id: "m1",
@@ -152,7 +152,7 @@ describe("dbToTuiMessages and dbToConversationMessages aborted filtering", () =>
         role: "user" as const,
         modelId: null,
         providerId: null,
-        finish: null as "stop" | "tool-calls" | "length" | "aborted" | null,
+        finish: "aborted" as "stop" | "tool-calls" | "length" | "aborted" | null,
         cost: null,
         tokensIn: null,
         tokensOut: null,
@@ -199,6 +199,7 @@ describe("dbToTuiMessages and dbToConversationMessages aborted filtering", () =>
     // Both should have 2 messages: m1 (user) + m3 (assistant), skipping m2
     expect(tuiResult.length).toBe(2);
     expect(tuiResult[0]!.id).toBe("m1");
+    expect(tuiResult[0]!.userStatus).toBe("aborted");
     expect(tuiResult[1]!.id).toBe("m3");
     expect((tuiResult[1]!.parts[0] as any).text).toBe("real answer");
 

@@ -161,6 +161,7 @@ describe("session branching", () => {
     expect(child.parts.some((p) => p.type === "tool")).toBe(false)
     expect(child.parts.some((p) => p.type === "step-finish")).toBe(false)
     expect(extractLastUserText(child.messages, child.parts)).toBe("Inspect src/session/branch.ts")
+    expect(result.replayedMessageIds?.[recent.messages[0]!.id]).toBe(child.messages.at(-2)!.id)
   })
 
   test("walks lineage from root to child", () => {

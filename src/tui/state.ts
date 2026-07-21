@@ -253,7 +253,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
 
   for (const msg of messages) {
     // Skip aborted assistant messages — partial content should not appear in the TUI
-    if (msg.finish === "aborted") continue
+    if (msg.role === "assistant" && msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const tuiParts: TuiPart[] = []
 
@@ -321,7 +321,9 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         id: msg.id,
         role: msg.role,
         parts: tuiParts,
-        ...(msg.role === "user" ? { userStatus: "replied" as const } : {}),
+        ...(msg.role === "user"
+          ? { userStatus: msg.finish === "aborted" ? "aborted" as const : "replied" as const }
+          : {}),
         streaming: false,
       })
     }
