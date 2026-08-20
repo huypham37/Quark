@@ -831,7 +831,7 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
     if (s.active) {
       if (s.mode === "sessions") {
-        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
+        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex, query: s.query }
       }
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }

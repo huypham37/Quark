@@ -30,7 +30,7 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
+  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number; query: string }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
@@ -78,8 +78,9 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   let scrollRef: ScrollBoxRenderable | undefined
   const maxVisibleRows = () => {
     const isSession = m()?.type === "sessions"
-    const borderRows = isSession ? 2 : 0
-    const available = Math.max(1, dims().height - BOTTOM_OFFSET - borderRows)
+    const isCard = isSession || m()?.type === "worktrees"
+    const chromeRows = (isCard ? 2 : 0) + (isSession ? 2 : 0)
+    const available = Math.max(1, dims().height - BOTTOM_OFFSET - chromeRows)
     return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
   }
 
@@ -220,8 +221,11 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
   const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
+  const isSessionPicker = () => m()?.type === "sessions"
   const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
-  const panelHeight = () => isSessionCard() && rows().length > 0 ? visibleHeight() + 2 : visibleHeight()
+  const panelHeight = () => isSessionCard() && rows().length > 0
+    ? visibleHeight() + 2 + (isSessionPicker() ? 2 : 0)
+    : visibleHeight()
 
   const content = () => (
     <scrollbox
@@ -248,6 +252,24 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     </scrollbox>
   )
 
+  const cardContent = () => isSessionPicker()
+    ? (
+      <box flexDirection="column">
+        <box height={1} backgroundColor={colors.commandCardBg}>
+          <text fg={colors.text} bg={colors.commandCardBg} bold>
+            {m()?.type === "sessions" && m()!.query
+              ? `Sessions — search: ${m()!.query}`
+              : "Sessions — type to search"}
+          </text>
+        </box>
+        {content()}
+        <box height={1} backgroundColor={colors.commandCardBg}>
+          <text fg={colors.muted} bg={colors.commandCardBg}>↑↓ move  Enter open  Esc close</text>
+        </box>
+      </box>
+    )
+    : content()
+
   return (
     <box
       flexDirection="column"
@@ -260,7 +282,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
     >
       {isSessionCard() && rows().length > 0
-        ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
+        ? <CommandCard height={panelHeight()}>{cardContent()}</CommandCard>
         : content()}
     </box>
   )
