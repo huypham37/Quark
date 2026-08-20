@@ -10,7 +10,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import { sessionQuickSwitchNumber, type SessionTreeRow } from "../session-tree-picker"
+import { sessionQuickSwitchNumber, type SessionScope, type SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
@@ -36,6 +36,7 @@ export type AutocompleteMode =
     selectedIndex: number
     query: string
     action: "browse" | "rename" | "delete"
+    scope: SessionScope
   }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
@@ -276,8 +277,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
               : m()?.type === "sessions" && m()!.action === "delete"
                 ? "Delete selected session?"
               : m()?.type === "sessions" && m()!.query
-                ? `Sessions — search: ${m()!.query}`
-                : "Sessions — type to search"}
+                ? `Sessions · ${m()!.scope === "worktree" ? "this worktree" : "all worktrees"} — search: ${m()!.query}`
+                : `Sessions · ${m()?.type === "sessions" && m()!.scope === "project" ? "all worktrees" : "this worktree"} — type to search`}
           </text>
         </box>
         {content()}
@@ -287,7 +288,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
               ? "Enter save  Esc cancel"
               : m()?.type === "sessions" && m()!.action === "delete"
                 ? "Enter delete  Esc cancel"
-                : "↑↓ move  Enter open  Alt+1…9 quick  F2 rename  F3 pin  Del delete  Esc close"}
+                : "↑↓ move  Enter open  Alt+1…9 quick  F2 rename  F3 pin  F4 scope  Del delete  Esc close"}
           </text>
         </box>
       </box>

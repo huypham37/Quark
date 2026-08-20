@@ -10,6 +10,8 @@ export interface SessionTreeInput {
   timeUpdated: number
 }
 
+export type SessionScope = "worktree" | "project"
+
 export type SessionTreeRow =
   | { type: "task"; label: string; current: boolean }
   | {

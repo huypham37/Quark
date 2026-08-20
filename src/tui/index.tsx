@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned, deleteSession } from "../session/session"
+import { createSession, listSessions, listProjectSessions, getSession, setSessionTitle, setSessionPinned, deleteSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -41,6 +41,7 @@ import { listTasks } from "../task/task"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
+import type { SessionScope } from "./session-tree-picker"
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -365,7 +366,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     try {
       const input = JSON.parse(args) as { id?: string; title?: string }
       const title = input.title?.trim()
-      const session = listProjectSessions().find((item) => item.id === input.id)
+      const session = listProjectWorktreeSessions().find((item) => item.id === input.id)
       if (!session || !title) throw new Error("Invalid session rename")
       setSessionTitle(session.id, title)
       notifyInfo("Session", `Renamed to: ${title}`, 2000)
@@ -379,7 +380,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "delete-session") {
     try {
       const input = JSON.parse(args) as { id?: string }
-      const sessions = listProjectSessions()
+      const sessions = listProjectWorktreeSessions()
       const session = sessions.find((item) => item.id === input.id)
       if (!session) throw new Error("Session not found")
       if (session.id === currentSession?.id) throw new Error("The current session cannot be deleted")
@@ -398,7 +399,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "pin-session") {
     try {
       const input = JSON.parse(args) as { id?: string; pinned?: boolean }
-      const session = listProjectSessions().find((item) => item.id === input.id)
+      const session = listProjectWorktreeSessions().find((item) => item.id === input.id)
       if (!session || typeof input.pinned !== "boolean") throw new Error("Session not found")
       setSessionPinned(session.id, input.pinned)
       notifyInfo("Session", input.pinned ? "Session pinned" : "Session unpinned", 1500)
@@ -436,11 +437,25 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    const sessions = listProjectSessions()
+    const sessions = listProjectWorktreeSessions()
     const match = sessions.find((s) => s.id.startsWith(args))
     if (!match) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
       return { handled: true }
+    }
+
+    if (match.directory && path.resolve(match.directory) !== path.resolve(process.cwd())) {
+      const worktree = getProjectWorktrees().find((item) =>
+        path.resolve(item.path) === path.resolve(match.directory!))
+      if (!worktree) {
+        bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Session worktree is unavailable") })
+        return { handled: true }
+      }
+      const result = await switchToWorktree(worktree.id)
+      if (!result.success) {
+        bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Cannot switch worktree") })
+        return { handled: true }
+      }
     }
 
     currentSession = match
@@ -676,9 +691,22 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
   }
 }
 
-function handleGetSessions() {
+function getProjectWorktrees() {
+  return filterToProjectWorktrees(listWorktrees(rootProjectDir), rootProjectDir, worktreeBase)
+}
+
+function listProjectWorktreeSessions() {
+  const directories = new Set(getProjectWorktrees()
+    .filter((worktree) => !worktree.prunable && !worktree.missing)
+    .map((worktree) => path.resolve(worktree.path)))
+  return listSessions().filter((session) =>
+    session.directory ? directories.has(path.resolve(session.directory)) : false)
+}
+
+function handleGetSessions(scope: SessionScope = "worktree") {
   const tasks = new Map(listTasks().map((task) => [task.id, task]))
-  return listProjectSessions().map((session) => ({
+  const sessions = scope === "project" ? listProjectWorktreeSessions() : listProjectSessions()
+  return sessions.map((session) => ({
     ...session,
     taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
     running: isActive(session.id),
@@ -686,10 +714,8 @@ function handleGetSessions() {
 }
 
 function handleGetWorktrees() {
-  const all = listWorktrees(rootProjectDir)
-  const projectWorktrees = filterToProjectWorktrees(all, rootProjectDir, worktreeBase)
   const currentPath = process.cwd()
-  return projectWorktrees
+  return getProjectWorktrees()
     .filter((wt) => !wt.prunable)
     .map((wt) => ({
     id: wt.id,
