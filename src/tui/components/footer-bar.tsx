@@ -77,7 +77,7 @@ export const FooterBar: Component<FooterBarProps> = (props) => {
   })
 
   const RUNNING_LABEL = "Working"
-  const STEERING_LABEL = "Steering context"
+  const STEERING_LABEL = "Preparing branch"
 
   // "Worked for X.Xs" label — shown after agent finishes, persists until next request.
   const workedLabel = createMemo(() =>

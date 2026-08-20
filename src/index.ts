@@ -20,6 +20,7 @@ export { prompt, cancel, isActive } from "./session/prompt"
 
 export {
   createBranch,
+  compactBranch,
   autoBranch,
   buildLineageContext,
   getSessionLineage,

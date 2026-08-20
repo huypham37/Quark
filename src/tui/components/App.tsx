@@ -1331,7 +1331,7 @@ export const App: Component<AppProps> = (props) => {
             return (
               <>
                 {dividers.map((d) => (
-                  <SteerDivider goal={d.goal} width={dims().width} />
+                  <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
                 ))}
                 <MessageItem message={msg()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
               </>

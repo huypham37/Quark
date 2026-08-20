@@ -3,8 +3,8 @@
 import type { Component } from "solid-js"
 import { colors } from "../theme"
 
-export const SteerDivider: Component<{ goal: string; width: number }> = (props) => {
-  const label = ` Steered · ${props.goal} `
+export const SteerDivider: Component<{ goal: string; width: number; label?: string }> = (props) => {
+  const label = ` ${props.label ?? "Steered"} · ${props.goal} `
   const barChar = "━"
   const sideLen = Math.max(0, Math.floor((props.width - label.length) / 2))
   const left = barChar.repeat(sideLen)

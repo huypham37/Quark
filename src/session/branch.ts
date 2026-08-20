@@ -41,6 +41,10 @@ export interface AutoBranchInput extends SummarizeForBranchInput {
   profile: string
 }
 
+export interface CompactBranchInput extends AutoBranchInput {
+  prompt?: string
+}
+
 export interface CreateBranchInput {
   sessionId: string
   summary: string
@@ -247,6 +251,19 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
   return createBranch({
     sessionId: input.sessionId,
     summary,
+    profile: input.profile,
+    recentMessages,
+    recentParts,
+  })
+}
+
+export async function compactBranch(input: CompactBranchInput): Promise<BranchResult> {
+  const summary = await summarizeForBranch(input)
+  const { recentMessages, recentParts } = splitMessages(input.messages, input.parts)
+  return createBranch({
+    sessionId: input.sessionId,
+    summary,
+    prompt: input.prompt,
     profile: input.profile,
     recentMessages,
     recentParts,

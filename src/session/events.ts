@@ -119,13 +119,12 @@ export interface BusEvents {
   // updated immediately instead of showing 0 until the next step-finish.
   "session-switch":
     | { kind: "replace"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number }
-    | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string } }
+    | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string; label?: string } }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
   "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
 
-  // Steer (branching) lifecycle — TUI shows a "Steering…" indicator while the
-  // parent session is being summarized for the new branch.
+  // Branching lifecycle — TUI shows a status while a branch is prepared.
   "steer-start": { sessionId: string }
   "steer-end": { sessionId: string }
 

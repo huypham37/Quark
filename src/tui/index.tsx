@@ -15,7 +15,7 @@ import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { buildModelPickerOptions } from "./model-picker"
 import { estimateTokens, getLastInputTokens } from "../session/context"
-import { summarizeForBranch, createBranch, splitMessages } from "../session/branch"
+import { compactBranch, summarizeForBranch, createBranch, splitMessages, type BranchResult } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills, loadSkill } from "../skill/skill"
@@ -208,6 +208,40 @@ function handleCancel(sessionId: string) {
 
 function handleThinkingEffortChange(thinkingEffort: string) {
   activeAgent = { ...activeAgent, thinkingEffort }
+}
+
+function activateBranch(branch: BranchResult, goal: string, label: string): void {
+  currentSession = { id: branch.sessionId }
+  process.env.QUARK_SESSION_ID = branch.sessionId
+  const child = loadMessages(branch.sessionId)
+  const tuiMessages = dbToTuiMessages(child.messages, child.parts)
+  const modelMessages = toModelMessages(child.messages, child.parts)
+  const system = buildSystem(activeAgent)
+  const systemStr = Array.isArray(system) ? system.join("\n") : system
+  const estimatedTokens = estimateTokens(systemStr, modelMessages)
+  bus.emit("session-switch", {
+    kind: "branch",
+    sessionId: branch.sessionId,
+    messages: tuiMessages as any,
+    estimatedTokens,
+    divider: { id: `branch:${branch.sessionId}`, goal, label },
+  })
+}
+
+function runBranchGoal(branch: BranchResult, goal: string): void {
+  if (!branch.promptMessageId) throw new Error("Branch was created without a prompt message")
+  runSeededSession({
+    sessionId: branch.sessionId,
+    userMessageId: branch.promptMessageId,
+    userText: goal,
+    model: modelOverride ?? undefined,
+    agent: activeAgent,
+  }).then(({ sessionId }) => {
+    currentSession = { id: sessionId }
+    process.env.QUARK_SESSION_ID = sessionId
+  }).catch((err) => {
+    bus.emit("error", { sessionId: branch.sessionId, error: err })
+  })
 }
 
 async function handleWorktreeCommand(args: string, sid: string | null): Promise<CommandResult> {
@@ -555,6 +589,38 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
+    case "compact": {
+      bus.emit("steer-start", { sessionId: sid })
+      let branchReady = false
+      try {
+        const goal = args.trim()
+        const { messages, parts } = loadMessages(sid)
+        const model = await resolveModel(loadConfig().small_model)
+        const branch = await compactBranch({
+          sessionId: sid,
+          messages,
+          parts,
+          model,
+          profile: activeAgent.id,
+          prompt: goal || undefined,
+        })
+
+        bus.emit("steer-end", { sessionId: sid })
+        branchReady = true
+        activateBranch(branch, goal || "Compacted history", "Compacted")
+        if (goal) runBranchGoal(branch, goal)
+        notifyInfo("Compact", "Branched with compacted history", 3000)
+      } catch (err) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      } finally {
+        if (!branchReady) bus.emit("steer-end", { sessionId: sid })
+      }
+      return { handled: true }
+    }
+
     case "steer": {
       if (!args.trim()) {
         bus.emit("error", { sessionId: sid, error: new Error("Usage: /steer <goal>") })
@@ -588,41 +654,10 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           recentParts,
         })
 
-        currentSession = { id: branch.sessionId }
-        process.env.QUARK_SESSION_ID = branch.sessionId
-        const child = loadMessages(branch.sessionId)
-        const tuiMessages = dbToTuiMessages(child.messages, child.parts)
-        const modelMessages = toModelMessages(child.messages, child.parts)
-        const system = buildSystem(activeAgent)
-        const systemStr = Array.isArray(system) ? system.join("\n") : system
-        const estimatedTokens = estimateTokens(systemStr, modelMessages)
         bus.emit("steer-end", { sessionId: sid })
         steeringEnded = true
-        bus.emit("session-switch", {
-          kind: "branch",
-          sessionId: branch.sessionId,
-          messages: tuiMessages as any,
-          estimatedTokens,
-          divider: { id: `branch:${branch.sessionId}`, goal: args.trim() },
-        })
-
-        // The steer prompt is already persisted by createBranch. Start the
-        // child turn after switching the TUI, without saving it again.
-        if (!branch.promptMessageId) {
-          throw new Error("Steer branch was created without a prompt message")
-        }
-        runSeededSession({
-          sessionId: branch.sessionId,
-          userMessageId: branch.promptMessageId,
-          userText: args.trim(),
-          model: modelOverride ?? undefined,
-          agent: activeAgent,
-        }).then(({ sessionId }) => {
-          currentSession = { id: sessionId }
-          process.env.QUARK_SESSION_ID = sessionId
-        }).catch((err) => {
-          bus.emit("error", { sessionId: branch.sessionId, error: err })
-        })
+        activateBranch(branch, args.trim(), "Steered")
+        runBranchGoal(branch, args.trim())
         notifyInfo("Steer", `Branched to new session`, 3000)
       } catch (err) {
         bus.emit("error", {

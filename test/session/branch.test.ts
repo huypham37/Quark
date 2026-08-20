@@ -14,6 +14,7 @@ import {
 } from "../../src/session/message"
 import {
   buildLineageContext,
+  compactBranch,
   createBranch,
   extractLastUserText,
   getSessionLineage,
@@ -302,5 +303,51 @@ describe("session branching", () => {
     )
 
     expect(result).toBe(true)
+  })
+
+  test("compacts old history through the language model", async () => {
+    const task = createTask({
+      title: "Compact history",
+      description: "Compact a long session",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    for (let index = 1; index <= 5; index++) {
+      saveUserMessage({ sessionId: parent.id, text: `Message ${index}` })
+    }
+    const history = loadMessages(parent.id)
+    let calls = 0
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "compact-test",
+      supportedUrls: {},
+      async doGenerate() {
+        calls++
+        return {
+          content: [{ type: "text", text: "## Context\nCompacted by the model" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 5, text: 5, reasoning: 0 },
+          },
+          warnings: [],
+        }
+      },
+    } as any
+
+    const result = await compactBranch({
+      sessionId: parent.id,
+      messages: history.messages,
+      parts: history.parts,
+      model,
+      profile: "coder",
+    })
+
+    expect(calls).toBe(1)
+    expect(result.summary).toContain("Compacted by the model")
+    expect(getSession(result.sessionId).parentSessionId).toBe(parent.id)
+    const child = loadMessages(result.sessionId)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Message 5")
   })
 })
