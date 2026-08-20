@@ -15,7 +15,7 @@ import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { buildModelPickerOptions } from "./model-picker"
 import { estimateTokens, getLastInputTokens } from "../session/context"
-import { compactBranch, summarizeForBranch, createBranch, splitMessages, type BranchResult } from "../session/branch"
+import { compactBranch, createSteerBranch, type BranchResult } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills, loadSkill } from "../skill/skill"
@@ -215,6 +215,7 @@ function activateBranch(branch: BranchResult, goal: string, label: string): void
   process.env.QUARK_SESSION_ID = branch.sessionId
   const child = loadMessages(branch.sessionId)
   const tuiMessages = dbToTuiMessages(child.messages, child.parts)
+    .filter((message) => message.id === branch.promptMessageId)
   const modelMessages = toModelMessages(child.messages, child.parts)
   const system = buildSystem(activeAgent)
   const systemStr = Array.isArray(system) ? system.join("\n") : system
@@ -630,28 +631,13 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       bus.emit("steer-start", { sessionId: sid })
       let steeringEnded = false
       try {
-        // Frozen-snapshot semantics: only summarize the parent the first time
-        // it is branched. Subsequent steers reuse the already-frozen summary
-        // so siblings share the same parentSummary and we skip a redundant
-        // LLM call.
-        const parent = getSession(sid)
-        const existing = parent.summary?.trim()
         const { messages, parts } = loadMessages(sid)
-        const { recentMessages, recentParts } = splitMessages(messages, parts)
-        let summary: string
-        if (existing && existing.length > 0) {
-          summary = existing
-        } else {
-          const model = await resolveModel(loadConfig().small_model)
-          summary = await summarizeForBranch({ messages, parts, model })
-        }
-        const branch = createBranch({
+        const branch = createSteerBranch({
           sessionId: sid,
-          summary,
           prompt: args.trim(),
           profile: activeAgent.id,
-          recentMessages,
-          recentParts,
+          messages,
+          parts,
         })
 
         bus.emit("steer-end", { sessionId: sid })

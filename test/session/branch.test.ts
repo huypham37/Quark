@@ -15,6 +15,7 @@ import {
 import {
   buildLineageContext,
   compactBranch,
+  createSteerBranch,
   createBranch,
   extractLastUserText,
   getSessionLineage,
@@ -349,5 +350,62 @@ describe("session branching", () => {
     expect(getSession(result.sessionId).parentSessionId).toBe(parent.id)
     const child = loadMessages(result.sessionId)
     expect(extractLastUserText(child.messages, child.parts)).toBe("Message 5")
+  })
+
+  test("steers with full history and no compaction", () => {
+    const task = createTask({
+      title: "Full history steer",
+      description: "Keep every conversation part",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "tool",
+      data: {
+        tool: "read",
+        callId: "read_1",
+        status: "completed",
+        input: { path: "src/auth.ts" },
+        output: "auth source",
+      },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const aborted = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: aborted.id,
+      type: "text",
+      data: { text: "Partial response" },
+    })
+    finishMessage(aborted.id, "aborted", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      prompt: "Use a cookie-based design",
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const childSession = getSession(result.sessionId)
+    const child = loadMessages(result.sessionId)
+
+    expect(getSession(parent.id).summary).toBeNull()
+    expect(childSession.parentSummary).toBeNull()
+    expect(child.messages).toHaveLength(3)
+    expect(child.parts.some((part) => part.type === "tool")).toBe(true)
+    expect(child.parts.some((part) => part.data.includes("Partial response"))).toBe(false)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Use a cookie-based design")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
   })
 })
