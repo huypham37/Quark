@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { setSessionStorageRoot } from "../../src/storage/session-path"
 import { ensureStorageRoot, replaySessionFile } from "../../src/storage/session-jsonl"
-import { createSession, getSession, updateSession } from "../../src/session/session"
+import { createSession, deleteSession, getSession, listAllSessions, updateSession } from "../../src/session/session"
 
 let tmpDir: string
 
@@ -50,5 +50,14 @@ describe("session task metadata", () => {
     expect(replayed?.summary).toBe("Implemented storage")
     expect(replayed?.parentSummary).toBe("Parent summary")
     expect(replayed?.filesModified).toEqual(["src/session/session.ts"])
+  })
+
+  test("deletes a persisted session", () => {
+    const session = createSession()
+
+    deleteSession(session.id)
+
+    expect(() => getSession(session.id)).toThrow(`Session not found: ${session.id}`)
+    expect(listAllSessions().some((item) => item.id === session.id)).toBe(false)
   })
 })

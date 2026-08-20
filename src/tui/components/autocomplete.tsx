@@ -30,7 +30,13 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number; query: string; renaming: boolean }
+  | {
+    type: "sessions"
+    rows: SessionTreeRow[]
+    selectedIndex: number
+    query: string
+    action: "browse" | "rename" | "delete"
+  }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
@@ -257,8 +263,10 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       <box flexDirection="column">
         <box height={1} backgroundColor={colors.commandCardBg}>
           <text fg={colors.text} bg={colors.commandCardBg} bold>
-            {m()?.type === "sessions" && m()!.renaming
+            {m()?.type === "sessions" && m()!.action === "rename"
               ? "Rename session"
+              : m()?.type === "sessions" && m()!.action === "delete"
+                ? "Delete selected session?"
               : m()?.type === "sessions" && m()!.query
                 ? `Sessions — search: ${m()!.query}`
                 : "Sessions — type to search"}
@@ -267,9 +275,11 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         {content()}
         <box height={1} backgroundColor={colors.commandCardBg}>
           <text fg={colors.muted} bg={colors.commandCardBg}>
-            {m()?.type === "sessions" && m()!.renaming
+            {m()?.type === "sessions" && m()!.action === "rename"
               ? "Enter save  Esc cancel"
-              : "↑↓ move  Enter open  F2 rename  Esc close"}
+              : m()?.type === "sessions" && m()!.action === "delete"
+                ? "Enter delete  Esc cancel"
+                : "↑↓ move  Enter open  F2 rename  Del delete  Esc close"}
           </text>
         </box>
       </box>

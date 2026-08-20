@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listProjectSessions, getSession, setSessionTitle } from "../session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle, deleteSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -369,6 +369,25 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       if (!session || !title) throw new Error("Invalid session rename")
       setSessionTitle(session.id, title)
       notifyInfo("Session", `Renamed to: ${title}`, 2000)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
+    }
+    return { handled: true }
+  }
+
+  if (command === "delete-session") {
+    try {
+      const input = JSON.parse(args) as { id?: string }
+      const sessions = listProjectSessions()
+      const session = sessions.find((item) => item.id === input.id)
+      if (!session) throw new Error("Session not found")
+      if (session.id === currentSession?.id) throw new Error("The current session cannot be deleted")
+      if (sessions.some((item) => item.parentSessionId === session.id)) {
+        throw new Error("Delete this session's child branches first")
+      }
+      deleteSession(session.id)
+      notifyInfo("Session", "Session deleted", 2000)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })

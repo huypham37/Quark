@@ -12,6 +12,7 @@ import {
   readSessionMeta,
   scanSessionMetas,
   replaySessionFile,
+  deleteSessionLog,
 } from "../storage/session-jsonl"
 import type { SessionUpdateEvent } from "../storage/session-format"
 import { bus } from "./events"
@@ -181,6 +182,12 @@ export function updateSession(id: string, patch: SessionPatch): void {
 
 export function setSessionTitle(id: string, title: string): void {
   updateSession(id, { title })
+}
+
+export function deleteSession(id: string): void {
+  getSession(id)
+  ephemeralStore.delete(id)
+  deleteSessionLog(id)
 }
 
 /** List user-facing sessions only (main sessions and branches), most recently updated first */

@@ -56,7 +56,7 @@ describe("scrollTopForSelection", () => {
   // The session picker has 8 visible rows and no title row. The cursor
   // should anchor at visual row 3 (the 4th row) once the list is long enough
   // to scroll.
-  const sessionMode = { type: "sessions" as const, rows: [], selectedIndex: 0, query: "", renaming: false }
+  const sessionMode = { type: "sessions" as const, rows: [], selectedIndex: 0, query: "", action: "browse" as const }
 
   test("returns 0 when the list fits in the viewport (no scroll needed)", () => {
     expect(scrollTopForSelection(sessionMode, 0, 3, 8)).toBe(0)

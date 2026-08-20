@@ -122,7 +122,7 @@ interface SlashState {
   pickerItems: PickerItem[]
   sessionInputs: SessionTreeInput[]
   sessionRows: SessionTreeRow[]
-  renamingSession: boolean
+  sessionAction: "browse" | "rename" | "delete"
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
@@ -135,7 +135,7 @@ const SLASH_INACTIVE: SlashState = {
   pickerItems: [],
   sessionInputs: [],
   sessionRows: [],
-  renamingSession: false,
+  sessionAction: "browse",
   worktreeRows: [],
   selectedIndex: 0,
 }
@@ -379,7 +379,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: [],
       sessionRows: [],
-      renamingSession: false,
+      sessionAction: "browse",
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -397,11 +397,12 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
 
     if (s.mode === "sessions" && s.active) {
-      if (s.renamingSession) {
+      if (s.sessionAction === "rename") {
         setSlash((prev) => ({ ...prev, query: newValue }))
         setInputValue(newValue)
         return
       }
+      if (s.sessionAction === "delete") return
       const result = searchSessionTree(s.sessionInputs, newValue)
       const sessionRows = buildSessionTreeRows(result.sessions, state.store.sessionId)
       setSlash((prev) => ({
@@ -471,7 +472,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: sessions,
       sessionRows,
-      renamingSession: false,
+      sessionAction: "browse",
       worktreeRows: [],
       selectedIndex: firstSelectableSessionRow(sessionRows, preferredSessionId ?? sid),
     })
@@ -504,7 +505,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: [],
       sessionRows: [],
-      renamingSession: false,
+      sessionAction: "browse",
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
     })
@@ -529,7 +530,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
       sessionInputs: [],
       sessionRows: [],
-      renamingSession: false,
+      sessionAction: "browse",
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -600,7 +601,7 @@ export const App: Component<AppProps> = (props) => {
   const handleDropdownKey = (name: string, isTab: boolean, isReturn: boolean, isEscape: boolean): boolean => {
     const s = slash()
     if (s.active) {
-      if (s.mode === "sessions" && s.renamingSession) {
+      if (s.mode === "sessions" && s.sessionAction === "rename") {
         const selected = s.sessionRows[s.selectedIndex]
         if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
           const title = inputValue().trim()
@@ -625,13 +626,48 @@ export const App: Component<AppProps> = (props) => {
         return false
       }
 
-      if (s.mode === "sessions" && name === "f2") {
+      if (s.mode === "sessions" && s.sessionAction === "delete") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          if (props.onCommand) {
+            Promise.resolve(props.onCommand(
+              "delete-session",
+              JSON.stringify({ id: selected.id }),
+              state.store.sessionId,
+            )).then(() => openSessionsPicker())
+          }
+          return true
+        }
+        if (isEscape) {
+          openSessionsPicker(
+            selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined,
+          )
+        }
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f2") {
         const selected = s.sessionRows[s.selectedIndex]
         if (selected?.type === "session" || selected?.type === "orphan") {
           const title = s.sessionInputs.find((session) => session.id === selected.id)?.title ?? ""
-          setSlash((prev) => ({ ...prev, renamingSession: true, query: title }))
+          setSlash((prev) => ({ ...prev, sessionAction: "rename", query: title }))
           setInputText(title)
         }
+        return true
+      }
+
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "delete") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type !== "session" && selected?.type !== "orphan") return true
+        if (selected.id === state.store.sessionId) {
+          notifyWarn("Session", "The current session cannot be deleted", 2500)
+          return true
+        }
+        setSlash((prev) => ({ ...prev, sessionAction: "delete", query: "" }))
+        setInputText("")
         return true
       }
 
@@ -882,7 +918,7 @@ export const App: Component<AppProps> = (props) => {
           rows: s.sessionRows,
           selectedIndex: s.selectedIndex,
           query: s.query,
-          renaming: s.renamingSession,
+          action: s.sessionAction,
         }
       }
       if (s.mode === "worktrees") {

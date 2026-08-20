@@ -9,7 +9,7 @@
 //   - JSONL: open(O_APPEND | O_WRONLY), write, close — no locking needed
 //   - meta.json: write to .tmp, rename (atomic on POSIX)
 
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, existsSync, renameSync } from "node:fs"
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, existsSync, renameSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import {
   getSessionDir,
@@ -89,6 +89,11 @@ export function createSessionLog(session: Session): void {
 
   writeFileSync(getSessionLogPath(session.id), JSON.stringify(event) + "\n")
   writeMetaAtomic(session.id, session)
+}
+
+export function deleteSessionLog(sessionId: string): void {
+  ephemeralEvents.delete(sessionId)
+  rmSync(getSessionDir(sessionId), { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------------------
