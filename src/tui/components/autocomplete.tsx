@@ -10,7 +10,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { SessionTreeRow } from "../session-tree-picker"
+import { sessionQuickSwitchNumber, type SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
@@ -176,6 +176,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         }
 
         const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
+        const quickSwitch = sessionQuickSwitchNumber(mode.rows, i)
+        const number = quickSwitch ? `${quickSwitch} ` : "  "
         const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
         const tree = item.type === "session"
           ? item.connector === "root"
@@ -186,8 +188,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           label: item.type === "task"
             ? `${prefix}${item.label}`
             : item.type === "orphan"
-              ? `${sel ? "❯ " : "  "}${item.label}`
-              : `${sel ? "❯ " : "  "}${tree}${item.label}`,
+              ? `${sel ? "❯ " : "  "}${number}${item.label}`
+              : `${sel ? "❯ " : "  "}${number}${tree}${item.label}`,
           fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
           bg: colors.commandCardBg,
           bold: sel,
@@ -279,7 +281,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
               ? "Enter save  Esc cancel"
               : m()?.type === "sessions" && m()!.action === "delete"
                 ? "Enter delete  Esc cancel"
-                : "↑↓ move  Enter open  F2 rename  F3 pin  Del delete  Esc close"}
+                : "↑↓ move  Enter open  Alt+1…9 quick  F2 rename  F3 pin  Del delete  Esc close"}
           </text>
         </box>
       </box>

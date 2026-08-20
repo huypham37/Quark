@@ -4,6 +4,7 @@ import {
   firstSelectableSessionRow,
   moveSessionRowSelection,
   searchSessionTree,
+  sessionQuickSwitchNumber,
   type SessionTreeInput,
 } from "../../src/tui/session-tree-picker"
 
@@ -245,5 +246,29 @@ describe("session tree picker", () => {
 
     expect(rows[0]).toEqual({ type: "task", label: "Pinned task", current: false })
     expect(rows[1]).toMatchObject({ id: "pinned", label: "Pinned session · pinned · root · 5/1" })
+  })
+
+  test("numbers the first nine selectable rows for quick switching", () => {
+    const rows = buildSessionTreeRows([
+      {
+        id: "root",
+        title: "Root",
+        taskId: "task",
+        taskTitle: "Task",
+        timeUpdated: day(5, 1),
+      },
+      {
+        id: "child",
+        title: "Child",
+        taskId: "task",
+        taskTitle: "Task",
+        parentSessionId: "root",
+        timeUpdated: day(5, 2),
+      },
+    ], null)
+
+    expect(sessionQuickSwitchNumber(rows, 0)).toBeNull()
+    expect(sessionQuickSwitchNumber(rows, 1)).toBe(1)
+    expect(sessionQuickSwitchNumber(rows, 2)).toBe(2)
   })
 })

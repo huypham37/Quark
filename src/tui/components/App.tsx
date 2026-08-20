@@ -32,6 +32,7 @@ import {
   firstSelectableSessionRow,
   moveSessionRowSelection,
   searchSessionTree,
+  sessionQuickSwitchNumber,
   type SessionTreeInput,
   type SessionTreeRow,
 } from "../session-tree-picker"
@@ -598,7 +599,13 @@ export const App: Component<AppProps> = (props) => {
   // Returns true if the key was consumed.
   // ---------------------------------------------------------------------------
 
-  const handleDropdownKey = (name: string, isTab: boolean, isReturn: boolean, isEscape: boolean): boolean => {
+  const handleDropdownKey = (
+    name: string,
+    isTab: boolean,
+    isReturn: boolean,
+    isEscape: boolean,
+    quickSwitch: number | null,
+  ): boolean => {
     const s = slash()
     if (s.active) {
       if (s.mode === "sessions" && s.sessionAction === "rename") {
@@ -681,6 +688,18 @@ export const App: Component<AppProps> = (props) => {
           JSON.stringify({ id: session.id, pinned: !session.pinned }),
           state.store.sessionId,
         )).then(() => openSessionsPicker(session.id))
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && quickSwitch) {
+        const rowIndex = s.sessionRows.findIndex((_, index) =>
+          sessionQuickSwitchNumber(s.sessionRows, index) === quickSwitch)
+        const selected = s.sessionRows[rowIndex]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          props.onCommand?.("sessions", selected.id, state.store.sessionId)
+        }
         return true
       }
 
@@ -1105,6 +1124,7 @@ export const App: Component<AppProps> = (props) => {
         evt.name === "tab",
         evt.name === "return",
         evt.name === "escape",
+        (evt.option || evt.meta) && /^[1-9]$/.test(evt.name) ? Number(evt.name) : null,
       )
       if (consumed) {
         evt.preventDefault()

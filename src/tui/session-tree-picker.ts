@@ -116,6 +116,15 @@ export function moveSessionRowSelection(rows: SessionTreeRow[], selectedIndex: n
   return selectedIndex
 }
 
+export function sessionQuickSwitchNumber(rows: SessionTreeRow[], rowIndex: number): number | null {
+  if (!selectableRow(rows[rowIndex])) return null
+  let number = 0
+  for (let index = 0; index <= rowIndex; index++) {
+    if (selectableRow(rows[index])) number++
+  }
+  return number <= 9 ? number : null
+}
+
 function buildGroups(
   sessions: SessionTreeInput[],
   byId: Map<string, SessionTreeInput>,
