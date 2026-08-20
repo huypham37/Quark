@@ -9,7 +9,15 @@ export interface SessionTreeInput {
 
 export type SessionTreeRow =
   | { type: "task"; label: string; current: boolean }
-  | { type: "session"; id: string; label: string; current: boolean; root: boolean; depth: number }
+  | {
+    type: "session"
+    id: string
+    label: string
+    current: boolean
+    root: boolean
+    guides: boolean[]
+    connector: "root" | "branch" | "last"
+  }
   | { type: "orphan"; id: string; label: string; current: boolean }
   | { type: "spacer" }
 
@@ -36,21 +44,7 @@ export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessio
 
     rows.push({ type: "task", label: group.title, current: group.current })
 
-    const leaves = leafSessions(group.sessions, sessions)
-    for (let leafIndex = 0; leafIndex < leaves.length; leafIndex++) {
-      if (leafIndex > 0) rows.push({ type: "spacer" })
-
-      for (const { session, depth } of lineageFromLeaf(leaves[leafIndex]!, byId)) {
-        rows.push({
-          type: "session",
-          id: session.id,
-          label: sessionLabel(session, currentSessionId, byId),
-          current: session.id === currentSessionId,
-          root: isRoot(session, byId),
-          depth,
-        })
-      }
-    }
+    rows.push(...sessionTreeRows(group.sessions, currentSessionId))
   }
 
   if (orphanSessions.length > 0) {
@@ -116,34 +110,56 @@ function buildGroups(
   })
 }
 
-function leafSessions(groupSessions: SessionTreeInput[], allSessions: SessionTreeInput[]): SessionTreeInput[] {
-  const groupIds = new Set(groupSessions.map((session) => session.id))
-  const parentIds = new Set(
-    allSessions
-      .map((session) => session.parentSessionId)
-      .filter((id): id is string => !!id && groupIds.has(id)),
-  )
-  const leaves = groupSessions.filter((session) => !parentIds.has(session.id))
-  return (leaves.length > 0 ? leaves : groupSessions).sort((a, b) => b.timeUpdated - a.timeUpdated)
-}
+function sessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string | null): SessionTreeRow[] {
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  const children = new Map<string, SessionTreeInput[]>()
+  const roots: SessionTreeInput[] = []
 
-function lineageFromLeaf(
-  leaf: SessionTreeInput,
-  byId: Map<string, SessionTreeInput>,
-): Array<{ session: SessionTreeInput; depth: number }> {
-  const lineage: Array<{ session: SessionTreeInput; depth: number }> = []
-  const seen = new Set<string>()
-  let session: SessionTreeInput | undefined = leaf
-  let depth = 0
-
-  while (session && !seen.has(session.id)) {
-    seen.add(session.id)
-    lineage.push({ session, depth })
-    session = session.parentSessionId ? byId.get(session.parentSessionId) : undefined
-    depth++
+  for (const session of sessions) {
+    const parentId = session.parentSessionId
+    if (!parentId || !byId.has(parentId)) {
+      roots.push(session)
+      continue
+    }
+    const siblings = children.get(parentId) ?? []
+    siblings.push(session)
+    children.set(parentId, siblings)
   }
 
-  return lineage
+  const rows: SessionTreeRow[] = []
+  const visited = new Set<string>()
+  const sorted = (items: SessionTreeInput[]) => items.sort((a, b) => b.timeUpdated - a.timeUpdated)
+
+  const visit = (
+    session: SessionTreeInput,
+    guides: boolean[],
+    connector: Extract<SessionTreeRow, { type: "session" }>["connector"],
+  ) => {
+    if (visited.has(session.id)) return
+    visited.add(session.id)
+
+    const root = connector === "root"
+    rows.push({
+      type: "session",
+      id: session.id,
+      label: sessionLabel(session, currentSessionId, root),
+      current: session.id === currentSessionId,
+      root,
+      guides,
+      connector,
+    })
+
+    const descendants = sorted(children.get(session.id) ?? [])
+    for (let index = 0; index < descendants.length; index++) {
+      const child = descendants[index]!
+      const childGuides = root ? [] : [...guides, connector === "branch"]
+      visit(child, childGuides, index === descendants.length - 1 ? "last" : "branch")
+    }
+  }
+
+  for (const root of sorted(roots)) visit(root, [], "root")
+  for (const session of sorted(sessions)) visit(session, [], "root")
+  return rows
 }
 
 function taskKey(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): string {
@@ -172,14 +188,14 @@ function rootSession(session: SessionTreeInput, byId: Map<string, SessionTreeInp
 function sessionLabel(
   session: SessionTreeInput,
   currentSessionId: string | null,
-  byId: Map<string, SessionTreeInput>,
+  root: boolean,
 ): string {
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
-  if (isRoot(session, byId)) markers.push("root")
+  if (root) markers.push("root")
 
   const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
-  return `from ${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
+  return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }
 
 function orphanLabel(session: SessionTreeInput, currentSessionId: string | null): string {
@@ -190,10 +206,6 @@ function orphanLabel(session: SessionTreeInput, currentSessionId: string | null)
 
 function selectableRow(row: SessionTreeRow | undefined): row is Extract<SessionTreeRow, { type: "session" | "orphan" }> {
   return row?.type === "session" || row?.type === "orphan"
-}
-
-function isRoot(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): boolean {
-  return !session.parentSessionId || !byId.has(session.parentSessionId)
 }
 
 function formatDate(time: number): string {

@@ -9,15 +9,31 @@ import {
 const day = (month: number, date: number) => new Date(2026, month - 1, date, 12).getTime()
 
 describe("session tree picker", () => {
-  test("groups sessions by task and renders leaf-to-root lineage rows", () => {
+  test("renders each session once in a root-first branch tree", () => {
     const sessions: SessionTreeInput[] = [
       {
-        id: "child",
-        title: "Add JWT refresh token rotation",
+        id: "rotation",
+        title: "Add refresh token rotation",
         taskId: "auth",
         taskTitle: "Auth Middleware Refactor",
         parentSessionId: "root",
         timeUpdated: day(5, 4),
+      },
+      {
+        id: "cookies",
+        title: "Move tokens to cookies",
+        taskId: "auth",
+        taskTitle: "Auth Middleware Refactor",
+        parentSessionId: "root",
+        timeUpdated: day(5, 5),
+      },
+      {
+        id: "csrf",
+        title: "Add CSRF protection",
+        taskId: "auth",
+        taskTitle: "Auth Middleware Refactor",
+        parentSessionId: "cookies",
+        timeUpdated: day(5, 6),
       },
       {
         id: "root",
@@ -37,35 +53,58 @@ describe("session tree picker", () => {
       },
     ]
 
-    expect(buildSessionTreeRows(sessions, "child")).toEqual([
+    const rows = buildSessionTreeRows(sessions, "csrf")
+    expect(rows).toEqual([
       { type: "task", label: "Auth Middleware Refactor", current: true },
       {
         type: "session",
-        id: "child",
-        label: "from Add JWT refresh token rotation · current · 5/4",
-        current: true,
-        root: false,
-        depth: 0,
+        id: "root",
+        label: "Workspace Auth Cleanup · root · 5/3",
+        current: false,
+        root: true,
+        guides: [],
+        connector: "root",
       },
       {
         type: "session",
-        id: "root",
-        label: "from Workspace Auth Cleanup · root · 5/3",
+        id: "cookies",
+        label: "Move tokens to cookies · 5/5",
         current: false,
-        root: true,
-        depth: 1,
+        root: false,
+        guides: [],
+        connector: "branch",
+      },
+      {
+        type: "session",
+        id: "csrf",
+        label: "Add CSRF protection · current · 5/6",
+        current: true,
+        root: false,
+        guides: [true],
+        connector: "last",
+      },
+      {
+        type: "session",
+        id: "rotation",
+        label: "Add refresh token rotation · 5/4",
+        current: false,
+        root: false,
+        guides: [],
+        connector: "last",
       },
       { type: "spacer" },
       { type: "task", label: "Login Bug Fix", current: false },
       {
         type: "session",
         id: "login",
-        label: "from Fix Login Redirect Loop · root · 5/2",
+        label: "Fix Login Redirect Loop · root · 5/2",
         current: false,
         root: true,
-        depth: 0,
+        guides: [],
+        connector: "root",
       },
     ])
+    expect(rows.filter((row) => row.type === "session" && row.id === "root")).toHaveLength(1)
   })
 
   test("moves selection between visible session rows only", () => {
@@ -96,15 +135,14 @@ describe("session tree picker", () => {
       },
     ], "child")
 
-    const first = firstSelectableSessionRow(rows, "child")
-    const second = moveSessionRowSelection(rows, first, 1)
-    const third = moveSessionRowSelection(rows, second, 1)
+    const selected = firstSelectableSessionRow(rows, "child")
+    const previous = moveSessionRowSelection(rows, selected, -1)
+    const next = moveSessionRowSelection(rows, selected, 1)
 
-    expect(rows[first]).toMatchObject({ type: "session", id: "child" })
-    expect(rows[second]).toMatchObject({ type: "session", id: "root" })
-    expect(rows[third]).toMatchObject({ type: "session", id: "login" })
-    expect(moveSessionRowSelection(rows, third, 1)).toBe(third)
-    expect(moveSessionRowSelection(rows, third, -1)).toBe(second)
+    expect(rows[selected]).toMatchObject({ type: "session", id: "child" })
+    expect(rows[previous]).toMatchObject({ type: "session", id: "root" })
+    expect(rows[next]).toMatchObject({ type: "session", id: "login" })
+    expect(moveSessionRowSelection(rows, next, 1)).toBe(next)
   })
 
   test("renders sessions without taskId as plain rows without tree arrows", () => {
@@ -131,10 +169,11 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "task-root",
-        label: "from Task Root · root · 5/4",
+        label: "Task Root · root · 5/4",
         current: false,
         root: true,
-        depth: 0,
+        guides: [],
+        connector: "root",
       },
       { type: "spacer" },
       {

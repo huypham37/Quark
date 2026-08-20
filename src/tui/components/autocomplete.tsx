@@ -169,14 +169,18 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         }
 
         const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
-        const indent = item.type === "session" ? `${"   ".repeat(item.depth)}╰─▶ ` : ""
         const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
+        const tree = item.type === "session"
+          ? item.connector === "root"
+            ? "● "
+            : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"}● `
+          : ""
         result.push({
           label: item.type === "task"
             ? `${prefix}${item.label}`
             : item.type === "orphan"
-              ? `  ${item.label}`
-              : `  ${indent}${item.label}`,
+              ? `${sel ? "❯ " : "  "}${item.label}`
+              : `${sel ? "❯ " : "  "}${tree}${item.label}`,
           fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
           bg: colors.commandCardBg,
           bold: sel,
