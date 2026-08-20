@@ -16,6 +16,7 @@ import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
 import type { SessionPreview } from "../session-preview"
 import { sessionControls, type SessionAction } from "../session-controls"
+import { sessionPickerBodyHeight } from "../session-picker-layout"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
@@ -253,15 +254,18 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
   const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
   const isSessionPicker = () => m()?.type === "sessions"
+  const bodyHeight = () => isSessionPicker()
+    ? sessionPickerBodyHeight(dims().width, visibleHeight(), maxVisibleRows())
+    : visibleHeight()
   const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
   const panelHeight = () => isSessionCard() && rows().length > 0
-    ? visibleHeight() + 2 + (isSessionPicker() ? 2 : 0)
+    ? bodyHeight() + 2 + (isSessionPicker() ? 2 : 0)
     : visibleHeight()
 
   const content = () => (
     <scrollbox
       ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
-      height={visibleHeight()}
+      height={bodyHeight()}
       scrollbarOptions={{ visible: false }}
       backgroundColor={panelBg()}
     >
@@ -309,7 +313,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
   const sessionBody = () => dims().width >= 120 && m()?.type === "sessions"
     ? (
-      <box flexDirection="row" height={visibleHeight()}>
+      <box flexDirection="row" height={bodyHeight()}>
         <box flexGrow={1}>{content()}</box>
         <box
           width={Math.min(48, Math.floor(dims().width * 0.38))}

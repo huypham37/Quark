@@ -1338,6 +1338,11 @@ export const App: Component<AppProps> = (props) => {
             )
           }}
         </Index>
+        <For each={state.store.steerDividers.filter((d) => d.insertionIndex === state.store.messages.length)}>
+          {(divider) => (
+            <SteerDivider goal={divider.goal} label={divider.label} width={dims().width} />
+          )}
+        </For>
       </scrollbox>
 
       {/* Permission prompt */}
