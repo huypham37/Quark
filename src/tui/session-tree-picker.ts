@@ -5,6 +5,7 @@ export interface SessionTreeInput {
   taskTitle?: string
   parentSessionId?: string | null
   pinned?: boolean
+  filesModified?: string[] | null
   timeUpdated: number
 }
 
@@ -42,7 +43,7 @@ export function searchSessionTree(sessions: SessionTreeInput[], query: string): 
 
   const byId = new Map(sessions.map((session) => [session.id, session]))
   const matches = sessions
-    .filter((session) => [session.title, session.taskTitle, session.id]
+    .filter((session) => [session.title, session.taskTitle, session.id, ...(session.filesModified ?? [])]
       .some((value) => value?.toLowerCase().includes(normalized)))
     .sort((a, b) => b.timeUpdated - a.timeUpdated)
   const included = new Set(matches.map((session) => session.id))
@@ -255,6 +256,8 @@ function sessionLabel(
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
   if (root) markers.push("root")
+  const fileCount = new Set(session.filesModified ?? []).size
+  if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
 
   const suffix = [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
@@ -264,6 +267,8 @@ function orphanLabel(session: SessionTreeInput, currentSessionId: string | null,
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
+  const fileCount = new Set(session.filesModified ?? []).size
+  if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
   const suffix = [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }

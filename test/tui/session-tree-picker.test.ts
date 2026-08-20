@@ -281,4 +281,18 @@ describe("session tree picker", () => {
     expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe("3h ago")
     expect(formatRelativeTime(now - 14 * 86_400_000, now)).toBe("2w ago")
   })
+
+  test("shows and searches changed-file metadata", () => {
+    const sessions: SessionTreeInput[] = [{
+      id: "files",
+      title: "Update middleware",
+      filesModified: ["src/auth.ts", "src/session.ts", "src/auth.ts"],
+      timeUpdated: day(5, 9),
+    }]
+
+    expect(buildSessionTreeRows(sessions, null, day(5, 10))[0]).toMatchObject({
+      label: "Update middleware · 2 files · 1d ago",
+    })
+    expect(searchSessionTree(sessions, "session.ts").firstMatchId).toBe("files")
+  })
 })
