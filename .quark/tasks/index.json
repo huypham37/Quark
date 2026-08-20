@@ -2918,5 +2918,29 @@
     "profile": "coder",
     "timeCreated": 1784302513986,
     "timeUpdated": 1784302523985
+  },
+  {
+    "id": "task_27Ak0ISjux34sCYW",
+    "title": "Change the color of the subagent panel's progress bar to cyan (the border color) when the subagent is working.",
+    "description": "Change the color of the subagent panel's progress bar to cyan (the border color) when the subagent is working.",
+    "profile": "coder",
+    "timeCreated": 1785219722476,
+    "timeUpdated": 1785219726833
+  },
+  {
+    "id": "task_zAVEG4XrCt3pyuzV",
+    "title": "Add a /todo command that creates a human-readable todo list.",
+    "description": "Add a /todo command that creates a human-readable todo list.",
+    "profile": "coder",
+    "timeCreated": 1787117671647,
+    "timeUpdated": 1787117674415
+  },
+  {
+    "id": "task_lU6jykLP6FTbJxLr",
+    "title": "which branch are we on, and what changes did we make",
+    "description": "which branch are we on, and what changes did we make",
+    "profile": "coder",
+    "timeCreated": 1787206950995,
+    "timeUpdated": 1787206950995
   }
 ]

@@ -59,6 +59,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const isWaiting = () => props.subAgent.tools.some((tool) => tool.status === "awaiting_approval")
   const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
   const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
+  const meterColor = () => !isError() && !isDone() && !isWaiting() ? colors.borderActive : statusColor()
 
   const durationLabel = () => {
     if (isDone() && props.subAgent.durationMs != null) return ` (${formatSeconds(props.subAgent.durationMs)})`
@@ -99,7 +100,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       <SubAgentTokenMeter
         tokensUsed={props.subAgent.tokensUsed}
         tokenLimit={props.subAgent.tokenLimit}
-        color={statusColor()}
+        color={meterColor()}
       />
 
       <Show when={hasDetails()}>
