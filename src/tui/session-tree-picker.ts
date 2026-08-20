@@ -29,6 +29,38 @@ interface TaskGroup {
   sessions: SessionTreeInput[]
 }
 
+export interface SessionSearchResult {
+  sessions: SessionTreeInput[]
+  firstMatchId: string | null
+}
+
+export function searchSessionTree(sessions: SessionTreeInput[], query: string): SessionSearchResult {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return { sessions, firstMatchId: null }
+
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  const matches = sessions
+    .filter((session) => [session.title, session.taskTitle, session.id]
+      .some((value) => value?.toLowerCase().includes(normalized)))
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
+  const included = new Set(matches.map((session) => session.id))
+
+  for (const match of matches) {
+    const seen = new Set<string>()
+    let parentId = match.parentSessionId
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId)
+      included.add(parentId)
+      parentId = byId.get(parentId)?.parentSessionId
+    }
+  }
+
+  return {
+    sessions: sessions.filter((session) => included.has(session.id)),
+    firstMatchId: matches[0]?.id ?? null,
+  }
+}
+
 export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string | null): SessionTreeRow[] {
   const byId = new Map(sessions.map((session) => [session.id, session]))
   const current = currentSessionId ? byId.get(currentSessionId) : undefined

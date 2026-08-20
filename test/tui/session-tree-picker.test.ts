@@ -3,6 +3,7 @@ import {
   buildSessionTreeRows,
   firstSelectableSessionRow,
   moveSessionRowSelection,
+  searchSessionTree,
   type SessionTreeInput,
 } from "../../src/tui/session-tree-picker"
 
@@ -183,5 +184,43 @@ describe("session tree picker", () => {
         current: true,
       },
     ])
+  })
+
+  test("searches titles and keeps matching session ancestors", () => {
+    const sessions: SessionTreeInput[] = [
+      {
+        id: "root",
+        title: "Workspace Auth Cleanup",
+        taskId: "auth",
+        taskTitle: "Auth Refactor",
+        parentSessionId: null,
+        timeUpdated: day(5, 3),
+      },
+      {
+        id: "child",
+        title: "Add refresh token rotation",
+        taskId: "auth",
+        taskTitle: "Auth Refactor",
+        parentSessionId: "root",
+        timeUpdated: day(5, 4),
+      },
+      {
+        id: "other",
+        title: "Fix login redirect",
+        taskId: "login",
+        taskTitle: "Login Bug",
+        parentSessionId: null,
+        timeUpdated: day(5, 5),
+      },
+    ]
+
+    expect(searchSessionTree(sessions, "rotation")).toEqual({
+      sessions: sessions.slice(0, 2),
+      firstMatchId: "child",
+    })
+    expect(searchSessionTree(sessions, "login bug")).toEqual({
+      sessions: [sessions[2]!],
+      firstMatchId: "other",
+    })
   })
 })

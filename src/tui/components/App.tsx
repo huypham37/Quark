@@ -31,6 +31,7 @@ import {
   buildSessionTreeRows,
   firstSelectableSessionRow,
   moveSessionRowSelection,
+  searchSessionTree,
   type SessionTreeInput,
   type SessionTreeRow,
 } from "../session-tree-picker"
@@ -119,6 +120,7 @@ interface SlashState {
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
+  sessionInputs: SessionTreeInput[]
   sessionRows: SessionTreeRow[]
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
@@ -130,6 +132,7 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
+  sessionInputs: [],
   sessionRows: [],
   worktreeRows: [],
   selectedIndex: 0,
@@ -372,6 +375,7 @@ export const App: Component<AppProps> = (props) => {
       query,
       items: filtered,
       pickerItems: [],
+      sessionInputs: [],
       sessionRows: [],
       worktreeRows: [],
       selectedIndex: 0,
@@ -389,8 +393,21 @@ export const App: Component<AppProps> = (props) => {
 
     const s = slash()
 
-    // Sessions / worktree pickers: block all input changes (no filtering)
-    if ((s.mode === "sessions" || s.mode === "worktrees") && s.active) {
+    if (s.mode === "sessions" && s.active) {
+      const result = searchSessionTree(s.sessionInputs, newValue)
+      const sessionRows = buildSessionTreeRows(result.sessions, state.store.sessionId)
+      setSlash((prev) => ({
+        ...prev,
+        query: newValue,
+        sessionRows,
+        selectedIndex: firstSelectableSessionRow(sessionRows, result.firstMatchId ?? state.store.sessionId),
+      }))
+      setInputValue(newValue)
+      return
+    }
+
+    // Worktree picker does not accept text input.
+    if (s.mode === "worktrees" && s.active) {
       return
     }
 
@@ -444,6 +461,7 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: [],
+      sessionInputs: sessions,
       sessionRows,
       worktreeRows: [],
       selectedIndex: firstSelectableSessionRow(sessionRows, sid),
@@ -475,6 +493,7 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: [],
+      sessionInputs: [],
       sessionRows: [],
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
@@ -498,6 +517,7 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
+      sessionInputs: [],
       sessionRows: [],
       worktreeRows: [],
       selectedIndex: 0,
