@@ -15,6 +15,7 @@ import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
 import type { SessionPreview } from "../session-preview"
+import { sessionControls, type SessionAction } from "../session-controls"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
@@ -36,7 +37,7 @@ export type AutocompleteMode =
     rows: SessionTreeRow[]
     selectedIndex: number
     query: string
-    action: "browse" | "rename" | "delete"
+    action: SessionAction
     scope: SessionScope
     preview: SessionPreview | null
   }
@@ -299,11 +300,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         {sessionBody()}
         <box height={1} backgroundColor={colors.commandCardBg}>
           <text fg={colors.muted} bg={colors.commandCardBg}>
-            {m()?.type === "sessions" && m()!.action === "rename"
-              ? "Enter save  Esc cancel"
-              : m()?.type === "sessions" && m()!.action === "delete"
-                ? "Enter delete  Esc cancel"
-                : "↑↓ move  Enter open  Alt+1…9 quick  F2 rename  F3 pin  F4 scope  Del delete  Esc close"}
+            {sessionControls(dims().width, sessionMode()?.action ?? "browse")}
           </text>
         </box>
       </box>

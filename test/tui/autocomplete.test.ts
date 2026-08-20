@@ -8,6 +8,7 @@ import { activeTheme, applyTheme, colors, setTerminalBg } from "../../src/tui/th
 import { darkTheme } from "../../src/tui/themes/dark"
 import { scrollTopForSelection } from "../../src/tui/components/autocomplete-scroll"
 import type { AutocompleteMode } from "../../src/tui/components/autocomplete"
+import { sessionControls } from "../../src/tui/session-controls"
 
 describe("autocomplete dropdown background", () => {
   beforeEach(() => {
@@ -114,5 +115,13 @@ describe("scrollTopForSelection", () => {
     expect(scrollTopForSelection(modelsMode, 2, 20, 5)).toBe(1)
     // selectedIndex 19 → scrollIndex 20 → ideal 18, clamp to 15
     expect(scrollTopForSelection(modelsMode, 19, 20, 5)).toBe(15)
+  })
+})
+
+describe("session picker controls", () => {
+  test("uses a shorter key guide on narrow terminals", () => {
+    expect(sessionControls(140, "browse")).toContain("Alt+1…9")
+    expect(sessionControls(90, "browse")).not.toContain("Alt+1…9")
+    expect(sessionControls(60, "browse").length).toBeLessThan(54)
   })
 })
