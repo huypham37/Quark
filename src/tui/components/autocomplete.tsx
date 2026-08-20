@@ -14,6 +14,7 @@ import { sessionQuickSwitchNumber, type SessionScope, type SessionTreeRow } from
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
+import type { SessionPreview } from "../session-preview"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
@@ -37,6 +38,7 @@ export type AutocompleteMode =
     query: string
     action: "browse" | "rename" | "delete"
     scope: SessionScope
+    preview: SessionPreview | null
   }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
@@ -70,6 +72,15 @@ interface DropdownRow {
   bold: boolean
 }
 
+function previewText(preview: SessionPreview | null): string {
+  if (!preview?.user && !preview?.assistant) return "Preview\n\nNo transcript yet"
+  const clip = (text: string | null) => {
+    if (!text) return "—"
+    return text.length > 180 ? `${text.slice(0, 177)}…` : text
+  }
+  return `Preview\n\nYou: ${clip(preview.user)}\n\nQuark: ${clip(preview.assistant)}`
+}
+
 /**
  * Renders the dropdown content — single <For>, ZERO <Show> blocks.
  *
@@ -82,6 +93,10 @@ interface DropdownRow {
 const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props) => {
   const dims = useTerminalDimensions()
   const m = () => props.mode
+  const sessionMode = () => {
+    const mode = m()
+    return mode?.type === "sessions" ? mode : null
+  }
   let scrollRef: ScrollBoxRenderable | undefined
   const maxVisibleRows = () => {
     const isSession = m()?.type === "sessions"
@@ -281,7 +296,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
                 : `Sessions · ${m()?.type === "sessions" && m()!.scope === "project" ? "all worktrees" : "this worktree"} — type to search`}
           </text>
         </box>
-        {content()}
+        {sessionBody()}
         <box height={1} backgroundColor={colors.commandCardBg}>
           <text fg={colors.muted} bg={colors.commandCardBg}>
             {m()?.type === "sessions" && m()!.action === "rename"
@@ -289,6 +304,25 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
               : m()?.type === "sessions" && m()!.action === "delete"
                 ? "Enter delete  Esc cancel"
                 : "↑↓ move  Enter open  Alt+1…9 quick  F2 rename  F3 pin  F4 scope  Del delete  Esc close"}
+          </text>
+        </box>
+      </box>
+    )
+    : content()
+
+  const sessionBody = () => dims().width >= 120 && m()?.type === "sessions"
+    ? (
+      <box flexDirection="row" height={visibleHeight()}>
+        <box flexGrow={1}>{content()}</box>
+        <box
+          width={Math.min(48, Math.floor(dims().width * 0.38))}
+          border={["left"]}
+          borderColor={colors.outline}
+          paddingLeft={1}
+          backgroundColor={colors.commandCardBg}
+        >
+          <text fg={colors.textDim} bg={colors.commandCardBg}>
+            {previewText(sessionMode()?.preview ?? null)}
           </text>
         </box>
       </box>

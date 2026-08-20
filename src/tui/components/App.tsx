@@ -55,6 +55,7 @@ import { info as notifyInfo, warn as notifyWarn } from "../../notification/notif
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 import type { FileTarget } from "../editor"
+import type { SessionPreview } from "../session-preview"
 
 /** Command handler result */
 export type CommandResult =
@@ -69,6 +70,7 @@ interface AppProps {
   onCreateAsyncSession?: () => string
   onOpenFile?: (target: FileTarget) => void
   getSessions?: (scope: SessionScope) => SessionTreeInput[]
+  getSessionPreview?: (sessionId: string) => SessionPreview
   getWorktrees?: () => {
     id: string
     path: string
@@ -234,12 +236,35 @@ export const App: Component<AppProps> = (props) => {
   // --- Local UI signals (not in the global store — ephemeral) ---
   const [mention, setMention] = createSignal<MentionState>(MENTION_INACTIVE)
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
+  const [sessionPreview, setSessionPreview] = createSignal<SessionPreview | null>(null)
+  const previewCache = new Map<string, SessionPreview>()
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
   // Statistics panel visibility and content
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
   // Async panel side-session ID (created lazily on first panel submit)
   const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
+
+  createEffect(() => {
+    const picker = slash()
+    if (!picker.active || picker.mode !== "sessions" || !props.getSessionPreview) {
+      setSessionPreview(null)
+      return
+    }
+    const row = picker.sessionRows[picker.selectedIndex]
+    if (row?.type !== "session" && row?.type !== "orphan") {
+      setSessionPreview(null)
+      return
+    }
+    const cached = previewCache.get(row.id)
+    if (cached) {
+      setSessionPreview(cached)
+      return
+    }
+    const preview = props.getSessionPreview(row.id)
+    previewCache.set(row.id, preview)
+    setSessionPreview(preview)
+  })
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -470,6 +495,7 @@ export const App: Component<AppProps> = (props) => {
     query = "",
   ): boolean => {
     if (!props.getSessions) return false
+    previewCache.clear()
     const sessions = props.getSessions(scope)
     const sid = state.store.sessionId
     const result = searchSessionTree(sessions, query)
@@ -977,6 +1003,7 @@ export const App: Component<AppProps> = (props) => {
           query: s.query,
           action: s.sessionAction,
           scope: s.sessionScope,
+          preview: sessionPreview(),
         }
       }
       if (s.mode === "worktrees") {

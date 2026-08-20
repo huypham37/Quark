@@ -63,6 +63,7 @@ describe("scrollTopForSelection", () => {
     query: "",
     action: "browse" as const,
     scope: "worktree" as const,
+    preview: null,
   }
 
   test("returns 0 when the list fits in the viewport (no scroll needed)", () => {

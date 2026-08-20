@@ -42,6 +42,7 @@ import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktree
 import * as path from "path"
 import * as fs from "fs"
 import type { SessionScope } from "./session-tree-picker"
+import { buildSessionPreview } from "./session-preview"
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -713,6 +714,13 @@ function handleGetSessions(scope: SessionScope = "worktree") {
   }))
 }
 
+function handleGetSessionPreview(sessionId: string) {
+  const exists = listProjectWorktreeSessions().some((session) => session.id === sessionId)
+  if (!exists) return { user: null, assistant: null }
+  const { messages, parts } = loadMessages(sessionId)
+  return buildSessionPreview(dbToTuiMessages(messages, parts))
+}
+
 function handleGetWorktrees() {
   const currentPath = process.cwd()
   return getProjectWorktrees()
@@ -821,6 +829,7 @@ render(() => (
     onCreateAsyncSession={handleCreateAsyncSession}
     onOpenFile={(target) => { void openEditor(currentSession?.id ?? null, target) }}
     getSessions={handleGetSessions}
+    getSessionPreview={handleGetSessionPreview}
     getWorktrees={handleGetWorktrees}
     getModels={handleGetModels}
     getCurrentModel={handleGetCurrentModel}
