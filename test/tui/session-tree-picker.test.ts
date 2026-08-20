@@ -223,4 +223,27 @@ describe("session tree picker", () => {
       firstMatchId: "other",
     })
   })
+
+  test("shows pinned session groups before newer groups", () => {
+    const rows = buildSessionTreeRows([
+      {
+        id: "newer",
+        title: "Newer session",
+        taskId: "newer-task",
+        taskTitle: "Newer task",
+        timeUpdated: day(5, 8),
+      },
+      {
+        id: "pinned",
+        title: "Pinned session",
+        taskId: "pinned-task",
+        taskTitle: "Pinned task",
+        pinned: true,
+        timeUpdated: day(5, 1),
+      },
+    ], null)
+
+    expect(rows[0]).toEqual({ type: "task", label: "Pinned task", current: false })
+    expect(rows[1]).toMatchObject({ id: "pinned", label: "Pinned session · pinned · root · 5/1" })
+  })
 })

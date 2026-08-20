@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { setSessionStorageRoot } from "../../src/storage/session-path"
 import { ensureStorageRoot, replaySessionFile } from "../../src/storage/session-jsonl"
-import { createSession, deleteSession, getSession, listAllSessions, updateSession } from "../../src/session/session"
+import { createSession, deleteSession, getSession, listAllSessions, setSessionPinned, updateSession } from "../../src/session/session"
 
 let tmpDir: string
 
@@ -27,6 +27,7 @@ describe("session task metadata", () => {
     expect(session.summary).toBeNull()
     expect(session.parentSummary).toBeNull()
     expect(session.filesModified).toBeNull()
+    expect(session.pinned).toBe(false)
   })
 
   test("session updates persist through meta.json and JSONL replay", () => {
@@ -59,5 +60,15 @@ describe("session task metadata", () => {
 
     expect(() => getSession(session.id)).toThrow(`Session not found: ${session.id}`)
     expect(listAllSessions().some((item) => item.id === session.id)).toBe(false)
+  })
+
+  test("pins a session without changing its activity time", () => {
+    const session = createSession()
+
+    setSessionPinned(session.id, true)
+
+    expect(getSession(session.id).pinned).toBe(true)
+    expect(getSession(session.id).timeUpdated).toBe(session.timeUpdated)
+    expect(replaySessionFile(session.id).session?.pinned).toBe(true)
   })
 })

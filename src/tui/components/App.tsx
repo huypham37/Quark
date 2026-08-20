@@ -671,6 +671,19 @@ export const App: Component<AppProps> = (props) => {
         return true
       }
 
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f3") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type !== "session" && selected?.type !== "orphan") return true
+        const session = s.sessionInputs.find((item) => item.id === selected.id)
+        if (!session || !props.onCommand) return true
+        Promise.resolve(props.onCommand(
+          "pin-session",
+          JSON.stringify({ id: session.id, pinned: !session.pinned }),
+          state.store.sessionId,
+        )).then(() => openSessionsPicker(session.id))
+        return true
+      }
+
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,

@@ -279,7 +279,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
               ? "Enter save  Esc cancel"
               : m()?.type === "sessions" && m()!.action === "delete"
                 ? "Enter delete  Esc cancel"
-                : "↑↓ move  Enter open  F2 rename  Del delete  Esc close"}
+                : "↑↓ move  Enter open  F2 rename  F3 pin  Del delete  Esc close"}
           </text>
         </box>
       </box>

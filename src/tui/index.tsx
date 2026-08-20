@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listProjectSessions, getSession, setSessionTitle, deleteSession } from "../session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned, deleteSession } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -388,6 +388,20 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       }
       deleteSession(session.id)
       notifyInfo("Session", "Session deleted", 2000)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
+    }
+    return { handled: true }
+  }
+
+  if (command === "pin-session") {
+    try {
+      const input = JSON.parse(args) as { id?: string; pinned?: boolean }
+      const session = listProjectSessions().find((item) => item.id === input.id)
+      if (!session || typeof input.pinned !== "boolean") throw new Error("Session not found")
+      setSessionPinned(session.id, input.pinned)
+      notifyInfo("Session", input.pinned ? "Session pinned" : "Session unpinned", 1500)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })

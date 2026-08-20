@@ -42,6 +42,7 @@ function normalizeSession(session: Session): Session {
     summary: session.summary ?? null,
     parentSummary: session.parentSummary ?? null,
     filesModified: session.filesModified ?? null,
+    pinned: session.pinned ?? false,
   }
 }
 
@@ -318,6 +319,7 @@ function replayEvents(events: SessionLogEvent[]): {
           if (event.patch.summary !== undefined) session.summary = event.patch.summary
           if (event.patch.parentSummary !== undefined) session.parentSummary = event.patch.parentSummary
           if (event.patch.filesModified !== undefined) session.filesModified = event.patch.filesModified
+          if (event.patch.pinned !== undefined) session.pinned = event.patch.pinned
           if (event.patch.timeUpdated !== undefined) session.timeUpdated = event.patch.timeUpdated
         }
         break

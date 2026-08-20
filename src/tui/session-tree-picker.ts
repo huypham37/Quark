@@ -4,6 +4,7 @@ export interface SessionTreeInput {
   taskId?: string | null
   taskTitle?: string
   parentSessionId?: string | null
+  pinned?: boolean
   timeUpdated: number
 }
 
@@ -25,6 +26,7 @@ interface TaskGroup {
   key: string
   title: string
   current: boolean
+  pinned: boolean
   updated: number
   sessions: SessionTreeInput[]
 }
@@ -81,7 +83,10 @@ export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessio
 
   if (orphanSessions.length > 0) {
     if (rows.length > 0) rows.push({ type: "spacer" })
-    for (const session of orphanSessions.sort((a, b) => b.timeUpdated - a.timeUpdated)) {
+    for (const session of orphanSessions.sort((a, b) => {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
+      return b.timeUpdated - a.timeUpdated
+    })) {
       rows.push({
         type: "orphan",
         id: session.id,
@@ -124,6 +129,7 @@ function buildGroups(
     if (existing) {
       existing.sessions.push(session)
       existing.updated = Math.max(existing.updated, session.timeUpdated)
+      existing.pinned ||= !!session.pinned
       continue
     }
 
@@ -131,12 +137,14 @@ function buildGroups(
       key,
       title: taskTitle(session, byId),
       current: key === currentTaskKey,
+      pinned: !!session.pinned,
       updated: session.timeUpdated,
       sessions: [session],
     })
   }
 
   return [...groups.values()].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
     if (a.current !== b.current) return a.current ? -1 : 1
     return b.updated - a.updated
   })
@@ -160,7 +168,10 @@ function sessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string 
 
   const rows: SessionTreeRow[] = []
   const visited = new Set<string>()
-  const sorted = (items: SessionTreeInput[]) => items.sort((a, b) => b.timeUpdated - a.timeUpdated)
+  const sorted = (items: SessionTreeInput[]) => items.sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
+    return b.timeUpdated - a.timeUpdated
+  })
 
   const visit = (
     session: SessionTreeInput,
@@ -224,6 +235,7 @@ function sessionLabel(
 ): string {
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
+  if (session.pinned) markers.push("pinned")
   if (root) markers.push("root")
 
   const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
@@ -231,7 +243,9 @@ function sessionLabel(
 }
 
 function orphanLabel(session: SessionTreeInput, currentSessionId: string | null): string {
-  const markers = session.id === currentSessionId ? ["current"] : []
+  const markers: string[] = []
+  if (session.id === currentSessionId) markers.push("current")
+  if (session.pinned) markers.push("pinned")
   const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }

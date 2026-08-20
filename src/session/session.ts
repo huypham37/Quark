@@ -46,6 +46,8 @@ export interface Session {
   parentSummary: string | null
   /** Workspace files modified during this session */
   filesModified: string[] | null
+  /** Whether the session stays above ordinary recent sessions */
+  pinned: boolean
   /** Unix timestamp (ms) when the session was created */
   timeCreated: number
   /** Unix timestamp (ms) of the last activity */
@@ -54,7 +56,7 @@ export interface Session {
 
 export type SessionPatch = Partial<Pick<
   Session,
-  "title" | "taskId" | "summary" | "parentSummary" | "filesModified" | "timeUpdated"
+  "title" | "taskId" | "summary" | "parentSummary" | "filesModified" | "pinned" | "timeUpdated"
 >>
 
 /**
@@ -93,6 +95,7 @@ export function createSession(opts?: {
     summary: opts?.summary ?? null,
     parentSummary: opts?.parentSummary ?? null,
     filesModified: opts?.filesModified ?? null,
+    pinned: false,
     timeCreated: now,
     timeUpdated: now,
   }
@@ -182,6 +185,11 @@ export function updateSession(id: string, patch: SessionPatch): void {
 
 export function setSessionTitle(id: string, title: string): void {
   updateSession(id, { title })
+}
+
+export function setSessionPinned(id: string, pinned: boolean): void {
+  const session = getSession(id)
+  updateSession(id, { pinned, timeUpdated: session.timeUpdated })
 }
 
 export function deleteSession(id: string): void {
