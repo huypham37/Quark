@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listProjectSessions, getSession } from "../session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -358,6 +358,21 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     await bootstrap({ profileTools: activeAgent.tools, boundSkills: activeAgent.skills })
 
     notifyInfo("Skills", `Added skill: ${skillName}`, 3000)
+    return { handled: true }
+  }
+
+  if (command === "rename-session") {
+    try {
+      const input = JSON.parse(args) as { id?: string; title?: string }
+      const title = input.title?.trim()
+      const session = listProjectSessions().find((item) => item.id === input.id)
+      if (!session || !title) throw new Error("Invalid session rename")
+      setSessionTitle(session.id, title)
+      notifyInfo("Session", `Renamed to: ${title}`, 2000)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
+    }
     return { handled: true }
   }
 

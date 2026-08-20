@@ -30,7 +30,7 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number; query: string }
+  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number; query: string; renaming: boolean }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
@@ -257,14 +257,20 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       <box flexDirection="column">
         <box height={1} backgroundColor={colors.commandCardBg}>
           <text fg={colors.text} bg={colors.commandCardBg} bold>
-            {m()?.type === "sessions" && m()!.query
-              ? `Sessions — search: ${m()!.query}`
-              : "Sessions — type to search"}
+            {m()?.type === "sessions" && m()!.renaming
+              ? "Rename session"
+              : m()?.type === "sessions" && m()!.query
+                ? `Sessions — search: ${m()!.query}`
+                : "Sessions — type to search"}
           </text>
         </box>
         {content()}
         <box height={1} backgroundColor={colors.commandCardBg}>
-          <text fg={colors.muted} bg={colors.commandCardBg}>↑↓ move  Enter open  Esc close</text>
+          <text fg={colors.muted} bg={colors.commandCardBg}>
+            {m()?.type === "sessions" && m()!.renaming
+              ? "Enter save  Esc cancel"
+              : "↑↓ move  Enter open  F2 rename  Esc close"}
+          </text>
         </box>
       </box>
     )

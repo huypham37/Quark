@@ -122,6 +122,7 @@ interface SlashState {
   pickerItems: PickerItem[]
   sessionInputs: SessionTreeInput[]
   sessionRows: SessionTreeRow[]
+  renamingSession: boolean
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
@@ -134,6 +135,7 @@ const SLASH_INACTIVE: SlashState = {
   pickerItems: [],
   sessionInputs: [],
   sessionRows: [],
+  renamingSession: false,
   worktreeRows: [],
   selectedIndex: 0,
 }
@@ -377,6 +379,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: [],
       sessionRows: [],
+      renamingSession: false,
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -394,6 +397,11 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
 
     if (s.mode === "sessions" && s.active) {
+      if (s.renamingSession) {
+        setSlash((prev) => ({ ...prev, query: newValue }))
+        setInputValue(newValue)
+        return
+      }
       const result = searchSessionTree(s.sessionInputs, newValue)
       const sessionRows = buildSessionTreeRows(result.sessions, state.store.sessionId)
       setSlash((prev) => ({
@@ -450,7 +458,7 @@ export const App: Component<AppProps> = (props) => {
     setInputValue(text)
   }
 
-  const openSessionsPicker = (): boolean => {
+  const openSessionsPicker = (preferredSessionId?: string): boolean => {
     if (!props.getSessions) return false
     const sessions = props.getSessions()
     const sid = state.store.sessionId
@@ -463,8 +471,9 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: sessions,
       sessionRows,
+      renamingSession: false,
       worktreeRows: [],
-      selectedIndex: firstSelectableSessionRow(sessionRows, sid),
+      selectedIndex: firstSelectableSessionRow(sessionRows, preferredSessionId ?? sid),
     })
     setInputText("")
     return true
@@ -495,6 +504,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: [],
       sessionInputs: [],
       sessionRows: [],
+      renamingSession: false,
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
     })
@@ -519,6 +529,7 @@ export const App: Component<AppProps> = (props) => {
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
       sessionInputs: [],
       sessionRows: [],
+      renamingSession: false,
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -589,6 +600,41 @@ export const App: Component<AppProps> = (props) => {
   const handleDropdownKey = (name: string, isTab: boolean, isReturn: boolean, isEscape: boolean): boolean => {
     const s = slash()
     if (s.active) {
+      if (s.mode === "sessions" && s.renamingSession) {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
+          const title = inputValue().trim()
+          if (!title) return true
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          if (props.onCommand) {
+            Promise.resolve(props.onCommand(
+              "rename-session",
+              JSON.stringify({ id: selected.id, title }),
+              state.store.sessionId,
+            )).then(() => openSessionsPicker(selected.id))
+          }
+          return true
+        }
+        if (isEscape) {
+          openSessionsPicker(
+            selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined,
+          )
+          return true
+        }
+        return false
+      }
+
+      if (s.mode === "sessions" && name === "f2") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const title = s.sessionInputs.find((session) => session.id === selected.id)?.title ?? ""
+          setSlash((prev) => ({ ...prev, renamingSession: true, query: title }))
+          setInputText(title)
+        }
+        return true
+      }
+
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
@@ -831,7 +877,13 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
     if (s.active) {
       if (s.mode === "sessions") {
-        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex, query: s.query }
+        return {
+          type: "sessions",
+          rows: s.sessionRows,
+          selectedIndex: s.selectedIndex,
+          query: s.query,
+          renaming: s.renamingSession,
+        }
       }
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
