@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildSessionTreeRows,
   firstSelectableSessionRow,
+  formatRelativeTime,
   moveSessionRowSelection,
   searchSessionTree,
   sessionQuickSwitchNumber,
@@ -55,13 +56,13 @@ describe("session tree picker", () => {
       },
     ]
 
-    const rows = buildSessionTreeRows(sessions, "csrf")
+    const rows = buildSessionTreeRows(sessions, "csrf", day(5, 10))
     expect(rows).toEqual([
       { type: "task", label: "Auth Middleware Refactor", current: true },
       {
         type: "session",
         id: "root",
-        label: "Workspace Auth Cleanup · root · 5/3",
+        label: "Workspace Auth Cleanup · root · 1w ago",
         current: false,
         root: true,
         guides: [],
@@ -70,7 +71,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "cookies",
-        label: "Move tokens to cookies · 5/5",
+        label: "Move tokens to cookies · 5d ago",
         current: false,
         root: false,
         guides: [],
@@ -79,7 +80,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "csrf",
-        label: "Add CSRF protection · current · 5/6",
+        label: "Add CSRF protection · current · 4d ago",
         current: true,
         root: false,
         guides: [true],
@@ -88,7 +89,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "rotation",
-        label: "Add refresh token rotation · 5/4",
+        label: "Add refresh token rotation · 6d ago",
         current: false,
         root: false,
         guides: [],
@@ -99,7 +100,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "login",
-        label: "Fix Login Redirect Loop · root · 5/2",
+        label: "Fix Login Redirect Loop · root · 1w ago",
         current: false,
         root: true,
         guides: [],
@@ -164,14 +165,14 @@ describe("session tree picker", () => {
         parentSessionId: null,
         timeUpdated: day(5, 8),
       },
-    ], "orphan")
+    ], "orphan", day(5, 10))
 
     expect(rows).toEqual([
       { type: "task", label: "Real Task", current: false },
       {
         type: "session",
         id: "task-root",
-        label: "Task Root · root · 5/4",
+        label: "Task Root · root · 6d ago",
         current: false,
         root: true,
         guides: [],
@@ -181,7 +182,7 @@ describe("session tree picker", () => {
       {
         type: "orphan",
         id: "orphan",
-        label: "Standalone Session · current · 5/8",
+        label: "Standalone Session · current · 2d ago",
         current: true,
       },
     ])
@@ -242,10 +243,10 @@ describe("session tree picker", () => {
         pinned: true,
         timeUpdated: day(5, 1),
       },
-    ], null)
+    ], null, day(5, 10))
 
     expect(rows[0]).toEqual({ type: "task", label: "Pinned task", current: false })
-    expect(rows[1]).toMatchObject({ id: "pinned", label: "Pinned session · pinned · root · 5/1" })
+    expect(rows[1]).toMatchObject({ id: "pinned", label: "Pinned session · pinned · root · 1w ago" })
   })
 
   test("numbers the first nine selectable rows for quick switching", () => {
@@ -270,5 +271,14 @@ describe("session tree picker", () => {
     expect(sessionQuickSwitchNumber(rows, 0)).toBeNull()
     expect(sessionQuickSwitchNumber(rows, 1)).toBe(1)
     expect(sessionQuickSwitchNumber(rows, 2)).toBe(2)
+  })
+
+  test("formats activity time for quick scanning", () => {
+    const now = day(5, 10)
+
+    expect(formatRelativeTime(now - 30_000, now)).toBe("now")
+    expect(formatRelativeTime(now - 8 * 60_000, now)).toBe("8m ago")
+    expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe("3h ago")
+    expect(formatRelativeTime(now - 14 * 86_400_000, now)).toBe("2w ago")
   })
 })

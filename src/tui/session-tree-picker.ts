@@ -63,7 +63,11 @@ export function searchSessionTree(sessions: SessionTreeInput[], query: string): 
   }
 }
 
-export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string | null): SessionTreeRow[] {
+export function buildSessionTreeRows(
+  sessions: SessionTreeInput[],
+  currentSessionId: string | null,
+  now = Date.now(),
+): SessionTreeRow[] {
   const byId = new Map(sessions.map((session) => [session.id, session]))
   const current = currentSessionId ? byId.get(currentSessionId) : undefined
   const taskSessions = sessions.filter((session) => session.taskId)
@@ -78,7 +82,7 @@ export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessio
 
     rows.push({ type: "task", label: group.title, current: group.current })
 
-    rows.push(...sessionTreeRows(group.sessions, currentSessionId))
+    rows.push(...sessionTreeRows(group.sessions, currentSessionId, now))
   }
 
   if (orphanSessions.length > 0) {
@@ -90,7 +94,7 @@ export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessio
       rows.push({
         type: "orphan",
         id: session.id,
-        label: orphanLabel(session, currentSessionId),
+        label: orphanLabel(session, currentSessionId, now),
         current: session.id === currentSessionId,
       })
     }
@@ -159,7 +163,11 @@ function buildGroups(
   })
 }
 
-function sessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string | null): SessionTreeRow[] {
+function sessionTreeRows(
+  sessions: SessionTreeInput[],
+  currentSessionId: string | null,
+  now: number,
+): SessionTreeRow[] {
   const byId = new Map(sessions.map((session) => [session.id, session]))
   const children = new Map<string, SessionTreeInput[]>()
   const roots: SessionTreeInput[] = []
@@ -194,7 +202,7 @@ function sessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string 
     rows.push({
       type: "session",
       id: session.id,
-      label: sessionLabel(session, currentSessionId, root),
+      label: sessionLabel(session, currentSessionId, root, now),
       current: session.id === currentSessionId,
       root,
       guides,
@@ -241,21 +249,22 @@ function sessionLabel(
   session: SessionTreeInput,
   currentSessionId: string | null,
   root: boolean,
+  now: number,
 ): string {
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
   if (root) markers.push("root")
 
-  const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
+  const suffix = [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }
 
-function orphanLabel(session: SessionTreeInput, currentSessionId: string | null): string {
+function orphanLabel(session: SessionTreeInput, currentSessionId: string | null, now: number): string {
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
-  const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
+  const suffix = [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }
 
@@ -263,7 +272,15 @@ function selectableRow(row: SessionTreeRow | undefined): row is Extract<SessionT
   return row?.type === "session" || row?.type === "orphan"
 }
 
-function formatDate(time: number): string {
-  const date = new Date(time)
-  return `${date.getMonth() + 1}/${date.getDate()}`
+export function formatRelativeTime(time: number, now = Date.now()): string {
+  const minutes = Math.floor(Math.max(0, now - time) / 60_000)
+  if (minutes < 1) return "now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
 }
