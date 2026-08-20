@@ -190,7 +190,13 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
             : item.type === "orphan"
               ? `${sel ? "❯ " : "  "}${number}${item.label}`
               : `${sel ? "❯ " : "  "}${number}${tree}${item.label}`,
-          fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
+          fg: sel
+            ? colors.primary
+            : item.type === "task"
+              ? (item.current ? colors.primary : colors.text)
+              : item.running
+                ? colors.success
+                : colors.textDim,
           bg: colors.commandCardBg,
           bold: sel,
         })

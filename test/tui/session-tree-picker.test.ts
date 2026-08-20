@@ -295,4 +295,19 @@ describe("session tree picker", () => {
     })
     expect(searchSessionTree(sessions, "session.ts").firstMatchId).toBe("files")
   })
+
+  test("marks a running session", () => {
+    const rows = buildSessionTreeRows([{
+      id: "running",
+      title: "Active session",
+      running: true,
+      timeUpdated: day(5, 10),
+    }], "running", day(5, 10))
+
+    expect(rows[0]).toMatchObject({
+      id: "running",
+      label: "Active session · current · ● running · now",
+      running: true,
+    })
+  })
 })

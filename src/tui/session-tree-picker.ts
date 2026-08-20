@@ -6,6 +6,7 @@ export interface SessionTreeInput {
   parentSessionId?: string | null
   pinned?: boolean
   filesModified?: string[] | null
+  running?: boolean
   timeUpdated: number
 }
 
@@ -19,8 +20,9 @@ export type SessionTreeRow =
     root: boolean
     guides: boolean[]
     connector: "root" | "branch" | "last"
+    running?: boolean
   }
-  | { type: "orphan"; id: string; label: string; current: boolean }
+  | { type: "orphan"; id: string; label: string; current: boolean; running?: boolean }
   | { type: "spacer" }
 
 interface TaskGroup {
@@ -97,6 +99,7 @@ export function buildSessionTreeRows(
         id: session.id,
         label: orphanLabel(session, currentSessionId, now),
         current: session.id === currentSessionId,
+        ...(session.running ? { running: true } : {}),
       })
     }
   }
@@ -208,6 +211,7 @@ function sessionTreeRows(
       root,
       guides,
       connector,
+      ...(session.running ? { running: true } : {}),
     })
 
     const descendants = sorted(children.get(session.id) ?? [])
@@ -256,6 +260,7 @@ function sessionLabel(
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
   if (root) markers.push("root")
+  if (session.running) markers.push("● running")
   const fileCount = new Set(session.filesModified ?? []).size
   if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
 
@@ -267,6 +272,7 @@ function orphanLabel(session: SessionTreeInput, currentSessionId: string | null,
   const markers: string[] = []
   if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
+  if (session.running) markers.push("● running")
   const fileCount = new Set(session.filesModified ?? []).size
   if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
   const suffix = [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")

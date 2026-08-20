@@ -681,6 +681,7 @@ function handleGetSessions() {
   return listProjectSessions().map((session) => ({
     ...session,
     taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
+    running: isActive(session.id),
   }))
 }
 
