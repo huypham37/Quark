@@ -112,7 +112,9 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   // The cursor stays put; the list slides past it (vim `scrolloff` style).
   createEffect(() => {
     const mode = m()
-    if (!mode || !scrollRef) return
+    // Session rows are windowed below. Keeping every row in the ScrollBox
+    // mounts thousands of renderables even though only eight are visible.
+    if (!mode || mode.type === "sessions" || !scrollRef) return
     const totalRows = rows().length
     const viewportHeight = Math.min(totalRows, maxVisibleRows())
     const newScrollTop = scrollTopForSelection(
@@ -250,6 +252,15 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     return result
   }
 
+  const sessionWindow = () => {
+    const mode = sessionMode()
+    if (!mode) return { rows: rows(), start: 0 }
+    const allRows = rows()
+    const height = Math.min(allRows.length, maxVisibleRows())
+    const start = scrollTopForSelection(mode, mode.selectedIndex, allRows.length, height)
+    return { rows: allRows.slice(start, start + height), start }
+  }
+
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
   const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
@@ -262,30 +273,34 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     ? bodyHeight() + 2 + (isSessionPicker() ? 2 : 0)
     : visibleHeight()
 
-  const content = () => (
-    <scrollbox
-      ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
-      height={bodyHeight()}
-      scrollbarOptions={{ visible: false }}
-      backgroundColor={panelBg()}
-    >
-      <For each={rows()}>
-        {(row) => {
-          // Pad label with spaces to fill the full row width so bg covers all cells.
-          // Keep the row background inside the picker shell, not under its border.
-          const padded = () => {
-            const w = dims().width - (isSessionCard() ? 10 : 6)
-            return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
-          }
-          return (
-            <box height={1} backgroundColor={row.bg}>
-              <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
-            </box>
-          )
-        }}
-      </For>
-    </scrollbox>
-  )
+  const content = () => {
+    const isSession = isSessionPicker()
+    const visibleRows = () => isSession ? sessionWindow().rows : rows()
+    return (
+      <scrollbox
+        ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
+        height={bodyHeight()}
+        scrollbarOptions={{ visible: false }}
+        backgroundColor={panelBg()}
+      >
+        <For each={visibleRows()}>
+          {(row) => {
+            // Pad label with spaces to fill the full row width so bg covers all cells.
+            // Keep the row background inside the picker shell, not under its border.
+            const padded = () => {
+              const w = dims().width - (isSessionCard() ? 10 : 6)
+              return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
+            }
+            return (
+              <box height={1} backgroundColor={row.bg}>
+                <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
+              </box>
+            )
+          }}
+        </For>
+      </scrollbox>
+    )
+  }
 
   const cardContent = () => isSessionPicker()
     ? (

@@ -60,3 +60,8 @@ export function getSessionLogPath(sessionId: string): string {
 export function getSessionMetaPath(sessionId: string): string {
   return join(storageRoot, sessionId, "meta.json")
 }
+
+/** Get the aggregate session metadata index path. */
+export function getSessionIndexPath(): string {
+  return join(storageRoot, "index.json")
+}

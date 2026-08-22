@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot, replaySessionFile } from "../../src/storage/session-jsonl"
+import { getSessionIndexPath, setSessionStorageRoot } from "../../src/storage/session-path"
+import { ensureStorageRoot, replaySessionFile, scanSessionMetas } from "../../src/storage/session-jsonl"
 import { createSession, deleteSession, getSession, listAllSessions, setSessionPinned, updateSession } from "../../src/session/session"
 
 let tmpDir: string
@@ -70,5 +70,27 @@ describe("session task metadata", () => {
     expect(getSession(session.id).pinned).toBe(true)
     expect(getSession(session.id).timeUpdated).toBe(session.timeUpdated)
     expect(replaySessionFile(session.id).session?.pinned).toBe(true)
+  })
+
+  test("keeps the aggregate index current for create, update, and delete", () => {
+    const session = createSession()
+    expect(existsSync(getSessionIndexPath())).toBe(true)
+    expect(scanSessionMetas().some((item) => item.id === session.id)).toBe(true)
+
+    updateSession(session.id, { title: "Indexed session" })
+    expect(scanSessionMetas().find((item) => item.id === session.id)?.title).toBe("Indexed session")
+
+    deleteSession(session.id)
+    expect(scanSessionMetas().some((item) => item.id === session.id)).toBe(false)
+  })
+
+  test("rebuilds the aggregate index when it is missing or corrupt", () => {
+    const session = createSession()
+    unlinkSync(getSessionIndexPath())
+    expect(scanSessionMetas().some((item) => item.id === session.id)).toBe(true)
+    expect(existsSync(getSessionIndexPath())).toBe(true)
+
+    writeFileSync(getSessionIndexPath(), "not json")
+    expect(scanSessionMetas().some((item) => item.id === session.id)).toBe(true)
   })
 })

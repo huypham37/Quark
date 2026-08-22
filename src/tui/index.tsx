@@ -736,8 +736,8 @@ function handleGetSessions(scope: SessionScope = "worktree") {
 }
 
 function handleGetSessionPreview(sessionId: string) {
-  const exists = listProjectWorktreeSessions().some((session) => session.id === sessionId)
-  if (!exists) return { user: null, assistant: null }
+  // The picker supplied this ID from handleGetSessions, so re-scanning every
+  // session just to validate it makes opening and navigating the picker slow.
   const { messages, parts } = loadMessages(sessionId)
   return buildSessionPreview(dbToTuiMessages(messages, parts))
 }
