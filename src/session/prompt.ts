@@ -61,7 +61,7 @@ bus.on("permission-rejected", (data) => {
  * then iterates the agent loop until the model returns `stop` or `max_steps` is reached.
  *
  * @param input.sessionId - Resume an existing session (optional)
- * @param input.parentSessionId - Link this session as a sub-agent child (optional)
+ * @param input.parentSessionId - Link this session as a sub-agent child (optional; used internally)
  * @param input.parts - User message parts (text content)
  * @param input.images - Optional image attachments (`mime` + base64 `data`)
  * @param input.model - Override the provider and model for this call
@@ -94,7 +94,7 @@ export async function prompt(input: {
   } else {
     const sess = createSession(
       input.ephemeral
-        ? { ephemeral: true }
+        ? { ephemeral: true, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
         : input.parentSessionId
           ? { parentSessionId: input.parentSessionId, kind: "subagent" }
           : undefined,

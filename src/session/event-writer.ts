@@ -5,7 +5,7 @@
 // NDJSON lines to stderr with a `QUARK_EVENT:` prefix so the parent's Bash
 // tool can parse them out and render sub-agent activity in the TUI.
 //
-// Activated when QUARK_EMIT_EVENTS=1 (set automatically for --sub-agent).
+// Activated by the internal subagent supervisor via QUARK_EMIT_EVENTS=1.
 
 import { bus } from "./events"
 import { getModelLimit } from "../provider/models"

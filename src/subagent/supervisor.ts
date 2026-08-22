@@ -50,9 +50,8 @@ export async function runSubagent(
   const runtime = resolveSubagentCommand()
   const childArgs = [
     ...runtime.args,
-    "--sub-agent",
     "--profile", input.profile,
-    "--prompt", input.prompt,
+    "--message", input.prompt,
     "--no-store",
   ]
 
@@ -63,7 +62,7 @@ export async function runSubagent(
         cwd: process.cwd(),
         env: {
           ...process.env,
-          QUARK_SESSION_ID: ctx.sessionId,
+          QUARK_PARENT_SESSION_ID: ctx.sessionId,
           QUARK_EMIT_EVENTS: "1",
         },
         stdio: ["pipe", "pipe", "pipe"],

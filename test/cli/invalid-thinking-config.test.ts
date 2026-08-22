@@ -78,7 +78,7 @@ profiles:
     thinking_effort: xhigh
 `)
 
-    const result = runCli(["--profile", "finder", "--prompt", "hello"])
+    const result = runCli(["--profile", "finder", "--message", "hello"])
 
     const stderr = result.stderr.toString()
 
@@ -94,7 +94,7 @@ profiles:
     thinking_effort: high
 `)
 
-    const result = runCli(["--profile", "bad", "--prompt", "hello"])
+    const result = runCli(["--profile", "bad", "--message", "hello"])
 
     const stderr = result.stderr.toString()
 
@@ -114,7 +114,7 @@ profiles:
     thinking_effort: high
 `)
 
-    const result = runCli(["--profile", "finder", "--prompt", "hello"])
+    const result = runCli(["--profile", "finder", "--message", "hello"])
 
     const stderr = result.stderr.toString()
 
@@ -133,7 +133,7 @@ profiles:
     thinking_effort: xhigh
 `)
 
-    const result = runCli(["--profile", "coder", "--prompt", "hello"])
+    const result = runCli(["--profile", "coder", "--message", "hello"])
 
     const stderr = result.stderr.toString()
 

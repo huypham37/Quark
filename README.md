@@ -71,8 +71,8 @@ A convenience launcher lives at [`bin/quark`](bin/quark) — add `bin/` to your
 # Interactive TUI
 quark
 
-# One-off prompt with a profile
-quark --profile coder --prompt "fix the bug in main.ts"
+# One-off message with a profile
+quark --profile coder --message "fix the bug in main.ts"
 
 # Pick a specific model for a single run
 quark --model copilot/claude-sonnet-4.5 "use this model for this run"
@@ -83,8 +83,6 @@ quark --no-store "what does this regex do?"
 # Resume an existing session
 quark --session <id>
 
-# Spawn a research sub-agent under a parent session
-quark --parent-session <id> --profile researcher --prompt "research the auth flow"
 ```
 
 ### CLI flags
@@ -92,11 +90,9 @@ quark --parent-session <id> --profile researcher --prompt "research the auth flo
 | Flag | Description |
 |------|-------------|
 | `-p, --profile <name>` | Profile to use (default: from config) |
-| `-m, --prompt <text>` | Prompt text (alternative to a positional arg) |
+| `-m, --message <text>` | Message text (alternative to a positional arg) |
 | `-s, --session <id>` | Resume an existing session |
 | `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
-| `--parent-session <id>` | Create a child session under this parent |
-| `--sub-agent` | Create a child session (reads `QUARK_SESSION_ID` from env) |
 | `--no-store` | Run an ephemeral session — never written to disk |
 | `--verbose` | Print every tool call + result to stderr |
 | `-l, --list-profiles` | List available profiles |
@@ -169,7 +165,7 @@ with `--profile <name>`:
 
 ```bash
 quark --list-profiles
-quark --profile researcher --prompt "..."
+quark --profile researcher --message "..."
 ```
 
 ---
