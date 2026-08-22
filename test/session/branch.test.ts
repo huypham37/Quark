@@ -408,4 +408,36 @@ describe("session branching", () => {
     expect(extractLastUserText(child.messages, child.parts)).toBe("Use a cookie-based design")
     expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
   })
+
+  test("forks with full history without a follow-up goal", () => {
+    const task = createTask({
+      title: "Conversation fork",
+      description: "Fork without sending a prompt",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const child = loadMessages(result.sessionId)
+
+    expect(result.promptMessageId).toBeUndefined()
+    expect(child.messages).toHaveLength(2)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Inspect the auth flow")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
+  })
 })

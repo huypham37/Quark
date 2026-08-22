@@ -60,8 +60,11 @@ describe("filterCommands", () => {
   })
 
   test("compact command has an optional goal", () => {
-    const result = filterCommands("compact")
-    expect(result[0]!.usage).toBe("[goal]")
+    expect(filterCommands("compact")[0]!.usage).toBe("[goal]")
+  })
+
+  test("steer command has no usage hint", () => {
+    expect(filterCommands("steer")[0]!.usage).toBeUndefined()
   })
 
   test("model command has usage hint", () => {

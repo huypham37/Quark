@@ -215,17 +215,21 @@ function activateBranch(branch: BranchResult, goal: string, label: string): void
   process.env.QUARK_SESSION_ID = branch.sessionId
   const child = loadMessages(branch.sessionId)
   const tuiMessages = dbToTuiMessages(child.messages, child.parts)
-    .filter((message) => message.id === branch.promptMessageId)
+  const visibleMessages = branch.promptMessageId
+    ? tuiMessages.filter((message) => message.id === branch.promptMessageId)
+    : tuiMessages
   const modelMessages = toModelMessages(child.messages, child.parts)
   const system = buildSystem(activeAgent)
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const estimatedTokens = estimateTokens(systemStr, modelMessages)
   bus.emit("session-switch", {
-    kind: "branch",
+    kind: branch.promptMessageId ? "branch" : "replace",
     sessionId: branch.sessionId,
-    messages: tuiMessages as any,
+    messages: visibleMessages as any,
     estimatedTokens,
-    divider: { id: `branch:${branch.sessionId}`, goal, label },
+    ...(branch.promptMessageId
+      ? { divider: { id: `branch:${branch.sessionId}`, goal, label } }
+      : {}),
   })
 }
 
@@ -623,18 +627,14 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     }
 
     case "steer": {
-      if (!args.trim()) {
-        bus.emit("error", { sessionId: sid, error: new Error("Usage: /steer <goal>") })
-        return { handled: true }
-      }
-
+      const goal = args.trim()
       bus.emit("steer-start", { sessionId: sid })
       let steeringEnded = false
       try {
         const { messages, parts } = loadMessages(sid)
         const branch = createSteerBranch({
           sessionId: sid,
-          prompt: args.trim(),
+          prompt: goal || undefined,
           profile: activeAgent.id,
           messages,
           parts,
@@ -642,9 +642,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
         bus.emit("steer-end", { sessionId: sid })
         steeringEnded = true
-        activateBranch(branch, args.trim(), "Steered")
-        runBranchGoal(branch, args.trim())
-        notifyInfo("Steer", `Branched to new session`, 3000)
+        activateBranch(branch, goal, "Steered")
+        if (goal) runBranchGoal(branch, goal)
+        notifyInfo("Steer", "Branched to new session", 3000)
       } catch (err) {
         bus.emit("error", {
           sessionId: sid,

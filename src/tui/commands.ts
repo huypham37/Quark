@@ -25,7 +25,7 @@ export const commands: SlashCommand[] = [
   { id: "reload-config", description: "Reload config without restarting" },
   { id: "undo", description: "Undo last agent file changes" },
   { id: "compact", description: "Branch with LLM-compacted history", usage: "[goal]" },
-  { id: "steer", description: "Branch with full history and a new goal", usage: "<goal>" },
+  { id: "steer", description: "Branch with full history" },
   { id: "goal", description: "Pursue a goal autonomously until done", usage: "<goal description>" },
   { id: "auth", description: "Show provider authentication status" },
   { id: "statistics", description: "Show token usage statistics and charts" },

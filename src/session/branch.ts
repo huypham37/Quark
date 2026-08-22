@@ -57,7 +57,8 @@ export interface CreateBranchInput {
 
 export interface CreateSteerBranchInput {
   sessionId: string
-  prompt: string
+  /** Optional follow-up goal. Omit to fork the conversation without a provider request. */
+  prompt?: string
   profile: string
   messages: MessageRow[]
   parts: PartRow[]
@@ -361,8 +362,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
 
 export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
   const parent = getSession(input.sessionId)
-  const prompt = input.prompt.trim()
-  if (!prompt) throw new Error("Steering requires a goal")
+  const prompt = input.prompt?.trim()
   const taskId = parent.taskId
   const ephemeral = parent.kind === "ephemeral"
   if (!taskId && !ephemeral) {
@@ -384,11 +384,13 @@ export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
   const messages = input.messages.filter((message) => !abortedIds.has(message.id))
   const parts = input.parts.filter((part) => !abortedIds.has(part.messageId))
   const replayedMessageIds = replayMessages(child.id, messages, parts, false)
-  const promptMessageId = saveUserMessage({
-    sessionId: child.id,
-    text: prompt,
-    variant: "steer",
-  }).id
+  const promptMessageId = prompt
+    ? saveUserMessage({
+        sessionId: child.id,
+        text: prompt,
+        variant: "steer",
+      }).id
+    : undefined
 
   return {
     sessionId: child.id,
