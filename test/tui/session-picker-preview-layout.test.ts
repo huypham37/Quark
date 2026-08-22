@@ -20,7 +20,6 @@ function renderPreview(rows = `
           selectedIndex: 0,
           query: "",
           action: "browse",
-          scope: "worktree",
         },
       }),
       { width: 140, height: 20, useConsole: false },
@@ -79,11 +78,13 @@ function renderSessionPicker(): string {
 }
 
 describe("session picker layout", () => {
-  test("does not show a transcript preview", () => {
+  test("does not show a transcript preview or scope", () => {
     const frame = renderPreview()
     expect(frame).not.toContain("Preview")
     expect(frame).not.toContain("You:")
     expect(frame).not.toContain("Quark:")
+    expect(frame).not.toContain("this worktree")
+    expect(frame).not.toContain("all worktrees")
   })
 
   test("renders a lineage root without a parent connector", () => {

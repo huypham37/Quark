@@ -63,7 +63,6 @@ describe("scrollTopForSelection", () => {
     selectedIndex: 0,
     query: "",
     action: "browse" as const,
-    scope: "worktree" as const,
   }
 
   test("returns 0 when the list fits in the viewport (no scroll needed)", () => {
@@ -122,5 +121,10 @@ describe("session picker controls", () => {
     expect(sessionControls(140, "browse")).toContain("F3 pin")
     expect(sessionControls(90, "browse")).not.toContain("F3 pin")
     expect(sessionControls(60, "browse").length).toBeLessThan(54)
+  })
+
+  test("does not offer scope switching or deletion", () => {
+    expect(sessionControls(140, "browse")).not.toContain("scope")
+    expect(sessionControls(140, "browse")).not.toContain("delete")
   })
 })

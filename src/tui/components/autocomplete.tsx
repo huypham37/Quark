@@ -10,7 +10,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { SessionScope, SessionTreeRow } from "../session-tree-picker"
+import type { SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
@@ -37,7 +37,6 @@ export type AutocompleteMode =
     selectedIndex: number
     query: string
     action: SessionAction
-    scope: SessionScope
   }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
@@ -291,11 +290,9 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           <text fg={colors.text} bg={colors.commandCardBg} bold>
             {m()?.type === "sessions" && m()!.action === "rename"
               ? "Rename session"
-              : m()?.type === "sessions" && m()!.action === "delete"
-                ? "Delete selected session?"
               : m()?.type === "sessions" && m()!.query
-                ? `Sessions · ${m()!.scope === "worktree" ? "this worktree" : "all worktrees"} — search: ${m()!.query}`
-                : `Sessions · ${m()?.type === "sessions" && m()!.scope === "project" ? "all worktrees" : "this worktree"} — type to search`}
+                ? `Sessions — search: ${m()!.query}`
+                : "Sessions — type to search"}
           </text>
         </box>
         {content()}

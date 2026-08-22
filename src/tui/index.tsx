@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listSessions, listProjectSessions, getSession, setSessionTitle, setSessionPinned, deleteSession } from "../session/session"
+import { createSession, listSessions, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -40,7 +40,6 @@ import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
-import type { SessionScope } from "./session-tree-picker"
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -415,25 +414,6 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
-  if (command === "delete-session") {
-    try {
-      const input = JSON.parse(args) as { id?: string }
-      const sessions = listProjectWorktreeSessions()
-      const session = sessions.find((item) => item.id === input.id)
-      if (!session) throw new Error("Session not found")
-      if (session.id === currentSession?.id) throw new Error("The current session cannot be deleted")
-      if (sessions.some((item) => item.parentSessionId === session.id)) {
-        throw new Error("Delete this session's child branches first")
-      }
-      deleteSession(session.id)
-      notifyInfo("Session", "Session deleted", 2000)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
-    }
-    return { handled: true }
-  }
-
   if (command === "pin-session") {
     try {
       const input = JSON.parse(args) as { id?: string; pinned?: boolean }
@@ -721,9 +701,8 @@ function listProjectWorktreeSessions() {
     session.directory ? directories.has(path.resolve(session.directory)) : false)
 }
 
-function handleGetSessions(scope: SessionScope = "worktree") {
-  const sessions = scope === "project" ? listProjectWorktreeSessions() : listProjectSessions()
-  return sessions.map((session) => ({
+function handleGetSessions() {
+  return listProjectSessions().map((session) => ({
     ...session,
     running: isActive(session.id),
   }))
