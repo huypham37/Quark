@@ -470,7 +470,6 @@ export const App: Component<AppProps> = (props) => {
     query = "",
   ): boolean => {
     if (!props.getSessions) return false
-    previewCache.clear()
     const sessions = props.getSessions(scope)
     const sid = state.store.sessionId
     const result = searchSessionTree(sessions, query)
