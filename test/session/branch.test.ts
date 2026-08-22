@@ -21,42 +21,28 @@ import {
   getSessionLineage,
   shouldBranchWithRealTokens,
 } from "../../src/session/branch"
-import { createTask, setTaskStorageRoot } from "../../src/task/task"
-
 let sessionDir: string
-let taskDir: string
 
 beforeAll(() => {
   sessionDir = mkdtempSync(join(tmpdir(), "quark-test-branch-session-"))
-  taskDir = mkdtempSync(join(tmpdir(), "quark-test-branch-task-"))
   setSessionStorageRoot(sessionDir)
-  setTaskStorageRoot(taskDir)
   ensureStorageRoot()
 })
 
 beforeEach(() => {
   rmSync(sessionDir, { recursive: true, force: true })
-  rmSync(taskDir, { recursive: true, force: true })
   setSessionStorageRoot(sessionDir)
-  setTaskStorageRoot(taskDir)
   ensureStorageRoot()
 })
 
 afterAll(() => {
   setSessionStorageRoot(undefined)
-  setTaskStorageRoot(undefined)
   rmSync(sessionDir, { recursive: true, force: true })
-  rmSync(taskDir, { recursive: true, force: true })
 })
 
 describe("session branching", () => {
   test("creates a main child branch with frozen parent summary", () => {
-    const task = createTask({
-      title: "Task first storage",
-      description: "Implement task-first storage",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
     updateSession(parent.id, { filesModified: ["src/session/session.ts"] })
 
     const result = createBranch({
@@ -72,19 +58,13 @@ describe("session branching", () => {
     expect(updatedParent.summary).toBe("Added task metadata")
     expect(child.kind).toBe("main")
     expect(child.parentSessionId).toBe(parent.id)
-    expect(child.taskId).toBe(task.id)
     expect(child.parentSummary).toBe("Added task metadata")
     expect(child.filesModified).toEqual(["src/session/session.ts"])
     expect(listSessions().map((s) => s.id)).toContain(child.id)
   })
 
   test("seeds child session with lineage context and prompt", () => {
-    const task = createTask({
-      title: "Branch context",
-      description: "Keep context across branches",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     const result = createBranch({
       sessionId: parent.id,
@@ -103,7 +83,6 @@ describe("session branching", () => {
       .filter((part) => part.type === "text")
       .at(-1)
 
-    expect(text).toContain("Task: Keep context across branches")
     expect(text).toContain("Session")
     expect(text).toContain("Parent did the first half")
     expect(lastUser).toBe("Finish the second half")
@@ -115,12 +94,7 @@ describe("session branching", () => {
   })
 
   test("replays recent context without tool/runtime parts", () => {
-    const task = createTask({
-      title: "Strip tools",
-      description: "Strip tools from replayed branch context",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     saveUserMessage({ sessionId: parent.id, text: "Inspect src/session/branch.ts" })
     const assistant = createAssistantMessage({ sessionId: parent.id })
@@ -167,12 +141,7 @@ describe("session branching", () => {
   })
 
   test("walks lineage from root to child", () => {
-    const task = createTask({
-      title: "Lineage task",
-      description: "Lineage task",
-      profile: "coder",
-    })
-    const root = createSession({ taskId: task.id })
+    const root = createSession()
     const child = createBranch({
       sessionId: root.id,
       summary: "Root summary",
@@ -195,12 +164,7 @@ describe("session branching", () => {
   })
 
   test("sibling branches share frozen parent summary; second branch does not overwrite parent", () => {
-    const task = createTask({
-      title: "Sibling snapshot",
-      description: "Siblings share the same parent summary",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     const first = createBranch({
       sessionId: parent.id,
@@ -233,19 +197,7 @@ describe("session branching", () => {
     expect(second.summary).toBe("First snapshot — written by initial steer")
   })
 
-  test("throws when persistent parent has no taskId — invariant violation", () => {
-    const parent = createSession()
-    expect(() =>
-      createBranch({
-        sessionId: parent.id,
-        summary: "Should fail",
-        prompt: "Anything",
-        profile: "coder",
-      }),
-    ).toThrow(/parent has no taskId/)
-  })
-
-  test("branches ephemeral sessions without persisting or requiring a task", () => {
+  test("branches ephemeral sessions without persisting", () => {
     const parent = createSession({ ephemeral: true })
     saveUserMessage({ sessionId: parent.id, text: "Investigate the codebase" })
 
@@ -259,31 +211,9 @@ describe("session branching", () => {
 
     expect(child.kind).toBe("ephemeral")
     expect(child.parentSessionId).toBe(parent.id)
-    expect(child.taskId).toBeNull()
     expect(child.parentSummary).toBe("Continue the investigation")
     expect(messages.length).toBeGreaterThan(0)
     expect(listSessions().some((session) => session.id === child.id)).toBe(false)
-  })
-
-  test("child taskId is immutable — branching never rewrites the parent's taskId", () => {
-    const task = createTask({
-      title: "Immutable taskId",
-      description: "Immutable taskId",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
-
-    const result = createBranch({
-      sessionId: parent.id,
-      summary: "Snapshot",
-      prompt: "Continue",
-      profile: "coder",
-    })
-
-    // No extra task created — both parent and child share the original.
-    expect(listSessions().filter((s) => s.taskId === task.id).length).toBe(2)
-    expect(getSession(parent.id).taskId).toBe(task.id)
-    expect(getSession(result.sessionId).taskId).toBe(task.id)
   })
 
   test("detects branch pressure using real tokens before estimates", () => {
@@ -307,12 +237,7 @@ describe("session branching", () => {
   })
 
   test("compacts old history through the language model", async () => {
-    const task = createTask({
-      title: "Compact history",
-      description: "Compact a long session",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
     for (let index = 1; index <= 5; index++) {
       saveUserMessage({ sessionId: parent.id, text: `Message ${index}` })
     }
@@ -353,12 +278,7 @@ describe("session branching", () => {
   })
 
   test("steers with full history and no compaction", () => {
-    const task = createTask({
-      title: "Full history steer",
-      description: "Keep every conversation part",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
     const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
     const assistant = createAssistantMessage({ sessionId: parent.id })
     addPart({
@@ -410,12 +330,7 @@ describe("session branching", () => {
   })
 
   test("forks with full history without a follow-up goal", () => {
-    const task = createTask({
-      title: "Conversation fork",
-      description: "Fork without sending a prompt",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
     const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
     const assistant = createAssistantMessage({ sessionId: parent.id })
     addPart({

@@ -39,7 +39,6 @@ function normalizeSession(session: Session): Session {
     directory: session.directory ?? null,
     parentSessionId: session.parentSessionId ?? null,
     kind: session.kind ?? "main",
-    taskId: session.taskId ?? null,
     summary: session.summary ?? null,
     parentSummary: session.parentSummary ?? null,
     filesModified: session.filesModified ?? null,
@@ -388,7 +387,6 @@ function replayEvents(events: SessionLogEvent[]): {
       case "session-update": {
         if (session) {
           if (event.patch.title !== undefined) session.title = event.patch.title
-          if (event.patch.taskId !== undefined) session.taskId = event.patch.taskId
           if (event.patch.summary !== undefined) session.summary = event.patch.summary
           if (event.patch.parentSummary !== undefined) session.parentSummary = event.patch.parentSummary
           if (event.patch.filesModified !== undefined) session.filesModified = event.patch.filesModified

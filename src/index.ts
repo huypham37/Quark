@@ -7,14 +7,6 @@ export { bootstrap, type BootstrapOptions } from "./bootstrap"
 // Session management
 export { createSession, getSession } from "./session/session"
 export type { Session, SessionKind } from "./session/session"
-export {
-  createTask,
-  getTask,
-  listTasks,
-  updateTask,
-} from "./task/task"
-export type { Task } from "./task/task"
-
 // Core operations
 export { prompt, cancel, isActive } from "./session/prompt"
 

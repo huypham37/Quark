@@ -19,11 +19,10 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
-describe("session task metadata", () => {
-  test("new sessions include task-first metadata fields", () => {
+describe("session metadata", () => {
+  test("new sessions include branch metadata fields", () => {
     const session = createSession()
 
-    expect(session.taskId).toBeNull()
     expect(session.summary).toBeNull()
     expect(session.parentSummary).toBeNull()
     expect(session.filesModified).toBeNull()
@@ -34,20 +33,17 @@ describe("session task metadata", () => {
     const session = createSession()
 
     updateSession(session.id, {
-      taskId: "task_123",
       summary: "Implemented storage",
       parentSummary: "Parent summary",
       filesModified: ["src/session/session.ts"],
     })
 
     const meta = getSession(session.id)
-    expect(meta.taskId).toBe("task_123")
     expect(meta.summary).toBe("Implemented storage")
     expect(meta.parentSummary).toBe("Parent summary")
     expect(meta.filesModified).toEqual(["src/session/session.ts"])
 
     const replayed = replaySessionFile(session.id).session
-    expect(replayed?.taskId).toBe("task_123")
     expect(replayed?.summary).toBe("Implemented storage")
     expect(replayed?.parentSummary).toBe("Parent summary")
     expect(replayed?.filesModified).toEqual(["src/session/session.ts"])

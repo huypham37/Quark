@@ -14,8 +14,8 @@ function renderPreview(): string {
         mode: {
           type: "sessions",
           rows: [
-            { type: "orphan", id: "one", label: "Session one", current: true },
-            { type: "orphan", id: "two", label: "Session two", current: false },
+            { type: "orphan", id: "one", label: "Session one", detail: "now", current: true },
+            { type: "orphan", id: "two", label: "Session two", detail: "1m ago", current: false },
           ],
           selectedIndex: 0,
           query: "",

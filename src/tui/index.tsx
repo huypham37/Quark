@@ -37,7 +37,6 @@ import { exportSessionToMarkdown } from "../commands/export"
 import { runGoal } from "../commands/goal/orchestrator"
 import { authStatus } from "../commands/auth"
 import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
-import { listTasks } from "../task/task"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
@@ -453,7 +452,6 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "sessions") {
     if (!args) {
       const sessions = listProjectSessions()
-      const tasks = new Map(listTasks().map((task) => [task.id, task]))
       if (sessions.length === 0) {
         bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
         return { handled: true }
@@ -463,9 +461,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         const isCurrent = s.id === sid
         const date = new Date(s.timeUpdated).toLocaleString()
         const title = s.title ?? "(untitled)"
-        const task = s.taskId ? tasks.get(s.taskId)?.title : undefined
         const marker = isCurrent ? " ← current" : ""
-        return `  ${s.id.slice(0, 8)}  ${title}${task ? `  ·  ${task}` : ""}  ${date}${marker}`
+        return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
       })
       const header = `Sessions (${sessions.length}):\n`
       bus.emit("user-message", {
@@ -725,11 +722,9 @@ function listProjectWorktreeSessions() {
 }
 
 function handleGetSessions(scope: SessionScope = "worktree") {
-  const tasks = new Map(listTasks().map((task) => [task.id, task]))
   const sessions = scope === "project" ? listProjectWorktreeSessions() : listProjectSessions()
   return sessions.map((session) => ({
     ...session,
-    taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
     running: isActive(session.id),
   }))
 }

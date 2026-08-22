@@ -376,7 +376,7 @@ describe("JSONL rewrite on undo", () => {
     createFile("jsonl-undo.ts", "original");
 
     writeSessionJSONL(sessionId, [
-      JSON.stringify({ v: 1, ts: 1, sessionId, type: "session", session: { id: sessionId, title: null, directory: workspace, parentSessionId: null, kind: "main", taskId: null, summary: null, parentSummary: null, filesModified: null, timeCreated: 1, timeUpdated: 1 } }),
+      JSON.stringify({ v: 1, ts: 1, sessionId, type: "session", session: { id: sessionId, title: null, directory: workspace, parentSessionId: null, kind: "main", summary: null, parentSummary: null, filesModified: null, timeCreated: 1, timeUpdated: 1 } }),
       JSON.stringify({ v: 1, ts: 2, sessionId, type: "message", messageId: turn1Id, role: "user", modelId: null, providerId: null, timeCreated: 2 }),
       JSON.stringify({ v: 1, ts: 3, sessionId, type: "part", messageId: turn1Id, partId: "part-user-1", partType: "text", data: { text: "hello" } }),
       JSON.stringify({ v: 1, ts: 4, sessionId, type: "message-end", messageId: turn1Id, finish: "stop", cost: null, tokensIn: null, tokensOut: null, timeCompleted: 4 }),
@@ -410,7 +410,7 @@ describe("JSONL rewrite on undo", () => {
     createFile("jsonl-undo2.ts", "original");
 
     writeSessionJSONL(sessionId, [
-      JSON.stringify({ v: 1, ts: 1, sessionId, type: "session", session: { id: sessionId, title: null, directory: workspace, parentSessionId: null, kind: "main", taskId: null, summary: null, parentSummary: null, filesModified: null, timeCreated: 1, timeUpdated: 1 } }),
+      JSON.stringify({ v: 1, ts: 1, sessionId, type: "session", session: { id: sessionId, title: null, directory: workspace, parentSessionId: null, kind: "main", summary: null, parentSummary: null, filesModified: null, timeCreated: 1, timeUpdated: 1 } }),
       JSON.stringify({ v: 1, ts: 2, sessionId, type: "message", messageId: turn1Id, role: "user", modelId: null, providerId: null, timeCreated: 2 }),
       JSON.stringify({ v: 1, ts: 3, sessionId, type: "part", messageId: turn1Id, partId: "part-user-1", partType: "text", data: { text: "first" } }),
       JSON.stringify({ v: 1, ts: 4, sessionId, type: "message-end", messageId: turn1Id, finish: "stop", cost: null, tokensIn: null, tokensOut: null, timeCompleted: 4 }),

@@ -38,8 +38,6 @@ export interface Session {
   parentSessionId: string | null
   /** Session kind: `"main"` for top-level sessions, `"subagent"` for spawned children */
   kind: SessionKind
-  /** Task this session belongs to */
-  taskId: string | null
   /** Summary of work done in this session */
   summary: string | null
   /** Frozen parent summary captured when this session branches */
@@ -56,7 +54,7 @@ export interface Session {
 
 export type SessionPatch = Partial<Pick<
   Session,
-  "title" | "taskId" | "summary" | "parentSummary" | "filesModified" | "pinned" | "timeUpdated"
+  "title" | "summary" | "parentSummary" | "filesModified" | "pinned" | "timeUpdated"
 >>
 
 /**
@@ -73,7 +71,6 @@ export function createSession(opts?: {
   parentSessionId?: string
   kind?: SessionKind
   ephemeral?: boolean
-  taskId?: string | null
   summary?: string | null
   parentSummary?: string | null
   filesModified?: string[] | null
@@ -91,7 +88,6 @@ export function createSession(opts?: {
     directory: opts?.directory ?? process.cwd(),
     parentSessionId: opts?.parentSessionId ?? null,
     kind,
-    taskId: opts?.taskId ?? null,
     summary: opts?.summary ?? null,
     parentSummary: opts?.parentSummary ?? null,
     filesModified: opts?.filesModified ?? null,

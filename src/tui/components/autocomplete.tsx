@@ -66,6 +66,7 @@ export const Autocomplete: Component<AutocompleteProps> = (props) => {
 /** Row type for the unified list — title, empty text, and data rows all in one array */
 interface DropdownRow {
   label: string
+  detail?: string
   fg: ColorInput
   bg: ColorInput
   bold: boolean
@@ -123,7 +124,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
     // Optional title row (sessions / choice pickers)
     if (mode.type === "sessions") {
-      // The sessions picker is a task tree; task headers are rendered below.
+      // Session roots and branches are rendered below.
     } else if (mode.type === "models") {
       result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "profiles") {
@@ -183,28 +184,20 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           continue
         }
 
-        const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
-        const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
-        const tree = item.type === "session"
-          ? item.connector === "plain"
-            ? ""
-            : item.connector === "root"
-              ? "├─ "
-              : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
-          : ""
+        const sel = i === mode.selectedIndex
+        const tree = item.type === "orphan" || item.connector === "plain"
+          ? ""
+          : item.connector === "root"
+            ? "├─ "
+            : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
         result.push({
-          label: item.type === "task"
-            ? `${prefix}${item.label}`
-            : item.type === "orphan"
-              ? `${sel ? "❯ " : "  "}${item.label}`
-              : `${sel ? "❯ " : "  "}${tree}${item.label}`,
+          label: `${sel ? "❯ " : "  "}${tree}${item.label}`,
+          detail: item.detail,
           fg: sel
             ? colors.primary
-            : item.type === "task"
-              ? (item.current ? colors.primary : colors.text)
-              : item.running
-                ? colors.success
-                : colors.textDim,
+            : item.running
+              ? colors.success
+              : colors.textDim,
           bg: colors.commandCardBg,
           bold: sel,
         })
@@ -271,17 +264,22 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       >
         <For each={visibleRows()}>
           {(row) => {
-            // Pad label with spaces to fill the full row width so bg covers all cells.
             // Keep the row background inside the picker shell, not under its border.
-            const padded = () => {
-              const w = dims().width - (isSessionCard() ? 10 : 6)
-              return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
-            }
-            return (
-              <box height={1} backgroundColor={row.bg}>
-                <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
-              </box>
-            )
+            const width = () => dims().width - (isSessionCard() ? 10 : 6)
+            const padded = () => row.label.length >= width() ? row.label : row.label + " ".repeat(width() - row.label.length)
+            return row.detail
+              ? (
+                <box height={1} flexDirection="row" backgroundColor={row.bg}>
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{row.label}</text>
+                  <box flexGrow={1} backgroundColor={row.bg} />
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{row.detail}</text>
+                </box>
+              )
+              : (
+                <box height={1} backgroundColor={row.bg}>
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
+                </box>
+              )
           }}
         </For>
       </scrollbox>

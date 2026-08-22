@@ -11,7 +11,7 @@
 //    f. "continue" → next iteration (tool calls need follow-up)
 //    g. "stop" → break
 
-import { createSession, getSession, touchSession } from "./session";
+import { createSession, getSession, setSessionTitle, touchSession } from "./session";
 import {
   saveUserMessage,
   createAssistantMessage,
@@ -23,10 +23,7 @@ import { buildSystem } from "./system";
 import { processStream } from "./processor";
 import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
-import {
-  initializeSessionFromMessage,
-  upgradeSessionTitle,
-} from "./initializer";
+import { generateSessionTitle } from "./title";
 import { resolveToolSet } from "../tool/ai-adapter";
 import { buildProviderOptions } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
@@ -166,12 +163,12 @@ async function runTurn(input: {
   let finalSessionId = sessionId
   const turnMessageIds = new Map<string, string>([[sessionId, userMessageId]])
   try {
-    // Child branches inherit a task. This remains for normal new sessions.
     const session = getSession(sessionId)
-    if (session.kind !== "ephemeral" && !session.taskId) {
-      initializeSessionFromMessage({ sessionId, message: userText, profile: agent.id })
+    if (!session.title) {
+      const fallbackTitle = userText.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "Untitled"
+      setSessionTitle(sessionId, fallbackTitle)
       resolveModel(model ?? loadConfig().small_model, "small")
-        .then((smallModel) => upgradeSessionTitle({ sessionId, message: userText, model: smallModel }))
+        .then((smallModel) => generateSessionTitle({ sessionId, message: userText, model: smallModel }))
         .catch(() => {})
     }
 

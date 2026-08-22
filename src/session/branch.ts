@@ -1,7 +1,6 @@
-// Session branching — task-first replacement for automatic compaction
+// Session branching — context-preserving replacement for automatic compaction
 
 import { generateId, generateText, type LanguageModel, type ModelMessage } from "ai"
-import { getTask } from "../task/task"
 import { getContextWindow, getLastInputTokens, estimateTokens, isOverContextThreshold } from "./context"
 import { createSession, getSession, listAllSessions, updateSession, type Session } from "./session"
 import { saveUserMessage, type MessageRow, type MessageVisibility, type PartRow } from "./message"
@@ -140,14 +139,8 @@ export function getSessionLineage(sessionId: string): Session[] {
 }
 
 export function buildLineageContext(sessionId: string): string {
-  const session = getSession(sessionId)
-  const task = session.taskId ? getTask(session.taskId) : null
   const lineage = getSessionLineage(sessionId)
   const lines: string[] = []
-
-  if (task) {
-    lines.push(`Task: ${task.description}`)
-  }
 
   for (let i = 0; i < lineage.length; i++) {
     const node = lineage[i]!
@@ -294,14 +287,7 @@ export async function compactBranch(input: CompactBranchInput): Promise<BranchRe
  */
 export function createBranch(input: CreateBranchInput): BranchResult {
   const parent = getSession(input.sessionId)
-  const taskId = parent.taskId
   const ephemeral = parent.kind === "ephemeral"
-  if (!taskId && !ephemeral) {
-    throw new Error(
-      `Cannot branch session ${parent.id}: parent has no taskId. ` +
-        `initializeSessionFromMessage must run before branching.`,
-    )
-  }
   const filesModified = input.filesModified ?? parent.filesModified
   // Frozen-snapshot semantics: once the parent's summary is set, reuse it for
   // every subsequent child branch. Siblings share the same parentSummary.
@@ -321,7 +307,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   const child = createSession({
     directory: parent.directory ?? undefined,
     parentSessionId: parent.id,
-    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const, taskId }),
+    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const }),
     parentSummary: summary || null,
     filesModified,
   })
@@ -363,19 +349,12 @@ export function createBranch(input: CreateBranchInput): BranchResult {
 export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
   const parent = getSession(input.sessionId)
   const prompt = input.prompt?.trim()
-  const taskId = parent.taskId
   const ephemeral = parent.kind === "ephemeral"
-  if (!taskId && !ephemeral) {
-    throw new Error(
-      `Cannot branch session ${parent.id}: parent has no taskId. ` +
-        `initializeSessionFromMessage must run before branching.`,
-    )
-  }
 
   const child = createSession({
     directory: parent.directory ?? undefined,
     parentSessionId: parent.id,
-    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const, taskId }),
+    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const }),
     filesModified: parent.filesModified,
   })
   const abortedIds = new Set(
