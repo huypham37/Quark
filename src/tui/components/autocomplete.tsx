@@ -10,7 +10,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import { sessionQuickSwitchNumber, type SessionScope, type SessionTreeRow } from "../session-tree-picker"
+import type { SessionScope, SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
@@ -184,20 +184,20 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         }
 
         const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
-        const quickSwitch = sessionQuickSwitchNumber(mode.rows, i)
-        const number = quickSwitch ? `${quickSwitch} ` : "  "
         const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
         const tree = item.type === "session"
-          ? item.connector === "root"
-            ? "● "
-            : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"}● `
+          ? item.connector === "plain"
+            ? ""
+            : item.connector === "root"
+              ? "├─ "
+              : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
           : ""
         result.push({
           label: item.type === "task"
             ? `${prefix}${item.label}`
             : item.type === "orphan"
-              ? `${sel ? "❯ " : "  "}${number}${item.label}`
-              : `${sel ? "❯ " : "  "}${number}${tree}${item.label}`,
+              ? `${sel ? "❯ " : "  "}${item.label}`
+              : `${sel ? "❯ " : "  "}${tree}${item.label}`,
           fg: sel
             ? colors.primary
             : item.type === "task"

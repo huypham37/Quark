@@ -5,7 +5,6 @@ import {
   formatRelativeTime,
   moveSessionRowSelection,
   searchSessionTree,
-  sessionQuickSwitchNumber,
   type SessionTreeInput,
 } from "../../src/tui/session-tree-picker"
 
@@ -62,7 +61,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "root",
-        label: "Workspace Auth Cleanup · root · 1w ago",
+        label: "Workspace Auth Cleanup · original · 1w ago",
         current: false,
         root: true,
         guides: [],
@@ -71,7 +70,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "cookies",
-        label: "Move tokens to cookies · 5d ago",
+        label: "Move tokens to cookies · branch · 5d ago",
         current: false,
         root: false,
         guides: [],
@@ -80,7 +79,7 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "csrf",
-        label: "Add CSRF protection · current · 4d ago",
+        label: "Add CSRF protection · branch · 4d ago",
         current: true,
         root: false,
         guides: [true],
@@ -89,25 +88,34 @@ describe("session tree picker", () => {
       {
         type: "session",
         id: "rotation",
-        label: "Add refresh token rotation · 6d ago",
+        label: "Add refresh token rotation · branch · 6d ago",
         current: false,
         root: false,
         guides: [],
         connector: "last",
       },
       { type: "spacer" },
-      { type: "task", label: "Login Bug Fix", current: false },
       {
         type: "session",
         id: "login",
-        label: "Fix Login Redirect Loop · root · 1w ago",
+        label: "Fix Login Redirect Loop · 1w ago",
         current: false,
         root: true,
         guides: [],
-        connector: "root",
+        connector: "plain",
       },
     ])
     expect(rows.filter((row) => row.type === "session" && row.id === "root")).toHaveLength(1)
+  })
+
+  test("keeps adjacent single-session groups compact", () => {
+    const rows = buildSessionTreeRows([
+      { id: "one", title: "First", taskId: "one", taskTitle: "First", timeUpdated: day(5, 2) },
+      { id: "two", title: "Second", taskId: "two", taskTitle: "Second", timeUpdated: day(5, 1) },
+    ], null, day(5, 10))
+
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.type)).toEqual(["session", "session"])
   })
 
   test("moves selection between visible session rows only", () => {
@@ -168,21 +176,20 @@ describe("session tree picker", () => {
     ], "orphan", day(5, 10))
 
     expect(rows).toEqual([
-      { type: "task", label: "Real Task", current: false },
       {
         type: "session",
         id: "task-root",
-        label: "Task Root · root · 6d ago",
+        label: "Task Root · 6d ago",
         current: false,
         root: true,
         guides: [],
-        connector: "root",
+        connector: "plain",
       },
       { type: "spacer" },
       {
         type: "orphan",
         id: "orphan",
-        label: "Standalone Session · current · 2d ago",
+        label: "Standalone Session · 2d ago",
         current: true,
       },
     ])
@@ -245,32 +252,12 @@ describe("session tree picker", () => {
       },
     ], null, day(5, 10))
 
-    expect(rows[0]).toEqual({ type: "task", label: "Pinned task", current: false })
-    expect(rows[1]).toMatchObject({ id: "pinned", label: "Pinned session · pinned · root · 1w ago" })
-  })
-
-  test("numbers the first nine selectable rows for quick switching", () => {
-    const rows = buildSessionTreeRows([
-      {
-        id: "root",
-        title: "Root",
-        taskId: "task",
-        taskTitle: "Task",
-        timeUpdated: day(5, 1),
-      },
-      {
-        id: "child",
-        title: "Child",
-        taskId: "task",
-        taskTitle: "Task",
-        parentSessionId: "root",
-        timeUpdated: day(5, 2),
-      },
-    ], null)
-
-    expect(sessionQuickSwitchNumber(rows, 0)).toBeNull()
-    expect(sessionQuickSwitchNumber(rows, 1)).toBe(1)
-    expect(sessionQuickSwitchNumber(rows, 2)).toBe(2)
+    expect(rows[0]).toMatchObject({
+      type: "session",
+      id: "pinned",
+      label: "Pinned session · pinned · 1w ago",
+      connector: "plain",
+    })
   })
 
   test("formats activity time for quick scanning", () => {
@@ -306,7 +293,7 @@ describe("session tree picker", () => {
 
     expect(rows[0]).toMatchObject({
       id: "running",
-      label: "Active session · current · ● running · now",
+      label: "Active session · ● running · now",
       running: true,
     })
   })

@@ -32,7 +32,6 @@ import {
   firstSelectableSessionRow,
   moveSessionRowSelection,
   searchSessionTree,
-  sessionQuickSwitchNumber,
   type SessionScope,
   type SessionTreeInput,
   type SessionTreeRow,
@@ -619,7 +618,6 @@ export const App: Component<AppProps> = (props) => {
     isTab: boolean,
     isReturn: boolean,
     isEscape: boolean,
-    quickSwitch: number | null,
   ): boolean => {
     const s = slash()
     if (s.active) {
@@ -713,18 +711,6 @@ export const App: Component<AppProps> = (props) => {
         const preferred = selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined
         const scope = s.sessionScope === "worktree" ? "project" : "worktree"
         openSessionsPicker(preferred, scope, s.query)
-        return true
-      }
-
-      if (s.mode === "sessions" && s.sessionAction === "browse" && quickSwitch) {
-        const rowIndex = s.sessionRows.findIndex((_, index) =>
-          sessionQuickSwitchNumber(s.sessionRows, index) === quickSwitch)
-        const selected = s.sessionRows[rowIndex]
-        if (selected?.type === "session" || selected?.type === "orphan") {
-          setSlash(SLASH_INACTIVE)
-          setInputText("")
-          props.onCommand?.("sessions", selected.id, state.store.sessionId)
-        }
         return true
       }
 
@@ -1150,7 +1136,6 @@ export const App: Component<AppProps> = (props) => {
         evt.name === "tab",
         evt.name === "return",
         evt.name === "escape",
-        (evt.option || evt.meta) && /^[1-9]$/.test(evt.name) ? Number(evt.name) : null,
       )
       if (consumed) {
         evt.preventDefault()

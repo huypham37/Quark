@@ -21,7 +21,7 @@ export type SessionTreeRow =
     current: boolean
     root: boolean
     guides: boolean[]
-    connector: "root" | "branch" | "last"
+    connector: "plain" | "root" | "branch" | "last"
     running?: boolean
   }
   | { type: "orphan"; id: string; label: string; current: boolean; running?: boolean }
@@ -83,11 +83,17 @@ export function buildSessionTreeRows(
 
   for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
     const group = groups[groupIndex]!
-    if (groupIndex > 0) rows.push({ type: "spacer" })
+    const previousGroup = groups[groupIndex - 1]
+    if (previousGroup && (previousGroup.sessions.length > 1 || group.sessions.length > 1)) {
+      rows.push({ type: "spacer" })
+    }
 
-    rows.push({ type: "task", label: group.title, current: group.current })
-
-    rows.push(...sessionTreeRows(group.sessions, currentSessionId, now))
+    if (group.sessions.length === 1) {
+      rows.push(sessionRow(group.sessions[0]!, currentSessionId, now, "plain"))
+    } else {
+      rows.push({ type: "task", label: group.title, current: group.current })
+      rows.push(...sessionTreeRows(group.sessions, currentSessionId, now))
+    }
   }
 
   if (orphanSessions.length > 0) {
@@ -126,15 +132,6 @@ export function moveSessionRowSelection(rows: SessionTreeRow[], selectedIndex: n
   return selectedIndex
 }
 
-export function sessionQuickSwitchNumber(rows: SessionTreeRow[], rowIndex: number): number | null {
-  if (!selectableRow(rows[rowIndex])) return null
-  let number = 0
-  for (let index = 0; index <= rowIndex; index++) {
-    if (selectableRow(rows[index])) number++
-  }
-  return number <= 9 ? number : null
-}
-
 function buildGroups(
   sessions: SessionTreeInput[],
   byId: Map<string, SessionTreeInput>,
@@ -167,6 +164,26 @@ function buildGroups(
     if (a.current !== b.current) return a.current ? -1 : 1
     return b.updated - a.updated
   })
+}
+
+function sessionRow(
+  session: SessionTreeInput,
+  currentSessionId: string | null,
+  now: number,
+  connector: Extract<SessionTreeRow, { type: "session" }>["connector"],
+  guides: boolean[] = [],
+): Extract<SessionTreeRow, { type: "session" }> {
+  const root = connector === "root" || connector === "plain"
+  return {
+    type: "session",
+    id: session.id,
+    label: sessionLabel(session, root, connector !== "plain", now),
+    current: session.id === currentSessionId,
+    root,
+    guides,
+    connector,
+    ...(session.running ? { running: true } : {}),
+  }
 }
 
 function sessionTreeRows(
@@ -205,16 +222,7 @@ function sessionTreeRows(
     visited.add(session.id)
 
     const root = connector === "root"
-    rows.push({
-      type: "session",
-      id: session.id,
-      label: sessionLabel(session, currentSessionId, root, now),
-      current: session.id === currentSessionId,
-      root,
-      guides,
-      connector,
-      ...(session.running ? { running: true } : {}),
-    })
+    rows.push(sessionRow(session, currentSessionId, now, connector, guides))
 
     const descendants = sorted(children.get(session.id) ?? [])
     for (let index = 0; index < descendants.length; index++) {
@@ -254,14 +262,13 @@ function rootSession(session: SessionTreeInput, byId: Map<string, SessionTreeInp
 
 function sessionLabel(
   session: SessionTreeInput,
-  currentSessionId: string | null,
   root: boolean,
+  branched: boolean,
   now: number,
 ): string {
   const markers: string[] = []
-  if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
-  if (root) markers.push("root")
+  if (branched) markers.push(root ? "original" : "branch")
   if (session.running) markers.push("● running")
   const fileCount = new Set(session.filesModified ?? []).size
   if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
@@ -270,9 +277,8 @@ function sessionLabel(
   return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
 }
 
-function orphanLabel(session: SessionTreeInput, currentSessionId: string | null, now: number): string {
+function orphanLabel(session: SessionTreeInput, _currentSessionId: string | null, now: number): string {
   const markers: string[] = []
-  if (session.id === currentSessionId) markers.push("current")
   if (session.pinned) markers.push("pinned")
   if (session.running) markers.push("● running")
   const fileCount = new Set(session.filesModified ?? []).size
