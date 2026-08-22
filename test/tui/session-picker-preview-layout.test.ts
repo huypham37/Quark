@@ -3,7 +3,10 @@ import { resolve } from "node:path"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
-function renderPreview(): string {
+function renderPreview(rows = `
+            { type: "orphan", id: "one", label: "Session one", detail: "now", current: true },
+            { type: "orphan", id: "two", label: "Session two", detail: "1m ago", current: false },
+          `): string {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
@@ -13,10 +16,7 @@ function renderPreview(): string {
       () => createComponent(Autocomplete, {
         mode: {
           type: "sessions",
-          rows: [
-            { type: "orphan", id: "one", label: "Session one", detail: "now", current: true },
-            { type: "orphan", id: "two", label: "Session two", detail: "1m ago", current: false },
-          ],
+          rows: [${rows}],
           selectedIndex: 0,
           query: "",
           action: "browse",
@@ -84,6 +84,16 @@ describe("session picker layout", () => {
     expect(frame).not.toContain("Preview")
     expect(frame).not.toContain("You:")
     expect(frame).not.toContain("Quark:")
+  })
+
+  test("renders a lineage root without a parent connector", () => {
+    const frame = renderPreview(`
+      { type: "session", id: "root", label: "General Conversation", detail: "original · now", current: true, root: true, guides: [], connector: "root" },
+      { type: "session", id: "child", label: "Casual Conversation", detail: "branch · now", current: false, root: false, guides: [], connector: "last" },
+    `)
+
+    expect(frame).not.toContain("├─ General Conversation")
+    expect(frame).toContain("└─ Casual Conversation")
   })
 
   test("opens from /sessions", () => {

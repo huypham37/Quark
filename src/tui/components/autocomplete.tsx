@@ -185,11 +185,9 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         }
 
         const sel = i === mode.selectedIndex
-        const tree = item.type === "orphan" || item.connector === "plain"
+        const tree = item.type === "orphan" || item.connector === "plain" || item.connector === "root"
           ? ""
-          : item.connector === "root"
-            ? "├─ "
-            : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
+          : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
         result.push({
           label: `${sel ? "❯ " : "  "}${tree}${item.label}`,
           detail: item.detail,
