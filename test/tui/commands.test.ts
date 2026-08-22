@@ -32,10 +32,9 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("c prefix matches clear only", () => {
+  test("c prefix matches clear and compact", () => {
     const result = filterCommands("c")
-    expect(result.length).toBe(1)
-    expect(result[0]!.id).toBe("clear")
+    expect(result.map((command) => command.id)).toEqual(["clear", "compact"])
   })
 
   test("returns empty array when no commands match", () => {
@@ -58,6 +57,14 @@ describe("filterCommands", () => {
     const result = filterCommands("sessions")
     expect(result.length).toBe(1)
     expect(result[0]!.usage).toBe("[session-id]")
+  })
+
+  test("compact command has an optional goal", () => {
+    expect(filterCommands("compact")[0]!.usage).toBe("[goal]")
+  })
+
+  test("steer command has no usage hint", () => {
+    expect(filterCommands("steer")[0]!.usage).toBeUndefined()
   })
 
   test("model command has usage hint", () => {

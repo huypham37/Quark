@@ -56,6 +56,7 @@ export interface SessionUpdateEvent extends EventBase {
     summary?: string | null
     parentSummary?: string | null
     filesModified?: string[] | null
+    pinned?: boolean
     timeUpdated?: number
   }
 }

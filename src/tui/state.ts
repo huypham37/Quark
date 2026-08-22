@@ -48,6 +48,7 @@ export type TuiPart =
 export interface TuiSteerDivider {
   id: string
   goal: string
+  label?: string
   insertionIndex: number
 }
 
@@ -138,7 +139,7 @@ export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string | null }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
-  | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string } }
+  | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string; label?: string } }
   | { type: "add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
   | { type: "set-user-message-status"; messageId: string; status: Exclude<UserMessageStatus, "sent"> }
   | { type: "add-assistant-message"; id: string }
@@ -462,6 +463,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             s.steerDividers.push({
               id: action.divider.id,
               goal: action.divider.goal,
+              label: action.divider.label,
               insertionIndex: s.messages.length,
             })
           }

@@ -10,10 +10,13 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { SessionTreeRow } from "../session-tree-picker"
+import { sessionQuickSwitchNumber, type SessionScope, type SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
+import type { SessionPreview } from "../session-preview"
+import { sessionControls, type SessionAction } from "../session-controls"
+import { sessionPickerBodyHeight } from "../session-picker-layout"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
@@ -30,7 +33,15 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
+  | {
+    type: "sessions"
+    rows: SessionTreeRow[]
+    selectedIndex: number
+    query: string
+    action: SessionAction
+    scope: SessionScope
+    preview: SessionPreview | null
+  }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
@@ -63,6 +74,15 @@ interface DropdownRow {
   bold: boolean
 }
 
+function previewText(preview: SessionPreview | null): string {
+  if (!preview?.user && !preview?.assistant) return "Preview\n\nNo transcript yet"
+  const clip = (text: string | null) => {
+    if (!text) return "—"
+    return text.length > 180 ? `${text.slice(0, 177)}…` : text
+  }
+  return `Preview\n\nYou: ${clip(preview.user)}\n\nQuark: ${clip(preview.assistant)}`
+}
+
 /**
  * Renders the dropdown content — single <For>, ZERO <Show> blocks.
  *
@@ -75,11 +95,16 @@ interface DropdownRow {
 const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props) => {
   const dims = useTerminalDimensions()
   const m = () => props.mode
+  const sessionMode = () => {
+    const mode = m()
+    return mode?.type === "sessions" ? mode : null
+  }
   let scrollRef: ScrollBoxRenderable | undefined
   const maxVisibleRows = () => {
     const isSession = m()?.type === "sessions"
-    const borderRows = isSession ? 2 : 0
-    const available = Math.max(1, dims().height - BOTTOM_OFFSET - borderRows)
+    const isCard = isSession || m()?.type === "worktrees"
+    const chromeRows = (isCard ? 2 : 0) + (isSession ? 2 : 0)
+    const available = Math.max(1, dims().height - BOTTOM_OFFSET - chromeRows)
     return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
   }
 
@@ -169,15 +194,27 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         }
 
         const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
-        const indent = item.type === "session" ? `${"   ".repeat(item.depth)}╰─▶ ` : ""
+        const quickSwitch = sessionQuickSwitchNumber(mode.rows, i)
+        const number = quickSwitch ? `${quickSwitch} ` : "  "
         const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
+        const tree = item.type === "session"
+          ? item.connector === "root"
+            ? "● "
+            : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"}● `
+          : ""
         result.push({
           label: item.type === "task"
             ? `${prefix}${item.label}`
             : item.type === "orphan"
-              ? `  ${item.label}`
-              : `  ${indent}${item.label}`,
-          fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
+              ? `${sel ? "❯ " : "  "}${number}${item.label}`
+              : `${sel ? "❯ " : "  "}${number}${tree}${item.label}`,
+          fg: sel
+            ? colors.primary
+            : item.type === "task"
+              ? (item.current ? colors.primary : colors.text)
+              : item.running
+                ? colors.success
+                : colors.textDim,
           bg: colors.commandCardBg,
           bold: sel,
         })
@@ -216,13 +253,19 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
   const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
+  const isSessionPicker = () => m()?.type === "sessions"
+  const bodyHeight = () => isSessionPicker()
+    ? sessionPickerBodyHeight(dims().width, visibleHeight(), maxVisibleRows())
+    : visibleHeight()
   const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
-  const panelHeight = () => isSessionCard() && rows().length > 0 ? visibleHeight() + 2 : visibleHeight()
+  const panelHeight = () => isSessionCard() && rows().length > 0
+    ? bodyHeight() + 2 + (isSessionPicker() ? 2 : 0)
+    : visibleHeight()
 
   const content = () => (
     <scrollbox
       ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
-      height={visibleHeight()}
+      height={bodyHeight()}
       scrollbarOptions={{ visible: false }}
       backgroundColor={panelBg()}
     >
@@ -244,6 +287,49 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     </scrollbox>
   )
 
+  const cardContent = () => isSessionPicker()
+    ? (
+      <box flexDirection="column">
+        <box height={1} backgroundColor={colors.commandCardBg}>
+          <text fg={colors.text} bg={colors.commandCardBg} bold>
+            {m()?.type === "sessions" && m()!.action === "rename"
+              ? "Rename session"
+              : m()?.type === "sessions" && m()!.action === "delete"
+                ? "Delete selected session?"
+              : m()?.type === "sessions" && m()!.query
+                ? `Sessions · ${m()!.scope === "worktree" ? "this worktree" : "all worktrees"} — search: ${m()!.query}`
+                : `Sessions · ${m()?.type === "sessions" && m()!.scope === "project" ? "all worktrees" : "this worktree"} — type to search`}
+          </text>
+        </box>
+        {sessionBody()}
+        <box height={1} backgroundColor={colors.commandCardBg}>
+          <text fg={colors.muted} bg={colors.commandCardBg}>
+            {sessionControls(dims().width, sessionMode()?.action ?? "browse")}
+          </text>
+        </box>
+      </box>
+    )
+    : content()
+
+  const sessionBody = () => dims().width >= 120 && m()?.type === "sessions"
+    ? (
+      <box flexDirection="row" height={bodyHeight()}>
+        <box flexGrow={1}>{content()}</box>
+        <box
+          width={Math.min(48, Math.floor(dims().width * 0.38))}
+          border={["left"]}
+          borderColor={colors.outline}
+          paddingLeft={1}
+          backgroundColor={colors.commandCardBg}
+        >
+          <text fg={colors.textDim} bg={colors.commandCardBg}>
+            {previewText(sessionMode()?.preview ?? null)}
+          </text>
+        </box>
+      </box>
+    )
+    : content()
+
   return (
     <box
       flexDirection="column"
@@ -256,7 +342,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
     >
       {isSessionCard() && rows().length > 0
-        ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
+        ? <CommandCard height={panelHeight()}>{cardContent()}</CommandCard>
         : content()}
     </box>
   )

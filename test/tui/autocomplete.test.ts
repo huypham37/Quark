@@ -8,6 +8,8 @@ import { activeTheme, applyTheme, colors, setTerminalBg } from "../../src/tui/th
 import { darkTheme } from "../../src/tui/themes/dark"
 import { scrollTopForSelection } from "../../src/tui/components/autocomplete-scroll"
 import type { AutocompleteMode } from "../../src/tui/components/autocomplete"
+import { sessionControls } from "../../src/tui/session-controls"
+import { sessionPickerBodyHeight } from "../../src/tui/session-picker-layout"
 
 describe("autocomplete dropdown background", () => {
   beforeEach(() => {
@@ -56,7 +58,15 @@ describe("scrollTopForSelection", () => {
   // The session picker has 8 visible rows and no title row. The cursor
   // should anchor at visual row 3 (the 4th row) once the list is long enough
   // to scroll.
-  const sessionMode = { type: "sessions" as const, rows: [], selectedIndex: 0 }
+  const sessionMode = {
+    type: "sessions" as const,
+    rows: [],
+    selectedIndex: 0,
+    query: "",
+    action: "browse" as const,
+    scope: "worktree" as const,
+    preview: null,
+  }
 
   test("returns 0 when the list fits in the viewport (no scroll needed)", () => {
     expect(scrollTopForSelection(sessionMode, 0, 3, 8)).toBe(0)
@@ -106,5 +116,24 @@ describe("scrollTopForSelection", () => {
     expect(scrollTopForSelection(modelsMode, 2, 20, 5)).toBe(1)
     // selectedIndex 19 → scrollIndex 20 → ideal 18, clamp to 15
     expect(scrollTopForSelection(modelsMode, 19, 20, 5)).toBe(15)
+  })
+})
+
+describe("session picker controls", () => {
+  test("uses a shorter key guide on narrow terminals", () => {
+    expect(sessionControls(140, "browse")).toContain("Alt+1…9")
+    expect(sessionControls(90, "browse")).not.toContain("Alt+1…9")
+    expect(sessionControls(60, "browse").length).toBeLessThan(54)
+  })
+})
+
+describe("session preview layout", () => {
+  test("reserves enough rows for both transcript lines on wide terminals", () => {
+    expect(sessionPickerBodyHeight(140, 2, 8)).toBe(5)
+  })
+
+  test("does not grow narrow or height-limited pickers", () => {
+    expect(sessionPickerBodyHeight(90, 2, 8)).toBe(2)
+    expect(sessionPickerBodyHeight(140, 2, 3)).toBe(3)
   })
 })

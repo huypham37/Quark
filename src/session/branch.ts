@@ -41,6 +41,10 @@ export interface AutoBranchInput extends SummarizeForBranchInput {
   profile: string
 }
 
+export interface CompactBranchInput extends AutoBranchInput {
+  prompt?: string
+}
+
 export interface CreateBranchInput {
   sessionId: string
   summary: string
@@ -49,6 +53,15 @@ export interface CreateBranchInput {
   filesModified?: string[] | null
   recentMessages?: MessageRow[]
   recentParts?: PartRow[]
+}
+
+export interface CreateSteerBranchInput {
+  sessionId: string
+  /** Optional follow-up goal. Omit to fork the conversation without a provider request. */
+  prompt?: string
+  profile: string
+  messages: MessageRow[]
+  parts: PartRow[]
 }
 
 export type SplitResult = {
@@ -253,6 +266,19 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
   })
 }
 
+export async function compactBranch(input: CompactBranchInput): Promise<BranchResult> {
+  const summary = await summarizeForBranch(input)
+  const { recentMessages, recentParts } = splitMessages(input.messages, input.parts)
+  return createBranch({
+    sessionId: input.sessionId,
+    summary,
+    prompt: input.prompt,
+    profile: input.profile,
+    recentMessages,
+    recentParts,
+  })
+}
+
 /**
  * Signature: `createBranch(input: CreateBranchInput): BranchResult`
  *
@@ -301,8 +327,6 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   })
 
   const lineageContext = buildLineageContext(child.id)
-  const now = Date.now()
-
   // 1. Save summary/lineage as the first user message.
   const seedText = lineageContext || summary
   if (seedText) {
@@ -310,76 +334,15 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   }
 
   // 2. Replay stripped recent messages into the child session.
-  const replayedMessageIds: Record<string, string> = {}
+  let replayedMessageIds: Record<string, string> = {}
   if (input.recentMessages && input.recentMessages.length > 0) {
     const strippedRecent = stripForBranch(input.recentMessages, input.recentParts ?? [])
-    const recentParts = strippedRecent.parts
-    const partsByMsg = new Map<string, PartRow[]>()
-    for (const p of recentParts) {
-      const list = partsByMsg.get(p.messageId) ?? []
-      list.push(p)
-      partsByMsg.set(p.messageId, list)
-    }
-
-    for (const msg of strippedRecent.messages) {
-      const messageId = generateId()
-      replayedMessageIds[msg.id] = messageId
-      const events: (MessageEvent | PartEvent | MessageEndEvent)[] = []
-
-      events.push({
-        v: 1,
-        ts: now,
-        sessionId: child.id,
-        type: "message",
-        messageId,
-        role: msg.role,
-        modelId: msg.modelId,
-        providerId: msg.providerId,
-        timeCreated: msg.timeCreated,
-      })
-
-      for (const part of partsByMsg.get(msg.id) ?? []) {
-        let data: unknown
-        try {
-          data = JSON.parse(part.data)
-        } catch {
-          continue
-        }
-
-        // Mark replayed text/summary parts as model-only so the TUI hides them
-        if (part.type === "text" || part.type === "summary") {
-          data = { ...(data as Record<string, unknown>), visibility: "model-only" as MessageVisibility }
-        }
-
-        events.push({
-          v: 1,
-          ts: now,
-          sessionId: child.id,
-          type: "part",
-          messageId,
-          partId: generateId(),
-          partType: part.type,
-          data,
-        })
-      }
-
-      if (msg.finish) {
-        events.push({
-          v: 1,
-          ts: now,
-          sessionId: child.id,
-          type: "message-end",
-          messageId,
-          finish: msg.finish,
-          cost: msg.cost,
-          tokensIn: msg.tokensIn,
-          tokensOut: msg.tokensOut,
-          timeCompleted: msg.timeCompleted ?? now,
-        })
-      }
-
-      appendEvents(child.id, events)
-    }
+    replayedMessageIds = replayMessages(
+      child.id,
+      strippedRecent.messages,
+      strippedRecent.parts,
+      true,
+    )
   }
 
   // 3. Append the steer goal as the final user message
@@ -395,6 +358,118 @@ export function createBranch(input: CreateBranchInput): BranchResult {
     promptMessageId,
     ...(Object.keys(replayedMessageIds).length > 0 ? { replayedMessageIds } : {}),
   }
+}
+
+export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
+  const parent = getSession(input.sessionId)
+  const prompt = input.prompt?.trim()
+  const taskId = parent.taskId
+  const ephemeral = parent.kind === "ephemeral"
+  if (!taskId && !ephemeral) {
+    throw new Error(
+      `Cannot branch session ${parent.id}: parent has no taskId. ` +
+        `initializeSessionFromMessage must run before branching.`,
+    )
+  }
+
+  const child = createSession({
+    directory: parent.directory ?? undefined,
+    parentSessionId: parent.id,
+    ...(ephemeral ? { ephemeral: true } : { kind: "main" as const, taskId }),
+    filesModified: parent.filesModified,
+  })
+  const abortedIds = new Set(
+    input.messages.filter((message) => message.finish === "aborted").map((message) => message.id),
+  )
+  const messages = input.messages.filter((message) => !abortedIds.has(message.id))
+  const parts = input.parts.filter((part) => !abortedIds.has(part.messageId))
+  const replayedMessageIds = replayMessages(child.id, messages, parts, false)
+  const promptMessageId = prompt
+    ? saveUserMessage({
+        sessionId: child.id,
+        text: prompt,
+        variant: "steer",
+      }).id
+    : undefined
+
+  return {
+    sessionId: child.id,
+    created: true,
+    summary: "",
+    promptMessageId,
+    ...(Object.keys(replayedMessageIds).length > 0 ? { replayedMessageIds } : {}),
+  }
+}
+
+function replayMessages(
+  sessionId: string,
+  messages: MessageRow[],
+  parts: PartRow[],
+  modelOnly: boolean,
+): Record<string, string> {
+  const partsByMessage = new Map<string, PartRow[]>()
+  for (const part of parts) {
+    const list = partsByMessage.get(part.messageId) ?? []
+    list.push(part)
+    partsByMessage.set(part.messageId, list)
+  }
+
+  const replayedMessageIds: Record<string, string> = {}
+  const now = Date.now()
+  for (const message of messages) {
+    const messageId = generateId()
+    replayedMessageIds[message.id] = messageId
+    const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [{
+      v: 1,
+      ts: now,
+      sessionId,
+      type: "message",
+      messageId,
+      role: message.role,
+      modelId: message.modelId,
+      providerId: message.providerId,
+      timeCreated: message.timeCreated,
+    }]
+
+    for (const part of partsByMessage.get(message.id) ?? []) {
+      let data: unknown
+      try {
+        data = JSON.parse(part.data)
+      } catch {
+        continue
+      }
+      if (modelOnly && (part.type === "text" || part.type === "summary")) {
+        data = { ...(data as Record<string, unknown>), visibility: "model-only" as MessageVisibility }
+      }
+      events.push({
+        v: 1,
+        ts: now,
+        sessionId,
+        type: "part",
+        messageId,
+        partId: generateId(),
+        partType: part.type,
+        data,
+      })
+    }
+
+    if (message.finish) {
+      events.push({
+        v: 1,
+        ts: now,
+        sessionId,
+        type: "message-end",
+        messageId,
+        finish: message.finish,
+        cost: message.cost,
+        tokensIn: message.tokensIn,
+        tokensOut: message.tokensOut,
+        timeCompleted: message.timeCompleted ?? now,
+      })
+    }
+    appendEvents(sessionId, events)
+  }
+  return replayedMessageIds
 }
 
 function fallbackSummary(messages: MessageRow[], parts: PartRow[]): string {

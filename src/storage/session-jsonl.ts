@@ -9,7 +9,7 @@
 //   - JSONL: open(O_APPEND | O_WRONLY), write, close — no locking needed
 //   - meta.json: write to .tmp, rename (atomic on POSIX)
 
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, existsSync, renameSync } from "node:fs"
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, existsSync, renameSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import {
   getSessionDir,
@@ -42,6 +42,7 @@ function normalizeSession(session: Session): Session {
     summary: session.summary ?? null,
     parentSummary: session.parentSummary ?? null,
     filesModified: session.filesModified ?? null,
+    pinned: session.pinned ?? false,
   }
 }
 
@@ -89,6 +90,11 @@ export function createSessionLog(session: Session): void {
 
   writeFileSync(getSessionLogPath(session.id), JSON.stringify(event) + "\n")
   writeMetaAtomic(session.id, session)
+}
+
+export function deleteSessionLog(sessionId: string): void {
+  ephemeralEvents.delete(sessionId)
+  rmSync(getSessionDir(sessionId), { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +319,7 @@ function replayEvents(events: SessionLogEvent[]): {
           if (event.patch.summary !== undefined) session.summary = event.patch.summary
           if (event.patch.parentSummary !== undefined) session.parentSummary = event.patch.parentSummary
           if (event.patch.filesModified !== undefined) session.filesModified = event.patch.filesModified
+          if (event.patch.pinned !== undefined) session.pinned = event.patch.pinned
           if (event.patch.timeUpdated !== undefined) session.timeUpdated = event.patch.timeUpdated
         }
         break

@@ -14,6 +14,8 @@ import {
 } from "../../src/session/message"
 import {
   buildLineageContext,
+  compactBranch,
+  createSteerBranch,
   createBranch,
   extractLastUserText,
   getSessionLineage,
@@ -302,5 +304,140 @@ describe("session branching", () => {
     )
 
     expect(result).toBe(true)
+  })
+
+  test("compacts old history through the language model", async () => {
+    const task = createTask({
+      title: "Compact history",
+      description: "Compact a long session",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    for (let index = 1; index <= 5; index++) {
+      saveUserMessage({ sessionId: parent.id, text: `Message ${index}` })
+    }
+    const history = loadMessages(parent.id)
+    let calls = 0
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "compact-test",
+      supportedUrls: {},
+      async doGenerate() {
+        calls++
+        return {
+          content: [{ type: "text", text: "## Context\nCompacted by the model" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 5, text: 5, reasoning: 0 },
+          },
+          warnings: [],
+        }
+      },
+    } as any
+
+    const result = await compactBranch({
+      sessionId: parent.id,
+      messages: history.messages,
+      parts: history.parts,
+      model,
+      profile: "coder",
+    })
+
+    expect(calls).toBe(1)
+    expect(result.summary).toContain("Compacted by the model")
+    expect(getSession(result.sessionId).parentSessionId).toBe(parent.id)
+    const child = loadMessages(result.sessionId)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Message 5")
+  })
+
+  test("steers with full history and no compaction", () => {
+    const task = createTask({
+      title: "Full history steer",
+      description: "Keep every conversation part",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "tool",
+      data: {
+        tool: "read",
+        callId: "read_1",
+        status: "completed",
+        input: { path: "src/auth.ts" },
+        output: "auth source",
+      },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const aborted = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: aborted.id,
+      type: "text",
+      data: { text: "Partial response" },
+    })
+    finishMessage(aborted.id, "aborted", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      prompt: "Use a cookie-based design",
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const childSession = getSession(result.sessionId)
+    const child = loadMessages(result.sessionId)
+
+    expect(getSession(parent.id).summary).toBeNull()
+    expect(childSession.parentSummary).toBeNull()
+    expect(child.messages).toHaveLength(3)
+    expect(child.parts.some((part) => part.type === "tool")).toBe(true)
+    expect(child.parts.some((part) => part.data.includes("Partial response"))).toBe(false)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Use a cookie-based design")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
+  })
+
+  test("forks with full history without a follow-up goal", () => {
+    const task = createTask({
+      title: "Conversation fork",
+      description: "Fork without sending a prompt",
+      profile: "coder",
+    })
+    const parent = createSession({ taskId: task.id })
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const child = loadMessages(result.sessionId)
+
+    expect(result.promptMessageId).toBeUndefined()
+    expect(child.messages).toHaveLength(2)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Inspect the auth flow")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
   })
 })

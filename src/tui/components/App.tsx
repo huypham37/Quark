@@ -31,6 +31,9 @@ import {
   buildSessionTreeRows,
   firstSelectableSessionRow,
   moveSessionRowSelection,
+  searchSessionTree,
+  sessionQuickSwitchNumber,
+  type SessionScope,
   type SessionTreeInput,
   type SessionTreeRow,
 } from "../session-tree-picker"
@@ -52,6 +55,7 @@ import { info as notifyInfo, warn as notifyWarn } from "../../notification/notif
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 import type { FileTarget } from "../editor"
+import type { SessionPreview } from "../session-preview"
 
 /** Command handler result */
 export type CommandResult =
@@ -65,7 +69,8 @@ interface AppProps {
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   onCreateAsyncSession?: () => string
   onOpenFile?: (target: FileTarget) => void
-  getSessions?: () => SessionTreeInput[]
+  getSessions?: (scope: SessionScope) => SessionTreeInput[]
+  getSessionPreview?: (sessionId: string) => SessionPreview
   getWorktrees?: () => {
     id: string
     path: string
@@ -119,7 +124,10 @@ interface SlashState {
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
+  sessionInputs: SessionTreeInput[]
   sessionRows: SessionTreeRow[]
+  sessionAction: "browse" | "rename" | "delete"
+  sessionScope: SessionScope
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
@@ -130,7 +138,10 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
+  sessionInputs: [],
   sessionRows: [],
+  sessionAction: "browse",
+  sessionScope: "worktree",
   worktreeRows: [],
   selectedIndex: 0,
 }
@@ -225,12 +236,35 @@ export const App: Component<AppProps> = (props) => {
   // --- Local UI signals (not in the global store — ephemeral) ---
   const [mention, setMention] = createSignal<MentionState>(MENTION_INACTIVE)
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
+  const [sessionPreview, setSessionPreview] = createSignal<SessionPreview | null>(null)
+  const previewCache = new Map<string, SessionPreview>()
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
   // Statistics panel visibility and content
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
   // Async panel side-session ID (created lazily on first panel submit)
   const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
+
+  createEffect(() => {
+    const picker = slash()
+    if (!picker.active || picker.mode !== "sessions" || !props.getSessionPreview) {
+      setSessionPreview(null)
+      return
+    }
+    const row = picker.sessionRows[picker.selectedIndex]
+    if (row?.type !== "session" && row?.type !== "orphan") {
+      setSessionPreview(null)
+      return
+    }
+    const cached = previewCache.get(row.id)
+    if (cached) {
+      setSessionPreview(cached)
+      return
+    }
+    const preview = props.getSessionPreview(row.id)
+    previewCache.set(row.id, preview)
+    setSessionPreview(preview)
+  })
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -372,7 +406,10 @@ export const App: Component<AppProps> = (props) => {
       query,
       items: filtered,
       pickerItems: [],
+      sessionInputs: [],
       sessionRows: [],
+      sessionAction: "browse",
+      sessionScope: "worktree",
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -389,8 +426,27 @@ export const App: Component<AppProps> = (props) => {
 
     const s = slash()
 
-    // Sessions / worktree pickers: block all input changes (no filtering)
-    if ((s.mode === "sessions" || s.mode === "worktrees") && s.active) {
+    if (s.mode === "sessions" && s.active) {
+      if (s.sessionAction === "rename") {
+        setSlash((prev) => ({ ...prev, query: newValue }))
+        setInputValue(newValue)
+        return
+      }
+      if (s.sessionAction === "delete") return
+      const result = searchSessionTree(s.sessionInputs, newValue)
+      const sessionRows = buildSessionTreeRows(result.sessions, state.store.sessionId)
+      setSlash((prev) => ({
+        ...prev,
+        query: newValue,
+        sessionRows,
+        selectedIndex: firstSelectableSessionRow(sessionRows, result.firstMatchId ?? state.store.sessionId),
+      }))
+      setInputValue(newValue)
+      return
+    }
+
+    // Worktree picker does not accept text input.
+    if (s.mode === "worktrees" && s.active) {
       return
     }
 
@@ -433,22 +489,34 @@ export const App: Component<AppProps> = (props) => {
     setInputValue(text)
   }
 
-  const openSessionsPicker = (): boolean => {
+  const openSessionsPicker = (
+    preferredSessionId?: string,
+    scope: SessionScope = "worktree",
+    query = "",
+  ): boolean => {
     if (!props.getSessions) return false
-    const sessions = props.getSessions()
+    previewCache.clear()
+    const sessions = props.getSessions(scope)
     const sid = state.store.sessionId
-    const sessionRows = buildSessionTreeRows(sessions, sid)
+    const result = searchSessionTree(sessions, query)
+    const sessionRows = buildSessionTreeRows(result.sessions, sid)
     setSlash({
       active: true,
       mode: "sessions",
-      query: "",
+      query,
       items: [],
       pickerItems: [],
+      sessionInputs: sessions,
       sessionRows,
+      sessionAction: "browse",
+      sessionScope: scope,
       worktreeRows: [],
-      selectedIndex: firstSelectableSessionRow(sessionRows, sid),
+      selectedIndex: firstSelectableSessionRow(
+        sessionRows,
+        preferredSessionId ?? result.firstMatchId ?? sid,
+      ),
     })
-    setInputText("")
+    setInputText(query)
     return true
   }
 
@@ -475,7 +543,10 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: [],
+      sessionInputs: [],
       sessionRows: [],
+      sessionAction: "browse",
+      sessionScope: "worktree",
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
     })
@@ -498,7 +569,10 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
+      sessionInputs: [],
       sessionRows: [],
+      sessionAction: "browse",
+      sessionScope: "worktree",
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -566,9 +640,120 @@ export const App: Component<AppProps> = (props) => {
   // Returns true if the key was consumed.
   // ---------------------------------------------------------------------------
 
-  const handleDropdownKey = (name: string, isTab: boolean, isReturn: boolean, isEscape: boolean): boolean => {
+  const handleDropdownKey = (
+    name: string,
+    isTab: boolean,
+    isReturn: boolean,
+    isEscape: boolean,
+    quickSwitch: number | null,
+  ): boolean => {
     const s = slash()
     if (s.active) {
+      if (s.mode === "sessions" && s.sessionAction === "rename") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
+          const title = inputValue().trim()
+          if (!title) return true
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          if (props.onCommand) {
+            Promise.resolve(props.onCommand(
+              "rename-session",
+              JSON.stringify({ id: selected.id, title }),
+              state.store.sessionId,
+            )).then(() => openSessionsPicker(selected.id, s.sessionScope))
+          }
+          return true
+        }
+        if (isEscape) {
+          openSessionsPicker(
+            selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined,
+            s.sessionScope,
+          )
+          return true
+        }
+        return false
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "delete") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          if (props.onCommand) {
+            Promise.resolve(props.onCommand(
+              "delete-session",
+              JSON.stringify({ id: selected.id }),
+              state.store.sessionId,
+            )).then(() => openSessionsPicker(undefined, s.sessionScope))
+          }
+          return true
+        }
+        if (isEscape) {
+          openSessionsPicker(
+            selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined,
+            s.sessionScope,
+          )
+        }
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f2") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const title = s.sessionInputs.find((session) => session.id === selected.id)?.title ?? ""
+          setSlash((prev) => ({ ...prev, sessionAction: "rename", query: title }))
+          setInputText(title)
+        }
+        return true
+      }
+
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "delete") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type !== "session" && selected?.type !== "orphan") return true
+        if (selected.id === state.store.sessionId) {
+          notifyWarn("Session", "The current session cannot be deleted", 2500)
+          return true
+        }
+        setSlash((prev) => ({ ...prev, sessionAction: "delete", query: "" }))
+        setInputText("")
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f3") {
+        const selected = s.sessionRows[s.selectedIndex]
+        if (selected?.type !== "session" && selected?.type !== "orphan") return true
+        const session = s.sessionInputs.find((item) => item.id === selected.id)
+        if (!session || !props.onCommand) return true
+        Promise.resolve(props.onCommand(
+          "pin-session",
+          JSON.stringify({ id: session.id, pinned: !session.pinned }),
+          state.store.sessionId,
+        )).then(() => openSessionsPicker(session.id, s.sessionScope))
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f4") {
+        const selected = s.sessionRows[s.selectedIndex]
+        const preferred = selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined
+        const scope = s.sessionScope === "worktree" ? "project" : "worktree"
+        openSessionsPicker(preferred, scope, s.query)
+        return true
+      }
+
+      if (s.mode === "sessions" && s.sessionAction === "browse" && quickSwitch) {
+        const rowIndex = s.sessionRows.findIndex((_, index) =>
+          sessionQuickSwitchNumber(s.sessionRows, index) === quickSwitch)
+        const selected = s.sessionRows[rowIndex]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          setSlash(SLASH_INACTIVE)
+          setInputText("")
+          props.onCommand?.("sessions", selected.id, state.store.sessionId)
+        }
+        return true
+      }
+
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
@@ -811,7 +996,15 @@ export const App: Component<AppProps> = (props) => {
     const s = slash()
     if (s.active) {
       if (s.mode === "sessions") {
-        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
+        return {
+          type: "sessions",
+          rows: s.sessionRows,
+          selectedIndex: s.selectedIndex,
+          query: s.query,
+          action: s.sessionAction,
+          scope: s.sessionScope,
+          preview: sessionPreview(),
+        }
       }
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
@@ -984,6 +1177,7 @@ export const App: Component<AppProps> = (props) => {
         evt.name === "tab",
         evt.name === "return",
         evt.name === "escape",
+        (evt.option || evt.meta) && /^[1-9]$/.test(evt.name) ? Number(evt.name) : null,
       )
       if (consumed) {
         evt.preventDefault()
@@ -1137,13 +1331,18 @@ export const App: Component<AppProps> = (props) => {
             return (
               <>
                 {dividers.map((d) => (
-                  <SteerDivider goal={d.goal} width={dims().width} />
+                  <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
                 ))}
                 <MessageItem message={msg()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
               </>
             )
           }}
         </Index>
+        <For each={state.store.steerDividers.filter((d) => d.insertionIndex === state.store.messages.length)}>
+          {(divider) => (
+            <SteerDivider goal={divider.goal} label={divider.label} width={dims().width} />
+          )}
+        </For>
       </scrollbox>
 
       {/* Permission prompt */}
