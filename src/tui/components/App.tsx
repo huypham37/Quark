@@ -85,6 +85,7 @@ interface AppProps {
   getSkills?: () => { id: string; name: string }[]
   getCurrentSkill?: () => string
   initialSessionId?: string
+  initialMessages?: TuiMessage[]
   initialModelName?: string
   initialSkillCount?: number
   initialThinkingEffort?: string
@@ -175,6 +176,7 @@ export const App: Component<AppProps> = (props) => {
   // --- App-level state store (messages, session, running, status, etc.) ---
   const state = createAppState({
     sessionId: props.initialSessionId ?? null,
+    messages: props.initialMessages ?? [],
     modelName: props.initialModelName ?? "smart",
     skillCount: props.initialSkillCount ?? 0,
     thinkingEffort: props.initialThinkingEffort,

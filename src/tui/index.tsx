@@ -81,8 +81,18 @@ let activeAgent: AgentConfig = agentFromProfile(profile, promptResult.content)
 // Initialize the backend (DB + tools) with profile-bound skills
 await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
 
-// Session starts null — created lazily on first message by prompt()
+// Session starts null — created lazily on first message by prompt(), unless
+// `quark --session <id>` explicitly resumes a persisted conversation.
+const sessionArg = parseArg("--session")
 let currentSession: { id: string } | null = null
+let initialMessages: ReturnType<typeof dbToTuiMessages> = []
+if (sessionArg) {
+  const session = getSession(sessionArg)
+  currentSession = { id: session.id }
+  process.env.QUARK_SESSION_ID = session.id
+  const { messages, parts } = loadMessages(session.id)
+  initialMessages = dbToTuiMessages(messages, parts)
+}
 
 // Listen for lazy session creation from prompt()
 bus.on("session-created", ({ sessionId }) => {
@@ -824,6 +834,7 @@ render(() => (
     getSkills={handleGetSkills}
     getCurrentSkill={handleGetCurrentSkill}
     initialSessionId={currentSession?.id}
+    initialMessages={initialMessages}
     initialModelName={modelName}
     initialSkillCount={skills.length}
     initialThinkingEffort={activeAgent.thinkingEffort}

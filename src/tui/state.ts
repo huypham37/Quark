@@ -370,6 +370,7 @@ export interface AppState {
 
 export function createAppState(initial: {
   sessionId: string | null
+  messages?: TuiMessage[]
   modelName: string
   skillCount: number
   thinkingEffort?: ThinkingEffort
@@ -377,7 +378,7 @@ export function createAppState(initial: {
   const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
     sessionId: initial.sessionId,
-    messages: [],
+    messages: initial.messages ?? [],
     running: false,
     steering: false,
     lastDuration: null,

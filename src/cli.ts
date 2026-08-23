@@ -178,14 +178,17 @@ async function main() {
 
   // No message provided → launch interactive TUI
   if (!args.message) {
-    const { execSync } = await import("child_process")
+    const { execFileSync } = await import("child_process")
     const { fileURLToPath } = await import("url")
     const { dirname, resolve } = await import("path")
     const thisDir = typeof import.meta.dir === "string"
       ? import.meta.dir
       : dirname(fileURLToPath(import.meta.url))
     const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
-    execSync(`bun --preload "${quarkDir}/preload.ts" "${quarkDir}/src/tui/index.tsx"`, {
+    execFileSync("bun", [
+      "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
+      ...(args.sessionId ? ["--session", args.sessionId] : []),
+    ], {
       stdio: "inherit",
       env: { ...process.env, QUARK_DIR: quarkDir },
     })
@@ -281,6 +284,9 @@ async function main() {
     })
 
     dlog(`session: ${result.sessionId}`)
+    if (!args.noStore && !parentSessionId) {
+      process.stdout.write(`Resume the session with quark --session ${result.sessionId}\n`)
+    }
     cleanupControlReader?.()
     cleanupEventWriter?.()
     process.exit(0)
