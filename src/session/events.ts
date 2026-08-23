@@ -132,7 +132,7 @@ export interface BusEvents {
   "async-panel-open": { sessionId?: string; title: string }
 
   // ---------------------------------------------------------------------------
-  // Sub-agent observability — events forwarded from child `quark --sub-agent`
+  // Sub-agent observability — events forwarded from an internal child process
   // processes via stderr NDJSON. The parent Bash tool parses these and re-emits
   // them on the parent bus so the TUI can render nested tool activity.
   // ---------------------------------------------------------------------------
