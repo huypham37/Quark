@@ -5,9 +5,9 @@
 // Replaces both FileDropdown and CommandDropdown from the React TUI.
 
 import type { Component } from "solid-js"
-import { For, createEffect } from "solid-js"
+import { For } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
+import type { ColorInput } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
 import type { SessionTreeRow } from "../session-tree-picker"
@@ -87,7 +87,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     const mode = m()
     return mode?.type === "sessions" ? mode : null
   }
-  let scrollRef: ScrollBoxRenderable | undefined
   const maxVisibleRows = () => {
     const isSession = m()?.type === "sessions"
     const isCard = isSession || m()?.type === "worktrees"
@@ -95,26 +94,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     const available = Math.max(1, dims().height - BOTTOM_OFFSET - chromeRows)
     return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
   }
-
-  // Scroll to keep the selected item anchored at a fixed visual row.
-  // The cursor stays put; the list slides past it (vim `scrolloff` style).
-  createEffect(() => {
-    const mode = m()
-    // Session rows are windowed below. Keeping every row in the ScrollBox
-    // mounts thousands of renderables even though only eight are visible.
-    if (!mode || mode.type === "sessions" || !scrollRef) return
-    const totalRows = rows().length
-    const viewportHeight = Math.min(totalRows, maxVisibleRows())
-    const newScrollTop = scrollTopForSelection(
-      mode,
-      mode.selectedIndex,
-      totalRows,
-      viewportHeight,
-    )
-    if (newScrollTop !== scrollRef.scrollTop) {
-      scrollRef.scrollTo(newScrollTop)
-    }
-  })
 
   const rows = (): DropdownRow[] => {
     const mode = m()
@@ -230,13 +209,13 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     return result
   }
 
-  const sessionWindow = () => {
-    const mode = sessionMode()
-    if (!mode) return { rows: rows(), start: 0 }
+  const visibleWindow = () => {
+    const mode = m()
     const allRows = rows()
+    if (!mode) return allRows
     const height = Math.min(allRows.length, maxVisibleRows())
     const start = scrollTopForSelection(mode, mode.selectedIndex, allRows.length, height)
-    return { rows: allRows.slice(start, start + height), start }
+    return allRows.slice(start, start + height)
   }
 
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
@@ -250,16 +229,13 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     : visibleHeight()
 
   const content = () => {
-    const isSession = isSessionPicker()
-    const visibleRows = () => isSession ? sessionWindow().rows : rows()
     return (
       <scrollbox
-        ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
         height={bodyHeight()}
         scrollbarOptions={{ visible: false }}
         backgroundColor={panelBg()}
       >
-        <For each={visibleRows()}>
+        <For each={visibleWindow()}>
           {(row) => {
             // Keep the row background inside the picker shell, not under its border.
             const width = () => dims().width - (isSessionCard() ? 10 : 6)
