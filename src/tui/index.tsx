@@ -9,7 +9,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listSessions, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "../session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
@@ -413,7 +413,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     try {
       const input = JSON.parse(args) as { id?: string; title?: string }
       const title = input.title?.trim()
-      const session = listProjectWorktreeSessions().find((item) => item.id === input.id)
+      const session = listProjectSessions().find((item) => item.id === input.id)
       if (!session || !title) throw new Error("Invalid session rename")
       setSessionTitle(session.id, title)
       notifyInfo("Session", `Renamed to: ${title}`, 2000)
@@ -427,7 +427,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "pin-session") {
     try {
       const input = JSON.parse(args) as { id?: string; pinned?: boolean }
-      const session = listProjectWorktreeSessions().find((item) => item.id === input.id)
+      const session = listProjectSessions().find((item) => item.id === input.id)
       if (!session || typeof input.pinned !== "boolean") throw new Error("Session not found")
       setSessionPinned(session.id, input.pinned)
       notifyInfo("Session", input.pinned ? "Session pinned" : "Session unpinned", 1500)
@@ -463,7 +463,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    const sessions = listProjectWorktreeSessions()
+    // Match against the same worktree-scoped list rendered by the session picker.
+    const sessions = listProjectSessions()
     const match = sessions.find((s) => s.id.startsWith(args))
     if (!match) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
@@ -701,14 +702,6 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
 
 function getProjectWorktrees() {
   return filterToProjectWorktrees(listWorktrees(rootProjectDir), rootProjectDir, worktreeBase)
-}
-
-function listProjectWorktreeSessions() {
-  const directories = new Set(getProjectWorktrees()
-    .filter((worktree) => !worktree.prunable && !worktree.missing)
-    .map((worktree) => path.resolve(worktree.path)))
-  return listSessions().filter((session) =>
-    session.directory ? directories.has(path.resolve(session.directory)) : false)
 }
 
 function handleGetSessions() {
