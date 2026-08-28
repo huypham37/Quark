@@ -18,6 +18,8 @@ import { MessageItem } from "./message-item"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
+import { CommandPalette } from "./command-palette"
+import { preservePaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
 import { PermissionPrompt } from "./permission-prompt"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
@@ -84,6 +86,7 @@ interface AppProps {
   getCurrentProfile?: () => string
   getSkills?: () => { id: string; name: string }[]
   getCurrentSkill?: () => string
+  getPaletteEntries?: () => PaletteEntry[] | Promise<PaletteEntry[]>
   initialSessionId?: string
   initialMessages?: TuiMessage[]
   initialModelName?: string
@@ -142,7 +145,6 @@ const SLASH_INACTIVE: SlashState = {
 }
 
 const MAX_FILE_ITEMS = 50
-const MAX_DROPDOWN_ITEMS = 15
 const SCROLL_STEP = 3
 
 export const App: Component<AppProps> = (props) => {
@@ -227,6 +229,7 @@ export const App: Component<AppProps> = (props) => {
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
   let inputRef: TextareaRenderable | undefined
+  let paletteInputRef: TextareaRenderable | undefined
   let customQuestionRef: TextareaRenderable | undefined
 
   // --- Local UI signals (not in the global store — ephemeral) ---
@@ -234,6 +237,21 @@ export const App: Component<AppProps> = (props) => {
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
+  const [paletteOpen, setPaletteOpen] = createSignal(false)
+  const [paletteQuery, setPaletteQuery] = createSignal("")
+  const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
+  const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
+  const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
+  let paletteGeneration = 0
+  let savedComposer: {
+    text: string
+    cursorOffset: number
+    images: { mime: string; data: string; label: string }[]
+    selectedImageIndex: number | null
+    historyIndex: number
+    historyDraft: string
+    scrollTop: number
+  } | null = null
   // Statistics panel visibility and content
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
   // Async panel side-session ID (created lazily on first panel submit)
@@ -293,7 +311,7 @@ export const App: Component<AppProps> = (props) => {
   }
 
   // Whether any dropdown or overlay is active
-  const dropdownActive = () => mention().active || slash().active || statisticsContent() !== null
+  const dropdownActive = () => mention().active || slash().active || paletteOpen() || statisticsContent() !== null
 
   // ---------------------------------------------------------------------------
   // Pending image removal
@@ -356,35 +374,70 @@ export const App: Component<AppProps> = (props) => {
   // Slash updater — called when input value changes
   // ---------------------------------------------------------------------------
 
-  const updateSlashFromValue = (newValue: string) => {
-    if (!newValue.startsWith("/")) {
-      setSlash(SLASH_INACTIVE)
-      return
+  const restoreComposer = (textOverride?: string) => {
+    const saved = savedComposer
+    savedComposer = null
+    setPaletteOpen(false)
+    setPaletteQuery("")
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSelectedIndex(0)
+    if (!saved) return
+    const text = textOverride ?? saved.text
+    setPendingImages(saved.images)
+    setSelectedImageIndex(saved.selectedImageIndex)
+    setHistoryIndex(saved.historyIndex)
+    setHistoryDraft(saved.historyDraft)
+    setInputText(text)
+    if (inputRef) inputRef.cursorOffset = textOverride === undefined ? Math.min(saved.cursorOffset, text.length) : text.length
+    if (scroll) scroll.scrollTop = saved.scrollTop
+  }
+
+  const openPalette = () => {
+    if (!inputRef || !props.getPaletteEntries) return false
+    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    savedComposer = {
+      text: "",
+      cursorOffset: 0,
+      images: [...pendingImages()],
+      selectedImageIndex: selectedImageIndex(),
+      historyIndex: historyIndex(),
+      historyDraft: historyDraft(),
+      scrollTop: scroll?.scrollTop ?? 0,
     }
+    const generation = ++paletteGeneration
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
+    setInputText("")
+    setPaletteQuery("")
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSelectedIndex(0)
+    setPaletteOpen(true)
+    Promise.resolve(props.getPaletteEntries())
+      .then((entries) => {
+        if (!paletteOpen() || generation !== paletteGeneration) return
+        setPaletteEntries(entries)
+        const results = searchPaletteEntries(entries, paletteQuery())
+        setPaletteResults(results)
+        setPaletteSelectedIndex(0)
+      })
+      .catch((error) => {
+        if (paletteOpen() && generation === paletteGeneration) {
+          notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+        }
+      })
+    return true
+  }
 
-    const spaceIndex = newValue.indexOf(" ")
-
-    // If there's a space, the command part is done — dismiss dropdown
-    if (spaceIndex !== -1) {
-      setSlash(SLASH_INACTIVE)
-      return
-    }
-
-    const query = newValue.slice(1)
-    const filtered = filterCommands(query, MAX_DROPDOWN_ITEMS)
-
-    setSlash({
-      active: true,
-      mode: "commands",
-      query,
-      items: filtered,
-      pickerItems: [],
-      sessionInputs: [],
-      sessionRows: [],
-      sessionAction: "browse",
-      worktreeRows: [],
-      selectedIndex: 0,
-    })
+  const updatePaletteQuery = () => {
+    if (!paletteInputRef) return
+    const query = paletteInputRef.plainText
+    const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
+    const results = searchPaletteEntries(paletteEntries(), query)
+    setPaletteQuery(query)
+    setPaletteResults(results)
+    setPaletteSelectedIndex(Math.max(0, preservePaletteSelectionIndex(selectedKey, results)))
   }
 
   // ---------------------------------------------------------------------------
@@ -434,9 +487,11 @@ export const App: Component<AppProps> = (props) => {
 
     setInputValue(newValue)
 
-    // Slash and mention are mutually exclusive — slash takes precedence
+    if (newValue === "/" && openPalette()) return
+
+    // Explicit slash commands remain submittable, but command discovery belongs to the palette.
     if (newValue.startsWith("/")) {
-      updateSlashFromValue(newValue)
+      setSlash(SLASH_INACTIVE)
       setMention(MENTION_INACTIVE)
     } else {
       setSlash(SLASH_INACTIVE)
@@ -929,11 +984,83 @@ export const App: Component<AppProps> = (props) => {
     return null
   }
 
+  const runPaletteSelection = async () => {
+    const entry = paletteResults()[paletteSelectedIndex()]
+    if (!entry) return
+    if (entry.isUnavailable) {
+      notifyInfo("Command palette", `${entry.label} is unavailable`, 2500)
+      return
+    }
+
+    const action = entry.action
+    try {
+      if (action.type === "tool") {
+        notifyInfo("Command palette", "Tool mentions are not supported yet", 2500)
+        return
+      }
+      if (action.type === "model") {
+        await props.onCommand?.("model", action.modelId, state.store.sessionId)
+        restoreComposer()
+        return
+      }
+      if (action.type === "skill") {
+        await props.onCommand?.("skills", action.skillId, state.store.sessionId)
+        restoreComposer()
+        return
+      }
+      const command = filterCommands("", 99).find((item) => item.id === action.commandId)
+      if (action.commandId === "sessions") {
+        restoreComposer()
+        openSessionsPicker()
+        return
+      }
+      if (action.commandId === "worktree") {
+        restoreComposer()
+        openWorktreePicker()
+        return
+      }
+      const pickerMode = pickerModeForCommand(action.commandId)
+      if (pickerMode) {
+        restoreComposer()
+        openChoicePicker(pickerMode)
+        return
+      }
+      const requiresArgs = command?.usage?.includes("<") || action.commandId === "compact" || action.commandId === "steer"
+      if (requiresArgs) {
+        restoreComposer(`/${action.commandId} `)
+        return
+      }
+      restoreComposer()
+      executeCommand(action.commandId, action.args ?? "")
+    } catch (error) {
+      notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Global keyboard handler
   // ---------------------------------------------------------------------------
 
   useKeyboard((evt) => {
+    if (paletteOpen()) {
+      if (evt.name === "up") {
+        setPaletteSelectedIndex((index) => Math.max(0, index - 1))
+      } else if (evt.name === "down") {
+        setPaletteSelectedIndex((index) => Math.min(Math.max(0, paletteResults().length - 1), index + 1))
+      } else if (evt.name === "return") {
+        void runPaletteSelection()
+      } else if (evt.name === "escape") {
+        paletteGeneration++
+        restoreComposer()
+      } else if (evt.name === "tab" || evt.name === "pageup" || evt.name === "pagedown" || evt.name === "home" || evt.name === "end") {
+        // Unsupported in v1; consume so underlying global actions cannot run.
+      } else {
+        return
+      }
+      evt.preventDefault()
+      evt.stopPropagation()
+      return
+    }
     // Ctrl+Z / Cmd+Z — undo and move cursor to end
     if ((evt.ctrl || evt.meta || evt.super) && evt.name === "z" && !evt.shift) {
       if (inputRef && !state.store.running) {
@@ -1228,6 +1355,7 @@ export const App: Component<AppProps> = (props) => {
         overflow="hidden"
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{ visible: false }}
+        opacity={paletteOpen() ? 0.35 : 1}
       >
         <box flexGrow={1} minHeight={0} />
         <Index each={state.store.messages}>
@@ -1281,6 +1409,7 @@ export const App: Component<AppProps> = (props) => {
         onContentChange={handleInputChange}
         onRef={(r: TextareaRenderable) => { inputRef = r }}
         disabled={state.store.running || !!state.store.permission || !!state.store.question}
+        focused={!paletteOpen()}
         placeholder=""
         tokensUsed={state.store.status.tokensUsed}
         tokenLimit={state.store.status.tokenLimit}
@@ -1292,6 +1421,15 @@ export const App: Component<AppProps> = (props) => {
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
         width={dims().width}
+      />
+
+      <CommandPalette
+        active={paletteOpen()}
+        query={paletteQuery()}
+        entries={paletteResults()}
+        selectedIndex={paletteSelectedIndex()}
+        onInput={updatePaletteQuery}
+        onRef={(ref) => { paletteInputRef = ref }}
       />
 
       {/* Statistics overlay */}

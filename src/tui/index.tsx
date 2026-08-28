@@ -28,7 +28,9 @@ import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { buildEditorArgv, resolveEditor, type FileTarget } from "./editor"
 import { clearCache as clearSkillCache } from "../skill/skill"
-import { register, clear as clearRegistry } from "../tool/registry"
+import { register, clear as clearRegistry, list as listTools } from "../tool/registry"
+import { buildPaletteEntries } from "./palette-index"
+import { commands } from "./commands"
 import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { dismiss, getActive, info as notifyInfo } from "../notification/notification"
@@ -752,6 +754,33 @@ function handleGetCurrentSkill() {
   return ""
 }
 
+function handleGetPaletteEntries() {
+  const currentModel = handleGetCurrentModel()
+  const activeSkills = new Set(activeAgent.skills)
+  return buildPaletteEntries({
+    commands,
+    models: handleGetModels().map((model) => ({
+      id: model.id,
+      name: model.name,
+      detail: model.detail,
+      provider: model.detail?.split(" · ")[0],
+      isCurrent: model.id === currentModel,
+    })),
+    skills: discoverSkills().map((skill) => ({
+      id: skill.name,
+      name: skill.name,
+      description: skill.description,
+      isCurrent: activeSkills.has(skill.name),
+    })),
+    tools: listTools().map((tool) => ({
+      id: tool.id,
+      name: tool.id,
+      description: tool.description,
+      isUnavailable: true,
+    })),
+  })
+}
+
 function handleCreateAsyncSession(): string {
   const sess = createSession({ ephemeral: true })
   return sess.id
@@ -826,6 +855,7 @@ render(() => (
     getCurrentProfile={handleGetCurrentProfile}
     getSkills={handleGetSkills}
     getCurrentSkill={handleGetCurrentSkill}
+    getPaletteEntries={handleGetPaletteEntries}
     initialSessionId={currentSession?.id}
     initialMessages={initialMessages}
     initialModelName={modelName}

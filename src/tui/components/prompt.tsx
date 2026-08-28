@@ -37,6 +37,8 @@ export interface PromptProps {
   onContentChange: () => void
   /** Whether the input is disabled (agent running, permission prompt) */
   disabled?: boolean
+  /** Whether the textarea owns keyboard focus. Defaults to enabled state. */
+  focused?: boolean
   /** Placeholder text */
   placeholder?: string
   /** Expose the TextareaRenderable ref to parent (for imperative .value set) */
@@ -203,7 +205,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         >
           <textarea
             ref={handleRef}
-            focused={!props.disabled}
+            focused={props.focused ?? !props.disabled}
             placeholder={props.placeholder ?? "Type a message... (Enter to send)"}
             textColor={colors.text}
             focusedTextColor={colors.text}
@@ -215,6 +217,10 @@ export const Prompt: Component<PromptProps> = (props) => {
             keyBindings={[
               { name: "return", action: "submit" },
               { name: "return", shift: true, action: "newline" },
+              // Select all only within the focused textarea. Terminals report Command as Meta or Super.
+              { name: "a", ctrl: true, action: "select-all" },
+              { name: "a", meta: true, action: "select-all" },
+              { name: "a", super: true, action: "select-all" },
               // Undo/redo: Ctrl+Z (Linux/Windows), Meta+Z and Super+Z (Mac Command key)
               { name: "z", ctrl: true, action: "undo" },
               { name: "z", ctrl: true, shift: true, action: "redo" },
