@@ -3,7 +3,15 @@ import { resolve } from "node:path"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
-async function renderPalette(query: string, entries: unknown[], selectedIndex = 0, width = 80, height = 24) {
+async function renderPalette(
+  query: string,
+  entries: unknown[],
+  selectedIndex = 0,
+  width = 80,
+  height = 24,
+  mode: "search" | "sessions" = "search",
+  sessionRows: unknown[] = [],
+) {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
@@ -13,6 +21,9 @@ async function renderPalette(query: string, entries: unknown[], selectedIndex = 
       query: ${JSON.stringify(query)},
       entries: ${JSON.stringify(entries)},
       selectedIndex: ${selectedIndex},
+      mode: ${JSON.stringify(mode)},
+      sessionRows: ${JSON.stringify(sessionRows)},
+      sessionAction: "browse",
       onInput() {},
     }), { width: ${width}, height: ${height}, useConsole: false });
     await setup.renderOnce();
@@ -93,5 +104,26 @@ describe("command palette", () => {
     expect(frame).not.toContain("Model 1")
     expect(frame).not.toContain("Model 2")
     expect(frame).toContain("Model 7")
+  })
+
+  test("renders the session picker in the centered palette surface", async () => {
+    const rows = [{
+      type: "session",
+      id: "session-1",
+      label: "Continue command palette",
+      detail: "current · 2 files · now",
+      current: true,
+      root: true,
+      guides: [],
+      connector: "plain",
+    }]
+    const lines = await renderPalette("", [], 0, 80, 24, "sessions", rows)
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Sessions")
+    expect(frame).toContain("Search sessions")
+    expect(frame).toContain("Continue command palette")
+    expect(frame).toContain("Enter open")
+    expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
   })
 })

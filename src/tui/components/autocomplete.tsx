@@ -10,16 +10,13 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
-import { sessionControls, type SessionAction } from "../session-controls"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
-const MAX_SESSION_VISIBLE_ROWS = 8
-const SESSION_CARD_INSET = 2
+const CARD_INSET = 2
 
 export interface PickerItem {
   id: string
@@ -31,13 +28,6 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | {
-    type: "sessions"
-    rows: SessionTreeRow[]
-    selectedIndex: number
-    query: string
-    action: SessionAction
-  }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
@@ -83,16 +73,11 @@ interface DropdownRow {
 const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props) => {
   const dims = useTerminalDimensions()
   const m = () => props.mode
-  const sessionMode = () => {
-    const mode = m()
-    return mode?.type === "sessions" ? mode : null
-  }
   const maxVisibleRows = () => {
-    const isSession = m()?.type === "sessions"
-    const isCard = isSession || m()?.type === "worktrees"
-    const chromeRows = (isCard ? 2 : 0) + (isSession ? 2 : 0)
+    const isCard = m()?.type === "worktrees"
+    const chromeRows = isCard ? 2 : 0
     const available = Math.max(1, dims().height - BOTTOM_OFFSET - chromeRows)
-    return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
+    return Math.min(MAX_VISIBLE_ROWS, available)
   }
 
   const rows = (): DropdownRow[] => {
@@ -100,10 +85,8 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     if (!mode) return []
     const result: DropdownRow[] = []
 
-    // Optional title row (sessions / choice pickers)
-    if (mode.type === "sessions") {
-      // Session roots and branches are rendered below.
-    } else if (mode.type === "models") {
+    // Optional title row for choice pickers.
+    if (mode.type === "models") {
       result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "profiles") {
       result.push({ label: "Profiles — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
@@ -118,8 +101,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands" && mode.items.length === 0) {
       result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
-    } else if (mode.type === "sessions" && mode.rows.length === 0) {
-      result.push({ label: "No sessions found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "worktrees" && mode.rows.length === 0) {
       result.push({ label: "No worktrees found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "models" && mode.items.length === 0) {
@@ -151,30 +132,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           label: `${sel ? "❯ " : "  "}${item}`,
           fg: sel ? colors.primary : colors.textDim,
           bg: colors.dropdownBg,
-          bold: sel,
-        })
-      }
-    } else if (mode.type === "sessions") {
-      for (let i = 0; i < mode.rows.length; i++) {
-        const item = mode.rows[i]!
-        if (item.type === "spacer") {
-          result.push({ label: "", fg: colors.textDim, bg: colors.commandCardBg, bold: false })
-          continue
-        }
-
-        const sel = i === mode.selectedIndex
-        const tree = item.type === "orphan" || item.connector === "plain" || item.connector === "root"
-          ? ""
-          : `${item.guides.map((guide) => guide ? "│  " : "   ").join("")}${item.connector === "last" ? "└─" : "├─"} `
-        result.push({
-          label: `${sel ? "❯ " : "  "}${tree}${item.label}`,
-          detail: item.detail,
-          fg: sel
-            ? colors.primary
-            : item.running
-              ? colors.success
-              : colors.textDim,
-          bg: colors.commandCardBg,
           bold: sel,
         })
       }
@@ -220,12 +177,11 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
-  const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
-  const isSessionPicker = () => m()?.type === "sessions"
+  const isCard = () => m()?.type === "worktrees"
   const bodyHeight = visibleHeight
-  const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
-  const panelHeight = () => isSessionCard() && rows().length > 0
-    ? bodyHeight() + 2 + (isSessionPicker() ? 2 : 0)
+  const panelBg = () => isCard() ? colors.commandCardBg : colors.dropdownBg
+  const panelHeight = () => isCard() && rows().length > 0
+    ? bodyHeight() + 2
     : visibleHeight()
 
   const content = () => {
@@ -238,7 +194,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
         <For each={visibleWindow()}>
           {(row) => {
             // Keep the row background inside the picker shell, not under its border.
-            const width = () => dims().width - (isSessionCard() ? 10 : 6)
+            const width = () => dims().width - (isCard() ? 10 : 6)
             const padded = () => row.label.length >= width() ? row.label : row.label + " ".repeat(width() - row.label.length)
             return row.detail
               ? (
@@ -259,28 +215,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     )
   }
 
-  const cardContent = () => isSessionPicker()
-    ? (
-      <box flexDirection="column">
-        <box height={1} backgroundColor={colors.commandCardBg}>
-          <text fg={colors.text} bg={colors.commandCardBg} bold>
-            {m()?.type === "sessions" && m()!.action === "rename"
-              ? "Rename session"
-              : m()?.type === "sessions" && m()!.query
-                ? `Sessions — search: ${m()!.query}`
-                : "Sessions — type to search"}
-          </text>
-        </box>
-        {content()}
-        <box height={1} backgroundColor={colors.commandCardBg}>
-          <text fg={colors.muted} bg={colors.commandCardBg}>
-            {sessionControls(dims().width, sessionMode()?.action ?? "browse")}
-          </text>
-        </box>
-      </box>
-    )
-    : content()
-
   return (
     <box
       flexDirection="column"
@@ -288,12 +222,12 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       height={panelHeight()}
       position="absolute"
       bottom={BOTTOM_OFFSET}
-      left={isSessionCard() ? SESSION_CARD_INSET : 0}
-      right={isSessionCard() ? SESSION_CARD_INSET : 0}
-      backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
+      left={isCard() ? CARD_INSET : 0}
+      right={isCard() ? CARD_INSET : 0}
+      backgroundColor={rows().length > 0 && !isCard() ? colors.dropdownBg : undefined}
     >
-      {isSessionCard() && rows().length > 0
-        ? <CommandCard height={panelHeight()}>{cardContent()}</CommandCard>
+      {isCard() && rows().length > 0
+        ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
         : content()}
     </box>
   )

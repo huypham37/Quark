@@ -44,11 +44,11 @@ describe("palette index", () => {
   test("does not accept skill bodies or sessions as index sources", () => {
     const entries = buildPaletteEntries({
       skills: [{ id: "safe", name: "Safe", description: "Summary", body: "secret instruction" } as never],
-      sessions: [{ id: "safe", title: "Safe", transcript: "secret conversation" }] as never,
+      sessions: [{ id: "safe", title: "Safe session", transcript: "secret conversation" } as never],
     })
 
     expect(searchPaletteEntries(entries, "secret")).toEqual([])
-    expect(entries.some((item) => item.type === ("session" as never))).toBe(false)
+    expect(searchPaletteEntries(entries, "safe session")).toEqual([])
   })
 
   test("orders exact, id exact, label prefix, id prefix, word-boundary, then substring matches", () => {

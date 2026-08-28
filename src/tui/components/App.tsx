@@ -58,7 +58,7 @@ import type { FileTarget } from "../editor"
 
 /** Command handler result */
 export type CommandResult =
-  | { handled: true; next?: "sessions-picker" }
+  | { handled: true; next?: "sessions-palette" }
   | { handled: false }
 
 interface AppProps {
@@ -120,13 +120,10 @@ const MENTION_INACTIVE: MentionState = {
 
 interface SlashState {
   active: boolean
-  mode: "commands" | "sessions" | "worktrees" | ChoicePickerMode
+  mode: "commands" | "worktrees" | ChoicePickerMode
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
-  sessionInputs: SessionTreeInput[]
-  sessionRows: SessionTreeRow[]
-  sessionAction: "browse" | "rename"
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
@@ -137,9 +134,6 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
-  sessionInputs: [],
-  sessionRows: [],
-  sessionAction: "browse",
   worktreeRows: [],
   selectedIndex: 0,
 }
@@ -242,6 +236,10 @@ export const App: Component<AppProps> = (props) => {
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
   const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
   const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
+  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions">("search")
+  const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
+  const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
+  const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
   let paletteGeneration = 0
   let savedComposer: {
     text: string
@@ -382,6 +380,10 @@ export const App: Component<AppProps> = (props) => {
     setPaletteEntries([])
     setPaletteResults([])
     setPaletteSelectedIndex(0)
+    setPaletteMode("search")
+    setPaletteSessionInputs([])
+    setPaletteSessionRows([])
+    setPaletteSessionAction("browse")
     if (!saved) return
     const text = textOverride ?? saved.text
     setPendingImages(saved.images)
@@ -413,6 +415,10 @@ export const App: Component<AppProps> = (props) => {
     setPaletteEntries([])
     setPaletteResults([])
     setPaletteSelectedIndex(0)
+    setPaletteMode("search")
+    setPaletteSessionInputs([])
+    setPaletteSessionRows([])
+    setPaletteSessionAction("browse")
     setPaletteOpen(true)
     Promise.resolve(props.getPaletteEntries())
       .then((entries) => {
@@ -433,6 +439,15 @@ export const App: Component<AppProps> = (props) => {
   const updatePaletteQuery = () => {
     if (!paletteInputRef) return
     const query = paletteInputRef.plainText
+    if (paletteMode() === "sessions") {
+      setPaletteQuery(query)
+      if (paletteSessionAction() === "rename") return
+      const result = searchSessionTree(paletteSessionInputs(), query)
+      const rows = buildSessionTreeRows(result.sessions, state.store.sessionId)
+      setPaletteSessionRows(rows)
+      setPaletteSelectedIndex(firstSelectableSessionRow(rows, result.firstMatchId ?? state.store.sessionId))
+      return
+    }
     const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
     const results = searchPaletteEntries(paletteEntries(), query)
     setPaletteQuery(query)
@@ -450,24 +465,6 @@ export const App: Component<AppProps> = (props) => {
     const newValue = inputRef.plainText
 
     const s = slash()
-
-    if (s.mode === "sessions" && s.active) {
-      if (s.sessionAction === "rename") {
-        setSlash((prev) => ({ ...prev, query: newValue }))
-        setInputValue(newValue)
-        return
-      }
-      const result = searchSessionTree(s.sessionInputs, newValue)
-      const sessionRows = buildSessionTreeRows(result.sessions, state.store.sessionId)
-      setSlash((prev) => ({
-        ...prev,
-        query: newValue,
-        sessionRows,
-        selectedIndex: firstSelectableSessionRow(sessionRows, result.firstMatchId ?? state.store.sessionId),
-      }))
-      setInputValue(newValue)
-      return
-    }
 
     // Worktree picker does not accept text input.
     if (s.mode === "worktrees" && s.active) {
@@ -515,31 +512,42 @@ export const App: Component<AppProps> = (props) => {
     setInputValue(text)
   }
 
-  const openSessionsPicker = (
+  const openSessionsPalette = (
     preferredSessionId?: string,
     query = "",
   ): boolean => {
     if (!props.getSessions) return false
+    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (!paletteOpen()) {
+      savedComposer = {
+        text: "",
+        cursorOffset: 0,
+        images: [...pendingImages()],
+        selectedImageIndex: selectedImageIndex(),
+        historyIndex: historyIndex(),
+        historyDraft: historyDraft(),
+        scrollTop: scroll?.scrollTop ?? 0,
+      }
+    }
     const sessions = props.getSessions()
     const sid = state.store.sessionId
     const result = searchSessionTree(sessions, query)
     const sessionRows = buildSessionTreeRows(result.sessions, sid)
-    setSlash({
-      active: true,
-      mode: "sessions",
-      query,
-      items: [],
-      pickerItems: [],
-      sessionInputs: sessions,
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
+    setInputText("")
+    setPaletteMode("sessions")
+    setPaletteQuery(query)
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSessionInputs(sessions)
+    setPaletteSessionRows(sessionRows)
+    setPaletteSessionAction("browse")
+    setPaletteSelectedIndex(firstSelectableSessionRow(
       sessionRows,
-      sessionAction: "browse",
-      worktreeRows: [],
-      selectedIndex: firstSelectableSessionRow(
-        sessionRows,
-        preferredSessionId ?? result.firstMatchId ?? sid,
-      ),
-    })
-    setInputText(query)
+      preferredSessionId ?? result.firstMatchId ?? sid,
+    ))
+    setPaletteOpen(true)
     return true
   }
 
@@ -566,9 +574,6 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: [],
-      sessionInputs: [],
-      sessionRows: [],
-      sessionAction: "browse",
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
     })
@@ -591,9 +596,6 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
-      sessionInputs: [],
-      sessionRows: [],
-      sessionAction: "browse",
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -624,7 +626,7 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    if (commandId === "sessions" && !args && openSessionsPicker()) {
+    if (commandId === "sessions" && !args && openSessionsPalette()) {
       return
     }
 
@@ -648,8 +650,8 @@ export const App: Component<AppProps> = (props) => {
     if (props.onCommand) {
       Promise.resolve(props.onCommand(commandId, args, state.store.sessionId))
         .then((res) => {
-          if (res?.handled && res.next === "sessions-picker") {
-            openSessionsPicker()
+          if (res?.handled && res.next === "sessions-palette") {
+            openSessionsPalette()
           }
         })
     }
@@ -669,60 +671,10 @@ export const App: Component<AppProps> = (props) => {
   ): boolean => {
     const s = slash()
     if (s.active) {
-      if (s.mode === "sessions" && s.sessionAction === "rename") {
-        const selected = s.sessionRows[s.selectedIndex]
-        if (isReturn && (selected?.type === "session" || selected?.type === "orphan")) {
-          const title = inputValue().trim()
-          if (!title) return true
-          setSlash(SLASH_INACTIVE)
-          setInputText("")
-          if (props.onCommand) {
-            Promise.resolve(props.onCommand(
-              "rename-session",
-              JSON.stringify({ id: selected.id, title }),
-              state.store.sessionId,
-            )).then(() => openSessionsPicker(selected.id))
-          }
-          return true
-        }
-        if (isEscape) {
-          openSessionsPicker(
-            selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined,
-          )
-          return true
-        }
-        return false
-      }
-
-      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f2") {
-        const selected = s.sessionRows[s.selectedIndex]
-        if (selected?.type === "session" || selected?.type === "orphan") {
-          const title = s.sessionInputs.find((session) => session.id === selected.id)?.title ?? ""
-          setSlash((prev) => ({ ...prev, sessionAction: "rename", query: title }))
-          setInputText(title)
-        }
-        return true
-      }
-
-      if (s.mode === "sessions" && s.sessionAction === "browse" && name === "f3") {
-        const selected = s.sessionRows[s.selectedIndex]
-        if (selected?.type !== "session" && selected?.type !== "orphan") return true
-        const session = s.sessionInputs.find((item) => item.id === selected.id)
-        if (!session || !props.onCommand) return true
-        Promise.resolve(props.onCommand(
-          "pin-session",
-          JSON.stringify({ id: session.id, pinned: !session.pinned }),
-          state.store.sessionId,
-        )).then(() => openSessionsPicker(session.id))
-        return true
-      }
-
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
-          selectedIndex: prev.mode === "sessions"
-            ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, -1)
-            : prev.mode === "worktrees"
+          selectedIndex: prev.mode === "worktrees"
               ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, -1)
               : Math.max(0, prev.selectedIndex - 1),
         }))
@@ -732,18 +684,14 @@ export const App: Component<AppProps> = (props) => {
       if (name === "down") {
         const totalItems = s.mode === "commands"
           ? s.items.length
-          : s.mode === "sessions"
-            ? s.sessionRows.length
-            : s.mode === "worktrees"
+          : s.mode === "worktrees"
               ? s.worktreeRows.length
               : s.pickerItems.length
         setSlash((prev) => {
           if (totalItems === 0) return prev
           return {
             ...prev,
-            selectedIndex: prev.mode === "sessions"
-              ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, 1)
-              : prev.mode === "worktrees"
+            selectedIndex: prev.mode === "worktrees"
                 ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, 1)
                 : Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
@@ -752,19 +700,6 @@ export const App: Component<AppProps> = (props) => {
       }
 
       if (isTab || isReturn) {
-        // --- Session picker mode ---
-        if (s.mode === "sessions") {
-          const selected = s.sessionRows[s.selectedIndex]
-          if (selected?.type === "session" || selected?.type === "orphan") {
-            setSlash(SLASH_INACTIVE)
-            setInputText("")
-            if (props.onCommand) {
-              props.onCommand("sessions", selected.id, state.store.sessionId)
-            }
-          }
-          return true
-        }
-
         // --- Worktree picker mode ---
         if (s.mode === "worktrees") {
           const selected = s.worktreeRows[s.selectedIndex]
@@ -774,8 +709,8 @@ export const App: Component<AppProps> = (props) => {
             if (props.onCommand) {
               Promise.resolve(props.onCommand("worktree", selected.id, state.store.sessionId))
                 .then((res) => {
-                  if (res?.handled && res.next === "sessions-picker") {
-                    openSessionsPicker()
+                  if (res?.handled && res.next === "sessions-palette") {
+                    openSessionsPalette()
                   }
                 })
             }
@@ -804,11 +739,6 @@ export const App: Component<AppProps> = (props) => {
         if (s.items.length > 0) {
           const selected = s.items[s.selectedIndex]
           if (selected) {
-            // /sessions → transition to session picker
-            if (selected.id === "sessions" && isReturn && openSessionsPicker()) {
-              return true
-            }
-
             // /worktree → transition to worktree picker
             if (selected.id === "worktree" && isReturn && openWorktreePicker()) {
               return true
@@ -958,15 +888,6 @@ export const App: Component<AppProps> = (props) => {
   const autocompleteMode = (): AutocompleteMode | null => {
     const s = slash()
     if (s.active) {
-      if (s.mode === "sessions") {
-        return {
-          type: "sessions",
-          rows: s.sessionRows,
-          selectedIndex: s.selectedIndex,
-          query: s.query,
-          action: s.sessionAction,
-        }
-      }
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
       }
@@ -985,6 +906,29 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const runPaletteSelection = async () => {
+    if (paletteMode() === "sessions") {
+      const selected = paletteSessionRows()[paletteSelectedIndex()]
+      if (selected?.type !== "session" && selected?.type !== "orphan") return
+      try {
+        if (paletteSessionAction() === "rename") {
+          const title = paletteQuery().trim()
+          if (!title) return
+          await props.onCommand?.(
+            "rename-session",
+            JSON.stringify({ id: selected.id, title }),
+            state.store.sessionId,
+          )
+          openSessionsPalette(selected.id)
+          return
+        }
+        await props.onCommand?.("sessions", selected.id, state.store.sessionId)
+        restoreComposer()
+      } catch (error) {
+        notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+      }
+      return
+    }
+
     const entry = paletteResults()[paletteSelectedIndex()]
     if (!entry) return
     if (entry.isUnavailable) {
@@ -1010,8 +954,7 @@ export const App: Component<AppProps> = (props) => {
       }
       const command = filterCommands("", 99).find((item) => item.id === action.commandId)
       if (action.commandId === "sessions") {
-        restoreComposer()
-        openSessionsPicker()
+        openSessionsPalette()
         return
       }
       if (action.commandId === "worktree") {
@@ -1044,14 +987,46 @@ export const App: Component<AppProps> = (props) => {
   useKeyboard((evt) => {
     if (paletteOpen()) {
       if (evt.name === "up") {
-        setPaletteSelectedIndex((index) => Math.max(0, index - 1))
+        setPaletteSelectedIndex((index) => paletteMode() === "sessions"
+          ? moveSessionRowSelection(paletteSessionRows(), index, -1)
+          : Math.max(0, index - 1))
       } else if (evt.name === "down") {
-        setPaletteSelectedIndex((index) => Math.min(Math.max(0, paletteResults().length - 1), index + 1))
+        setPaletteSelectedIndex((index) => paletteMode() === "sessions"
+          ? moveSessionRowSelection(paletteSessionRows(), index, 1)
+          : Math.min(Math.max(0, paletteResults().length - 1), index + 1))
       } else if (evt.name === "return") {
         void runPaletteSelection()
+      } else if (paletteMode() === "sessions" && paletteSessionAction() === "browse" && evt.name === "f2") {
+        const selected = paletteSessionRows()[paletteSelectedIndex()]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const title = paletteSessionInputs().find((session) => session.id === selected.id)?.title ?? ""
+          setPaletteSessionAction("rename")
+          setPaletteQuery(title)
+        }
+      } else if (paletteMode() === "sessions" && paletteSessionAction() === "browse" && evt.name === "f3") {
+        const selected = paletteSessionRows()[paletteSelectedIndex()]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const session = paletteSessionInputs().find((item) => item.id === selected.id)
+          if (session && props.onCommand) {
+            void Promise.resolve(props.onCommand(
+              "pin-session",
+              JSON.stringify({ id: session.id, pinned: !session.pinned }),
+              state.store.sessionId,
+            ))
+              .then(() => openSessionsPalette(session.id))
+              .catch((error) => {
+                notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+              })
+          }
+        }
       } else if (evt.name === "escape") {
-        paletteGeneration++
-        restoreComposer()
+        if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
+          const selected = paletteSessionRows()[paletteSelectedIndex()]
+          openSessionsPalette(selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined)
+        } else {
+          paletteGeneration++
+          restoreComposer()
+        }
       } else if (evt.name === "tab" || evt.name === "pageup" || evt.name === "pagedown" || evt.name === "home" || evt.name === "end") {
         // Unsupported in v1; consume so underlying global actions cannot run.
       } else {
@@ -1426,8 +1401,11 @@ export const App: Component<AppProps> = (props) => {
 
       <CommandPalette
         active={paletteOpen()}
+        mode={paletteMode()}
         query={paletteQuery()}
         entries={paletteResults()}
+        sessionRows={paletteSessionRows()}
+        sessionAction={paletteSessionAction()}
         selectedIndex={paletteSelectedIndex()}
         onInput={updatePaletteQuery}
         onRef={(ref) => { paletteInputRef = ref }}

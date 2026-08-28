@@ -274,7 +274,7 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
       const result = await switchToWorktree(created.id)
       if (result.success) {
         notifyInfo("Worktree", `Created and switched to: ${created.id}`, 3000)
-        return { handled: true, next: "sessions-picker" }
+        return { handled: true, next: "sessions-palette" }
       }
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
     } catch (err) {
@@ -286,7 +286,7 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
   if (args.trim()) {
     const result = await switchToWorktree(args.trim())
     if (result.success) {
-      return { handled: true, next: "sessions-picker" }
+      return { handled: true, next: "sessions-palette" }
     }
     bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
     return { handled: true }

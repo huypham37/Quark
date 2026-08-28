@@ -10,17 +10,18 @@ function renderPreview(rows = `
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { Autocomplete } from "./src/tui/components/autocomplete.tsx";
+    import { CommandPalette } from "./src/tui/components/command-palette.tsx";
 
     const setup = await testRender(
-      () => createComponent(Autocomplete, {
-        mode: {
-          type: "sessions",
-          rows: [${rows}],
-          selectedIndex: 0,
-          query: "",
-          action: "browse",
-        },
+      () => createComponent(CommandPalette, {
+        active: true,
+        mode: "sessions",
+        query: "",
+        entries: [],
+        sessionRows: [${rows}],
+        sessionAction: "browse",
+        selectedIndex: 0,
+        onInput() {},
       }),
       { width: 140, height: 20, useConsole: false },
     );
@@ -54,12 +55,25 @@ function renderSessionPicker(): string {
         getSessions() {
           return [{ id: "one", title: "Existing session", timeUpdated: Date.now() }];
         },
+        getPaletteEntries() {
+          return [{
+            key: "command:sessions",
+            type: "command",
+            id: "sessions",
+            label: "/sessions",
+            searchText: ["/sessions", "sessions"],
+            action: { type: "command", commandId: "sessions" },
+          }];
+        },
       }),
       { width: 100, height: 20, useConsole: false },
     );
 
     await setup.renderOnce();
-    await setup.mockInput.typeText("/sessions");
+    await setup.mockInput.typeText("/");
+    await setup.renderOnce();
+    await setup.mockInput.typeText("sessions");
+    await setup.renderOnce();
     setup.mockInput.pressEnter();
     await setup.renderOnce();
     console.log(JSON.stringify(setup.captureCharFrame()));
@@ -98,6 +112,11 @@ describe("session picker layout", () => {
   })
 
   test("opens from /sessions", () => {
-    expect(renderSessionPicker()).toContain("Existing session")
+    const frame = renderSessionPicker()
+    const lines = frame.split("\n")
+    const borderRow = lines.findIndex((line) => line.includes("╭"))
+    expect(frame).toContain("Existing session")
+    expect(lines[borderRow]!.indexOf("╭")).toBeGreaterThan(10)
+    expect(borderRow).toBeLessThan(8)
   })
 })
