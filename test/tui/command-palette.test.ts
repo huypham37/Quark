@@ -9,7 +9,7 @@ async function renderPalette(
   selectedIndex = 0,
   width = 80,
   height = 24,
-  mode: "search" | "sessions" = "search",
+  mode: "search" | "sessions" | "skills" = "search",
   sessionRows: unknown[] = [],
 ) {
   const script = `
@@ -104,6 +104,16 @@ describe("command palette", () => {
     expect(frame).not.toContain("Model 1")
     expect(frame).not.toContain("Model 2")
     expect(frame).toContain("Model 7")
+  })
+
+  test("renders skills in the centered palette surface", async () => {
+    const lines = await renderPalette("", [{ ...model, type: "skill", key: "skill:teaching", id: "teaching", label: "teaching", action: { type: "skill", skillId: "teaching" } }], 0, 80, 24, "skills")
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Skills")
+    expect(frame).toContain("Search skills")
+    expect(frame).toContain("teaching")
+    expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
   })
 
   test("renders the session picker in the centered palette surface", async () => {

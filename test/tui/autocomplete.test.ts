@@ -74,11 +74,11 @@ describe("scrollTopForSelection", () => {
     expect(scrollTopForSelection(modelsMode, 19, 20, 5)).toBe(15)
   })
 
-  test("skill pickers scroll once selection moves below the visible rows", () => {
-    const skillsMode = { type: "skills" as const, items: [], selectedIndex: 0 }
-    // Five visible rows include the title and four skills. Moving to the
-    // fifth skill advances the window so its selected row remains visible.
-    expect(scrollTopForSelection(skillsMode, 4, 10, 5)).toBe(3)
+  test("profile pickers scroll once selection moves below the visible rows", () => {
+    const profilesMode = { type: "profiles" as const, items: [], selectedIndex: 0 }
+    // Five visible rows include the title and four profiles. Moving to the
+    // fifth profile advances the window so its selected row remains visible.
+    expect(scrollTopForSelection(profilesMode, 4, 10, 5)).toBe(3)
   })
 })
 

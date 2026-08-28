@@ -153,7 +153,6 @@ describe("filterCommands", () => {
   test("skills command does not require a usage hint", () => {
     const result = filterCommands("skills")
     expect(result.length).toBe(1)
-    // /skills opens a picker — no argument syntax needed
     expect(result[0]!.usage).toBeUndefined()
   })
 })

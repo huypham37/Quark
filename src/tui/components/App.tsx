@@ -84,8 +84,6 @@ interface AppProps {
   getCurrentModel?: () => string
   getProfiles?: () => { id: string; name: string }[]
   getCurrentProfile?: () => string
-  getSkills?: () => { id: string; name: string }[]
-  getCurrentSkill?: () => string
   getPaletteEntries?: () => PaletteEntry[] | Promise<PaletteEntry[]>
   initialSessionId?: string
   initialMessages?: TuiMessage[]
@@ -236,7 +234,7 @@ export const App: Component<AppProps> = (props) => {
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
   const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
   const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
-  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions">("search")
+  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions" | "skills">("search")
   const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
   const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
   const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
@@ -436,6 +434,18 @@ export const App: Component<AppProps> = (props) => {
     return true
   }
 
+  const skillPaletteEntries = () => paletteEntries()
+    .filter((entry) => entry.type === "skill")
+    .sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
+
+  const openSkillsPalette = () => {
+    setPaletteMode("skills")
+    setPaletteQuery("")
+    paletteInputRef?.clear()
+    setPaletteResults(skillPaletteEntries())
+    setPaletteSelectedIndex(0)
+  }
+
   const updatePaletteQuery = () => {
     if (!paletteInputRef) return
     const query = paletteInputRef.plainText
@@ -449,7 +459,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
     const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
-    const results = searchPaletteEntries(paletteEntries(), query)
+    const entries = paletteMode() === "skills"
+      ? paletteEntries().filter((entry) => entry.type === "skill")
+      : paletteEntries()
+    const results = paletteMode() === "skills" && !query.trim()
+      ? skillPaletteEntries()
+      : searchPaletteEntries(entries, query)
     setPaletteQuery(query)
     setPaletteResults(results)
     setPaletteSelectedIndex(Math.max(0, preservePaletteSelectionIndex(selectedKey, results)))
@@ -472,7 +487,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     // Choice pickers: filter the list by what the user types
-    if ((s.mode === "models" || s.mode === "profiles" || s.mode === "skills") && s.active) {
+    if ((s.mode === "models" || s.mode === "profiles") && s.active) {
       const options = getChoiceOptions(s.mode)
       if (!options) return
       const query = newValue
@@ -582,10 +597,10 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const getChoiceOptions = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getModels?.() : mode === "profiles" ? props.getProfiles?.() : props.getSkills?.()
+    mode === "models" ? props.getModels?.() : props.getProfiles?.()
 
   const getCurrentChoice = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getCurrentModel?.() ?? "" : mode === "profiles" ? props.getCurrentProfile?.() ?? "" : props.getCurrentSkill?.() ?? ""
+    mode === "models" ? props.getCurrentModel?.() ?? "" : props.getCurrentProfile?.() ?? ""
 
   const openChoicePicker = (mode: ChoicePickerMode): boolean => {
     const options = getChoiceOptions(mode)
@@ -719,12 +734,12 @@ export const App: Component<AppProps> = (props) => {
         }
 
         // --- Choice picker mode ---
-        if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
+        if (s.mode === "models" || s.mode === "profiles") {
           const selected = s.pickerItems[s.selectedIndex]
           if (selected) {
             setSlash(SLASH_INACTIVE)
             setInputText("")
-            const command = s.mode === "models" ? "model" : s.mode === "profiles" ? "profile" : "skills"
+            const command = s.mode === "models" ? "model" : "profile"
             if (props.onCommand) {
               props.onCommand(command, selected.id, state.store.sessionId)
             }
@@ -891,7 +906,7 @@ export const App: Component<AppProps> = (props) => {
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
       }
-      if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
+      if (s.mode === "models" || s.mode === "profiles") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
       return { type: "commands", items: s.items, selectedIndex: s.selectedIndex, query: s.query }
@@ -953,6 +968,10 @@ export const App: Component<AppProps> = (props) => {
         return
       }
       const command = filterCommands("", 99).find((item) => item.id === action.commandId)
+      if (action.commandId === "skills") {
+        openSkillsPalette()
+        return
+      }
       if (action.commandId === "sessions") {
         openSessionsPalette()
         return

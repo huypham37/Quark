@@ -31,7 +31,6 @@ export type AutocompleteMode =
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
-  | { type: "skills"; items: PickerItem[]; selectedIndex: number }
   | { type: "tools"; items: PickerItem[]; selectedIndex: number }
 
 export interface AutocompleteProps {
@@ -90,8 +89,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "profiles") {
       result.push({ label: "Profiles — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
-    } else if (mode.type === "skills") {
-      result.push({ label: "Skills — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "tools") {
       result.push({ label: "User tools — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     }
@@ -107,8 +104,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: "No models available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "profiles" && mode.items.length === 0) {
       result.push({ label: "No profiles available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
-    } else if (mode.type === "skills" && mode.items.length === 0) {
-      result.push({ label: "No skills found", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "tools" && mode.items.length === 0) {
       result.push({ label: "No user tools in ~/.config/quark/tools/", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands") {
@@ -150,7 +145,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
-    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills" || mode.type === "tools") {
+    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "tools") {
       for (let i = 0; i < mode.items.length; i++) {
         const item = mode.items[i]!
         const sel = i === mode.selectedIndex

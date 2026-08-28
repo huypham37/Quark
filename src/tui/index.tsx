@@ -382,7 +382,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /skills works even without an active session
   if (command === "skills") {
     if (!args) {
-      notifyInfo("Skills", "Use /skills to open the skill picker", 3000)
+      notifyInfo("Skills", "Search for a skill in the command palette", 3000)
       return { handled: true }
     }
 
@@ -746,14 +746,6 @@ function handleGetCurrentProfile() {
   return activeAgent.id
 }
 
-function handleGetSkills() {
-  return discoverSkills().map((s) => ({ id: s.name, name: s.name }))
-}
-
-function handleGetCurrentSkill() {
-  return ""
-}
-
 function handleGetPaletteEntries() {
   const currentModel = handleGetCurrentModel()
   const activeSkills = new Set(activeAgent.skills)
@@ -853,8 +845,6 @@ render(() => (
     getCurrentModel={handleGetCurrentModel}
     getProfiles={handleGetProfiles}
     getCurrentProfile={handleGetCurrentProfile}
-    getSkills={handleGetSkills}
-    getCurrentSkill={handleGetCurrentSkill}
     getPaletteEntries={handleGetPaletteEntries}
     initialSessionId={currentSession?.id}
     initialMessages={initialMessages}

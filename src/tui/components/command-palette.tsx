@@ -19,7 +19,7 @@ export interface CommandPaletteProps {
   selectedIndex: number
   onInput: () => void
   onRef?: (ref: TextareaRenderable) => void
-  mode?: "search" | "sessions"
+  mode?: "search" | "sessions" | "skills"
   sessionRows?: SessionTreeRow[]
   sessionAction?: SessionAction
 }
@@ -27,6 +27,7 @@ export interface CommandPaletteProps {
 export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   const dims = useTerminalDimensions()
   const sessionMode = () => props.mode === "sessions"
+  const skillsMode = () => props.mode === "skills"
   const width = () => Math.min(60, Math.max(12, dims().width - 4))
   const maxVisibleSessions = () => Math.max(1, Math.min(MAX_VISIBLE_SESSIONS, dims().height - 8))
   const visible = () => {
@@ -58,10 +59,10 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
       ? 0
       : Math.min(Math.max(0, props.selectedIndex - maximum + 1), rows.length - maximum)
   }
-  const hasQuery = () => Boolean(props.query.trim())
+  const hasQuery = () => skillsMode() || Boolean(props.query.trim())
   const rows = () => hasQuery() && props.entries.length === 0 ? 1 : visible().length
   const sessionRowCount = () => Math.max(1, visibleSessions().length)
-  const height = () => sessionMode() ? sessionRowCount() + 6 : hasQuery() ? 4 + MAX_VISIBLE : 3
+  const height = () => sessionMode() ? sessionRowCount() + 6 : hasQuery() ? 4 + MAX_VISIBLE + (skillsMode() ? 1 : 0) : 3
   const truncate = (value: string, maximum: number) => {
     const chars = Array.from(value)
     if (chars.length <= maximum) return value
@@ -81,10 +82,10 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
         borderColor={colors.outline}
         backgroundColor={colors.commandCardBg}
       >
-        <Show when={sessionMode()}>
+        <Show when={sessionMode() || skillsMode()}>
           <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}>
             <text fg={colors.text} bg={colors.commandCardBg} bold>
-              {props.sessionAction === "rename" ? "Rename session" : "Sessions"}
+              {sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : "Skills"}
             </text>
           </box>
         </Show>
@@ -96,7 +97,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             height={1}
             flexGrow={1}
             value={props.query}
-            placeholder={sessionMode() ? "Search sessions" : "Search anything in Quark"}
+            placeholder={sessionMode() ? "Search sessions" : skillsMode() ? "Search skills" : "Search anything in Quark"}
             placeholderColor={colors.muted}
             textColor={colors.text}
             focusedTextColor={colors.text}
