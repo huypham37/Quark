@@ -1410,6 +1410,7 @@ export const App: Component<AppProps> = (props) => {
         onRef={(r: TextareaRenderable) => { inputRef = r }}
         disabled={state.store.running || !!state.store.permission || !!state.store.question}
         focused={!paletteOpen()}
+        opacity={paletteOpen() ? 0.35 : 1}
         placeholder=""
         tokensUsed={state.store.status.tokensUsed}
         tokenLimit={state.store.status.tokenLimit}

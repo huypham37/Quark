@@ -39,6 +39,8 @@ export interface PromptProps {
   disabled?: boolean
   /** Whether the textarea owns keyboard focus. Defaults to enabled state. */
   focused?: boolean
+  /** Visual opacity for modal background states. */
+  opacity?: number
   /** Placeholder text */
   placeholder?: string
   /** Expose the TextareaRenderable ref to parent (for imperative .value set) */
@@ -166,7 +168,7 @@ export const Prompt: Component<PromptProps> = (props) => {
   }
 
   return (
-    <box flexDirection="column" flexShrink={0} width={promptWidth()}>
+    <box flexDirection="column" flexShrink={0} width={promptWidth()} opacity={props.opacity ?? 1}>
       <box flexDirection="row" height={1} overflow="hidden" width={promptWidth()}>
         <text fg={borderColor()} flexShrink={0}>╭── </text>
         <FlipPercent value={tokenPercent()} />

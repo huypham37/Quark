@@ -58,11 +58,25 @@ describe("command palette", () => {
     expect(frame).toContain("GPT-5")
     expect(frame).toContain("OpenAI · current")
     expect(frame).toContain("❯")
+    expect(frame).toContain("╰──────────────────────────────────────────────────────────╯")
   })
 
   test("shows no-results only for a nonempty query", async () => {
     const lines = await renderPalette("missing", [])
     expect(lines.join("\n")).toContain("No results")
+  })
+
+  test("keeps a five-row result area for every nonempty query", async () => {
+    const oneResult = (await renderPalette("gpt", [model])).filter((line) => line.trim())
+    const fiveResults = (await renderPalette("gpt", Array.from({ length: 5 }, (_, index) => ({
+      ...model,
+      key: `model:${index}`,
+      id: String(index),
+    })))).filter((line) => line.trim())
+
+    expect(oneResult[0]?.indexOf("╭")).toBe(fiveResults[0]?.indexOf("╭"))
+    expect(oneResult.at(-1)?.indexOf("╰")).toBe(fiveResults.at(-1)?.indexOf("╰"))
+    expect(oneResult.at(-1)).toBe(fiveResults.at(-1))
   })
 
   test("limits the viewport to five result rows", async () => {

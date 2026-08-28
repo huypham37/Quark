@@ -33,8 +33,9 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   const visibleStart = () => props.entries.length <= MAX_VISIBLE
     ? 0
     : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), props.entries.length - MAX_VISIBLE)
-  const rows = () => props.query.trim() && props.entries.length === 0 ? 1 : visible().length
-  const height = () => 3 + rows()
+  const hasQuery = () => Boolean(props.query.trim())
+  const rows = () => hasQuery() && props.entries.length === 0 ? 1 : visible().length
+  const height = () => hasQuery() ? 4 + MAX_VISIBLE : 3
   const truncate = (value: string, maximum: number) => {
     const chars = Array.from(value)
     if (chars.length <= maximum) return value
