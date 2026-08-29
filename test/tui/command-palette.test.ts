@@ -9,7 +9,7 @@ async function renderPalette(
   selectedIndex = 0,
   width = 80,
   height = 24,
-  mode: "search" | "sessions" | "skills" = "search",
+  mode: "search" | "sessions" | "skills" | "models" = "search",
   sessionRows: unknown[] = [],
 ) {
   const script = `
@@ -104,6 +104,16 @@ describe("command palette", () => {
     expect(frame).not.toContain("Model 1")
     expect(frame).not.toContain("Model 2")
     expect(frame).toContain("Model 7")
+  })
+
+  test("renders models in the centered palette surface", async () => {
+    const lines = await renderPalette("", [model], 0, 80, 24, "models")
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Models")
+    expect(frame).toContain("Search models")
+    expect(frame).toContain("GPT-5")
+    expect(frame).toContain("current")
   })
 
   test("renders skills in the centered palette surface", async () => {

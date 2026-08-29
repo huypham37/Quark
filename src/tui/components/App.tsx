@@ -234,7 +234,7 @@ export const App: Component<AppProps> = (props) => {
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
   const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
   const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
-  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions" | "skills">("search")
+  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions" | "skills" | "models">("search")
   const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
   const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
   const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
@@ -434,15 +434,15 @@ export const App: Component<AppProps> = (props) => {
     return true
   }
 
-  const skillPaletteEntries = () => paletteEntries()
-    .filter((entry) => entry.type === "skill")
+  const entityPaletteEntries = (type: "skill" | "model") => paletteEntries()
+    .filter((entry) => entry.type === type)
     .sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
 
-  const openSkillsPalette = () => {
-    setPaletteMode("skills")
+  const openEntityPalette = (mode: "skills" | "models", type: "skill" | "model") => {
+    setPaletteMode(mode)
     setPaletteQuery("")
     paletteInputRef?.clear()
-    setPaletteResults(skillPaletteEntries())
+    setPaletteResults(entityPaletteEntries(type))
     setPaletteSelectedIndex(0)
   }
 
@@ -459,11 +459,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
     const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
-    const entries = paletteMode() === "skills"
-      ? paletteEntries().filter((entry) => entry.type === "skill")
+    const entityType = paletteMode() === "skills" ? "skill" : paletteMode() === "models" ? "model" : undefined
+    const entries = entityType
+      ? paletteEntries().filter((entry) => entry.type === entityType)
       : paletteEntries()
-    const results = paletteMode() === "skills" && !query.trim()
-      ? skillPaletteEntries()
+    const results = entityType && !query.trim()
+      ? entityPaletteEntries(entityType)
       : searchPaletteEntries(entries, query)
     setPaletteQuery(query)
     setPaletteResults(results)
@@ -487,7 +488,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     // Choice pickers: filter the list by what the user types
-    if ((s.mode === "models" || s.mode === "profiles") && s.active) {
+    if (s.mode === "profiles" && s.active) {
       const options = getChoiceOptions(s.mode)
       if (!options) return
       const query = newValue
@@ -596,11 +597,9 @@ export const App: Component<AppProps> = (props) => {
     return true
   }
 
-  const getChoiceOptions = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getModels?.() : props.getProfiles?.()
+  const getChoiceOptions = (_mode: ChoicePickerMode) => props.getProfiles?.()
 
-  const getCurrentChoice = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getCurrentModel?.() ?? "" : props.getCurrentProfile?.() ?? ""
+  const getCurrentChoice = (_mode: ChoicePickerMode) => props.getCurrentProfile?.() ?? ""
 
   const openChoicePicker = (mode: ChoicePickerMode): boolean => {
     const options = getChoiceOptions(mode)
@@ -734,18 +733,12 @@ export const App: Component<AppProps> = (props) => {
         }
 
         // --- Choice picker mode ---
-        if (s.mode === "models" || s.mode === "profiles") {
+        if (s.mode === "profiles") {
           const selected = s.pickerItems[s.selectedIndex]
           if (selected) {
             setSlash(SLASH_INACTIVE)
             setInputText("")
-            const command = s.mode === "models" ? "model" : "profile"
-            if (props.onCommand) {
-              props.onCommand(command, selected.id, state.store.sessionId)
-            }
-            if (s.mode === "models") {
-              state.setStore("status", "modelName", selected.id)
-            }
+            props.onCommand?.("profile", selected.id, state.store.sessionId)
           }
           return true
         }
@@ -906,7 +899,7 @@ export const App: Component<AppProps> = (props) => {
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
       }
-      if (s.mode === "models" || s.mode === "profiles") {
+      if (s.mode === "profiles") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
       return { type: "commands", items: s.items, selectedIndex: s.selectedIndex, query: s.query }
@@ -969,7 +962,11 @@ export const App: Component<AppProps> = (props) => {
       }
       const command = filterCommands("", 99).find((item) => item.id === action.commandId)
       if (action.commandId === "skills") {
-        openSkillsPalette()
+        openEntityPalette("skills", "skill")
+        return
+      }
+      if (action.commandId === "model") {
+        openEntityPalette("models", "model")
         return
       }
       if (action.commandId === "sessions") {

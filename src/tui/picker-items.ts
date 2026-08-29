@@ -11,10 +11,9 @@ export interface PickerEntry {
   isCurrent?: boolean
 }
 
-export type ChoicePickerMode = "models" | "profiles"
+export type ChoicePickerMode = "profiles"
 
 export function pickerModeForCommand(commandId: string): ChoicePickerMode | null {
-  if (commandId === "model") return "models"
   if (commandId === "profile") return "profiles"
   return null
 }

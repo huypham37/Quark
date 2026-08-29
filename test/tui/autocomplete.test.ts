@@ -65,13 +65,13 @@ describe("scrollTopForSelection", () => {
   })
 
   test("choice pickers account for the title row at index 0", () => {
-    const modelsMode = { type: "models" as const, items: [], selectedIndex: 0 }
+    const profilesMode = { type: "profiles" as const, items: [], selectedIndex: 0 }
     // selectedIndex 0 → scrollIndex 1 (after title) → ideal -1, clamp to 0
-    expect(scrollTopForSelection(modelsMode, 0, 20, 5)).toBe(0)
+    expect(scrollTopForSelection(profilesMode, 0, 20, 5)).toBe(0)
     // selectedIndex 2 → scrollIndex 3 → ideal 1
-    expect(scrollTopForSelection(modelsMode, 2, 20, 5)).toBe(1)
+    expect(scrollTopForSelection(profilesMode, 2, 20, 5)).toBe(1)
     // selectedIndex 19 → scrollIndex 20 → ideal 18, clamp to 15
-    expect(scrollTopForSelection(modelsMode, 19, 20, 5)).toBe(15)
+    expect(scrollTopForSelection(profilesMode, 19, 20, 5)).toBe(15)
   })
 
   test("profile pickers scroll once selection moves below the visible rows", () => {
