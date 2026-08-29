@@ -642,7 +642,22 @@ export async function loginWithBrowser(options: {
 				server.cancelWait()
 			})
 
-		const result = await server.waitForCode()
+		let abortHandler: (() => void) | undefined
+		const abortPromise = new Promise<null>((resolve) => {
+			abortHandler = () => {
+				server.cancelWait()
+				resolve(null)
+			}
+			if (options.signal?.aborted) abortHandler()
+			else options.signal?.addEventListener("abort", abortHandler, { once: true })
+		})
+		let result: Awaited<ReturnType<typeof server.waitForCode>>
+		try {
+			result = await Promise.race([server.waitForCode(), abortPromise])
+			if (options.signal?.aborted) throw new DOMException("Authentication cancelled", "AbortError")
+		} finally {
+			if (abortHandler) options.signal?.removeEventListener("abort", abortHandler)
+		}
 
 		if (promptError) {
 			throw promptError

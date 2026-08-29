@@ -32,9 +32,15 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("c prefix matches clear and compact", () => {
+  test("c prefix matches clear, compact, and connect", () => {
     const result = filterCommands("c")
-    expect(result.map((command) => command.id)).toEqual(["clear", "compact"])
+    expect(result.map((command) => command.id)).toEqual(["clear", "compact", "connect"])
+  })
+
+  test("connect command opens provider authentication", () => {
+    expect(filterCommands("connect")).toEqual([
+      { id: "connect", description: "Connect a model provider" },
+    ])
   })
 
   test("returns empty array when no commands match", () => {

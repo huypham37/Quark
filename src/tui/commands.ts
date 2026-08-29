@@ -28,6 +28,7 @@ export const commands: SlashCommand[] = [
   { id: "steer", description: "Branch with full history" },
   { id: "goal", description: "Pursue a goal autonomously until done", usage: "<goal description>" },
   { id: "auth", description: "Show provider authentication status" },
+  { id: "connect", description: "Connect a model provider" },
   { id: "statistics", description: "Show token usage statistics and charts" },
   { id: "export", description: "Export conversation history to markdown" },
   { id: "worktree", description: "Switch or create git worktrees", usage: "[create <branch>]" },

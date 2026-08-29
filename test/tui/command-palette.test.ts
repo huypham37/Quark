@@ -9,8 +9,9 @@ async function renderPalette(
   selectedIndex = 0,
   width = 80,
   height = 24,
-  mode: "search" | "sessions" | "skills" | "models" = "search",
+  mode: import("../../src/tui/components/command-palette").PaletteMode = "search",
   sessionRows: unknown[] = [],
+  connect?: unknown,
 ) {
   const script = `
     import { testRender } from "@opentui/solid";
@@ -24,6 +25,7 @@ async function renderPalette(
       mode: ${JSON.stringify(mode)},
       sessionRows: ${JSON.stringify(sessionRows)},
       sessionAction: "browse",
+      connect: ${JSON.stringify(connect)},
       onInput() {},
     }), { width: ${width}, height: ${height}, useConsole: false });
     await setup.renderOnce();
@@ -124,6 +126,41 @@ describe("command palette", () => {
     expect(frame).toContain("Search skills")
     expect(frame).toContain("teaching")
     expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
+  })
+
+  test("renders provider selection with safe authentication labels", async () => {
+    const lines = await renderPalette("", [], 0, 80, 24, "connect-providers", [], {
+      providers: [
+        { id: "openai", name: "OpenAI", kind: "api-key", detail: "API key", status: "missing" },
+        { id: "ollama", name: "Ollama", kind: "none", detail: "No authentication required", status: "not-required" },
+      ],
+    })
+    const frame = lines.join("\n")
+    expect(frame).toContain("Connect a provider")
+    expect(frame).toContain("OpenAI")
+    expect(frame).toContain("API key · missing")
+    expect(frame).toContain("Esc back")
+  })
+
+  test("masks API-key display and never renders the key", async () => {
+    const secret = "sk-super-secret"
+    const lines = await renderPalette(secret, [], 0, 80, 24, "connect-api-key", [], {
+      providers: [], providerName: "OpenAI", apiKeyLength: secret.length,
+    })
+    const frame = lines.join("\n")
+    expect(frame).toContain("•••••••••••••••")
+    expect(frame).not.toContain(secret)
+  })
+
+  test("renders device authorization progress", async () => {
+    const lines = await renderPalette("", [], 0, 80, 24, "connect-authorizing", [], {
+      providers: [], providerName: "GitHub Copilot",
+      deviceCode: { verificationUri: "https://github.com/login/device", userCode: "ABCD-1234" },
+    })
+    const frame = lines.join("\n")
+    expect(frame).toContain("https://github.com/login/device")
+    expect(frame).toContain("ABCD-1234")
+    expect(frame).toContain("Waiting for authorization")
   })
 
   test("renders the session picker in the centered palette surface", async () => {

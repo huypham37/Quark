@@ -18,7 +18,7 @@ import { MessageItem } from "./message-item"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
-import { CommandPalette } from "./command-palette"
+import { CommandPalette, type PaletteMode } from "./command-palette"
 import { preservePaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
 import { PermissionPrompt } from "./permission-prompt"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
@@ -55,6 +55,9 @@ import { info as notifyInfo, warn as notifyWarn } from "../../notification/notif
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 import type { FileTarget } from "../editor"
+import { authStatus, loginApiKey, loginOAuth } from "../../commands/auth"
+import { loadConfig } from "../../config/config"
+import { buildConnectProviderRows, safeConnectError, type ConnectProviderRow } from "../connect-provider"
 
 /** Command handler result */
 export type CommandResult =
@@ -234,7 +237,16 @@ export const App: Component<AppProps> = (props) => {
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
   const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
   const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
-  const [paletteMode, setPaletteMode] = createSignal<"search" | "sessions" | "skills" | "models">("search")
+  const [paletteMode, setPaletteMode] = createSignal<PaletteMode>("search")
+  const [connectProviders, setConnectProviders] = createSignal<ConnectProviderRow[]>([])
+  const [connectProvider, setConnectProvider] = createSignal<ConnectProviderRow | undefined>()
+  const [connectApiKey, setConnectApiKey] = createSignal("")
+  const [connectDeviceCode, setConnectDeviceCode] = createSignal<{ verificationUri: string; userCode: string } | undefined>()
+  const [connectBrowserUrl, setConnectBrowserUrl] = createSignal<string | undefined>()
+  const [connectAwaitingBrowserInput, setConnectAwaitingBrowserInput] = createSignal(false)
+  const [connectResult, setConnectResult] = createSignal<{ kind: "success" | "error"; message: string } | undefined>()
+  let connectAbortController: AbortController | undefined
+  let resolveBrowserPrompt: ((value: string) => void) | undefined
   const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
   const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
   const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
@@ -379,6 +391,15 @@ export const App: Component<AppProps> = (props) => {
     setPaletteResults([])
     setPaletteSelectedIndex(0)
     setPaletteMode("search")
+    setConnectProviders([])
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    connectAbortController = undefined
+    resolveBrowserPrompt = undefined
     setPaletteSessionInputs([])
     setPaletteSessionRows([])
     setPaletteSessionAction("browse")
@@ -414,6 +435,15 @@ export const App: Component<AppProps> = (props) => {
     setPaletteResults([])
     setPaletteSelectedIndex(0)
     setPaletteMode("search")
+    setConnectProviders([])
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    connectAbortController = undefined
+    resolveBrowserPrompt = undefined
     setPaletteSessionInputs([])
     setPaletteSessionRows([])
     setPaletteSessionAction("browse")
@@ -441,14 +471,111 @@ export const App: Component<AppProps> = (props) => {
   const openEntityPalette = (mode: "skills" | "models", type: "skill" | "model") => {
     setPaletteMode(mode)
     setPaletteQuery("")
-    paletteInputRef?.clear()
     setPaletteResults(entityPaletteEntries(type))
     setPaletteSelectedIndex(0)
+  }
+
+  const openConnectProviders = async () => {
+    setPaletteMode("connect-providers")
+    setPaletteQuery("")
+    setPaletteSelectedIndex(0)
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    try {
+      setConnectProviders(buildConnectProviderRows(await authStatus(), loadConfig().providers))
+    } catch {
+      setConnectProviders(buildConnectProviderRows([], loadConfig().providers))
+    }
+  }
+
+  const finishConnect = async (provider: ConnectProviderRow) => {
+    await authStatus()
+    setConnectResult({ kind: "success", message: `✓ Connected to ${provider.name}` })
+    setPaletteMode("connect-result")
+    setTimeout(() => {
+      if (paletteOpen() && paletteMode() === "connect-result") restoreComposer()
+    }, 1200)
+  }
+
+  const failConnect = (provider: ConnectProviderRow, error: unknown) => {
+    setConnectApiKey("")
+    setPaletteQuery("")
+    setConnectResult({ kind: "error", message: safeConnectError(error) })
+    notifyWarn(`Connect ${provider.name}`, safeConnectError(error), 4000)
+  }
+
+  const authorizeProvider = async (provider: ConnectProviderRow, method?: "browser" | "device") => {
+    connectAbortController = new AbortController()
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setPaletteQuery("")
+    setPaletteMode("connect-authorizing")
+    try {
+      await loginOAuth({
+        providerId: provider.id,
+        persistence: "store",
+        method,
+        signal: connectAbortController.signal,
+        onDeviceCode: ({ verificationUri, userCode }) => setConnectDeviceCode({ verificationUri, userCode }),
+        onBrowserUrl: (url) => setConnectBrowserUrl(url),
+        onBrowserPrompt: () => {
+          setConnectAwaitingBrowserInput(true)
+          return new Promise<string>((resolve) => { resolveBrowserPrompt = resolve })
+        },
+      })
+      await finishConnect(provider)
+    } catch (error) {
+      if (connectAbortController?.signal.aborted) return
+      failConnect(provider, error)
+      setPaletteMode(provider.id === "codex" ? "connect-codex-method" : "connect-providers")
+    } finally {
+      connectAbortController = undefined
+      resolveBrowserPrompt = undefined
+      setConnectAwaitingBrowserInput(false)
+    }
+  }
+
+  const chooseConnectProvider = async () => {
+    const provider = connectProviders()[paletteSelectedIndex()]
+    if (!provider) return
+    setConnectProvider(provider)
+    setConnectResult(undefined)
+    if (provider.kind === "custom") {
+      setConnectResult({ kind: "success", message: provider.environmentVariable ? `Set ${provider.environmentVariable}` : "Configure api_key_env for this provider" })
+      setPaletteMode("connect-result")
+    } else if (provider.kind === "none") {
+      setConnectResult({ kind: "success", message: `✓ ${provider.name} needs no authentication` })
+      setPaletteMode("connect-result")
+    } else if (provider.kind === "api-key") {
+      setConnectApiKey("")
+      setPaletteQuery("")
+        setPaletteMode("connect-api-key")
+    } else if (provider.id === "codex") {
+      setPaletteSelectedIndex(0)
+      setPaletteMode("connect-codex-method")
+    } else {
+      await authorizeProvider(provider, "device")
+    }
   }
 
   const updatePaletteQuery = () => {
     if (!paletteInputRef) return
     const query = paletteInputRef.plainText
+    if (paletteMode() === "connect-api-key") {
+      setPaletteQuery(query)
+      setConnectApiKey(query)
+      return
+    }
+    if (paletteMode() === "connect-authorizing" && connectAwaitingBrowserInput()) {
+      setPaletteQuery(query)
+      return
+    }
+    if (paletteMode().startsWith("connect-")) return
     if (paletteMode() === "sessions") {
       setPaletteQuery(query)
       if (paletteSessionAction() === "rename") return
@@ -637,6 +764,11 @@ export const App: Component<AppProps> = (props) => {
         props.onCancel(state.store.sessionId)
       }
       exitApp()
+      return
+    }
+
+    if (commandId === "connect" && !args && paletteOpen()) {
+      void openConnectProviders()
       return
     }
 
@@ -914,6 +1046,47 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const runPaletteSelection = async () => {
+    if (paletteMode() === "connect-providers") {
+      await chooseConnectProvider()
+      return
+    }
+    if (paletteMode() === "connect-api-key") {
+      const provider = connectProvider()
+      if (!provider) return
+      const apiKey = connectApiKey()
+      if (!apiKey.trim()) {
+        failConnect(provider, new Error("empty"))
+        return
+      }
+      try {
+        await loginApiKey({ providerId: provider.id, apiKey, persistence: "store" })
+        setConnectApiKey("")
+        setPaletteQuery("")
+            await finishConnect(provider)
+      } catch (error) {
+        failConnect(provider, error)
+      }
+      return
+    }
+    if (paletteMode() === "connect-codex-method") {
+      const provider = connectProvider()
+      if (provider) await authorizeProvider(provider, paletteSelectedIndex() === 0 ? "browser" : "device")
+      return
+    }
+    if (paletteMode() === "connect-authorizing") {
+      if (connectAwaitingBrowserInput() && resolveBrowserPrompt) {
+        const resolve = resolveBrowserPrompt
+        resolveBrowserPrompt = undefined
+        setConnectAwaitingBrowserInput(false)
+        resolve(paletteQuery())
+        setPaletteQuery("")
+          }
+      return
+    }
+    if (paletteMode() === "connect-result") {
+      restoreComposer()
+      return
+    }
     if (paletteMode() === "sessions") {
       const selected = paletteSessionRows()[paletteSelectedIndex()]
       if (selected?.type !== "session" && selected?.type !== "orphan") return
@@ -961,6 +1134,10 @@ export const App: Component<AppProps> = (props) => {
         return
       }
       const command = filterCommands("", 99).find((item) => item.id === action.commandId)
+      if (action.commandId === "connect") {
+        await openConnectProviders()
+        return
+      }
       if (action.commandId === "skills") {
         openEntityPalette("skills", "skill")
         return
@@ -1007,11 +1184,14 @@ export const App: Component<AppProps> = (props) => {
           ? moveSessionRowSelection(paletteSessionRows(), index, -1)
           : Math.max(0, index - 1))
       } else if (evt.name === "down") {
+        const maximum = paletteMode() === "connect-providers"
+          ? connectProviders().length - 1
+          : paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
           ? moveSessionRowSelection(paletteSessionRows(), index, 1)
-          : Math.min(Math.max(0, paletteResults().length - 1), index + 1))
+          : Math.min(Math.max(0, maximum), index + 1))
       } else if (evt.name === "return") {
-        void runPaletteSelection()
+        queueMicrotask(() => { void runPaletteSelection() })
       } else if (paletteMode() === "sessions" && paletteSessionAction() === "browse" && evt.name === "f2") {
         const selected = paletteSessionRows()[paletteSelectedIndex()]
         if (selected?.type === "session" || selected?.type === "orphan") {
@@ -1036,7 +1216,18 @@ export const App: Component<AppProps> = (props) => {
           }
         }
       } else if (evt.name === "escape") {
-        if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
+        if (paletteMode() === "connect-authorizing") {
+          connectAbortController?.abort()
+          resolveBrowserPrompt?.("")
+          resolveBrowserPrompt = undefined
+          void openConnectProviders()
+        } else if (paletteMode() === "connect-api-key" || paletteMode() === "connect-codex-method") {
+          setConnectApiKey("")
+          setPaletteQuery("")
+                void openConnectProviders()
+        } else if (paletteMode() === "connect-providers" || paletteMode() === "connect-result") {
+          restoreComposer()
+        } else if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
           const selected = paletteSessionRows()[paletteSelectedIndex()]
           openSessionsPalette(selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined)
         } else {
@@ -1425,6 +1616,15 @@ export const App: Component<AppProps> = (props) => {
         selectedIndex={paletteSelectedIndex()}
         onInput={updatePaletteQuery}
         onRef={(ref) => { paletteInputRef = ref }}
+        connect={{
+          providers: connectProviders(),
+          providerName: connectProvider()?.name,
+          apiKeyLength: connectApiKey().length,
+          deviceCode: connectDeviceCode(),
+          browserUrl: connectBrowserUrl(),
+          awaitingBrowserInput: connectAwaitingBrowserInput(),
+          result: connectResult(),
+        }}
       />
 
       {/* Statistics overlay */}
