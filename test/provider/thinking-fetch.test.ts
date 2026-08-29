@@ -8,7 +8,8 @@ import { describe, test, expect } from "bun:test"
 import { createCopilotFetch } from "../../src/provider/copilot-fetch"
 import { ThinkingNormalizer } from "../../src/provider/thinking"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import { generateText } from "ai"
+import { generateText, stepCountIs, tool } from "ai"
+import { z } from "zod"
 
 function makeMockFetch(): {
   capturedBody: () => Record<string, unknown> | undefined
@@ -198,6 +199,86 @@ describe("thinking providerOptions land in request body", () => {
     // SDK maps reasoningEffort → reasoning_effort in the request body
     expect(body!.reasoning_effort).toBe("max")
     expect(body!.thinking).toEqual({ type: "enabled" })
+  })
+
+  test("DeepSeek reasoning_content is preserved across an executed tool loop", async () => {
+    const bodies: Record<string, any>[] = []
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      const first = bodies.length === 1
+      return new Response(JSON.stringify({
+        id: `chatcmpl-${bodies.length}`,
+        object: "chat.completion",
+        created: 123,
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: first
+            ? {
+                role: "assistant",
+                content: null,
+                reasoning_content: "I should inspect the requested path.",
+                tool_calls: [{
+                  id: "call-1",
+                  type: "function",
+                  function: { name: "readPath", arguments: JSON.stringify({ path: "README.md" }) },
+                }],
+              }
+            : { role: "assistant", content: "done" },
+          finish_reason: first ? "tool_calls" : "stop",
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), { status: 200, headers: { "content-type": "application/json" } })
+    }
+    const provider = createOpenAICompatible({
+      name: "deepseek",
+      baseURL: "https://api.deepseek.com",
+      apiKey: "test",
+      fetch: mockFetch as typeof fetch,
+    })
+
+    const result = await generateText({
+      model: provider("deepseek-v4-pro"),
+      prompt: "Read the file",
+      stopWhen: stepCountIs(2),
+      tools: {
+        readPath: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async ({ path }) => `contents of ${path}`,
+        }),
+      },
+    })
+
+    expect(result.text).toBe("done")
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1]!.messages).toContainEqual(expect.objectContaining({
+      role: "assistant",
+      reasoning_content: "I should inspect the requested path.",
+      tool_calls: [expect.objectContaining({ id: "call-1" })],
+    }))
+    expect(bodies[1]!.messages).toContainEqual(expect.objectContaining({
+      role: "tool",
+      tool_call_id: "call-1",
+    }))
+  })
+
+  test("DeepSeek non-thinking requests explicitly disable its default thinking mode", async () => {
+    const mock = makeCapturingFetch()
+    const provider = createOpenAICompatible({
+      name: "deepseek",
+      baseURL: "https://api.deepseek.com",
+      apiKey: "test",
+      fetch: mock.fetch,
+    })
+    const normalizer = new ThinkingNormalizer("deepseek-v4-flash")
+
+    await generateText({
+      model: provider("deepseek-v4-flash"),
+      prompt: "Hello",
+      providerOptions: normalizer.normalize("deepseek"),
+    })
+
+    expect(mock.capturedBody()!.thinking).toEqual({ type: "disabled" })
   })
 
   test("gpt-5.6 — default standard mode and effort reach the body", async () => {

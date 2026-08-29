@@ -58,6 +58,16 @@ export const BUNDLED_PROVIDER_DEFINITIONS = {
     providerOptionsKey: "openrouter",
     billing: "metered",
   },
+  deepseek: {
+    id: "deepseek",
+    name: "DeepSeek",
+    protocol: "openai-compatible",
+    defaultEndpoint: "https://api.deepseek.com",
+    auth: { type: "api-key", environmentVariables: ["DEEPSEEK_API_KEY"] },
+    metadataProviderId: "deepseek",
+    providerOptionsKey: "deepseek",
+    billing: "metered",
+  },
   copilot: {
     id: "copilot",
     name: "GitHub Copilot",

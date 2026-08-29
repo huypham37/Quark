@@ -28,12 +28,13 @@ export type PaletteMode =
 export interface ConnectPaletteView {
   providers: ConnectProviderRow[]
   providerName?: string
+  environmentCredentialActive?: boolean
   apiKeyLength?: number
   codexMethod?: "browser" | "device"
   deviceCode?: { verificationUri: string; userCode: string }
   browserUrl?: string
   awaitingBrowserInput?: boolean
-  result?: { kind: "success" | "error"; message: string }
+  result?: { kind: "success" | "info" | "error"; message: string }
 }
 
 export interface CommandPaletteProps {
@@ -137,7 +138,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
               <text fg={colors.text} bg={colors.commandCardBg}>{"•".repeat(props.connect?.apiKeyLength ?? 0)}</text>
               <textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused width={1} height={1} opacity={0} value={props.query} showCursor={false} textColor={colors.commandCardBg} focusedTextColor={colors.commandCardBg} backgroundColor={colors.commandCardBg} focusedBackgroundColor={colors.commandCardBg} onContentChange={() => props.onInput()} />
             </box>
-            <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>Saved using Quark&apos;s configured credential store</text></box>
+            <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{props.connect?.environmentCredentialActive ? "Environment credential remains active after saving" : "Saved using Quark's configured credential store"}</text></box>
           </Show>
           <Show when={props.mode === "connect-codex-method"}>
             <For each={["Browser login", "Device code login"]}>{(method, index) => <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={index() === props.selectedIndex ? colors.primary : colors.text} bg={colors.commandCardBg} bold={index() === props.selectedIndex}>{index() === props.selectedIndex ? "❯ " : "  "}{method}</text></box>}</For>
@@ -148,7 +149,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{props.connect?.awaitingBrowserInput ? "Paste an authorization code or redirect URL (optional)" : "Waiting for authorization…"}</text></box>
             <Show when={props.connect?.awaitingBrowserInput}><box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} onContentChange={() => props.onInput()} /></box></Show>
           </Show>
-          <Show when={props.mode === "connect-result"}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={props.connect?.result?.kind === "error" ? colors.error : colors.success} bg={colors.commandCardBg}>{props.connect?.result?.kind === "error" ? "Authentication was not completed" : "Authentication is ready"}</text></box></Show>
+          <Show when={props.mode === "connect-result"}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={props.connect?.result?.kind === "error" ? colors.error : props.connect?.result?.kind === "info" ? colors.info : colors.success} bg={colors.commandCardBg}>{props.connect?.result?.kind === "error" ? "Authentication was not completed" : props.connect?.result?.kind === "info" ? "Update the environment variable outside Quark" : "Authentication is ready"}</text></box></Show>
           <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{footer()}</text></box>
         </Show>
 

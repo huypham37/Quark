@@ -13,6 +13,7 @@ export interface ThinkingConfig {
 type RequestShape = {
   effortField?: string
   enabledFields?: JSONObject
+  disabledFields?: JSONObject
   modeField?: string
 }
 
@@ -59,6 +60,7 @@ const REQUEST_SHAPES: Record<string, RequestShape> = {
   "deepseek-": {
     effortField: "reasoningEffort",
     enabledFields: { thinking: { type: "enabled" } },
+    disabledFields: { thinking: { type: "disabled" } },
   },
 }
 
@@ -105,10 +107,14 @@ export function buildProviderOptions(input: {
   thinkingConfig: ThinkingConfig
 }): ProviderOptions | undefined {
   const { thinkingConfig } = input
-  if (thinkingConfig.effort === "none") return undefined
+  const shape = requestShape(input.modelId)
+  if (thinkingConfig.effort === "none") {
+    return shape?.disabledFields
+      ? { [input.providerOptionsKey]: { ...shape.disabledFields } }
+      : undefined
+  }
 
   const capability = input.modelCapability ?? getThinkingCapability(input.modelId)
-  const shape = requestShape(input.modelId)
   if (!capability || !shape) return undefined
   if (!capability.levels.includes(thinkingConfig.effort)) {
     throw new Error(

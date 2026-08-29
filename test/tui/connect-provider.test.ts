@@ -8,11 +8,26 @@ describe("connect provider display data", () => {
       ["openai", "api-key"],
       ["anthropic", "api-key"],
       ["openrouter", "api-key"],
+      ["deepseek", "api-key"],
       ["copilot", "oauth"],
       ["codex", "oauth"],
       ["ollama", "none"],
       ["lmstudio", "none"],
     ])
+  })
+
+  test("deduplicates a canonical configured DeepSeek entry", () => {
+    const rows = buildConnectProviderRows([
+      { providerId: "deepseek", state: "authenticated", origin: "environment" },
+    ], {
+      deepseek: { base_url: "https://api.deepseek.com", api_key_env: "DEEPSEEK_API_KEY", billing: "metered" },
+    })
+    expect(rows.filter((row) => row.id === "deepseek")).toEqual([expect.objectContaining({
+      name: "DeepSeek",
+      kind: "api-key",
+      status: "authenticated",
+      credentialOrigin: "environment",
+    })])
   })
 
   test("shows custom providers as read-only environment instructions", () => {

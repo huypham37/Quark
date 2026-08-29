@@ -163,6 +163,17 @@ describe("command palette", () => {
     expect(frame).toContain("Waiting for authorization")
   })
 
+  test("does not call an environment-managed custom provider ready", async () => {
+    const lines = await renderPalette("", [], 0, 80, 24, "connect-result", [], {
+      providers: [],
+      result: { kind: "info", message: "Set DEEPSEEK_API_KEY to change this provider's API key" },
+    })
+    const frame = lines.join("\n")
+    expect(frame).toContain("Set DEEPSEEK_API_KEY")
+    expect(frame).toContain("Update the environment variable outside Quark")
+    expect(frame).not.toContain("Authentication is ready")
+  })
+
   test("renders the session picker in the centered palette surface", async () => {
     const rows = [{
       type: "session",

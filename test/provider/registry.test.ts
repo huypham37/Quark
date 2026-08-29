@@ -17,14 +17,24 @@ function adapter(definition: ProviderDefinition): ProviderAdapter {
 }
 
 describe("bundled provider definitions", () => {
-  test("include all initial V2 providers with trusted OpenRouter metadata", () => {
+  test("includes DeepSeek with Quark-owned endpoint and credential destination", () => {
     expect(Object.keys(BUNDLED_PROVIDER_DEFINITIONS)).toEqual([
-      "openai", "anthropic", "openrouter", "copilot", "codex", "ollama", "lmstudio",
+      "openai", "anthropic", "openrouter", "deepseek", "copilot", "codex", "ollama", "lmstudio",
     ])
     expect(BUNDLED_PROVIDER_DEFINITIONS.openrouter.defaultEndpoint).toBe("https://openrouter.ai/api/v1")
     expect(BUNDLED_PROVIDER_DEFINITIONS.openrouter.auth.environmentVariables).toEqual(["OPENROUTER_API_KEY"])
     expect(BUNDLED_PROVIDER_DEFINITIONS.copilot.metadataProviderId).toBe("github-copilot")
     expect(BUNDLED_PROVIDER_DEFINITIONS.copilot.billing).toBe("subscription")
+    expect(BUNDLED_PROVIDER_DEFINITIONS.deepseek).toMatchObject({
+      id: "deepseek",
+      name: "DeepSeek",
+      protocol: "openai-compatible",
+      defaultEndpoint: "https://api.deepseek.com",
+      metadataProviderId: "deepseek",
+      providerOptionsKey: "deepseek",
+      billing: "metered",
+      auth: { type: "api-key", environmentVariables: ["DEEPSEEK_API_KEY"] },
+    })
   })
 })
 

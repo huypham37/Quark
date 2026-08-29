@@ -244,7 +244,7 @@ export const App: Component<AppProps> = (props) => {
   const [connectDeviceCode, setConnectDeviceCode] = createSignal<{ verificationUri: string; userCode: string } | undefined>()
   const [connectBrowserUrl, setConnectBrowserUrl] = createSignal<string | undefined>()
   const [connectAwaitingBrowserInput, setConnectAwaitingBrowserInput] = createSignal(false)
-  const [connectResult, setConnectResult] = createSignal<{ kind: "success" | "error"; message: string } | undefined>()
+  const [connectResult, setConnectResult] = createSignal<{ kind: "success" | "info" | "error"; message: string } | undefined>()
   let connectAbortController: AbortController | undefined
   let resolveBrowserPrompt: ((value: string) => void) | undefined
   const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
@@ -493,8 +493,11 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const finishConnect = async (provider: ConnectProviderRow) => {
-    await authStatus()
-    setConnectResult({ kind: "success", message: `✓ Connected to ${provider.name}` })
+    const refreshed = await authStatus()
+    const status = refreshed.find((item) => item.providerId.toLowerCase() === provider.id.toLowerCase())
+    setConnectResult(status?.origin === "environment"
+      ? { kind: "info", message: `✓ Stored credential for ${provider.name}; its environment credential remains active` }
+      : { kind: "success", message: `✓ Connected to ${provider.name}` })
     setPaletteMode("connect-result")
     setTimeout(() => {
       if (paletteOpen() && paletteMode() === "connect-result") restoreComposer()
@@ -546,7 +549,12 @@ export const App: Component<AppProps> = (props) => {
     setConnectProvider(provider)
     setConnectResult(undefined)
     if (provider.kind === "custom") {
-      setConnectResult({ kind: "success", message: provider.environmentVariable ? `Set ${provider.environmentVariable}` : "Configure api_key_env for this provider" })
+      setConnectResult({
+        kind: "info",
+        message: provider.environmentVariable
+          ? `Set ${provider.environmentVariable} to change this provider's API key`
+          : "Configure api_key_env, then set that environment variable",
+      })
       setPaletteMode("connect-result")
     } else if (provider.kind === "none") {
       setConnectResult({ kind: "success", message: `✓ ${provider.name} needs no authentication` })
@@ -1619,6 +1627,7 @@ export const App: Component<AppProps> = (props) => {
         connect={{
           providers: connectProviders(),
           providerName: connectProvider()?.name,
+          environmentCredentialActive: connectProvider()?.credentialOrigin === "environment",
           apiKeyLength: connectApiKey().length,
           deviceCode: connectDeviceCode(),
           browserUrl: connectBrowserUrl(),

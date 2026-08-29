@@ -80,8 +80,10 @@ const DEFAULT_MODELS = {
   ],
 }
 const BUNDLED_PROVIDER_IDS = new Set([
-  "openai", "anthropic", "openrouter", "copilot", "codex", "ollama", "lmstudio",
+  "openai", "anthropic", "openrouter", "deepseek", "copilot", "codex", "ollama", "lmstudio",
 ])
+const DEEPSEEK_ENDPOINT = "https://api.deepseek.com"
+const DEEPSEEK_ENVIRONMENT_VARIABLE = "DEEPSEEK_API_KEY"
 const SECRET_KEYS = /^(apiKey|api_key|token|secret|password)$/i
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-]*$/
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]*$/
@@ -159,6 +161,28 @@ function normalizeEndpoint(raw: unknown, field: string): string {
   return url.toString().replace(/\/$/, "")
 }
 
+function acceptCanonicalDeepSeek(
+  provider: CustomProviderConfig,
+  rawEndpoint: unknown,
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+): void {
+  const endpoint = typeof rawEndpoint === "string" ? rawEndpoint.replace(/\/$/, "") : ""
+  const credentialCompatible = provider.api_key_env === DEEPSEEK_ENVIRONMENT_VARIABLE
+    || provider.legacyCredentialSource?.source === "store"
+    || provider.legacyCredentialSource?.source === "auto"
+  const canonical = (endpoint === DEEPSEEK_ENDPOINT || endpoint === `${DEEPSEEK_ENDPOINT}/v1`)
+    && credentialCompatible
+    && (provider.billing === "metered" || value.billing === undefined)
+    && Object.keys(value).every((key) => allowedKeys.includes(key))
+  if (!canonical) {
+    throw new Error(
+      `providers.deepseek conflicts with the bundled DeepSeek provider. Rename the custom provider ID (for example, "company-deepseek") and update model references to use that ID.`,
+    )
+  }
+  console.warn("[quark] providers.deepseek is redundant because DeepSeek is bundled; remove providers.deepseek from config.yaml.")
+}
+
 export function parseCustomProviders(raw: unknown): Record<string, CustomProviderConfig> {
   if (raw === undefined) return {}
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("providers must be a mapping.")
@@ -166,7 +190,7 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
   for (const [rawId, entry] of Object.entries(raw as Record<string, unknown>)) {
     const id = rawId.toLowerCase()
     if (!PROVIDER_ID.test(rawId) || rawId !== id) throw new Error(`Invalid custom provider ID "${rawId}".`)
-    if (id === "compaction" || BUNDLED_PROVIDER_IDS.has(id)) {
+    if (id === "compaction" || (BUNDLED_PROVIDER_IDS.has(id) && id !== "deepseek")) {
       throw new Error(`Custom provider ID "${id}" is reserved or bundled.`)
     }
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`providers.${id} must be a mapping.`)
@@ -179,11 +203,15 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
       throw new Error(`providers.${id} cannot mix base_url/api_key_env with legacy credential fields.`)
     }
     if (hasCanonicalFields) {
-      result[id] = {
+      const provider = {
         base_url: normalizeEndpoint(value.base_url, `providers.${id}.base_url`),
         api_key_env: parseEnvironmentVariable(value.api_key_env, `providers.${id}.api_key_env`),
         billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
       }
+      if (id === "deepseek") {
+        acceptCanonicalDeepSeek(provider, value.base_url, value, ["base_url", "api_key_env", "billing"])
+      }
+      result[id] = provider
       continue
     }
     if (value.protocol !== "openai-compatible") {
@@ -197,11 +225,15 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
     const legacyCredentialSource: CredentialSourceConfig = source === "environment"
       ? { source, variable: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) }
       : { source: source as "auto" | "prompt" | "store" | "none" }
-    result[id] = {
+    const provider: CustomProviderConfig = {
       base_url: normalizeEndpoint(value.endpoint, `providers.${id}.endpoint`),
       ...(source === "environment" ? { api_key_env: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) } : { legacyCredentialSource }),
       billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
     }
+    if (id === "deepseek") {
+      acceptCanonicalDeepSeek(provider, value.endpoint, value, ["protocol", "endpoint", "credential", "billing"])
+    }
+    result[id] = provider
   }
   return result
 }
