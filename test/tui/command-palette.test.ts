@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
+import { searchPaletteEntries } from "../../src/tui/palette-index"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
@@ -128,18 +129,46 @@ describe("command palette", () => {
     expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
   })
 
-  test("renders provider selection with safe authentication labels", async () => {
-    const lines = await renderPalette("", [], 0, 80, 24, "connect-providers", [], {
-      providers: [
-        { id: "openai", name: "OpenAI", kind: "api-key", detail: "API key", status: "missing" },
-        { id: "ollama", name: "Ollama", kind: "none", detail: "No authentication required", status: "not-required" },
-      ],
-    })
+  test("renders provider selection through the standard entity picker", async () => {
+    const entries = [
+      { ...model, key: "provider:openai", type: "provider", id: "openai", label: "OpenAI", detail: "API key · missing", action: { type: "provider", providerId: "openai" } },
+      { ...model, key: "provider:ollama", type: "provider", id: "ollama", label: "Ollama", detail: "No authentication required · not-required", action: { type: "provider", providerId: "ollama" } },
+    ]
+    const lines = await renderPalette("", entries, 0, 80, 24, "connect-providers")
     const frame = lines.join("\n")
     expect(frame).toContain("Connect a provider")
+    expect(frame).toContain("Search providers")
+    expect(frame).toContain("Provider")
     expect(frame).toContain("OpenAI")
     expect(frame).toContain("API key · missing")
-    expect(frame).toContain("Esc back")
+  })
+
+  test("filters providers through the standard search input", async () => {
+    const entries = [
+      { ...model, key: "provider:openai", type: "provider", id: "openai", label: "OpenAI", detail: "API key · missing", action: { type: "provider", providerId: "openai" } },
+      { ...model, key: "provider:deepseek", type: "provider", id: "deepseek", label: "DeepSeek", detail: "API key · authenticated", action: { type: "provider", providerId: "deepseek" } },
+    ]
+    const lines = await renderPalette("deep", searchPaletteEntries(entries, "deep"), 0, 80, 24, "connect-providers")
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Search providers")
+    expect(frame).toContain("DeepSeek")
+    expect(frame).not.toContain("OpenAI")
+  })
+
+  test("uses the same fixed result viewport as other entity pickers", async () => {
+    const entries = Array.from({ length: 7 }, (_, index) => ({
+      ...model,
+      key: `provider:${index}`,
+      type: "provider",
+      id: String(index),
+      label: `Provider ${index}`,
+      action: { type: "provider", providerId: String(index) },
+    }))
+    const lines = await renderPalette("", entries, 0, 80, 24, "connect-providers")
+
+    expect(lines.join("\n")).not.toContain("Provider 5")
+    expect(lines.join("\n")).not.toContain("Provider 6")
   })
 
   test("masks API-key display and never renders the key", async () => {

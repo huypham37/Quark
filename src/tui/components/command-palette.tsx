@@ -12,7 +12,6 @@ import type { ConnectProviderRow } from "../connect-provider"
 
 const MAX_VISIBLE = 5
 const MAX_VISIBLE_SESSIONS = 8
-const MAX_VISIBLE_PROVIDERS = 7
 
 export type PaletteMode =
   | "search"
@@ -53,8 +52,8 @@ export interface CommandPaletteProps {
 export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   const dims = useTerminalDimensions()
   const sessionMode = () => props.mode === "sessions"
-  const entityMode = () => props.mode === "skills" || props.mode === "models"
-  const connectMode = () => props.mode?.startsWith("connect-") ?? false
+  const entityMode = () => props.mode === "skills" || props.mode === "models" || props.mode === "connect-providers"
+  const connectMode = () => props.mode?.startsWith("connect-") && props.mode !== "connect-providers"
   const width = () => Math.min(60, Math.max(12, dims().width - 4))
   const maxVisibleSessions = () => Math.max(1, Math.min(MAX_VISIBLE_SESSIONS, dims().height - 8))
   const visible = () => {
@@ -76,27 +75,19 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
     const maximum = maxVisibleSessions()
     return rows.length <= maximum ? 0 : Math.min(Math.max(0, props.selectedIndex - maximum + 1), rows.length - maximum)
   }
-  const visibleProviders = () => {
-    const providers = props.connect?.providers ?? []
-    if (providers.length <= MAX_VISIBLE_PROVIDERS) return providers
-    const start = Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE_PROVIDERS + 1), providers.length - MAX_VISIBLE_PROVIDERS)
-    return providers.slice(start, start + MAX_VISIBLE_PROVIDERS)
-  }
-  const visibleProviderStart = () => {
-    const providers = props.connect?.providers ?? []
-    return providers.length <= MAX_VISIBLE_PROVIDERS
-      ? 0
-      : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE_PROVIDERS + 1), providers.length - MAX_VISIBLE_PROVIDERS)
-  }
   const hasQuery = () => entityMode() || Boolean(props.query.trim())
   const rows = () => hasQuery() && props.entries.length === 0 ? 1 : visible().length
   const sessionRowCount = () => Math.max(1, visibleSessions().length)
   const connectHeight = () => {
-    if (props.mode === "connect-providers") return Math.min(MAX_VISIBLE_PROVIDERS, props.connect?.providers.length ?? 0) + 3
-    if (props.mode === "connect-api-key") return 6
-    if (props.mode === "connect-codex-method") return 5
-    if (props.mode === "connect-authorizing") return props.connect?.browserUrl ? 8 : 7
-    return 4
+    // Every connect view has a title and divider, its content, a footer, and the
+    // palette's two border rows. Keep this in the same sizing contract as the
+    // standard palette modes so the footer stays inside the frame.
+    if (props.mode === "connect-api-key") return 8
+    if (props.mode === "connect-codex-method") return 7
+    if (props.mode === "connect-authorizing") {
+      return 6 + (props.connect?.browserUrl ? 1 : 0) + (props.connect?.deviceCode ? 2 : 0) + (props.connect?.awaitingBrowserInput ? 1 : 0)
+    }
+    return 6
   }
   const height = () => connectMode() ? connectHeight() : sessionMode() ? sessionRowCount() + 6 : hasQuery() ? 4 + MAX_VISIBLE + (entityMode() ? 1 : 0) : 3
   const truncate = (value: string, maximum: number) => {
@@ -104,9 +95,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
     if (chars.length <= maximum) return value
     return maximum <= 1 ? "…" : `${chars.slice(0, maximum - 1).join("")}…`
   }
-  const footer = () => props.mode === "connect-providers"
-    ? "↑↓ select · Enter continue · Esc back"
-    : props.mode === "connect-api-key"
+  const footer = () => props.mode === "connect-api-key"
       ? "Enter connect · Esc back"
       : props.mode === "connect-codex-method"
         ? "↑↓ select · Enter continue · Esc back"
@@ -118,19 +107,10 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
         <Show when={connectMode()}>
           <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}>
             <text fg={colors.text} bg={colors.commandCardBg} bold>
-              {props.mode === "connect-providers" ? "Connect a provider" : props.mode === "connect-result" ? props.connect?.result?.message : `Connect ${props.connect?.providerName ?? "provider"}`}
+              {props.mode === "connect-result" ? props.connect?.result?.message : `Connect ${props.connect?.providerName ?? "provider"}`}
             </text>
           </box>
           <box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box>
-          <Show when={props.mode === "connect-providers"}>
-            <For each={visibleProviders()}>{(provider, index) => (
-              <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}>
-                <text fg={visibleProviderStart() + index() === props.selectedIndex ? colors.primary : colors.text} bg={colors.commandCardBg} bold={visibleProviderStart() + index() === props.selectedIndex}>{visibleProviderStart() + index() === props.selectedIndex ? "❯ " : "  "}{truncate(provider.name, 20)}</text>
-                <box flexGrow={1} backgroundColor={colors.commandCardBg} />
-                <text fg={colors.muted} bg={colors.commandCardBg}>{truncate(`${provider.detail}${provider.status ? ` · ${provider.status}` : ""}`, Math.max(10, width() - 26))}</text>
-              </box>
-            )}</For>
-          </Show>
           <Show when={props.mode === "connect-api-key"}>
             <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>API key</text></box>
             <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}>
@@ -154,8 +134,8 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
         </Show>
 
         <Show when={!connectMode()}>
-          <Show when={sessionMode() || entityMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.text} bg={colors.commandCardBg} bold>{sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : props.mode === "models" ? "Models" : "Skills"}</text></box></Show>
-          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
+          <Show when={sessionMode() || entityMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.text} bg={colors.commandCardBg} bold>{sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : props.mode === "models" ? "Models" : props.mode === "connect-providers" ? "Connect a provider" : "Skills"}</text></box></Show>
+          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
           <Show when={sessionMode() || rows() > 0}><box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box></Show>
           <Show when={!sessionMode() && props.query.trim() && props.entries.length === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No results</text></box></Show>
           <Show when={sessionMode() && (props.sessionRows?.length ?? 0) === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No sessions found</text></box></Show>
@@ -167,7 +147,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
           }}</For></Show>
           <Show when={!sessionMode()}><For each={visible()}>{(entry, index) => {
             const selected = () => visibleStart() + index() === props.selectedIndex
-            const type = () => entry.type[0]!.toUpperCase() + entry.type.slice(1)
+            const type = () => entry.type === "provider" ? "Provider" : entry.type[0]!.toUpperCase() + entry.type.slice(1)
             const state = () => entry.isCurrent ? " · current" : entry.isUnavailable ? " · unavailable" : ""
             const available = () => Math.max(4, width() - 16)
             const suffix = () => truncate((entry.detail ?? "") + state(), Math.floor(available() * 0.45))

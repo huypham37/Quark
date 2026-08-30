@@ -1,10 +1,11 @@
-export type PaletteEntityType = "command" | "model" | "skill" | "tool"
+export type PaletteEntityType = "command" | "model" | "skill" | "tool" | "provider"
 
 export type PaletteAction =
   | { type: "command"; commandId: string; args?: string }
   | { type: "model"; modelId: string }
   | { type: "skill"; skillId: string }
   | { type: "tool"; toolId: string }
+  | { type: "provider"; providerId: string }
 
 export interface PaletteEntry {
   key: `${PaletteEntityType}:${string}`

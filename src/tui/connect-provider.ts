@@ -46,6 +46,12 @@ export function buildConnectProviderRows(
   return [...bundled, ...custom]
 }
 
+export function searchConnectProviderRows(providers: ConnectProviderRow[], query: string): ConnectProviderRow[] {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return providers
+  return providers.filter((provider) => `${provider.name} ${provider.id} ${provider.detail}`.toLowerCase().includes(normalizedQuery))
+}
+
 export function safeConnectError(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "Authentication cancelled"
   return "Authentication failed. Check your credentials and try again."

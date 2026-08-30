@@ -781,7 +781,10 @@ function handleCreateAsyncSession(): string {
 // Pre-create the renderer so module-level code (e.g. openEditor) can
 // suspend/resume it when shelling out to an external editor.
 const renderer = await createCliRenderer({
+  // Keep short OpenTUI animations such as notification transitions at 60 FPS.
+  // maxFps also applies when redraws are event-driven rather than continuous.
   targetFps: 60,
+  maxFps: 60,
   exitOnCtrlC: false,
   consoleOptions: {
     keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],

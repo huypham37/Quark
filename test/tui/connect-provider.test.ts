@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildConnectProviderRows, safeConnectError } from "../../src/tui/connect-provider"
+import { buildConnectProviderRows, safeConnectError, searchConnectProviderRows } from "../../src/tui/connect-provider"
 
 describe("connect provider display data", () => {
   test("classifies all bundled providers from their definitions", () => {
@@ -40,6 +40,13 @@ describe("connect provider display data", () => {
       detail: "Set PRIVATE_API_KEY",
       environmentVariable: "PRIVATE_API_KEY",
     })
+  })
+
+  test("filters providers by name, ID, or authentication detail", () => {
+    const providers = buildConnectProviderRows()
+    expect(searchConnectProviderRows(providers, "deep").map((provider) => provider.id)).toEqual(["deepseek"])
+    expect(searchConnectProviderRows(providers, "oauth").map((provider) => provider.id)).toEqual(["copilot", "codex"])
+    expect(searchConnectProviderRows(providers, "")).toBe(providers)
   })
 
   test("never returns service error contents", () => {

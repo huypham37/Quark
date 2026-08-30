@@ -1,13 +1,14 @@
 ---
 title: Specs Index
 date_created: 2026-06-04
-date_modified: 2026-07-15
-revision: 4
+date_modified: 2026-08-29
+revision: 5
 history:
   - 2026-06-04: Initial classification and folder reorganization
   - 2026-06-07: Archived all done specs to specs/archives/
   - 2026-07-14: Added first-class subagent tool and child permission bridging plan
   - 2026-07-15: Added agent observability trace spec
+  - 2026-08-29: Added bundled DeepSeek provider migration requirements
 status: done
 ---
 
@@ -36,6 +37,7 @@ status: done
 | [workspace-boundary-guard.md](workspace-boundary-guard.md) | Draft | Confine tools to workspace root; path-aware permissions; fix undo skip (#155) |
 | [codex-responses-lite.md](codex-responses-lite.md) | Done | Responses Lite adapter for gpt-5.6-luna via codex-consumer; luna-only scoping + exit conditions (#159) |
 | [observability-traces.md](observability-traces.md) | Draft | Bus-driven trace collector writing per-session `trace.jsonl` — latency, tokens/cost, tool success, turn aggregates for downstream evals |
+| [bundled-deepseek-provider.md](bundled-deepseek-provider.md) | Draft | Promote DeepSeek from custom configuration to a bundled API-key provider with safe migration and `/connect` support |
 
 ## 🖥️ TUI / UX
 *Terminal user interface: rendering, themes, input, interaction patterns.*

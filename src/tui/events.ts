@@ -306,8 +306,8 @@ export function wireEvents(state: AppState) {
         const content = data.input.content
         if (typeof content === "string" && content.length > 0) {
           const lines = content.split("\n")
-          // Stream ~3 lines per tick at 30ms intervals → visible at 60 FPS
-          const linesPerTick = Math.max(1, Math.ceil(lines.length / 40))
+          // Stream ~3 lines per tick at 50ms intervals (~20 FPS).
+          const linesPerTick = Math.max(1, Math.ceil(lines.length / 24))
           let lineIdx = 0
           const timer = setInterval(() => {
             lineIdx = Math.min(lineIdx + linesPerTick, lines.length)
@@ -323,7 +323,7 @@ export function wireEvents(state: AppState) {
                 dispatch(state, { type: "tool-end", messageId: deferred.messageId, callId: deferred.callId, status: deferred.status, output: deferred.output, error: deferred.error, diff: deferred.diff })
               }
             }
-          }, 30)
+          }, 50)
           writeStreamTimers.set(data.callId, timer)
         }
       }
