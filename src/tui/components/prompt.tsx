@@ -35,7 +35,7 @@ export interface PromptProps {
   onSubmit: (text: string) => void
   /** Callback on every content change with current input value */
   onContentChange: () => void
-  /** Whether the input is disabled (agent running, permission prompt) */
+  /** Whether the input is disabled by a permission or question prompt. */
   disabled?: boolean
   /** Whether the textarea owns keyboard focus. Defaults to enabled state. */
   focused?: boolean
@@ -61,6 +61,8 @@ export interface PromptProps {
   thinkingEffort?: string
   /** Rendered prompt width in terminal cells */
   width?: number
+  /** Messages waiting for the active main-session turn to finish. */
+  queuedMessages?: { id: string; text: string }[]
 }
 
 function formatTokens(n: number): string {
@@ -70,14 +72,20 @@ function formatTokens(n: number): string {
 }
 
 function visibleWidth(s: string): number {
-  return Array.from(s).length
+  return Bun.stringWidth(s)
 }
 
 function truncateEnd(s: string, max: number): string {
   if (visibleWidth(s) <= max) return s
   if (max <= 0) return ""
   if (max === 1) return "…"
-  return `${Array.from(s).slice(0, max - 1).join("")}…`
+  const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)]
+  let result = ""
+  for (const { segment } of segments) {
+    if (visibleWidth(result + segment) > max - 1) break
+    result += segment
+  }
+  return `${result}…`
 }
 
 export const Prompt: Component<PromptProps> = (props) => {
@@ -103,7 +111,7 @@ export const Prompt: Component<PromptProps> = (props) => {
   }
 
   const borderColor = () => colors.outline
-  const promptWidth = () => Math.max(12, props.width ?? dims().width)
+  const promptWidth = () => Math.max(1, props.width ?? dims().width)
   const topBorder = () => {
     const percent = tokenPercentText(tokenPercent())
     const leftRest = `${leftStatusRest()} `
@@ -113,10 +121,68 @@ export const Prompt: Component<PromptProps> = (props) => {
       : ""
     const right = ` ${thinking}${modelName()}`
     const fixed = visibleWidth("╭── ") + visibleWidth(percent) + visibleWidth(leftRest) + visibleWidth(rightSuffix)
+    if (promptWidth() <= fixed) {
+      const compactFixed = visibleWidth("╭─ ") + visibleWidth(rightSuffix)
+      const compactModel = truncateEnd(modelName(), Math.max(0, promptWidth() - compactFixed))
+      const compact = promptWidth() >= compactFixed
+        ? `╭─ ${compactModel}${rightSuffix}`
+        : `╭${"─".repeat(Math.max(0, promptWidth() - 2))}╮`
+      return { leftRest, filler: "", rightText: "", rightSuffix: "", compact }
+    }
     const maxRight = Math.max(0, promptWidth() - fixed - 1)
     const rightText = truncateEnd(right, maxRight)
     const filler = "─".repeat(Math.max(0, promptWidth() - fixed - visibleWidth(rightText)))
-    return { leftRest, filler, rightText, rightSuffix }
+    return { leftRest, filler, rightText, rightSuffix, compact: undefined }
+  }
+  const queueLayout = () => {
+    const width = promptWidth()
+    const thinking = props.thinkingEffort && props.thinkingEffort !== "none"
+      ? `[T:${props.thinkingEffort}] `
+      : ""
+    const suffix = " ──╮"
+    const minimumQueueWidth = 18
+    const minimumModelWidth = 1
+    let model = modelName()
+    let prefix = thinking
+    let rightWidth = visibleWidth(` ${prefix}${model}${suffix}`)
+
+    if (width - rightWidth < minimumQueueWidth) {
+      prefix = ""
+      rightWidth = visibleWidth(` ${model}${suffix}`)
+    }
+    if (width - rightWidth < minimumQueueWidth) {
+      const capacity = Math.max(minimumModelWidth, width - minimumQueueWidth - visibleWidth(` ${suffix}`))
+      model = truncateEnd(model, capacity)
+      rightWidth = visibleWidth(` ${model}${suffix}`)
+    }
+
+    const attached = width >= minimumQueueWidth + rightWidth
+    const queueWidth = attached
+      ? Math.min(Math.floor(width * 0.72), width - rightWidth)
+      : width
+    return {
+      attached,
+      queueWidth,
+      fillerWidth: attached ? width - queueWidth - rightWidth : 0,
+      rightText: ` ${prefix}${model}`,
+      rightSuffix: suffix,
+    }
+  }
+  const queuedRows = () => [...(props.queuedMessages ?? [])].reverse()
+  const queueContent = (text: string) => {
+    const interiorWidth = Math.max(0, queueLayout().queueWidth - 2)
+    const label = "queued"
+    const gap = 1
+    const textWidth = Math.max(0, interiorWidth - visibleWidth(label) - gap - 2)
+    const content = truncateEnd(text.replace(/\s+/g, " ").trim(), textWidth)
+    const padding = Math.max(gap, interiorWidth - 2 - visibleWidth(content) - visibleWidth(label))
+    return `│ ${content}${" ".repeat(padding)}${label} │`
+  }
+  const queueSeam = () => {
+    const layout = queueLayout()
+    const queueBottom = `╰${"─".repeat(Math.max(0, layout.queueWidth - 2))}╯`
+    if (!layout.attached) return queueBottom
+    return `${queueBottom}${"─".repeat(layout.fillerWidth)}${layout.rightText}${layout.rightSuffix}`
   }
 
   // Replace every `[Pasted #N +X lines]` placeholder with its stashed text.
@@ -167,8 +233,13 @@ export const Prompt: Component<PromptProps> = (props) => {
     props.onRef?.(r)
   }
 
-  return (
-    <box flexDirection="column" flexShrink={0} width={promptWidth()} opacity={props.opacity ?? 1}>
+  const promptHeader = () => topBorder().compact
+    ? (
+      <box height={1} overflow="hidden" width={promptWidth()}>
+        <text fg={borderColor()}>{topBorder().compact}</text>
+      </box>
+    )
+    : (
       <box flexDirection="row" height={1} overflow="hidden" width={promptWidth()}>
         <text fg={borderColor()} flexShrink={0}>╭── </text>
         <FlipPercent value={tokenPercent()} />
@@ -177,6 +248,30 @@ export const Prompt: Component<PromptProps> = (props) => {
         <text fg={modelColor(modelName())} flexShrink={0}>{topBorder().rightText}</text>
         <text fg={borderColor()} flexShrink={0}>{topBorder().rightSuffix}</text>
       </box>
+    )
+
+  return (
+    <box flexDirection="column" flexShrink={0} width={promptWidth()} opacity={props.opacity ?? 1}>
+      <Show when={queuedRows().length > 0} fallback={promptHeader()}>
+        <box flexDirection="column" width={promptWidth()}>
+          <box height={1} overflow="hidden" width={queueLayout().queueWidth}>
+            <text fg={borderColor()}>{`╭${"─".repeat(Math.max(0, queueLayout().queueWidth - 2))}╮`}</text>
+          </box>
+          <For each={queuedRows()}>
+            {(message) => (
+              <box height={1} overflow="hidden" width={queueLayout().queueWidth}>
+                <text fg={colors.textDim}>{queueContent(message.text)}</text>
+              </box>
+            )}
+          </For>
+          <box flexDirection="row" height={1} overflow="hidden" width={promptWidth()}>
+            <text fg={borderColor()} flexShrink={0}>{queueSeam()}</text>
+          </box>
+          <Show when={!queueLayout().attached}>
+            {promptHeader()}
+          </Show>
+        </box>
+      </Show>
 
       <box
         flexDirection="column"
@@ -203,7 +298,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         </Show>
         <Show
           when={!props.disabled}
-          fallback={<text fg={colors.muted}>Agent is running... (Esc to cancel)</text>}
+          fallback={<text fg={colors.muted}>Input unavailable while a response is required above.</text>}
         >
           <textarea
             ref={handleRef}

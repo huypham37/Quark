@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { For, Index, createSignal, createEffect, Show } from "solid-js"
+import { For, Index, createSignal, createEffect, onCleanup, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -93,6 +93,13 @@ interface AppProps {
   initialModelName?: string
   initialSkillCount?: number
   initialThinkingEffort?: string
+}
+
+interface QueuedUserMessage {
+  id: string
+  text: string
+  images?: { mime: string; data: string; label: string }[]
+  context?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +239,7 @@ export const App: Component<AppProps> = (props) => {
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
+  const [queuedMessages, setQueuedMessages] = createSignal<QueuedUserMessage[]>([])
   const [paletteOpen, setPaletteOpen] = createSignal(false)
   const [paletteQuery, setPaletteQuery] = createSignal("")
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
@@ -264,6 +272,17 @@ export const App: Component<AppProps> = (props) => {
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
   // Async panel side-session ID (created lazily on first panel submit)
   const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
+
+  const clearQueuedMessages = () => setQueuedMessages([])
+  const clearQueueOnSessionChange = () => clearQueuedMessages()
+  bus.on("session-reset", clearQueueOnSessionChange)
+  bus.on("session-switch", clearQueueOnSessionChange)
+  bus.on("worktree-switched", clearQueueOnSessionChange)
+  onCleanup(() => {
+    bus.off("session-reset", clearQueueOnSessionChange)
+    bus.off("session-switch", clearQueueOnSessionChange)
+    bus.off("worktree-switched", clearQueueOnSessionChange)
+  })
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -814,6 +833,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     if (commandId === "async-msg") {
+      clearQueuedMessages()
       dispatch(state, { type: "open-async-panel", sessionId: null, title: "msg" })
       return
     }
@@ -876,6 +896,7 @@ export const App: Component<AppProps> = (props) => {
         if (s.mode === "worktrees") {
           const selected = s.worktreeRows[s.selectedIndex]
           if (selected?.type === "worktree") {
+            clearQueuedMessages()
             setSlash(SLASH_INACTIVE)
             setInputText("")
             if (props.onCommand) {
@@ -991,7 +1012,7 @@ export const App: Component<AppProps> = (props) => {
   // Submit handler
   // ---------------------------------------------------------------------------
 
-  const handleSubmit = (text: string) => {
+  const prepareSubmission = (text: string): QueuedUserMessage | undefined => {
     setMention(MENTION_INACTIVE)
     setSlash(SLASH_INACTIVE)
     // Reset history navigation on submit
@@ -1007,7 +1028,7 @@ export const App: Component<AppProps> = (props) => {
       if (commandId) {
         executeCommand(commandId, args)
         setInputText("")
-        return
+        return undefined
       }
     }
 
@@ -1039,13 +1060,62 @@ export const App: Component<AppProps> = (props) => {
     // Auto-scroll to bottom
     scroll?.scrollBy({ x: 0, y: Infinity })
 
-    props.onSubmit(
+    return {
+      id: generateId(),
       text,
+      images: imgs.length > 0 ? [...imgs] : undefined,
+      context: context || undefined,
+    }
+  }
+
+  const sendSubmission = (message: QueuedUserMessage) => {
+    props.onSubmit(
+      message.text,
       state.store.sessionId,
-      imgs.length > 0 ? imgs.map((img) => ({ mime: img.mime, data: img.data })) : undefined,
-      context || undefined,
+      message.images?.map((image) => ({ mime: image.mime, data: image.data })),
+      message.context,
     )
   }
+
+  const handleSubmit = (text: string) => {
+    const message = prepareSubmission(text)
+    if (!message) return
+    if (state.store.running) {
+      setQueuedMessages((messages) => [...messages, message])
+    } else {
+      sendSubmission(message)
+    }
+  }
+
+  let dequeuePending = false
+  const [dequeueTick, setDequeueTick] = createSignal(0)
+  createEffect(() => {
+    dequeueTick()
+    if (
+      dequeuePending
+      || state.store.running
+      || state.store.permission
+      || state.store.question
+      || state.store.asyncPanel
+      || queuedMessages().length === 0
+    ) return
+
+    dequeuePending = true
+    queueMicrotask(() => {
+      let next: QueuedUserMessage | undefined
+      if (!state.store.running && !state.store.permission && !state.store.question && !state.store.asyncPanel) {
+        setQueuedMessages((messages) => {
+          next = messages[0]
+          return next ? messages.slice(1) : messages
+        })
+        if (next) sendSubmission(next)
+      }
+      queueMicrotask(() => {
+        dequeuePending = false
+        setDequeueTick((tick) => tick + 1)
+      })
+    })
+  })
 
   // ---------------------------------------------------------------------------
   // Compute autocomplete mode for the Autocomplete component
@@ -1128,6 +1198,7 @@ export const App: Component<AppProps> = (props) => {
           openSessionsPalette(selected.id)
           return
         }
+        clearQueuedMessages()
         await props.onCommand?.("sessions", selected.id, state.store.sessionId)
         restoreComposer()
       } catch (error) {
@@ -1606,7 +1677,7 @@ export const App: Component<AppProps> = (props) => {
         )}
       </Show>
 
-      {/* Autocomplete dropdown — absolute overlay, does NOT shrink scrollbox */}
+      {/* Autocomplete stays in flow immediately above the full composer. */}
       <Autocomplete mode={autocompleteMode()} />
 
       {/* Input area */}
@@ -1614,7 +1685,7 @@ export const App: Component<AppProps> = (props) => {
         onSubmit={handleSubmit}
         onContentChange={handleInputChange}
         onRef={(r: TextareaRenderable) => { inputRef = r }}
-        disabled={state.store.running || !!state.store.permission || !!state.store.question}
+        disabled={!!state.store.permission || !!state.store.question}
         focused={!paletteOpen()}
         opacity={paletteOpen() ? 0.35 : 1}
         placeholder=""
@@ -1628,6 +1699,7 @@ export const App: Component<AppProps> = (props) => {
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
         width={dims().width}
+        queuedMessages={queuedMessages()}
       />
 
       <CommandPalette

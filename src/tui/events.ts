@@ -351,7 +351,6 @@ export function wireEvents(state: AppState) {
       if (data.finish === "aborted") {
         // Remove the aborted partial message from the TUI entirely
         dispatch(state, { type: "remove-message", messageId: data.messageId })
-        dispatch(state, { type: "set-running", running: false })
         if (userMsgTime > 0) {
           dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })
         }
@@ -359,10 +358,9 @@ export function wireEvents(state: AppState) {
         return
       }
       dispatch(state, { type: "assistant-done", messageId: data.messageId })
-      // Unlock input as soon as the final message ends (don't wait for loop-end
-      // which may be delayed by compaction / DB writes)
+      // Keep running true until loop-end. The composer remains editable while
+      // running, and loop-end is the serialization boundary for queued turns.
       if (data.finish === "stop" || data.finish === "length") {
-        dispatch(state, { type: "set-running", running: false })
         // Record duration from user message to assistant completion
         if (userMsgTime > 0) {
           dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })

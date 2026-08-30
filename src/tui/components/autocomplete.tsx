@@ -36,16 +36,9 @@ export interface AutocompleteProps {
   mode: AutocompleteMode | null
 }
 
-// Height of Prompt (status line 1 + input box minHeight 4) + FooterBar (1)
-// Used to anchor the absolutely-positioned dropdown above the prompt.
-const BOTTOM_OFFSET = 6
-
 export const Autocomplete: Component<AutocompleteProps> = (props) => {
-  // Absolutely positioned overlay — does NOT participate in flex flow,
-  // so the scrollbox keeps its full height when the dropdown appears.
-  // Anchored to bottom={BOTTOM_OFFSET} to sit right above the prompt.
-  //
-  // When mode is null, rows() returns [] and height={0}, rendering nothing.
+  // This remains directly above Prompt in normal flow, so it stays anchored
+  // correctly as the composer grows with images, multiline input, or a queue.
 
   return <AutocompleteContent mode={props.mode} />
 }
@@ -74,7 +67,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   const maxVisibleRows = () => {
     const isCard = m()?.type === "worktrees"
     const chromeRows = isCard ? 2 : 0
-    const available = Math.max(1, dims().height - BOTTOM_OFFSET - chromeRows)
+    const available = Math.max(1, dims().height - 6 - chromeRows)
     return Math.min(MAX_VISIBLE_ROWS, available)
   }
 
@@ -210,8 +203,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       flexDirection="column"
       paddingX={1}
       height={panelHeight()}
-      position="absolute"
-      bottom={BOTTOM_OFFSET}
       left={isCard() ? CARD_INSET : 0}
       right={isCard() ? CARD_INSET : 0}
       backgroundColor={rows().length > 0 && !isCard() ? colors.dropdownBg : undefined}
