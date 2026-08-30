@@ -240,6 +240,7 @@ export const App: Component<AppProps> = (props) => {
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
   const [queuedMessages, setQueuedMessages] = createSignal<QueuedUserMessage[]>([])
+  const [selectedQueuedMessageId, setSelectedQueuedMessageId] = createSignal<string | null>(null)
   const [paletteOpen, setPaletteOpen] = createSignal(false)
   const [paletteQuery, setPaletteQuery] = createSignal("")
   const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
@@ -273,7 +274,10 @@ export const App: Component<AppProps> = (props) => {
   // Async panel side-session ID (created lazily on first panel submit)
   const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
 
-  const clearQueuedMessages = () => setQueuedMessages([])
+  const clearQueuedMessages = () => {
+    setQueuedMessages([])
+    setSelectedQueuedMessageId(null)
+  }
   const clearQueueOnSessionChange = () => clearQueuedMessages()
   bus.on("session-reset", clearQueueOnSessionChange)
   bus.on("session-switch", clearQueueOnSessionChange)
@@ -1106,6 +1110,7 @@ export const App: Component<AppProps> = (props) => {
       if (!state.store.running && !state.store.permission && !state.store.question && !state.store.asyncPanel) {
         setQueuedMessages((messages) => {
           next = messages[0]
+          if (next?.id === selectedQueuedMessageId()) setSelectedQueuedMessageId(null)
           return next ? messages.slice(1) : messages
         })
         if (next) sendSubmission(next)
@@ -1116,6 +1121,42 @@ export const App: Component<AppProps> = (props) => {
       })
     })
   })
+
+  const selectQueuedMessage = (direction: 1 | -1) => {
+    const messages = queuedMessages()
+    if (messages.length === 0) return
+    const selectedIndex = messages.findIndex((message) => message.id === selectedQueuedMessageId())
+    const nextIndex = selectedIndex === -1
+      ? (direction === 1 ? 0 : messages.length - 1)
+      : (selectedIndex + direction + messages.length) % messages.length
+    setSelectedQueuedMessageId(messages[nextIndex].id)
+  }
+
+  const removeSelectedQueuedMessage = () => {
+    const selectedId = selectedQueuedMessageId()
+    if (!selectedId) return
+    setQueuedMessages((messages) => {
+      const selectedIndex = messages.findIndex((message) => message.id === selectedId)
+      if (selectedIndex === -1) return messages
+      const next = messages.filter((message) => message.id !== selectedId)
+      setSelectedQueuedMessageId(next[Math.min(selectedIndex, next.length - 1)]?.id ?? null)
+      return next
+    })
+  }
+
+  const sendSelectedQueuedMessageNow = () => {
+    const selectedId = selectedQueuedMessageId()
+    if (!selectedId || !state.store.running || !state.store.sessionId) return
+    setQueuedMessages((messages) => {
+      const selectedIndex = messages.findIndex((message) => message.id === selectedId)
+      if (selectedIndex <= 0) return messages
+      const selected = messages[selectedIndex]
+      return [selected, ...messages.slice(0, selectedIndex), ...messages.slice(selectedIndex + 1)]
+    })
+    setSelectedQueuedMessageId(null)
+    // Keep the normal loop-end dispatcher as the serialization boundary.
+    props.onCancel(state.store.sessionId)
+  }
 
   // ---------------------------------------------------------------------------
   // Compute autocomplete mode for the Autocomplete component
@@ -1337,6 +1378,47 @@ export const App: Component<AppProps> = (props) => {
       evt.preventDefault()
       evt.stopPropagation()
       return
+    }
+
+    // Arrow keys enter and navigate the queue. Delete removes the selection;
+    // Enter interrupts and sends it after the authoritative loop-end.
+    if (
+      queuedMessages().length > 0
+      && state.store.running
+      && !state.store.permission
+      && !state.store.question
+      && !state.store.asyncPanel
+      && !dropdownActive()
+    ) {
+      const selectedId = selectedQueuedMessageId()
+      if (evt.name === "up") {
+        selectQueuedMessage(1)
+        evt.preventDefault()
+        return
+      }
+      if (evt.name === "down") {
+        if (selectedId) selectQueuedMessage(-1)
+        else selectQueuedMessage(1)
+        evt.preventDefault()
+        return
+      }
+      if (selectedId) {
+        if (evt.name === "backspace" || evt.name === "delete") {
+          removeSelectedQueuedMessage()
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "return") {
+          sendSelectedQueuedMessageNow()
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "escape") {
+          setSelectedQueuedMessageId(null)
+          evt.preventDefault()
+          return
+        }
+      }
     }
     // Ctrl+Z / Cmd+Z — undo and move cursor to end
     if ((evt.ctrl || evt.meta || evt.super) && evt.name === "z" && !evt.shift) {
@@ -1700,6 +1782,7 @@ export const App: Component<AppProps> = (props) => {
         thinkingEffort={state.store.thinkingEffort}
         width={dims().width}
         queuedMessages={queuedMessages()}
+        selectedQueuedMessageId={selectedQueuedMessageId()}
       />
 
       <CommandPalette

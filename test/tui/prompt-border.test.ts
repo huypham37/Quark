@@ -67,10 +67,11 @@ describe("Prompt border", () => {
     })
 
     expect(lines[1]).toContain("Review 你好 👨‍👩‍👧‍👦 next")
-    expect(lines[2]).toContain("What improvements would you make")
+    expect(lines[2]).toContain("What improvements")
     expect(lines[1]).toMatch(/queued │\s+$/)
-    expect(lines[3]).toMatch(/╯.*\[T:high\] opencode\/kimi-k2\.6 ──╮$/)
-    expect(Bun.stringWidth(lines[3])).toBe(80)
+    expect(lines[2]).toMatch(/queued │\s+$/)
+    expect(lines[2]).not.toContain("╰")
+    expect(lines[3]).toMatch(/^╭── 4\.1% of 1M ─+ \[T:high\] opencode\/kimi-k2\.6 ──╮$/)
   })
 
   test("truncates queue text and preserves the right border at narrow widths", async () => {
@@ -81,7 +82,9 @@ describe("Prompt border", () => {
 
     expect(lines[1]).toContain("…")
     expect(lines[1]).toContain("queued")
-    expect(lines[2]).toMatch(/ opencode… ──╮$/)
+    expect(lines[1].trimEnd().endsWith("│")).toBe(true)
+    expect(lines[1]).not.toContain("╰")
+    expect(lines[2]).toMatch(/^╭── 4\.1% of 1M ─+ \[T:high\] o… ──╮$/)
     expect(Bun.stringWidth(lines[2])).toBe(32)
   })
 })

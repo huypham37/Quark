@@ -63,6 +63,8 @@ export interface PromptProps {
   width?: number
   /** Messages waiting for the active main-session turn to finish. */
   queuedMessages?: { id: string; text: string }[]
+  /** Queue item currently selected for navigation or an action. */
+  selectedQueuedMessageId?: string | null
 }
 
 function formatTokens(n: number): string {
@@ -169,22 +171,15 @@ export const Prompt: Component<PromptProps> = (props) => {
     }
   }
   const queuedRows = () => [...(props.queuedMessages ?? [])].reverse()
-  const queueContent = (text: string) => {
+  const queueContent = (text: string, selected: boolean) => {
     const interiorWidth = Math.max(0, queueLayout().queueWidth - 2)
-    const label = "queued"
+    const label = truncateEnd(selected ? "⏎ Send · ⌫ Delete" : "queued", Math.max(0, interiorWidth - 3))
     const gap = 1
     const textWidth = Math.max(0, interiorWidth - visibleWidth(label) - gap - 2)
     const content = truncateEnd(text.replace(/\s+/g, " ").trim(), textWidth)
     const padding = Math.max(gap, interiorWidth - 2 - visibleWidth(content) - visibleWidth(label))
-    return `│ ${content}${" ".repeat(padding)}${label} │`
+    return { content: ` ${content}`, label: `${" ".repeat(padding)}${label} ` }
   }
-  const queueSeam = () => {
-    const layout = queueLayout()
-    const queueBottom = `╰${"─".repeat(Math.max(0, layout.queueWidth - 2))}╯`
-    if (!layout.attached) return queueBottom
-    return `${queueBottom}${"─".repeat(layout.fillerWidth)}${layout.rightText}${layout.rightSuffix}`
-  }
-
   // Replace every `[Pasted #N +X lines]` placeholder with its stashed text.
   // Unknown ids (user typed the token by hand, or the entry was already
   // consumed) are left in place verbatim.
@@ -258,18 +253,20 @@ export const Prompt: Component<PromptProps> = (props) => {
             <text fg={borderColor()}>{`╭${"─".repeat(Math.max(0, queueLayout().queueWidth - 2))}╮`}</text>
           </box>
           <For each={queuedRows()}>
-            {(message) => (
-              <box height={1} overflow="hidden" width={queueLayout().queueWidth}>
-                <text fg={colors.textDim}>{queueContent(message.text)}</text>
-              </box>
-            )}
+            {(message) => {
+              const selected = () => props.selectedQueuedMessageId === message.id
+              const content = () => queueContent(message.text, selected())
+              return (
+                <box flexDirection="row" height={1} overflow="hidden" width={queueLayout().queueWidth}>
+                  <text fg={borderColor()} flexShrink={0}>│</text>
+                  <text fg={selected() ? colors.info : borderColor()} flexShrink={0}>{content().content}</text>
+                  <text fg={selected() ? colors.info : colors.textDim} flexShrink={0}>{content().label}</text>
+                  <text fg={borderColor()} flexShrink={0}>│</text>
+                </box>
+              )
+            }}
           </For>
-          <box flexDirection="row" height={1} overflow="hidden" width={promptWidth()}>
-            <text fg={borderColor()} flexShrink={0}>{queueSeam()}</text>
-          </box>
-          <Show when={!queueLayout().attached}>
-            {promptHeader()}
-          </Show>
+          {promptHeader()}
         </box>
       </Show>
 
