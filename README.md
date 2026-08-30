@@ -174,8 +174,8 @@ quark --profile researcher --message "..."
 
 Tools are the product — research-backed and test-backed.
 
-**Built-in tools** are registered by the harness at bootstrap: `read`, `look`,
-`skill`, `question`, `find_session`, and `read_session`.
+**Built-in tools** are registered by the harness at bootstrap: `read`, `skill`,
+and `read_session`.
 
 **Profile-declared tools** are loaded by ID from `~/.config/quark/tools/{id}.ts`
 when a profile lists them in its `tools[]` array. Reference implementations for
