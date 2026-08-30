@@ -464,7 +464,7 @@ export const App: Component<AppProps> = (props) => {
     return true
   }
 
-  const entityPaletteEntries = (type: "skill" | "model") => paletteEntries()
+  const entityPaletteEntries = (type: "skill" | "model" | "provider") => paletteEntries()
     .filter((entry) => entry.type === type)
     .sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
 
@@ -478,6 +478,7 @@ export const App: Component<AppProps> = (props) => {
   const openConnectProviders = async () => {
     setPaletteMode("connect-providers")
     setPaletteQuery("")
+    paletteInputRef?.clear()
     setPaletteSelectedIndex(0)
     setConnectProvider(undefined)
     setConnectApiKey("")
@@ -485,11 +486,25 @@ export const App: Component<AppProps> = (props) => {
     setConnectBrowserUrl(undefined)
     setConnectAwaitingBrowserInput(false)
     setConnectResult(undefined)
-    try {
-      setConnectProviders(buildConnectProviderRows(await authStatus(), loadConfig().providers))
-    } catch {
-      setConnectProviders(buildConnectProviderRows([], loadConfig().providers))
-    }
+    const providers = await (async () => {
+      try {
+        return buildConnectProviderRows(await authStatus(), loadConfig().providers)
+      } catch {
+        return buildConnectProviderRows([], loadConfig().providers)
+      }
+    })()
+    const entries = providers.map((provider): PaletteEntry => ({
+      key: `provider:${provider.id}`,
+      type: "provider",
+      id: provider.id,
+      label: provider.name,
+      detail: `${provider.detail}${provider.status ? ` · ${provider.status}` : ""}`,
+      searchText: [provider.name, provider.id, provider.detail, provider.status ?? ""],
+      action: { type: "provider", providerId: provider.id },
+    }))
+    setConnectProviders(providers)
+    setPaletteEntries(entries)
+    setPaletteResults(entries)
   }
 
   const finishConnect = async (provider: ConnectProviderRow) => {
@@ -544,7 +559,10 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const chooseConnectProvider = async () => {
-    const provider = connectProviders()[paletteSelectedIndex()]
+    const providerId = paletteResults()[paletteSelectedIndex()]?.action.type === "provider"
+      ? paletteResults()[paletteSelectedIndex()]?.action.providerId
+      : undefined
+    const provider = connectProviders().find((item) => item.id === providerId)
     if (!provider) return
     setConnectProvider(provider)
     setConnectResult(undefined)
@@ -583,7 +601,7 @@ export const App: Component<AppProps> = (props) => {
       setPaletteQuery(query)
       return
     }
-    if (paletteMode().startsWith("connect-")) return
+    if (paletteMode().startsWith("connect-") && paletteMode() !== "connect-providers") return
     if (paletteMode() === "sessions") {
       setPaletteQuery(query)
       if (paletteSessionAction() === "rename") return
@@ -594,7 +612,7 @@ export const App: Component<AppProps> = (props) => {
       return
     }
     const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
-    const entityType = paletteMode() === "skills" ? "skill" : paletteMode() === "models" ? "model" : undefined
+    const entityType = paletteMode() === "skills" ? "skill" : paletteMode() === "models" ? "model" : paletteMode() === "connect-providers" ? "provider" : undefined
     const entries = entityType
       ? paletteEntries().filter((entry) => entry.type === entityType)
       : paletteEntries()
@@ -1192,9 +1210,7 @@ export const App: Component<AppProps> = (props) => {
           ? moveSessionRowSelection(paletteSessionRows(), index, -1)
           : Math.max(0, index - 1))
       } else if (evt.name === "down") {
-        const maximum = paletteMode() === "connect-providers"
-          ? connectProviders().length - 1
-          : paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
+        const maximum = paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
           ? moveSessionRowSelection(paletteSessionRows(), index, 1)
           : Math.min(Math.max(0, maximum), index + 1))
