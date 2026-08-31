@@ -183,6 +183,17 @@ describe("buildWorktreeRows", () => {
 // ---------------------------------------------------------------------------
 
 describe("firstSelectableWorktreeRow", () => {
+  test("returns the create action when it is first", () => {
+    const rows = [
+      { type: "create" as const, label: "+ Create worktree" },
+      ...buildWorktreeRows([
+        makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true }),
+      ], "root", {}),
+    ]
+
+    expect(firstSelectableWorktreeRow(rows)).toBe(0)
+  })
+
   test("returns root index when root is selectable", () => {
     const worktrees: WorktreeInfo[] = [
       makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: true }),
