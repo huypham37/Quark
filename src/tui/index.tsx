@@ -265,8 +265,9 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
   if (subCmd === "create") {
     const branch = parts.slice(1).join(" ")
     if (!branch) {
-      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Usage: /worktree create <branch>") })
-      return { handled: true }
+      const error = "Usage: /worktree create <branch>"
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(error) })
+      return { handled: true, error }
     }
 
     try {
@@ -274,13 +275,16 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
       const result = await switchToWorktree(created.id)
       if (result.success) {
         notifyInfo("Worktree", `Created and switched to: ${created.id}`, 3000)
-        return { handled: true, next: "sessions-palette" }
+        return { handled: true, next: "conversation" }
       }
-      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
+      const error = result.error ?? "Unknown error"
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(error) })
+      return { handled: true, error }
     } catch (err) {
-      bus.emit("error", { sessionId: sid ?? "unknown", error: err instanceof Error ? err : new Error(String(err)) })
+      const error = err instanceof Error ? err.message : String(err)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: err instanceof Error ? err : new Error(error) })
+      return { handled: true, error }
     }
-    return { handled: true }
   }
 
   if (args.trim()) {

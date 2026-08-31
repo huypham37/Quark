@@ -14,6 +14,7 @@ async function renderPalette(
   sessionRows: unknown[] = [],
   connect?: unknown,
   worktreeRows: unknown[] = [],
+  worktreeError?: string,
 ) {
   const script = `
     import { testRender } from "@opentui/solid";
@@ -28,6 +29,7 @@ async function renderPalette(
       sessionRows: ${JSON.stringify(sessionRows)},
       sessionAction: "browse",
       worktreeRows: ${JSON.stringify(worktreeRows)},
+      worktreeError: ${JSON.stringify(worktreeError)},
       connect: ${JSON.stringify(connect)},
       onInput() {},
     }), { width: ${width}, height: ${height}, useConsole: false });
@@ -133,6 +135,7 @@ describe("command palette", () => {
 
   test("renders worktrees in the centered palette surface", async () => {
     const rows = [
+      { type: "create", label: "+ Create worktree" },
       { type: "worktree", id: "root", label: "root · main · 2 sessions", branch: "main", sessionCount: 2, current: true, root: true },
       { type: "worktree", id: "feature", label: "feature · feat/palette", branch: "feat/palette", sessionCount: 0, current: false, root: false },
       { type: "disabled", id: "missing", label: "missing (directory missing)", branch: "missing", reason: "directory missing" },
@@ -142,10 +145,27 @@ describe("command palette", () => {
 
     expect(frame).toContain("Worktrees")
     expect(frame).toContain("Search worktrees")
+    expect(frame).toContain("+ Create worktree")
     expect(frame).toContain("root · main · 2 sessions ← current")
     expect(frame).toContain("feature · feat/palette")
     expect(frame).toContain("missing (directory missing)")
     expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
+  })
+
+  test("renders the single-input worktree create surface", async () => {
+    const lines = await renderPalette("feature/login", [], 0, 80, 24, "worktree-create")
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Create worktree")
+    expect(frame).toContain("Branch name")
+    expect(frame).toContain("Starts from current HEAD")
+    expect(frame).toContain("Enter create · Esc back")
+    expect(frame).not.toContain("Start point")
+  })
+
+  test("renders worktree creation errors inline", async () => {
+    const lines = await renderPalette("feature/login", [], 0, 80, 24, "worktree-create", [], undefined, [], "branch already exists")
+    expect(lines.join("\n")).toContain("✕ branch already exists")
   })
 
   test("renders provider selection through the standard entity picker", async () => {

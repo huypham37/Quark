@@ -61,7 +61,7 @@ import { buildConnectProviderRows, safeConnectError, type ConnectProviderRow } f
 
 /** Command handler result */
 export type CommandResult =
-  | { handled: true; next?: "sessions-palette" }
+  | { handled: true; next?: "sessions-palette" | "conversation"; error?: string }
   | { handled: false }
 
 interface AppProps {
@@ -259,6 +259,7 @@ export const App: Component<AppProps> = (props) => {
   const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
   const [paletteWorktreeInputs, setPaletteWorktreeInputs] = createSignal<WorktreePickerRow[]>([])
   const [paletteWorktreeRows, setPaletteWorktreeRows] = createSignal<WorktreePickerRow[]>([])
+  const [worktreeCreateError, setWorktreeCreateError] = createSignal<string | undefined>()
   let paletteGeneration = 0
   let savedComposer: {
     text: string
@@ -428,6 +429,7 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSessionAction("browse")
     setPaletteWorktreeInputs([])
     setPaletteWorktreeRows([])
+    setWorktreeCreateError(undefined)
     if (!saved) return
     const text = textOverride ?? saved.text
     setPendingImages(saved.images)
@@ -474,6 +476,7 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSessionAction("browse")
     setPaletteWorktreeInputs([])
     setPaletteWorktreeRows([])
+    setWorktreeCreateError(undefined)
     setPaletteOpen(true)
     Promise.resolve(props.getPaletteEntries())
       .then((entries) => {
@@ -638,6 +641,11 @@ export const App: Component<AppProps> = (props) => {
       setPaletteSelectedIndex(firstSelectableSessionRow(rows, result.firstMatchId ?? state.store.sessionId))
       return
     }
+    if (paletteMode() === "worktree-create") {
+      setPaletteQuery(query)
+      setWorktreeCreateError(undefined)
+      return
+    }
     if (paletteMode() === "worktrees") {
       const normalized = query.trim().toLowerCase()
       const rows = normalized
@@ -789,9 +797,11 @@ export const App: Component<AppProps> = (props) => {
     setPaletteQuery("")
     setPaletteEntries([])
     setPaletteResults([])
-    setPaletteWorktreeInputs(rows)
-    setPaletteWorktreeRows(rows)
-    setPaletteSelectedIndex(firstSelectableWorktreeRow(rows))
+    const pickerRows: WorktreePickerRow[] = [{ type: "create", label: "+ Create worktree" }, ...rows]
+    setPaletteWorktreeInputs(pickerRows)
+    setPaletteWorktreeRows(pickerRows)
+    setWorktreeCreateError(undefined)
+    setPaletteSelectedIndex(firstSelectableWorktreeRow(pickerRows))
     setPaletteOpen(true)
     return true
   }
@@ -1213,6 +1223,24 @@ export const App: Component<AppProps> = (props) => {
       restoreComposer()
       return
     }
+    if (paletteMode() === "worktree-create") {
+      const branch = paletteQuery().trim()
+      if (!branch) {
+        setWorktreeCreateError("Branch name is required")
+        return
+      }
+      try {
+        const result = await props.onCommand?.("worktree", `create ${branch}`, state.store.sessionId)
+        if (result?.handled && result.next === "conversation") {
+          restoreComposer("")
+        } else {
+          setWorktreeCreateError(result?.handled ? result.error ?? "Could not create worktree" : "Could not create worktree")
+        }
+      } catch (error) {
+        setWorktreeCreateError(error instanceof Error ? error.message : String(error))
+      }
+      return
+    }
     if (paletteMode() === "sessions") {
       const selected = paletteSessionRows()[paletteSelectedIndex()]
       if (selected?.type !== "session" && selected?.type !== "orphan") return
@@ -1238,6 +1266,13 @@ export const App: Component<AppProps> = (props) => {
     }
     if (paletteMode() === "worktrees") {
       const selected = paletteWorktreeRows()[paletteSelectedIndex()]
+      if (selected?.type === "create") {
+        paletteInputRef?.clear()
+        setPaletteQuery("")
+        setWorktreeCreateError(undefined)
+        setPaletteMode("worktree-create")
+        return
+      }
       if (selected?.type !== "worktree") return
       try {
         clearQueuedMessages()
@@ -1374,6 +1409,8 @@ export const App: Component<AppProps> = (props) => {
         } else if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
           const selected = paletteSessionRows()[paletteSelectedIndex()]
           openSessionsPalette(selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined)
+        } else if (paletteMode() === "worktree-create") {
+          openWorktreePicker()
         } else {
           paletteGeneration++
           restoreComposer()
@@ -1801,6 +1838,7 @@ export const App: Component<AppProps> = (props) => {
         sessionRows={paletteSessionRows()}
         sessionAction={paletteSessionAction()}
         worktreeRows={paletteWorktreeRows()}
+        worktreeError={worktreeCreateError()}
         selectedIndex={paletteSelectedIndex()}
         onInput={updatePaletteQuery}
         onRef={(ref) => { paletteInputRef = ref }}

@@ -11,6 +11,7 @@ import type { WorktreeInfo } from "../worktree/worktree"
 
 /** A single row in the worktree picker */
 export type WorktreePickerRow =
+  | { type: "create"; label: string }
   | { type: "worktree"; id: string; label: string; branch: string | null; sessionCount: number; current: boolean; root: boolean }
   | { type: "disabled"; id: string; label: string; branch: string | null; reason: string }
   | { type: "header"; label: string }
@@ -77,7 +78,7 @@ export function buildWorktreeRows(
  * Returns -1 if all rows are disabled.
  */
 export function firstSelectableWorktreeRow(rows: WorktreePickerRow[]): number {
-  const idx = rows.findIndex((r) => r.type === "worktree")
+  const idx = rows.findIndex((r) => r.type === "create" || r.type === "worktree")
   return idx
 }
 
@@ -95,7 +96,7 @@ export function moveWorktreeRowSelection(
   direction: -1 | 1,
 ): number {
   for (let i = selectedIndex + direction; i >= 0 && i < rows.length; i += direction) {
-    if (rows[i]!.type === "worktree") return i
+    if (rows[i]!.type === "create" || rows[i]!.type === "worktree") return i
   }
   return selectedIndex
 }
