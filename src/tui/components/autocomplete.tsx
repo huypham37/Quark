@@ -10,13 +10,10 @@ import { useTerminalDimensions } from "@opentui/solid"
 import type { ColorInput } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { WorktreePickerRow } from "../worktree-picker"
-import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
-const CARD_INSET = 2
 
 export interface PickerItem {
   id: string
@@ -28,7 +25,6 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
   | { type: "tools"; items: PickerItem[]; selectedIndex: number }
 
@@ -65,9 +61,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
   const dims = useTerminalDimensions()
   const m = () => props.mode
   const maxVisibleRows = () => {
-    const isCard = m()?.type === "worktrees"
-    const chromeRows = isCard ? 2 : 0
-    const available = Math.max(1, dims().height - 6 - chromeRows)
+    const available = Math.max(1, dims().height - 6)
     return Math.min(MAX_VISIBLE_ROWS, available)
   }
 
@@ -88,8 +82,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands" && mode.items.length === 0) {
       result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
-    } else if (mode.type === "worktrees" && mode.rows.length === 0) {
-      result.push({ label: "No worktrees found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "profiles" && mode.items.length === 0) {
       result.push({ label: "No profiles available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "tools" && mode.items.length === 0) {
@@ -115,21 +107,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           label: `${sel ? "❯ " : "  "}${item}`,
           fg: sel ? colors.primary : colors.textDim,
           bg: colors.dropdownBg,
-          bold: sel,
-        })
-      }
-    } else if (mode.type === "worktrees") {
-      for (let i = 0; i < mode.rows.length; i++) {
-        const item = mode.rows[i]!
-        const sel = i === mode.selectedIndex && item.type === "worktree"
-        const prefix = sel ? "❯ " : "  "
-        const marker = item.type === "worktree"
-          ? (item.current ? " ← current" : item.root ? " (root)" : "")
-          : ""
-        result.push({
-          label: `${prefix}${item.label}${marker}`,
-          fg: item.type === "disabled" ? colors.muted : sel ? colors.primary : colors.textDim,
-          bg: colors.commandCardBg,
           bold: sel,
         })
       }
@@ -160,24 +137,19 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
 
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
-  const isCard = () => m()?.type === "worktrees"
   const bodyHeight = visibleHeight
-  const panelBg = () => isCard() ? colors.commandCardBg : colors.dropdownBg
-  const panelHeight = () => isCard() && rows().length > 0
-    ? bodyHeight() + 2
-    : visibleHeight()
 
   const content = () => {
     return (
       <scrollbox
         height={bodyHeight()}
         scrollbarOptions={{ visible: false }}
-        backgroundColor={panelBg()}
+        backgroundColor={colors.dropdownBg}
       >
         <For each={visibleWindow()}>
           {(row) => {
             // Keep the row background inside the picker shell, not under its border.
-            const width = () => dims().width - (isCard() ? 10 : 6)
+            const width = () => dims().width - 6
             const padded = () => row.label.length >= width() ? row.label : row.label + " ".repeat(width() - row.label.length)
             return row.detail
               ? (
@@ -202,14 +174,10 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     <box
       flexDirection="column"
       paddingX={1}
-      height={panelHeight()}
-      left={isCard() ? CARD_INSET : 0}
-      right={isCard() ? CARD_INSET : 0}
-      backgroundColor={rows().length > 0 && !isCard() ? colors.dropdownBg : undefined}
+      height={visibleHeight()}
+      backgroundColor={rows().length > 0 ? colors.dropdownBg : undefined}
     >
-      {isCard() && rows().length > 0
-        ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
-        : content()}
+      {content()}
     </box>
   )
 }
