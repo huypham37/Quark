@@ -178,7 +178,7 @@ export type TuiAction =
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string; thinkingEffort?: ThinkingEffort; thinkingMode?: string }
-  | { type: "truncate-messages"; upToMessageId: string }
+  | { type: "truncate-messages"; upToMessageId: string; tokensUsed: number }
   | { type: "remove-message"; messageId: string }
   // Worktree actions
   | { type: "worktree-switch-start" }
@@ -875,6 +875,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           }
         }),
       )
+      setStore("status", "tokensUsed", action.tokensUsed)
       break
 
     case "remove-message":
