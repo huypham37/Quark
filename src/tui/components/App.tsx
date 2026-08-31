@@ -441,12 +441,12 @@ export const App: Component<AppProps> = (props) => {
     if (scroll) scroll.scrollTop = saved.scrollTop
   }
 
-  const openPalette = () => {
+  const openPalette = (snapshot?: { text: string; cursorOffset: number }) => {
     if (!inputRef || !props.getPaletteEntries) return false
     if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
     savedComposer = {
-      text: "",
-      cursorOffset: 0,
+      text: snapshot?.text ?? "",
+      cursorOffset: snapshot?.cursorOffset ?? 0,
       images: [...pendingImages()],
       selectedImageIndex: selectedImageIndex(),
       historyIndex: historyIndex(),
@@ -1355,6 +1355,30 @@ export const App: Component<AppProps> = (props) => {
   // ---------------------------------------------------------------------------
 
   useKeyboard((evt) => {
+    // Global palette chord (Cmd+/ on macOS, Ctrl+/ elsewhere). Handled before
+    // the palette block so it also acts as a no-op when the palette is already
+    // open, and never lets a slash leak into the composer or a question panel.
+    // Two shapes are accepted:
+    //   1. Kitty/enhanced protocol: name === "/" with ctrl/super/meta set.
+    //   2. Legacy terminals: Ctrl+/ arrives as the bare 0x1f control byte
+    //      (name/sequence === "\x1f", all modifiers false — indistinguishable
+    //      from Ctrl+_). We only treat this as the chord when no modifiers are
+    //      set, matching parseKeypress's legacy decode.
+    const isPaletteChord =
+      !evt.option
+      && (
+        (evt.ctrl || evt.super || evt.meta) && evt.name === "/"
+        || !evt.ctrl && !evt.super && !evt.meta && evt.name === "\x1f"
+      )
+    if (isPaletteChord) {
+      if (!paletteOpen() && inputRef) {
+        openPalette({ text: inputRef.plainText, cursorOffset: inputRef.cursorOffset })
+      }
+      evt.preventDefault()
+      evt.stopPropagation()
+      return
+    }
+
     if (paletteOpen()) {
       if (evt.name === "up") {
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
