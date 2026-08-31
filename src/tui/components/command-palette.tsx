@@ -60,13 +60,21 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   const connectMode = () => props.mode?.startsWith("connect-") && props.mode !== "connect-providers"
   const width = () => Math.min(60, Math.max(12, dims().width - 4))
   const maxVisibleSessions = () => Math.max(1, Math.min(MAX_VISIBLE_SESSIONS, dims().height - 8))
+  // Reserve the app's six rows below the palette so a short terminal cannot
+  // let the palette content overwrite the composer/footer area.
+  const maxVisibleRows = () => Math.max(0, Math.min(MAX_VISIBLE, dims().height - 12))
   const visible = () => {
     const entries = props.entries
-    if (entries.length <= MAX_VISIBLE) return entries
-    const start = Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), entries.length - MAX_VISIBLE)
-    return entries.slice(start, start + MAX_VISIBLE)
+    const maximum = maxVisibleRows()
+    if (maximum === 0) return []
+    if (entries.length <= maximum) return entries
+    const start = Math.min(Math.max(0, props.selectedIndex - maximum + 1), entries.length - maximum)
+    return entries.slice(start, start + maximum)
   }
-  const visibleStart = () => props.entries.length <= MAX_VISIBLE ? 0 : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), props.entries.length - MAX_VISIBLE)
+  const visibleStart = () => {
+    const maximum = maxVisibleRows()
+    return maximum === 0 || props.entries.length <= maximum ? 0 : Math.min(Math.max(0, props.selectedIndex - maximum + 1), props.entries.length - maximum)
+  }
   const visibleSessions = () => {
     const rows = props.sessionRows ?? []
     const maximum = maxVisibleSessions()
@@ -81,13 +89,16 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   }
   const visibleWorktrees = () => {
     const rows = props.worktreeRows ?? []
-    if (rows.length <= MAX_VISIBLE) return rows
-    const start = Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), rows.length - MAX_VISIBLE)
-    return rows.slice(start, start + MAX_VISIBLE)
+    const maximum = maxVisibleRows()
+    if (maximum === 0) return []
+    if (rows.length <= maximum) return rows
+    const start = Math.min(Math.max(0, props.selectedIndex - maximum + 1), rows.length - maximum)
+    return rows.slice(start, start + maximum)
   }
   const visibleWorktreeStart = () => {
     const rows = props.worktreeRows ?? []
-    return rows.length <= MAX_VISIBLE ? 0 : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), rows.length - MAX_VISIBLE)
+    const maximum = maxVisibleRows()
+    return maximum === 0 || rows.length <= maximum ? 0 : Math.min(Math.max(0, props.selectedIndex - maximum + 1), rows.length - maximum)
   }
   const hasQuery = () => entityMode() || worktreeMode() || Boolean(props.query.trim())
   const rows = () => worktreeMode()
@@ -105,28 +116,64 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
     }
     return 6
   }
-  const height = () => connectMode() ? connectHeight() : sessionMode() ? sessionRowCount() + 6 : hasQuery() ? 4 + MAX_VISIBLE + (entityMode() || worktreeMode() ? 1 : 0) : 3
+  // Section contract: title (1) + input (1) + divider (1) + footer (1) + 2 borders
+  // = 6 fixed rows + content capacity. Keep the standard viewport fixed when
+  // there is room, while shrinking it for short terminals.
+  const standardContentRows = () => hasQuery() ? maxVisibleRows() : 0
+  const contentHeight = () => connectMode()
+    ? connectHeight() - 5 // title, divider, footer, and two borders
+    : sessionMode() ? sessionRowCount() : standardContentRows()
+  const height = () => connectMode() ? connectHeight() : contentHeight() + 6
   const truncate = (value: string, maximum: number) => {
     const chars = Array.from(value)
     if (chars.length <= maximum) return value
     return maximum <= 1 ? "…" : `${chars.slice(0, maximum - 1).join("")}…`
   }
-  const footer = () => props.mode === "connect-api-key"
-      ? "Enter connect · Esc back"
-      : props.mode === "connect-codex-method"
-        ? "↑↓ select · Enter continue · Esc back"
-        : props.mode === "connect-authorizing" ? "Esc cancel" : "Enter close · Esc close"
+  const title = () => {
+    if (connectMode()) return props.mode === "connect-result" ? (props.connect?.result?.message ?? "") : `Connect ${props.connect?.providerName ?? "provider"}`
+    if (sessionMode()) return props.sessionAction === "rename" ? "Rename session" : "Sessions"
+    if (worktreeMode()) return "Worktrees"
+    if (props.mode === "models") return "Models"
+    if (props.mode === "skills") return "Skills"
+    if (props.mode === "connect-providers") return "Connect a provider"
+    return "Command palette"
+  }
+
+  const footer = () => {
+    if (props.mode === "connect-api-key") return "Enter connect · Esc back"
+    if (props.mode === "connect-codex-method") return "↑↓ select · Enter continue · Esc back"
+    if (props.mode === "connect-authorizing") return props.connect?.awaitingBrowserInput ? "Enter continue · Esc cancel" : "Esc cancel"
+    if (props.mode === "connect-result") return "Enter close · Esc close"
+    if (sessionMode()) return sessionControls(width(), props.sessionAction ?? "browse")
+    // Compact key hints for narrow terminals; verbs stay descriptive when they fit.
+    const compact = width() < 40
+    if (worktreeMode()) return compact ? "↑↓ · Enter · Esc" : "↑↓ navigate · Enter switch · Esc close"
+    if (props.mode === "skills") return compact ? "↑↓ · Enter · Esc" : "↑↓ navigate · Enter add · Esc close"
+    if (props.mode === "models") return compact ? "↑↓ · Enter · Esc" : "↑↓ navigate · Enter switch · Esc close"
+    if (props.mode === "connect-providers") return compact ? "↑↓ · Enter · Esc" : "↑↓ navigate · Enter connect · Esc close"
+    return compact ? "↑↓ · Enter · Esc" : "↑↓ navigate · Enter select · Esc close"
+  }
 
   return (
     <Show when={props.active}>
       <box position="absolute" left={Math.max(0, Math.floor((dims().width - width()) / 2))} top={Math.max(0, Math.floor((dims().height - 6 - height()) / 2))} width={width()} height={height()} flexDirection="column" borderStyle="rounded" borderColor={colors.outline} backgroundColor={colors.commandCardBg}>
-        <Show when={connectMode()}>
+        {/* Header */}
+        <box height={connectMode() ? 2 : 3} flexDirection="column" flexShrink={0} backgroundColor={colors.commandCardBg}>
           <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}>
-            <text fg={colors.text} bg={colors.commandCardBg} bold>
-              {props.mode === "connect-result" ? props.connect?.result?.message : `Connect ${props.connect?.providerName ?? "provider"}`}
-            </text>
+            <text fg={colors.text} bg={colors.commandCardBg} bold>{title()}</text>
           </box>
+
+          {/* Header: search/input bar (non-connect modes share the standard input) */}
+        <Show when={!connectMode()}>
+          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
+        </Show>
+
           <box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box>
+        </box>
+
+        {/* Content */}
+        <box height={contentHeight()} flexDirection="column" flexShrink={0} backgroundColor={colors.commandCardBg}>
+        <Show when={connectMode()}>
           <Show when={props.mode === "connect-api-key"}>
             <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>API key</text></box>
             <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}>
@@ -146,13 +193,8 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             <Show when={props.connect?.awaitingBrowserInput}><box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} onContentChange={() => props.onInput()} /></box></Show>
           </Show>
           <Show when={props.mode === "connect-result"}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={props.connect?.result?.kind === "error" ? colors.error : props.connect?.result?.kind === "info" ? colors.info : colors.success} bg={colors.commandCardBg}>{props.connect?.result?.kind === "error" ? "Authentication was not completed" : props.connect?.result?.kind === "info" ? "Update the environment variable outside Quark" : "Authentication is ready"}</text></box></Show>
-          <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{footer()}</text></box>
         </Show>
-
         <Show when={!connectMode()}>
-          <Show when={sessionMode() || worktreeMode() || entityMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.text} bg={colors.commandCardBg} bold>{sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : worktreeMode() ? "Worktrees" : props.mode === "models" ? "Models" : props.mode === "connect-providers" ? "Connect a provider" : "Skills"}</text></box></Show>
-          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
-          <Show when={sessionMode() || rows() > 0}><box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box></Show>
           <Show when={!sessionMode() && !worktreeMode() && props.query.trim() && props.entries.length === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No results</text></box></Show>
           <Show when={sessionMode() && (props.sessionRows?.length ?? 0) === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No sessions found</text></box></Show>
           <Show when={worktreeMode() && (props.worktreeRows?.length ?? 0) === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No worktrees found</text></box></Show>
@@ -176,8 +218,12 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             const label = () => truncate(entry.label, Math.max(3, available() - suffix().length - 1))
             return <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={selected() ? colors.primary : colors.muted} bg={colors.commandCardBg} bold={selected()}>{selected() ? "❯ " : "  "}{type().padEnd(9)}</text><text fg={selected() ? colors.primary : colors.text} bg={colors.commandCardBg} bold={selected()}>{label()}</text><box flexGrow={1} backgroundColor={colors.commandCardBg} /><text fg={colors.muted} bg={colors.commandCardBg}>{suffix()}</text></box>
           }}</For></Show>
-          <Show when={sessionMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{sessionControls(width(), props.sessionAction ?? "browse")}</text></box></Show>
         </Show>
+
+        </box>
+
+        {/* Footer */}
+        <box height={1} paddingX={1} flexShrink={0} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{truncate(footer(), Math.max(0, width() - 4))}</text></box>
       </box>
     </Show>
   )

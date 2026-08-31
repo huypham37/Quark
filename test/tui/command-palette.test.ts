@@ -57,13 +57,13 @@ const model = {
 }
 
 describe("command palette", () => {
-  test("empty state is a centered search surface with a prompt", async () => {
+  test("empty state is a centered search surface with a title and footer", async () => {
     const lines = await renderPalette("", [])
     const visible = lines.filter((line) => line.trim())
-    expect(visible).toHaveLength(3)
+    expect(visible.join("\n")).toContain("Command palette")
     expect(visible.join("\n")).toContain("> Search anything in Quark")
     expect(visible.join("\n")).not.toContain("No results")
-    expect(visible.join("\n")).not.toContain("Command")
+    expect(visible.join("\n")).toContain("Enter select")
     expect(visible[0]!.indexOf("╭")).toBeGreaterThan(5)
   })
 
@@ -241,5 +241,36 @@ describe("command palette", () => {
     expect(frame).toContain("Continue command palette")
     expect(frame).toContain("Enter open")
     expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
+  })
+
+  test("renders a footer for every standard mode", async () => {
+    const modelRows = [model]
+    for (const [mode, hint] of [
+      ["search", "Enter select"],
+      ["models", "Enter switch"],
+      ["skills", "Enter add"],
+      ["connect-providers", "Enter connect"],
+    ] as const) {
+      const lines = await renderPalette("", mode === "search" ? [] : modelRows, 0, 80, 24, mode)
+      expect(`${mode}: ${lines.join("\n")}`).toContain(hint)
+    }
+
+    const worktreeRows = [
+      { type: "worktree", id: "root", label: "root · main", branch: "main", sessionCount: 0, current: true, root: true },
+    ]
+    const wtLines = await renderPalette("", [], 0, 80, 24, "worktrees", [], undefined, worktreeRows)
+    expect(wtLines.join("\n")).toContain("Enter switch")
+  })
+
+  test("footer stays inside the frame in a narrow terminal", async () => {
+    const lines = await renderPalette("", [model], 0, 40, 12, "models")
+    const trimmed = lines.filter((line) => line.trim())
+    // The footer is the line immediately above the bottom border.
+    const footerIndex = trimmed.length - 2
+    const footerLine = trimmed[footerIndex]!
+    expect(footerLine).toContain("Esc")
+    // Side border glyphs must appear only at the frame edges (footer is inside).
+    expect(footerLine.trim()).toMatch(/^│.*│$/)
+    expect(trimmed.at(-1)!).toContain("╰")
   })
 })
