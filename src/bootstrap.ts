@@ -7,9 +7,6 @@
 
 import { register } from "./tool/registry";
 import { readTool } from "./tool/read";
-import { lookTool } from "./tool/look";
-import { questionTool } from "./tool/question";
-import { findSessionTool } from "./tool/find_session";
 import { buildSkillTool } from "./tool/skill";
 import { ensureStorageRoot } from "./storage/session-jsonl";
 import { loadProfileTools } from "./tool/loader";
@@ -36,7 +33,7 @@ export interface BootstrapOptions {
  *
  * Responsibilities:
  * - Ensures the session storage directory exists (`~/.config/quark/session/`)
- * - Registers built-in tools: `read`, `skill`, `find_session`, `read_session`
+ * - Registers built-in tools: `read`, `skill`
  * - Loads profile-declared external tools from `~/.config/quark/tools/{id}.ts`
  * - Loads plugins from `~/.config/quark/plugins/*.ts`
  *
@@ -59,9 +56,6 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 
   // Register built-in tools (always available)
   register(readTool);
-  register(lookTool);
-  register(findSessionTool);
-  register(questionTool);
   register(buildSkillTool(opts?.boundSkills));
 
   // Load profile-declared tools from ~/.config/quark/tools/

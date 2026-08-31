@@ -48,7 +48,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
             {(segment) => segment.type === "markdown" ? (
               <markdown content={prepareContent(segment.content)} syntaxStyle={syntaxStyle} conceal={true} streaming={false} width="100%" />
             ) : (
-              <box flexDirection="row" width="100%">
+              <box flexDirection="row" flexWrap="wrap" width="100%">
                 <Show when={segment.marker}><text>{segment.marker}</text></Show>
                 <For each={segment.parts}>
                   {(part) => "text" in part ? <text>{part.text}</text> : (

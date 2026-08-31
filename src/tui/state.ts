@@ -8,6 +8,7 @@ import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, Re
 import { getModelLimit } from "../provider/models"
 import { resolveProfile } from "../profile/profile"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
+import type { SubagentErrorKind } from "../subagent/protocol"
 
 // ---------------------------------------------------------------------------
 // Worktree types
@@ -47,6 +48,7 @@ export type TuiPart =
 export interface TuiSteerDivider {
   id: string
   goal: string
+  label?: string
   insertionIndex: number
 }
 
@@ -63,12 +65,14 @@ export interface SubAgentState {
   profile: string
   modelName?: string
   prompt?: string
+  childSessionId?: string
   tools: SubAgentToolPart[]
   // Token tracking for the sub-agent's context window
   tokensUsed: number
   tokenLimit: number
   // Streaming text preview from the sub-agent
   textPreview?: string
+  error?: { kind: SubagentErrorKind; message: string }
   done: boolean
   // Running time tracking
   startedAt?: number
@@ -97,8 +101,15 @@ export interface TuiStatus {
 
 export interface PermissionRequest {
   requestId: string
+  sessionId?: string
   tool: string
   input: Record<string, unknown>
+  origin?: {
+    kind: "subagent"
+    parentCallId: string
+    profile: string
+    childSessionId: string
+  }
 }
 
 export interface QuestionOption {
@@ -128,7 +139,7 @@ export type TuiAction =
   | { type: "set-session"; sessionId: string }
   | { type: "reset-session"; sessionId: string | null }
   | { type: "load-session"; sessionId: string; messages: TuiMessage[] }
-  | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string } }
+  | { type: "append-branch-session"; sessionId: string; messages: TuiMessage[]; divider: { id: string; goal: string; label?: string } }
   | { type: "add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
   | { type: "set-user-message-status"; messageId: string; status: Exclude<UserMessageStatus, "sent"> }
   | { type: "add-assistant-message"; id: string }
@@ -149,13 +160,16 @@ export type TuiAction =
   | { type: "clear-error" }
   | { type: "set-permission"; request: PermissionRequest }
   | { type: "clear-permission" }
+  | { type: "dismiss-permissions"; requestIds: string[] }
   // Sub-agent observability actions
   | { type: "subagent-tool-start"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string }
   | { type: "subagent-tool-input"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; input: Record<string, unknown> }
+  | { type: "subagent-tool-running"; messageId: string; parentCallId: string; profile: string; callId: string }
   | { type: "subagent-tool-end"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; status: "completed" | "error"; error?: string }
   | { type: "subagent-step-finish"; messageId: string; parentCallId: string; profile: string; tokens?: { input?: number; output?: number }; tokenLimit?: number; modelName?: string }
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
+  | { type: "subagent-error"; messageId: string; parentCallId: string; profile: string; kind: SubagentErrorKind; message: string }
   | { type: "cycle-thinking"; modelId: string }
   | { type: "toggle-show-thinking" }
   | { type: "reasoning-start"; messageId: string }
@@ -164,7 +178,7 @@ export type TuiAction =
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string; thinkingEffort?: ThinkingEffort; thinkingMode?: string }
-  | { type: "truncate-messages"; upToMessageId: string }
+  | { type: "truncate-messages"; upToMessageId: string; tokensUsed: number }
   | { type: "remove-message"; messageId: string }
   // Worktree actions
   | { type: "worktree-switch-start" }
@@ -240,7 +254,7 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
 
   for (const msg of messages) {
     // Skip aborted assistant messages — partial content should not appear in the TUI
-    if (msg.finish === "aborted") continue
+    if (msg.role === "assistant" && msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
     const tuiParts: TuiPart[] = []
 
@@ -254,9 +268,24 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         }
       } else if (p.type === "tool") {
         const d = JSON.parse(p.data) as ToolPartData
-        // Reconstruct minimal subAgent state for bash sub-agent invocations
         let subAgent: SubAgentState | undefined
-        if (d.tool === "bash") {
+        if (d.tool === "subagent") {
+          const profile = d.subAgent?.profile ?? (typeof d.input.profile === "string" ? d.input.profile : "sub-agent")
+          const prompt = d.subAgent?.prompt ?? (typeof d.input.prompt === "string" ? d.input.prompt : undefined)
+          const resolved = resolveSubAgentModelMeta(profile)
+          subAgent = {
+            profile,
+            prompt,
+            childSessionId: d.subAgent?.childSessionId,
+            modelName: d.subAgent?.modelName ?? resolved.modelName,
+            tools: [],
+            tokensUsed: 0,
+            tokenLimit: d.subAgent?.tokenLimit ?? resolved.tokenLimit,
+            ...(d.status === "error" && d.error ? { error: { kind: "process" as const, message: d.error } } : {}),
+            done: d.status === "completed" || d.status === "error",
+          }
+        } else if (d.tool === "bash") {
+          // Read-only replay compatibility for historical Bash-based delegation.
           const cmd = (d.input as any)?.command ?? (d.input as any)?.cmd
           if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
             const { profile, prompt } = parseSubAgentCommand(cmd)
@@ -293,7 +322,9 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         id: msg.id,
         role: msg.role,
         parts: tuiParts,
-        ...(msg.role === "user" ? { userStatus: "replied" as const } : {}),
+        ...(msg.role === "user"
+          ? { userStatus: msg.finish === "aborted" ? "aborted" as const : "replied" as const }
+          : {}),
         streaming: false,
       })
     }
@@ -339,6 +370,7 @@ export interface AppState {
 
 export function createAppState(initial: {
   sessionId: string | null
+  messages?: TuiMessage[]
   modelName: string
   skillCount: number
   thinkingEffort?: ThinkingEffort
@@ -346,7 +378,7 @@ export function createAppState(initial: {
   const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
     sessionId: initial.sessionId,
-    messages: [],
+    messages: initial.messages ?? [],
     running: false,
     steering: false,
     lastDuration: null,
@@ -432,6 +464,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             s.steerDividers.push({
               id: action.divider.id,
               goal: action.divider.goal,
+              label: action.divider.label,
               insertionIndex: s.messages.length,
             })
           }
@@ -562,14 +595,11 @@ export function dispatch(state: AppState, action: TuiAction): void {
           part.diff = action.diff
         }
       }))
-      // Eagerly initialize subAgent when the bash command is a sub-agent invocation.
-      // This makes the Match condition in message-item.tsx switch to SubAgentView
-      // immediately — before the child process boots and sends its first event.
+      // First-class calls initialize directly from structured tool input.
       const tiPart = state.store.messages[tiMsgIdx]!.parts[tiPartIdx] as Extract<TuiPart, { type: "tool" }>
-      if (tiPart.tool === "bash" && !tiPart.subAgent) {
-        const cmd = action.input.command ?? action.input.cmd
-        if (typeof cmd === "string" && /\bquark\b.*--sub-agent\b/.test(cmd)) {
-          const { profile, prompt } = parseSubAgentCommand(cmd)
+      if (tiPart.tool === "subagent" && !tiPart.subAgent) {
+        const profile = typeof action.input.profile === "string" ? action.input.profile : "sub-agent"
+        const prompt = typeof action.input.prompt === "string" ? action.input.prompt.slice(0, 200) : undefined
           const { modelName, tokenLimit } = resolveSubAgentModelMeta(profile)
           setStore("messages", tiMsgIdx, "parts", tiPartIdx, "subAgent" as any, {
             profile,
@@ -581,7 +611,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
             done: false,
             startedAt: Date.now(),
           })
-        }
       }
       break
     }
@@ -605,6 +634,9 @@ export function dispatch(state: AppState, action: TuiAction): void {
             if (part.subAgent) {
               part.subAgent.done = true
               part.subAgent.textPreview = undefined
+              if (action.status === "error" && action.error && !part.subAgent.error) {
+                part.subAgent.error = { kind: "process", message: action.error }
+              }
               if (part.subAgent.startedAt != null) part.subAgent.durationMs = Date.now() - part.subAgent.startedAt
               const childStatus = action.status === "error" ? "error" as const : "completed" as const
               for (const child of part.subAgent.tools) {
@@ -717,6 +749,28 @@ export function dispatch(state: AppState, action: TuiAction): void {
       )
       break
 
+    case "dismiss-permissions":
+      setStore(
+        produce((s) => {
+          const ids = new Set(action.requestIds)
+          s.permissionQueue = s.permissionQueue.filter((request) => !ids.has(request.requestId))
+          if (s.permission && ids.has(s.permission.requestId)) {
+            const parentCallId = s.permission.origin?.parentCallId
+            const parentIsActive = parentCallId
+              ? s.messages.some((message) => message.parts.some((part) =>
+                  part.type === "tool"
+                  && part.callId === parentCallId
+                  && part.status !== "completed"
+                  && part.status !== "error"
+                ))
+              : false
+            s.permission = s.permissionQueue.shift()
+            if (!s.permission && parentIsActive) s.running = true
+          }
+        }),
+      )
+      break
+
     case "set-question":
       setStore(
         produce((s) => {
@@ -821,6 +875,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
           }
         }),
       )
+      setStore("status", "tokensUsed", action.tokensUsed)
       break
 
     case "remove-message":
@@ -895,8 +950,31 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore(
         "messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((s: SubAgentState) => {
-          s.tools[childIdx]!.status = "running"
+          s.tools[childIdx]!.status = "awaiting_approval"
           s.tools[childIdx]!.input = action.input
+        }),
+      )
+      break
+    }
+
+    case "subagent-tool-running": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const parent = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      if (parent.status === "error" || parent.status === "completed" || !parent.subAgent) break
+      const childIdx = parent.subAgent.tools.findIndex((tool) => tool.callId === action.callId)
+      if (childIdx === -1) break
+      setStore(
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((subAgent: SubAgentState) => {
+          const child = subAgent.tools[childIdx]!
+          if (child.status === "awaiting_approval" || child.status === "pending") {
+            child.status = "running"
+          }
         }),
       )
       break
@@ -981,6 +1059,34 @@ export function dispatch(state: AppState, action: TuiAction): void {
       const preview = text.length > 120 ? "…" + text.slice(-119) : text
       setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((sa: SubAgentState) => { sa.textPreview = preview })
+      )
+      break
+    }
+
+    case "subagent-error": {
+      const msgIdx = state.store.messages.findIndex((m) => m.id === action.messageId)
+      if (msgIdx === -1) break
+      const partIdx = state.store.messages[msgIdx]!.parts.findIndex(
+        (p) => p.type === "tool" && (p as Extract<TuiPart, { type: "tool" }>).callId === action.parentCallId
+      )
+      if (partIdx === -1) break
+      const parent = state.store.messages[msgIdx]!.parts[partIdx] as Extract<TuiPart, { type: "tool" }>
+      if (!parent.subAgent) {
+        setStore("messages", msgIdx, "parts", partIdx, "subAgent" as any, {
+          profile: action.profile,
+          tools: [],
+          tokensUsed: 0,
+          tokenLimit: 0,
+          done: false,
+          startedAt: Date.now(),
+        })
+      }
+      setStore(
+        "messages", msgIdx, "parts", partIdx, "subAgent" as any,
+        produce((subAgent: SubAgentState) => {
+          subAgent.error = { kind: action.kind, message: action.message }
+          subAgent.textPreview = undefined
+        }),
       )
       break
     }

@@ -152,13 +152,17 @@ function codexCredential(token: CodexToken): Credential {
 export async function authStatus(services: AuthServices = {}): Promise<ProviderAuthStatus[]> {
   const resolve = await resolver(services)
   const configured = Object.keys(loadConfig().providers)
-  const providerIds = [...Object.keys(BUNDLED_PROVIDER_DEFINITIONS), ...configured]
+  const providerIds = [...new Set([...Object.keys(BUNDLED_PROVIDER_DEFINITIONS), ...configured]
+    .map((providerId) => providerId.toLowerCase()))]
   return Promise.all(providerIds.map((providerId) => {
     const provider = definition(providerId)
     const custom = loadConfig().providers[providerId]
+    const bundled = providerId in BUNDLED_PROVIDER_DEFINITIONS
     return resolve.status({
       provider,
-      source: custom?.api_key_env
+      source: bundled
+        ? { source: "auto" }
+        : custom?.api_key_env
         ? { source: "environment", variable: custom.api_key_env }
         : custom?.legacyCredentialSource ?? { source: "auto" },
     })

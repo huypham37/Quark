@@ -54,10 +54,12 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
     return profile.charAt(0).toUpperCase() + profile.slice(1)
   }
 
-  const isError = () => props.parentStatus === "error"
+  const isError = () => props.parentStatus === "error" || !!props.subAgent.error
   const isDone = () => props.subAgent.done
+  const isWaiting = () => props.subAgent.tools.some((tool) => tool.status === "awaiting_approval")
   const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
   const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
+  const meterColor = () => !isError() && !isDone() && !isWaiting() ? colors.borderActive : statusColor()
 
   const durationLabel = () => {
     if (isDone() && props.subAgent.durationMs != null) return ` (${formatSeconds(props.subAgent.durationMs)})`
@@ -69,10 +71,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const headerLabel = () => {
     if (isError()) return `${profileName()} failed`
     if (isDone()) return `${profileName()} responded`
+    if (isWaiting()) return `${profileName()} waiting for approval`
     return `Summoning ${profileName()}`
   }
 
-  const hasDetails = () => !!props.subAgent.prompt || props.subAgent.tools.length > 0 || !!props.subAgent.textPreview
+  const hasDetails = () => !!props.subAgent.prompt || props.subAgent.tools.length > 0 || !!props.subAgent.textPreview || !!props.subAgent.error
 
   return (
     <box
@@ -97,7 +100,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       <SubAgentTokenMeter
         tokensUsed={props.subAgent.tokensUsed}
         tokenLimit={props.subAgent.tokenLimit}
-        color={statusColor()}
+        color={meterColor()}
       />
 
       <Show when={hasDetails()}>
@@ -123,6 +126,13 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
             <Show when={!isDone() && props.subAgent.textPreview}>
               <box paddingLeft={2}>
                 <text fg={colors.muted}>● Thinking...</text>
+              </box>
+            </Show>
+            <Show when={props.subAgent.error}>
+              <box paddingLeft={2}>
+                <text fg={colors.error} wrap="wrap">
+                  {props.subAgent.error!.kind}: {props.subAgent.error!.message}
+                </text>
               </box>
             </Show>
           </Show>

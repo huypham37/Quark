@@ -14,47 +14,35 @@ import {
 } from "../../src/session/message"
 import {
   buildLineageContext,
+  compactBranch,
+  createSteerBranch,
   createBranch,
   extractLastUserText,
   getSessionLineage,
   shouldBranchWithRealTokens,
 } from "../../src/session/branch"
-import { createTask, setTaskStorageRoot } from "../../src/task/task"
-
 let sessionDir: string
-let taskDir: string
 
 beforeAll(() => {
   sessionDir = mkdtempSync(join(tmpdir(), "quark-test-branch-session-"))
-  taskDir = mkdtempSync(join(tmpdir(), "quark-test-branch-task-"))
   setSessionStorageRoot(sessionDir)
-  setTaskStorageRoot(taskDir)
   ensureStorageRoot()
 })
 
 beforeEach(() => {
   rmSync(sessionDir, { recursive: true, force: true })
-  rmSync(taskDir, { recursive: true, force: true })
   setSessionStorageRoot(sessionDir)
-  setTaskStorageRoot(taskDir)
   ensureStorageRoot()
 })
 
 afterAll(() => {
   setSessionStorageRoot(undefined)
-  setTaskStorageRoot(undefined)
   rmSync(sessionDir, { recursive: true, force: true })
-  rmSync(taskDir, { recursive: true, force: true })
 })
 
 describe("session branching", () => {
   test("creates a main child branch with frozen parent summary", () => {
-    const task = createTask({
-      title: "Task first storage",
-      description: "Implement task-first storage",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
     updateSession(parent.id, { filesModified: ["src/session/session.ts"] })
 
     const result = createBranch({
@@ -70,19 +58,13 @@ describe("session branching", () => {
     expect(updatedParent.summary).toBe("Added task metadata")
     expect(child.kind).toBe("main")
     expect(child.parentSessionId).toBe(parent.id)
-    expect(child.taskId).toBe(task.id)
     expect(child.parentSummary).toBe("Added task metadata")
     expect(child.filesModified).toEqual(["src/session/session.ts"])
     expect(listSessions().map((s) => s.id)).toContain(child.id)
   })
 
   test("seeds child session with lineage context and prompt", () => {
-    const task = createTask({
-      title: "Branch context",
-      description: "Keep context across branches",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     const result = createBranch({
       sessionId: parent.id,
@@ -101,7 +83,6 @@ describe("session branching", () => {
       .filter((part) => part.type === "text")
       .at(-1)
 
-    expect(text).toContain("Task: Keep context across branches")
     expect(text).toContain("Session")
     expect(text).toContain("Parent did the first half")
     expect(lastUser).toBe("Finish the second half")
@@ -113,12 +94,7 @@ describe("session branching", () => {
   })
 
   test("replays recent context without tool/runtime parts", () => {
-    const task = createTask({
-      title: "Strip tools",
-      description: "Strip tools from replayed branch context",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     saveUserMessage({ sessionId: parent.id, text: "Inspect src/session/branch.ts" })
     const assistant = createAssistantMessage({ sessionId: parent.id })
@@ -161,15 +137,11 @@ describe("session branching", () => {
     expect(child.parts.some((p) => p.type === "tool")).toBe(false)
     expect(child.parts.some((p) => p.type === "step-finish")).toBe(false)
     expect(extractLastUserText(child.messages, child.parts)).toBe("Inspect src/session/branch.ts")
+    expect(result.replayedMessageIds?.[recent.messages[0]!.id]).toBe(child.messages.at(-2)!.id)
   })
 
   test("walks lineage from root to child", () => {
-    const task = createTask({
-      title: "Lineage task",
-      description: "Lineage task",
-      profile: "coder",
-    })
-    const root = createSession({ taskId: task.id })
+    const root = createSession()
     const child = createBranch({
       sessionId: root.id,
       summary: "Root summary",
@@ -192,12 +164,7 @@ describe("session branching", () => {
   })
 
   test("sibling branches share frozen parent summary; second branch does not overwrite parent", () => {
-    const task = createTask({
-      title: "Sibling snapshot",
-      description: "Siblings share the same parent summary",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+    const parent = createSession()
 
     const first = createBranch({
       sessionId: parent.id,
@@ -230,37 +197,23 @@ describe("session branching", () => {
     expect(second.summary).toBe("First snapshot — written by initial steer")
   })
 
-  test("throws when parent has no taskId — invariant violation", () => {
-    const parent = createSession()
-    expect(() =>
-      createBranch({
-        sessionId: parent.id,
-        summary: "Should fail",
-        prompt: "Anything",
-        profile: "coder",
-      }),
-    ).toThrow(/parent has no taskId/)
-  })
-
-  test("child taskId is immutable — branching never rewrites the parent's taskId", () => {
-    const task = createTask({
-      title: "Immutable taskId",
-      description: "Immutable taskId",
-      profile: "coder",
-    })
-    const parent = createSession({ taskId: task.id })
+  test("branches ephemeral sessions without persisting", () => {
+    const parent = createSession({ ephemeral: true })
+    saveUserMessage({ sessionId: parent.id, text: "Investigate the codebase" })
 
     const result = createBranch({
       sessionId: parent.id,
-      summary: "Snapshot",
-      prompt: "Continue",
-      profile: "coder",
+      summary: "Continue the investigation",
+      profile: "finder",
     })
+    const child = getSession(result.sessionId)
+    const { messages } = loadMessages(child.id)
 
-    // No extra task created — both parent and child share the original.
-    expect(listSessions().filter((s) => s.taskId === task.id).length).toBe(2)
-    expect(getSession(parent.id).taskId).toBe(task.id)
-    expect(getSession(result.sessionId).taskId).toBe(task.id)
+    expect(child.kind).toBe("ephemeral")
+    expect(child.parentSessionId).toBe(parent.id)
+    expect(child.parentSummary).toBe("Continue the investigation")
+    expect(messages.length).toBeGreaterThan(0)
+    expect(listSessions().some((session) => session.id === child.id)).toBe(false)
   })
 
   test("detects branch pressure using real tokens before estimates", () => {
@@ -281,5 +234,125 @@ describe("session branching", () => {
     )
 
     expect(result).toBe(true)
+  })
+
+  test("compacts old history through the language model", async () => {
+    const parent = createSession()
+    for (let index = 1; index <= 5; index++) {
+      saveUserMessage({ sessionId: parent.id, text: `Message ${index}` })
+    }
+    const history = loadMessages(parent.id)
+    let calls = 0
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "compact-test",
+      supportedUrls: {},
+      async doGenerate() {
+        calls++
+        return {
+          content: [{ type: "text", text: "## Context\nCompacted by the model" }],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 5, text: 5, reasoning: 0 },
+          },
+          warnings: [],
+        }
+      },
+    } as any
+
+    const result = await compactBranch({
+      sessionId: parent.id,
+      messages: history.messages,
+      parts: history.parts,
+      model,
+      profile: "coder",
+    })
+
+    expect(calls).toBe(1)
+    expect(result.summary).toContain("Compacted by the model")
+    expect(getSession(result.sessionId).parentSessionId).toBe(parent.id)
+    const child = loadMessages(result.sessionId)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Message 5")
+  })
+
+  test("steers with full history and no compaction", () => {
+    const parent = createSession()
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "tool",
+      data: {
+        tool: "read",
+        callId: "read_1",
+        status: "completed",
+        input: { path: "src/auth.ts" },
+        output: "auth source",
+      },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const aborted = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: aborted.id,
+      type: "text",
+      data: { text: "Partial response" },
+    })
+    finishMessage(aborted.id, "aborted", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      prompt: "Use a cookie-based design",
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const childSession = getSession(result.sessionId)
+    const child = loadMessages(result.sessionId)
+
+    expect(getSession(parent.id).summary).toBeNull()
+    expect(childSession.parentSummary).toBeNull()
+    expect(child.messages).toHaveLength(3)
+    expect(child.parts.some((part) => part.type === "tool")).toBe(true)
+    expect(child.parts.some((part) => part.data.includes("Partial response"))).toBe(false)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Use a cookie-based design")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
+  })
+
+  test("forks with full history without a follow-up goal", () => {
+    const parent = createSession()
+    const user = saveUserMessage({ sessionId: parent.id, text: "Inspect the auth flow" })
+    const assistant = createAssistantMessage({ sessionId: parent.id })
+    addPart({
+      sessionId: parent.id,
+      messageId: assistant.id,
+      type: "text",
+      data: { text: "I found the middleware." },
+    })
+    finishMessage(assistant.id, "stop", undefined, parent.id)
+    const history = loadMessages(parent.id)
+
+    const result = createSteerBranch({
+      sessionId: parent.id,
+      profile: "coder",
+      messages: history.messages,
+      parts: history.parts,
+    })
+    const child = loadMessages(result.sessionId)
+
+    expect(result.promptMessageId).toBeUndefined()
+    expect(child.messages).toHaveLength(2)
+    expect(extractLastUserText(child.messages, child.parts)).toBe("Inspect the auth flow")
+    expect(result.replayedMessageIds?.[user.id]).toBe(child.messages[0]!.id)
   })
 })

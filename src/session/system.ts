@@ -76,7 +76,7 @@ export function buildSubAgentBlock(subAgentIds?: string[]): string | null {
   return [
     "# Available Sub-Agents",
     "",
-    "You can spawn the following sub-agents using the bash tool with `--sub-agent --profile <id>`:",
+    "Use the `subagent` tool with a profile ID and a complete task prompt to delegate to one of these isolated agents:",
     ...lines,
   ].join("\n")
 }

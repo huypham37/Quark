@@ -19,11 +19,33 @@ describe("inline markdown file links", () => {
       ] }])
   })
 
+  test("renders multiple local file links in a paragraph", () => {
+    expect(splitMarkdownFileLinks("Read [this](file:///tmp/a.ts) and [that](file:///tmp/b.ts)."))
+      .toEqual([{ type: "file-line", parts: [
+        { text: "Read " },
+        { target: { filePath: "/tmp/a.ts" }, label: "this" },
+        { text: " and " },
+        { target: { filePath: "/tmp/b.ts" }, label: "that" },
+        { text: "." },
+      ] }])
+  })
+
+  test("renders multiple local file links in a list item", () => {
+    expect(splitMarkdownFileLinks("- Compare [before](file:///tmp/a.ts) with [after](file:///tmp/b.ts)."))
+      .toEqual([{ type: "file-line", marker: "- ", parts: [
+        { text: "Compare " },
+        { target: { filePath: "/tmp/a.ts" }, label: "before" },
+        { text: " with " },
+        { target: { filePath: "/tmp/b.ts" }, label: "after" },
+        { text: "." },
+      ] }])
+  })
+
   test("leaves complex, web, and remote file links to MarkdownRenderable", () => {
     for (const content of [
-      "Read [this](file:///tmp/a.ts) and [that](file:///tmp/b.ts).",
       "[web](https://example.com)",
       "[remote](file://server/tmp/a.ts)",
+      "Read [local](file:///tmp/a.ts) and [web](https://example.com).",
       "- [this](file:///tmp/a.ts)\n  - nested",
     ]) expect(splitMarkdownFileLinks(content)).toEqual([{ type: "markdown", content }])
   })

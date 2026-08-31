@@ -62,6 +62,34 @@ describe("ModelRegistry", () => {
     expect(openrouter.pricing).toEqual({ kind: "unknown" })
   })
 
+  test("resolves DeepSeek metadata from the exact models.dev provider", () => {
+    __setModelsDevDataForTest({
+      deepseek: {
+        id: "deepseek",
+        models: {
+          "deepseek-v4-pro": {
+            id: "deepseek-v4-pro",
+            limit: { context: 1_000_000, output: 384_000 },
+            cost: { input: 1, output: 2 },
+          },
+        },
+      },
+      openrouter: {
+        id: "openrouter",
+        models: {
+          "deepseek-v4-pro": { id: "deepseek-v4-pro", limit: { context: 10, output: 5 } },
+        },
+      },
+    })
+
+    const descriptor = new ModelRegistry().resolve(
+      parseModelRef("deepseek/deepseek-v4-pro"),
+      BUNDLED_PROVIDER_DEFINITIONS.deepseek,
+    )
+    expect(descriptor.limits).toEqual({ context: 1_000_000, output: 384_000 })
+    expect(descriptor.pricing).toMatchObject({ kind: "metered", rates: { inputPerMillionUsd: 1 } })
+  })
+
   test("returns a permissive unknown descriptor on catalog miss", () => {
     __setModelsDevDataForTest({})
     const descriptor = new ModelRegistry().resolve(

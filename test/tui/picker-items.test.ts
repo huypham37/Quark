@@ -34,14 +34,14 @@ describe("buildPickerItems", () => {
 })
 
 describe("pickerModeForCommand", () => {
-  test("opens model, profile, and skills pickers", () => {
-    expect(pickerModeForCommand("model")).toBe("models")
+  test("opens the profile picker", () => {
     expect(pickerModeForCommand("profile")).toBe("profiles")
-    expect(pickerModeForCommand("skills")).toBe("skills")
   })
 
   test("ignores non-picker commands", () => {
     expect(pickerModeForCommand("help")).toBeNull()
+    expect(pickerModeForCommand("model")).toBeNull()
+    expect(pickerModeForCommand("skills")).toBeNull()
     expect(pickerModeForCommand("new")).toBeNull()
     expect(pickerModeForCommand("clear")).toBeNull()
   })

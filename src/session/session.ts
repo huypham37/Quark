@@ -12,6 +12,7 @@ import {
   readSessionMeta,
   scanSessionMetas,
   replaySessionFile,
+  deleteSessionLog,
 } from "../storage/session-jsonl"
 import type { SessionUpdateEvent } from "../storage/session-format"
 import { bus } from "./events"
@@ -37,14 +38,14 @@ export interface Session {
   parentSessionId: string | null
   /** Session kind: `"main"` for top-level sessions, `"subagent"` for spawned children */
   kind: SessionKind
-  /** Task this session belongs to */
-  taskId: string | null
   /** Summary of work done in this session */
   summary: string | null
   /** Frozen parent summary captured when this session branches */
   parentSummary: string | null
   /** Workspace files modified during this session */
   filesModified: string[] | null
+  /** Whether the session stays above ordinary recent sessions */
+  pinned: boolean
   /** Unix timestamp (ms) when the session was created */
   timeCreated: number
   /** Unix timestamp (ms) of the last activity */
@@ -53,7 +54,7 @@ export interface Session {
 
 export type SessionPatch = Partial<Pick<
   Session,
-  "title" | "taskId" | "summary" | "parentSummary" | "filesModified" | "timeUpdated"
+  "title" | "summary" | "parentSummary" | "filesModified" | "pinned" | "timeUpdated"
 >>
 
 /**
@@ -70,7 +71,6 @@ export function createSession(opts?: {
   parentSessionId?: string
   kind?: SessionKind
   ephemeral?: boolean
-  taskId?: string | null
   summary?: string | null
   parentSummary?: string | null
   filesModified?: string[] | null
@@ -88,10 +88,10 @@ export function createSession(opts?: {
     directory: opts?.directory ?? process.cwd(),
     parentSessionId: opts?.parentSessionId ?? null,
     kind,
-    taskId: opts?.taskId ?? null,
     summary: opts?.summary ?? null,
     parentSummary: opts?.parentSummary ?? null,
     filesModified: opts?.filesModified ?? null,
+    pinned: false,
     timeCreated: now,
     timeUpdated: now,
   }
@@ -163,22 +163,35 @@ export function updateSession(id: string, patch: SessionPatch): void {
   const ephemeral = ephemeralStore.get(id)
   if (ephemeral) {
     Object.assign(ephemeral, fullPatch)
-    return
+  } else {
+    const event: SessionUpdateEvent = {
+      v: 1,
+      ts: now,
+      sessionId: id,
+      type: "session-update",
+      patch: fullPatch,
+    }
+    appendEvents(id, [event], fullPatch)
   }
 
-  const event: SessionUpdateEvent = {
-    v: 1,
-    ts: now,
-    sessionId: id,
-    type: "session-update",
-    patch: fullPatch,
+  if (patch.title !== undefined) {
+    bus.emit("session-title-changed", { sessionId: id, title: patch.title, updatedAt: fullPatch.timeUpdated })
   }
-  appendEvents(id, [event], fullPatch)
 }
 
 export function setSessionTitle(id: string, title: string): void {
   updateSession(id, { title })
-  bus.emit("session-title-changed", { sessionId: id, title, updatedAt: Date.now() })
+}
+
+export function setSessionPinned(id: string, pinned: boolean): void {
+  const session = getSession(id)
+  updateSession(id, { pinned, timeUpdated: session.timeUpdated })
+}
+
+export function deleteSession(id: string): void {
+  getSession(id)
+  ephemeralStore.delete(id)
+  deleteSessionLog(id)
 }
 
 /** List user-facing sessions only (main sessions and branches), most recently updated first */

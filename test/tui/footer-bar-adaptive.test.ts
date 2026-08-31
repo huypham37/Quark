@@ -268,8 +268,8 @@ describe("left zone widths", () => {
   })
 
   test("22. steering and idle widths are constants matching the rendered text", () => {
-    // Shimmering "Steering context" — no spinner prefix
-    expect(LEFT_WIDTH_STEERING).toBe("Steering context".length)
+    // Shimmering "Preparing branch" — no spinner prefix
+    expect(LEFT_WIDTH_STEERING).toBe("Preparing branch".length)
     // Idle is a single space placeholder
     expect(LEFT_WIDTH_IDLE).toBe(1)
   })

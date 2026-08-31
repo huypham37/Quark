@@ -7,8 +7,8 @@ export type MarkdownSegment =
   | { type: "file-line"; marker?: string; parts: InlineFileLink[] }
 
 /**
- * Replace only simple final paragraphs/list items containing one local file
- * link. Their visible text remains inline; complex Markdown stays with OpenTUI.
+ * Replace only simple final paragraphs/list items containing local file links.
+ * Their visible text remains inline; complex Markdown stays with OpenTUI.
  */
 export function splitMarkdownFileLinks(content: string): MarkdownSegment[] {
   const tokens = marked.lexer(content)
@@ -33,7 +33,7 @@ export function splitMarkdownFileLinks(content: string): MarkdownSegment[] {
         parts.push({ target, label: child.text || displayFileTarget(target) })
       } else return null
     }
-    return fileLinks === 1 ? parts : null
+    return fileLinks > 0 ? parts : null
   }
 
   for (const token of tokens) {

@@ -3,7 +3,11 @@ import { resolve } from "node:path"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
-async function renderPrompt(thinkingEffort: string) {
+async function renderPrompt(
+  thinkingEffort: string,
+  options: { width?: number; queuedMessages?: { id: string; text: string }[] } = {},
+) {
+  const width = options.width ?? 80
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
@@ -16,8 +20,9 @@ async function renderPrompt(thinkingEffort: string) {
       tokenLimit: 1000000,
       modelName: "opencode/kimi-k2.6",
       thinkingEffort: ${JSON.stringify(thinkingEffort)},
-      width: 80,
-    }), { width: 80, height: 8, useConsole: false });
+      width: ${width},
+      queuedMessages: ${JSON.stringify(options.queuedMessages ?? [])},
+    }), { width: ${width}, height: 14, useConsole: false });
 
     await setup.renderOnce();
     console.log(JSON.stringify(setup.captureCharFrame().split("\\n")));
@@ -51,5 +56,35 @@ describe("Prompt border", () => {
     expect(lines[0]).toHaveLength(80)
     expect(lines[0]).toMatch(/^╭── 4\.1% of 1M ─+ \[T:high\] opencode\/kimi-k2\.6 ──╮$/)
     expect(lines[1]).not.toContain("[T:high] opencode/kimi-k2.6")
+  })
+
+  test("attaches FIFO queue rows without covering the model segment", async () => {
+    const lines = await renderPrompt("high", {
+      queuedMessages: [
+        { id: "old", text: "What improvements would you make here?" },
+        { id: "new", text: "Review 你好 👨‍👩‍👧‍👦 next" },
+      ],
+    })
+
+    expect(lines[1]).toContain("Review 你好 👨‍👩‍👧‍👦 next")
+    expect(lines[2]).toContain("What improvements")
+    expect(lines[1]).toMatch(/queued │\s+$/)
+    expect(lines[2]).toMatch(/queued │\s+$/)
+    expect(lines[2]).not.toContain("╰")
+    expect(lines[3]).toMatch(/^╭── 4\.1% of 1M ─+ \[T:high\] opencode\/kimi-k2\.6 ──╮$/)
+  })
+
+  test("truncates queue text and preserves the right border at narrow widths", async () => {
+    const lines = await renderPrompt("high", {
+      width: 32,
+      queuedMessages: [{ id: "one", text: "A very long queue message with 你好 and emoji 👨‍👩‍👧‍👦" }],
+    })
+
+    expect(lines[1]).toContain("…")
+    expect(lines[1]).toContain("queued")
+    expect(lines[1].trimEnd().endsWith("│")).toBe(true)
+    expect(lines[1]).not.toContain("╰")
+    expect(lines[2]).toMatch(/^╭── 4\.1% of 1M ─+ \[T:high\] o… ──╮$/)
+    expect(Bun.stringWidth(lines[2])).toBe(32)
   })
 })

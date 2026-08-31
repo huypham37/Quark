@@ -52,10 +52,10 @@ export interface SessionUpdateEvent extends EventBase {
   type: "session-update"
   patch: {
     title?: string | null
-    taskId?: string | null
     summary?: string | null
     parentSummary?: string | null
     filesModified?: string[] | null
+    pinned?: boolean
     timeUpdated?: number
   }
 }

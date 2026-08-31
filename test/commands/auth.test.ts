@@ -62,6 +62,24 @@ describe("auth commands", () => {
     expect(status?.origin).toBe("machine-store")
   })
 
+  test("DeepSeek stored keys replace existing keys and environment credentials retain precedence", async () => {
+    const store = new MemoryStore()
+    store.values.set("deepseek", { type: "api-key", value: "old-secret" })
+    await loginApiKey({
+      providerId: "deepseek",
+      apiKey: "new-secret",
+      persistence: "store",
+      services: { store, environment: {} },
+    })
+
+    expect(await store.get("deepseek")).toEqual({ type: "api-key", value: "new-secret" })
+    const statuses = await authStatus({ store, environment: { DEEPSEEK_API_KEY: "environment-secret" } })
+    const deepseek = statuses.filter((item) => item.providerId === "deepseek")
+    expect(deepseek).toEqual([expect.objectContaining({ state: "authenticated", origin: "environment" })])
+    expect(JSON.stringify(statuses)).not.toContain("environment-secret")
+    expect(JSON.stringify(statuses)).not.toContain("new-secret")
+  })
+
   test("Copilot OAuth login dispatches device flow and stores the shared credential", async () => {
     const store = new MemoryStore()
     let shownCode = ""

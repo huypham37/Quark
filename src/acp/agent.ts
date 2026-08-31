@@ -15,7 +15,7 @@ import { bootstrap } from "../bootstrap"
 import { loadConfig } from "../config/config"
 import { debug } from "../debug"
 import { bus } from "../session/events"
-import { respond as respondPermission } from "../permission/permission"
+import { respondPermission } from "../permission/broker"
 import type { PartRow } from "../session/message"
 
 const dlog = debug("acp")
@@ -89,7 +89,7 @@ function replaySession(sessionId: string, send: (msg: OutgoingMessage) => void):
 
   for (const msg of messages) {
     // Skip aborted assistant messages
-    if (msg.finish === "aborted") continue
+    if (msg.role === "assistant" && msg.finish === "aborted") continue
     const msgParts = partsByMsg.get(msg.id) ?? []
 
     if (msg.role === "user") {

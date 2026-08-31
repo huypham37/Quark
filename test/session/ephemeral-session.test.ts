@@ -246,6 +246,24 @@ describe("ephemeral session: prompt()", () => {
     expect(capturedId.length).toBeGreaterThan(0)
     expect(String(process.env.QUARK_SESSION_ID)).toBe(capturedId)
   })
+
+  test("prompt({ ephemeral: true, parentSessionId }) preserves the parent link", async () => {
+    const parent = createSession()
+    let capturedId = ""
+    bus.on("session-created", ({ sessionId }) => {
+      capturedId = sessionId
+    })
+
+    await prompt({
+      parentSessionId: parent.id,
+      ephemeral: true,
+      parts: [{ type: "text", text: "child task" }],
+    }).catch(() => {})
+
+    const child = getSession(capturedId)
+    expect(child.kind).toBe("ephemeral")
+    expect(child.parentSessionId).toBe(parent.id)
+  })
 })
 
 describe("ephemeral session: in-memory lifecycle", () => {

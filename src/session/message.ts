@@ -36,6 +36,14 @@ export interface ToolPartData {
   input: Record<string, unknown>
   output?: string
   error?: string
+  /** Structured first-class subagent metadata used to reconstruct persisted cards. */
+  subAgent?: {
+    profile: string
+    prompt?: string
+    childSessionId?: string
+    modelName?: string
+    tokenLimit?: number
+  }
   /** Multi-modal content parts (text + images) for LLM replay.
    *  When present, toModelMessages uses { type: "content", value: [...] }
    *  instead of { type: "text", value: string }. */
@@ -323,8 +331,8 @@ export function toModelMessages(
   messages: MessageRow[],
   parts: PartRow[],
 ): ModelMessage[] {
-  // Filter out aborted assistant messages and their parts so partial
-  // content does not pollute the model context on subsequent turns.
+  // Filter out every aborted message and its parts. This removes both the
+  // cancelled user prompt and any partial assistant response from later turns.
   const abortedIds = new Set<string>()
   for (const m of messages) {
     if (m.finish === "aborted") abortedIds.add(m.id)

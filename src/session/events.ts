@@ -7,6 +7,7 @@
 import { EventEmitter } from "events"
 import type { StepFinishData } from "./message"
 import type { ConversationMessage } from "../shared/conversation-view"
+import type { SubagentErrorKind } from "../subagent/protocol"
 
 // ---- Event types ----
 
@@ -54,7 +55,21 @@ export interface BusEvents {
   "loop-end": { sessionId: string }
 
   // Permission request (TUI needs to prompt user)
-  "permission-request": { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }
+  "permission-request": {
+    sessionId: string
+    requestId: string
+    tool: string
+    input: Record<string, unknown>
+    origin?: {
+      kind: "subagent"
+      parentCallId: string
+      profile: string
+      childSessionId: string
+    }
+  }
+
+  // Remove child-process permission prompts that can no longer be answered.
+  "permission-dismiss": { sessionId: string; requestIds: string[] }
 
   // Permission was rejected by the user — abort the agent loop
   "permission-rejected": { sessionId: string }
@@ -104,13 +119,12 @@ export interface BusEvents {
   // updated immediately instead of showing 0 until the next step-finish.
   "session-switch":
     | { kind: "replace"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number }
-    | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string } }
+    | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string; label?: string } }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
-  "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
+  "undo-applied": { sessionId: string; keepMessagesUpTo: string; tokensUsed: number; restored: number; deleted: number }
 
-  // Steer (branching) lifecycle — TUI shows a "Steering…" indicator while the
-  // parent session is being summarized for the new branch.
+  // Branching lifecycle — TUI shows a status while a branch is prepared.
   "steer-start": { sessionId: string }
   "steer-end": { sessionId: string }
 
@@ -118,7 +132,7 @@ export interface BusEvents {
   "async-panel-open": { sessionId?: string; title: string }
 
   // ---------------------------------------------------------------------------
-  // Sub-agent observability — events forwarded from child `quark --sub-agent`
+  // Sub-agent observability — events forwarded from an internal child process
   // processes via stderr NDJSON. The parent Bash tool parses these and re-emits
   // them on the parent bus so the TUI can render nested tool activity.
   // ---------------------------------------------------------------------------
@@ -133,6 +147,12 @@ export interface BusEvents {
   "subagent-tool-input": {
     sessionId: string; messageId: string; parentCallId: string
     profile: string; tool: string; callId: string; input: Record<string, unknown>
+  }
+
+  // A child tool passed its permission gate and began executing
+  "subagent-tool-running": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; callId: string
   }
 
   // Tool completed/errored in the sub-agent
@@ -162,6 +182,12 @@ export interface BusEvents {
     profile: string
   }
 
+  // Structured child provider/process/protocol failure
+  "subagent-error": {
+    sessionId: string; messageId: string; parentCallId: string
+    profile: string; kind: SubagentErrorKind; message: string
+  }
+
   // Worktree switch — TUI resets session state and updates cwd/branch
   "worktree-switched": {
     cwd: string
@@ -177,7 +203,7 @@ export type BusEventName = keyof BusEvents
 
 // ---- Singleton bus ----
 
-class TypedBus {
+export class TypedBus {
   private emitter = new EventEmitter()
 
   constructor() {

@@ -1,24 +1,25 @@
 // CLI entry point for Quark
 //
 // Usage:
-//   quark --profile coder --prompt "help me fix this bug"
+//   quark --profile coder --message "help me fix this bug"
 //   quark -p coder -m "help me fix this bug"
-//   quark "quick prompt without flags"
-//   quark --sub-agent --profile researcher --prompt "research this topic"
-//   quark --parent-session <id> --profile researcher --prompt "research this topic"
+//   quark "quick message without flags"
 //   quark --model claude-sonnet-4.5 "one-off with a specific model"
 //   quark acp                       Start ACP agent (JSON-RPC over stdio)
 
 import { parseArgs } from "util"
+import { createInterface } from "node:readline"
 import { bootstrap } from "./bootstrap"
 import { prompt } from "./session/prompt"
 import { resolveProfile, readPromptFile, listProfiles } from "./profile/profile"
 import { agentFromProfile } from "./agent"
 import { bus } from "./session/events"
-import { startEventWriter } from "./session/event-writer"
+import { emitSubagentError, startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
 import { setVerbose, debug } from "./debug"
 import { formatArgs } from "./debug/format-tool-args"
+import { respondPermission } from "./permission/broker"
+import { parseParentControlLine } from "./subagent/protocol"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -28,22 +29,45 @@ const tlogCall = debug("tool-call")
 const tlogResult = debug("tool-result")
 const tlogRaw = debug("tool-call:raw")
 
+function startSubagentControlReader(): () => void {
+  const reader = createInterface({ input: process.stdin, terminal: false })
+  const onLine = (line: string) => {
+    if (!line.trim()) return
+    try {
+      const message = parseParentControlLine(line)
+      respondPermission({
+        requestId: message.requestId,
+        reply: message.reply,
+        ...(message.message ? { message: message.message } : {}),
+      })
+    } catch (error) {
+      emitSubagentError(
+        "protocol",
+        `Invalid parent control message: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+  reader.on("line", onLine)
+  return () => {
+    reader.off("line", onLine)
+    reader.close()
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Parse CLI arguments
 // ---------------------------------------------------------------------------
 
 function printHelp() {
   console.log(`
-Usage: quark [options] [prompt]
+Usage: quark [options] [message]
        quark auth <login|status|logout> [provider]
 
 Options:
   -p, --profile <name>          Profile to use (default: from config)
-  -m, --prompt <text>           Prompt text (alternative to positional)
+  -m, --message <text>          Message text (alternative to positional)
   -s, --session <id>            Resume an existing session
       --model <id>              Model to use for this run (e.g. copilot/claude-sonnet-4.5)
-      --parent-session <id>     Create a child session under this parent
-      --sub-agent               Create a child session (reads QUARK_SESSION_ID from env)
       --no-store                Run an ephemeral session — never written to disk
       --verbose                 Print every tool call + result to stderr.
                                 For engine internals use QUARK_DEBUG=* (see README).
@@ -51,23 +75,19 @@ Options:
   -h, --help                    Show this help message
 
 Examples:
-  quark --profile coder --prompt "fix the bug in main.ts"
+  quark --profile coder --message "fix the bug in main.ts"
   quark -p coder "fix the bug in main.ts"
   quark "quick question"
   quark --model copilot/claude-sonnet-4.5 "use a specific model for this run"
   quark --no-store "quick one-off question that should not be saved"
-  quark --sub-agent --profile researcher --prompt "research auth flow"
-  quark --parent-session sess_abc --profile researcher --prompt "research auth flow"
 `)
 }
 
 interface ParsedArgs {
   profile?: string
-  prompt?: string
+  message?: string
   sessionId?: string
-  parentSessionId?: string
   model?: string
-  subAgent?: boolean
   noStore?: boolean
   verbose?: boolean
   listProfiles?: boolean
@@ -79,11 +99,9 @@ function parseArguments(): ParsedArgs {
     const { values, positionals } = parseArgs({
       options: {
         profile: { type: "string", short: "p" },
-        prompt: { type: "string", short: "m" },
+        message: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
         model: { type: "string" },
-        "parent-session": { type: "string" },
-        "sub-agent": { type: "boolean" },
         "no-store": { type: "boolean" },
         verbose: { type: "boolean" },
         "list-profiles": { type: "boolean", short: "l" },
@@ -92,29 +110,9 @@ function parseArguments(): ParsedArgs {
       allowPositionals: true,
     })
 
-    // Positional argument is treated as prompt if --prompt not given
-    const positionalPrompt = positionals.join(" ")
-    const promptText = values.prompt ?? (positionalPrompt || undefined)
-
-    // Resolve parent session ID
-    let parentSessionId: string | undefined = values["parent-session"]
-    if (values["sub-agent"]) {
-      if (parentSessionId) {
-        console.error("Error: --sub-agent and --parent-session are mutually exclusive")
-        process.exit(1)
-      }
-      parentSessionId = process.env.QUARK_SESSION_ID
-      if (!parentSessionId) {
-        console.error("Error: --sub-agent requires QUARK_SESSION_ID environment variable")
-        process.exit(1)
-      }
-    }
-
-    // --session and --parent-session are mutually exclusive
-    if (values.session && parentSessionId) {
-      console.error("Error: --session and --parent-session/--sub-agent are mutually exclusive")
-      process.exit(1)
-    }
+    // Positional argument is treated as a message if --message is not given.
+    const positionalMessage = positionals.join(" ")
+    const message = values.message ?? (positionalMessage || undefined)
 
     // --no-store and --session are mutually exclusive (can't resume an ephemeral session)
     if (values["no-store"] && values.session) {
@@ -124,11 +122,9 @@ function parseArguments(): ParsedArgs {
 
     return {
       profile: values.profile,
-      prompt: promptText,
+      message,
       sessionId: values.session,
-      parentSessionId,
       model: values.model,
-      subAgent: values["sub-agent"],
       noStore: values["no-store"],
       verbose: values.verbose,
       listProfiles: values["list-profiles"],
@@ -180,16 +176,19 @@ async function main() {
     process.exit(0)
   }
 
-  // No prompt provided → launch interactive TUI
-  if (!args.prompt) {
-    const { execSync } = await import("child_process")
+  // No message provided → launch interactive TUI
+  if (!args.message) {
+    const { execFileSync } = await import("child_process")
     const { fileURLToPath } = await import("url")
     const { dirname, resolve } = await import("path")
     const thisDir = typeof import.meta.dir === "string"
       ? import.meta.dir
       : dirname(fileURLToPath(import.meta.url))
     const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
-    execSync(`bun --preload "${quarkDir}/preload.ts" "${quarkDir}/src/tui/index.tsx"`, {
+    execFileSync("bun", [
+      "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
+      ...(args.sessionId ? ["--session", args.sessionId] : []),
+    ], {
       stdio: "inherit",
       env: { ...process.env, QUARK_DIR: quarkDir },
     })
@@ -207,11 +206,17 @@ async function main() {
     boundSkills: profile.skills,
   })
 
-  // When running as a sub-agent, stream structured events to stderr
-  // so the parent's Bash tool can render sub-agent activity in the TUI.
+  // The internal subagent supervisor opts into structured stderr events through
+  // environment variables, keeping the public CLI free of subagent flags.
+  const parentSessionId = process.env.QUARK_PARENT_SESSION_ID
   let cleanupEventWriter: (() => void) | undefined
-  if (args.subAgent) {
-    cleanupEventWriter = startEventWriter()
+  let cleanupControlReader: (() => void) | undefined
+  if (parentSessionId) {
+    cleanupEventWriter = startEventWriter({
+      resolvedModel: args.model ?? profile.model,
+      profile: profile.id,
+    })
+    cleanupControlReader = startSubagentControlReader()
   }
 
   // Wire up basic event output for CLI
@@ -271,18 +276,23 @@ async function main() {
 
     const result = await prompt({
       sessionId: args.sessionId,
-      parentSessionId: args.parentSessionId,
+      parentSessionId,
       ephemeral: args.noStore,
-      parts: [{ type: "text", text: args.prompt }],
+      parts: [{ type: "text", text: args.message }],
       model: modelOverride,
       agent,
     })
 
     dlog(`session: ${result.sessionId}`)
+    if (!args.noStore && !parentSessionId) {
+      process.stdout.write(`Resume the session with quark --session ${result.sessionId}\n`)
+    }
+    cleanupControlReader?.()
     cleanupEventWriter?.()
     process.exit(0)
   } catch (err: any) {
     console.error("Error:", err.message)
+    cleanupControlReader?.()
     cleanupEventWriter?.()
     process.exit(1)
   }

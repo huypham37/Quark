@@ -1,70 +1,92 @@
 export interface SessionTreeInput {
   id: string
   title: string | null
-  taskId?: string | null
-  taskTitle?: string
   parentSessionId?: string | null
+  pinned?: boolean
+  filesModified?: string[] | null
+  running?: boolean
   timeUpdated: number
 }
 
 export type SessionTreeRow =
-  | { type: "task"; label: string; current: boolean }
-  | { type: "session"; id: string; label: string; current: boolean; root: boolean; depth: number }
-  | { type: "orphan"; id: string; label: string; current: boolean }
+  | {
+    type: "session"
+    id: string
+    label: string
+    detail: string
+    current: boolean
+    root: boolean
+    guides: boolean[]
+    connector: "plain" | "root" | "branch" | "last"
+    running?: boolean
+  }
+  | { type: "orphan"; id: string; label: string; detail: string; current: boolean; running?: boolean }
   | { type: "spacer" }
 
-interface TaskGroup {
-  key: string
-  title: string
-  current: boolean
-  updated: number
+export interface SessionSearchResult {
   sessions: SessionTreeInput[]
+  firstMatchId: string | null
 }
 
-export function buildSessionTreeRows(sessions: SessionTreeInput[], currentSessionId: string | null): SessionTreeRow[] {
+export function searchSessionTree(sessions: SessionTreeInput[], query: string): SessionSearchResult {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return { sessions, firstMatchId: null }
+
   const byId = new Map(sessions.map((session) => [session.id, session]))
-  const current = currentSessionId ? byId.get(currentSessionId) : undefined
-  const taskSessions = sessions.filter((session) => session.taskId)
-  const orphanSessions = sessions.filter((session) => !session.taskId)
-  const currentTaskKey = current?.taskId ? taskKey(current, byId) : null
-  const groups = buildGroups(taskSessions, byId, currentTaskKey)
+  const matches = sessions
+    .filter((session) => [session.title, session.id, ...(session.filesModified ?? [])]
+      .some((value) => value?.toLowerCase().includes(normalized)))
+    .sort((a, b) => b.timeUpdated - a.timeUpdated)
+  const included = new Set(matches.map((session) => session.id))
+
+  for (const match of matches) {
+    const seen = new Set<string>()
+    let parentId = match.parentSessionId
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId)
+      included.add(parentId)
+      parentId = byId.get(parentId)?.parentSessionId
+    }
+  }
+
+  return {
+    sessions: sessions.filter((session) => included.has(session.id)),
+    firstMatchId: matches[0]?.id ?? null,
+  }
+}
+
+export function buildSessionTreeRows(
+  sessions: SessionTreeInput[],
+  currentSessionId: string | null,
+  now = Date.now(),
+): SessionTreeRow[] {
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  const groups = new Map<string, SessionTreeInput[]>()
+
+  for (const session of sessions) {
+    const root = rootSession(session, byId)
+    const group = groups.get(root.id) ?? []
+    group.push(session)
+    groups.set(root.id, group)
+  }
+
+  const ordered = [...groups.values()].sort((a, b) => {
+    const aPinned = a.some((session) => session.pinned)
+    const bPinned = b.some((session) => session.pinned)
+    if (aPinned !== bPinned) return aPinned ? -1 : 1
+    const aCurrent = a.some((session) => session.id === currentSessionId)
+    const bCurrent = b.some((session) => session.id === currentSessionId)
+    if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
+    return Math.max(...b.map((session) => session.timeUpdated)) - Math.max(...a.map((session) => session.timeUpdated))
+  })
+
   const rows: SessionTreeRow[] = []
-
-  for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-    const group = groups[groupIndex]!
-    if (groupIndex > 0) rows.push({ type: "spacer" })
-
-    rows.push({ type: "task", label: group.title, current: group.current })
-
-    const leaves = leafSessions(group.sessions, sessions)
-    for (let leafIndex = 0; leafIndex < leaves.length; leafIndex++) {
-      if (leafIndex > 0) rows.push({ type: "spacer" })
-
-      for (const { session, depth } of lineageFromLeaf(leaves[leafIndex]!, byId)) {
-        rows.push({
-          type: "session",
-          id: session.id,
-          label: sessionLabel(session, currentSessionId, byId),
-          current: session.id === currentSessionId,
-          root: isRoot(session, byId),
-          depth,
-        })
-      }
+  for (let index = 0; index < ordered.length; index++) {
+    if (index > 0 && (ordered[index - 1]!.length > 1 || ordered[index]!.length > 1)) {
+      rows.push({ type: "spacer" })
     }
+    rows.push(...sessionTreeRows(ordered[index]!, currentSessionId, now))
   }
-
-  if (orphanSessions.length > 0) {
-    if (rows.length > 0) rows.push({ type: "spacer" })
-    for (const session of orphanSessions.sort((a, b) => b.timeUpdated - a.timeUpdated)) {
-      rows.push({
-        type: "orphan",
-        id: session.id,
-        label: orphanLabel(session, currentSessionId),
-        current: session.id === currentSessionId,
-      })
-    }
-  }
-
   return rows
 }
 
@@ -85,74 +107,75 @@ export function moveSessionRowSelection(rows: SessionTreeRow[], selectedIndex: n
   return selectedIndex
 }
 
-function buildGroups(
+function sessionRow(
+  session: SessionTreeInput,
+  currentSessionId: string | null,
+  now: number,
+  connector: Extract<SessionTreeRow, { type: "session" }>["connector"],
+  guides: boolean[] = [],
+): Extract<SessionTreeRow, { type: "session" }> {
+  const root = connector === "root" || connector === "plain"
+  return {
+    type: "session",
+    id: session.id,
+    label: session.title ?? "(untitled)",
+    detail: sessionDetail(session, root, connector !== "plain", now),
+    current: session.id === currentSessionId,
+    root,
+    guides,
+    connector,
+    ...(session.running ? { running: true } : {}),
+  }
+}
+
+function sessionTreeRows(
   sessions: SessionTreeInput[],
-  byId: Map<string, SessionTreeInput>,
-  currentTaskKey: string | null,
-): TaskGroup[] {
-  const groups = new Map<string, TaskGroup>()
+  currentSessionId: string | null,
+  now: number,
+): SessionTreeRow[] {
+  if (sessions.length === 1) return [sessionRow(sessions[0]!, currentSessionId, now, "plain")]
+
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  const children = new Map<string, SessionTreeInput[]>()
+  const roots: SessionTreeInput[] = []
 
   for (const session of sessions) {
-    const key = taskKey(session, byId)
-    const existing = groups.get(key)
-    if (existing) {
-      existing.sessions.push(session)
-      existing.updated = Math.max(existing.updated, session.timeUpdated)
+    const parentId = session.parentSessionId
+    if (!parentId || !byId.has(parentId)) {
+      roots.push(session)
       continue
     }
-
-    groups.set(key, {
-      key,
-      title: taskTitle(session, byId),
-      current: key === currentTaskKey,
-      updated: session.timeUpdated,
-      sessions: [session],
-    })
+    const siblings = children.get(parentId) ?? []
+    siblings.push(session)
+    children.set(parentId, siblings)
   }
 
-  return [...groups.values()].sort((a, b) => {
-    if (a.current !== b.current) return a.current ? -1 : 1
-    return b.updated - a.updated
+  const rows: SessionTreeRow[] = []
+  const visited = new Set<string>()
+  const sorted = (items: SessionTreeInput[]) => items.sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
+    return b.timeUpdated - a.timeUpdated
   })
-}
 
-function leafSessions(groupSessions: SessionTreeInput[], allSessions: SessionTreeInput[]): SessionTreeInput[] {
-  const groupIds = new Set(groupSessions.map((session) => session.id))
-  const parentIds = new Set(
-    allSessions
-      .map((session) => session.parentSessionId)
-      .filter((id): id is string => !!id && groupIds.has(id)),
-  )
-  const leaves = groupSessions.filter((session) => !parentIds.has(session.id))
-  return (leaves.length > 0 ? leaves : groupSessions).sort((a, b) => b.timeUpdated - a.timeUpdated)
-}
+  const visit = (
+    session: SessionTreeInput,
+    guides: boolean[],
+    connector: Extract<SessionTreeRow, { type: "session" }>["connector"],
+  ) => {
+    if (visited.has(session.id)) return
+    visited.add(session.id)
+    rows.push(sessionRow(session, currentSessionId, now, connector, guides))
 
-function lineageFromLeaf(
-  leaf: SessionTreeInput,
-  byId: Map<string, SessionTreeInput>,
-): Array<{ session: SessionTreeInput; depth: number }> {
-  const lineage: Array<{ session: SessionTreeInput; depth: number }> = []
-  const seen = new Set<string>()
-  let session: SessionTreeInput | undefined = leaf
-  let depth = 0
-
-  while (session && !seen.has(session.id)) {
-    seen.add(session.id)
-    lineage.push({ session, depth })
-    session = session.parentSessionId ? byId.get(session.parentSessionId) : undefined
-    depth++
+    const descendants = sorted(children.get(session.id) ?? [])
+    for (let index = 0; index < descendants.length; index++) {
+      const childGuides = connector === "root" ? [] : [...guides, connector === "branch"]
+      visit(descendants[index]!, childGuides, index === descendants.length - 1 ? "last" : "branch")
+    }
   }
 
-  return lineage
-}
-
-function taskKey(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): string {
-  if (session.taskId) return `task:${session.taskId}`
-  return `root:${rootSession(session, byId).id}`
-}
-
-function taskTitle(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): string {
-  return session.taskTitle ?? rootSession(session, byId).title ?? "(untitled)"
+  for (const root of sorted(roots)) visit(root, [], "root")
+  for (const session of sorted(sessions)) visit(session, [], "root")
+  return rows
 }
 
 function rootSession(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): SessionTreeInput {
@@ -169,34 +192,32 @@ function rootSession(session: SessionTreeInput, byId: Map<string, SessionTreeInp
   return current
 }
 
-function sessionLabel(
+function sessionDetail(
   session: SessionTreeInput,
-  currentSessionId: string | null,
-  byId: Map<string, SessionTreeInput>,
+  root: boolean,
+  branched: boolean,
+  now: number,
 ): string {
   const markers: string[] = []
-  if (session.id === currentSessionId) markers.push("current")
-  if (isRoot(session, byId)) markers.push("root")
-
-  const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
-  return `from ${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
+  if (session.pinned) markers.push("pinned")
+  if (branched) markers.push(root ? "original" : "branch")
+  if (session.running) markers.push("● running")
+  const fileCount = new Set(session.filesModified ?? []).size
+  if (fileCount) markers.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`)
+  return [...markers, formatRelativeTime(session.timeUpdated, now)].join(" · ")
 }
 
-function orphanLabel(session: SessionTreeInput, currentSessionId: string | null): string {
-  const markers = session.id === currentSessionId ? ["current"] : []
-  const suffix = [...markers, formatDate(session.timeUpdated)].join(" · ")
-  return `${session.title ?? "(untitled)"}${suffix ? ` · ${suffix}` : ""}`
+function selectableRow(row: SessionTreeRow | undefined): row is Extract<SessionTreeRow, { type: "session" }> {
+  return row?.type === "session"
 }
 
-function selectableRow(row: SessionTreeRow | undefined): row is Extract<SessionTreeRow, { type: "session" | "orphan" }> {
-  return row?.type === "session" || row?.type === "orphan"
-}
-
-function isRoot(session: SessionTreeInput, byId: Map<string, SessionTreeInput>): boolean {
-  return !session.parentSessionId || !byId.has(session.parentSessionId)
-}
-
-function formatDate(time: number): string {
-  const date = new Date(time)
-  return `${date.getMonth() + 1}/${date.getDate()}`
+export function formatRelativeTime(time: number, now = Date.now()): string {
+  const minutes = Math.floor(Math.max(0, now - time) / 60_000)
+  if (minutes < 1) return "now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return `${Math.floor(days / 7)}w ago`
 }

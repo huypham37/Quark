@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { For, Index, createSignal, createEffect, Show } from "solid-js"
+import { For, Index, createSignal, createEffect, onCleanup, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -18,12 +18,14 @@ import { MessageItem } from "./message-item"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
+import { CommandPalette, type PaletteMode } from "./command-palette"
+import { preservePaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
 import { PermissionPrompt } from "./permission-prompt"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
 import { colors } from "../theme"
-import { respond as respondPermission } from "../../permission/permission"
+import { respondPermission } from "../../permission/broker"
 import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter, clearFileCache } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
@@ -31,6 +33,7 @@ import {
   buildSessionTreeRows,
   firstSelectableSessionRow,
   moveSessionRowSelection,
+  searchSessionTree,
   type SessionTreeInput,
   type SessionTreeRow,
 } from "../session-tree-picker"
@@ -52,10 +55,13 @@ import { info as notifyInfo, warn as notifyWarn } from "../../notification/notif
 import { getNextModel, getPrevModel } from "../model-cycle"
 import { buildPickerItems, pickerModeForCommand, type ChoicePickerMode } from "../picker-items"
 import type { FileTarget } from "../editor"
+import { authStatus, loginApiKey, loginOAuth } from "../../commands/auth"
+import { loadConfig } from "../../config/config"
+import { buildConnectProviderRows, safeConnectError, type ConnectProviderRow } from "../connect-provider"
 
 /** Command handler result */
 export type CommandResult =
-  | { handled: true; next?: "sessions-picker" }
+  | { handled: true; next?: "sessions-palette" }
   | { handled: false }
 
 interface AppProps {
@@ -81,12 +87,19 @@ interface AppProps {
   getCurrentModel?: () => string
   getProfiles?: () => { id: string; name: string }[]
   getCurrentProfile?: () => string
-  getSkills?: () => { id: string; name: string }[]
-  getCurrentSkill?: () => string
+  getPaletteEntries?: () => PaletteEntry[] | Promise<PaletteEntry[]>
   initialSessionId?: string
+  initialMessages?: TuiMessage[]
   initialModelName?: string
   initialSkillCount?: number
   initialThinkingEffort?: string
+}
+
+interface QueuedUserMessage {
+  id: string
+  text: string
+  images?: { mime: string; data: string; label: string }[]
+  context?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -115,11 +128,10 @@ const MENTION_INACTIVE: MentionState = {
 
 interface SlashState {
   active: boolean
-  mode: "commands" | "sessions" | "worktrees" | ChoicePickerMode
+  mode: "commands" | "worktrees" | ChoicePickerMode
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
-  sessionRows: SessionTreeRow[]
   worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
@@ -130,13 +142,11 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
-  sessionRows: [],
   worktreeRows: [],
   selectedIndex: 0,
 }
 
 const MAX_FILE_ITEMS = 50
-const MAX_DROPDOWN_ITEMS = 15
 const SCROLL_STEP = 3
 
 export const App: Component<AppProps> = (props) => {
@@ -170,6 +180,7 @@ export const App: Component<AppProps> = (props) => {
   // --- App-level state store (messages, session, running, status, etc.) ---
   const state = createAppState({
     sessionId: props.initialSessionId ?? null,
+    messages: props.initialMessages ?? [],
     modelName: props.initialModelName ?? "smart",
     skillCount: props.initialSkillCount ?? 0,
     thinkingEffort: props.initialThinkingEffort,
@@ -220,6 +231,7 @@ export const App: Component<AppProps> = (props) => {
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
   let inputRef: TextareaRenderable | undefined
+  let paletteInputRef: TextareaRenderable | undefined
   let customQuestionRef: TextareaRenderable | undefined
 
   // --- Local UI signals (not in the global store — ephemeral) ---
@@ -227,10 +239,54 @@ export const App: Component<AppProps> = (props) => {
   const [slash, setSlash] = createSignal<SlashState>(SLASH_INACTIVE)
   // Mirror of input value (kept in sync with inputRef via onInput)
   const [inputValue, setInputValue] = createSignal("")
+  const [queuedMessages, setQueuedMessages] = createSignal<QueuedUserMessage[]>([])
+  const [selectedQueuedMessageId, setSelectedQueuedMessageId] = createSignal<string | null>(null)
+  const [paletteOpen, setPaletteOpen] = createSignal(false)
+  const [paletteQuery, setPaletteQuery] = createSignal("")
+  const [paletteEntries, setPaletteEntries] = createSignal<PaletteEntry[]>([])
+  const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
+  const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
+  const [paletteMode, setPaletteMode] = createSignal<PaletteMode>("search")
+  const [connectProviders, setConnectProviders] = createSignal<ConnectProviderRow[]>([])
+  const [connectProvider, setConnectProvider] = createSignal<ConnectProviderRow | undefined>()
+  const [connectApiKey, setConnectApiKey] = createSignal("")
+  const [connectDeviceCode, setConnectDeviceCode] = createSignal<{ verificationUri: string; userCode: string } | undefined>()
+  const [connectBrowserUrl, setConnectBrowserUrl] = createSignal<string | undefined>()
+  const [connectAwaitingBrowserInput, setConnectAwaitingBrowserInput] = createSignal(false)
+  const [connectResult, setConnectResult] = createSignal<{ kind: "success" | "info" | "error"; message: string } | undefined>()
+  let connectAbortController: AbortController | undefined
+  let resolveBrowserPrompt: ((value: string) => void) | undefined
+  const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
+  const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
+  const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
+  let paletteGeneration = 0
+  let savedComposer: {
+    text: string
+    cursorOffset: number
+    images: { mime: string; data: string; label: string }[]
+    selectedImageIndex: number | null
+    historyIndex: number
+    historyDraft: string
+    scrollTop: number
+  } | null = null
   // Statistics panel visibility and content
   const [statisticsContent, setStatisticsContent] = createSignal<string | null>(null)
   // Async panel side-session ID (created lazily on first panel submit)
   const [asyncSessionId, setAsyncSessionId] = createSignal<string | null>(null)
+
+  const clearQueuedMessages = () => {
+    setQueuedMessages([])
+    setSelectedQueuedMessageId(null)
+  }
+  const clearQueueOnSessionChange = () => clearQueuedMessages()
+  bus.on("session-reset", clearQueueOnSessionChange)
+  bus.on("session-switch", clearQueueOnSessionChange)
+  bus.on("worktree-switched", clearQueueOnSessionChange)
+  onCleanup(() => {
+    bus.off("session-reset", clearQueueOnSessionChange)
+    bus.off("session-switch", clearQueueOnSessionChange)
+    bus.off("worktree-switched", clearQueueOnSessionChange)
+  })
 
   // File cache (loaded lazily on first @ mention)
   let allFiles: string[] | null = null
@@ -286,7 +342,7 @@ export const App: Component<AppProps> = (props) => {
   }
 
   // Whether any dropdown or overlay is active
-  const dropdownActive = () => mention().active || slash().active || statisticsContent() !== null
+  const dropdownActive = () => mention().active || slash().active || paletteOpen() || statisticsContent() !== null
 
   // ---------------------------------------------------------------------------
   // Pending image removal
@@ -349,33 +405,246 @@ export const App: Component<AppProps> = (props) => {
   // Slash updater — called when input value changes
   // ---------------------------------------------------------------------------
 
-  const updateSlashFromValue = (newValue: string) => {
-    if (!newValue.startsWith("/")) {
-      setSlash(SLASH_INACTIVE)
+  const restoreComposer = (textOverride?: string) => {
+    const saved = savedComposer
+    savedComposer = null
+    setPaletteOpen(false)
+    setPaletteQuery("")
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSelectedIndex(0)
+    setPaletteMode("search")
+    setConnectProviders([])
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    connectAbortController = undefined
+    resolveBrowserPrompt = undefined
+    setPaletteSessionInputs([])
+    setPaletteSessionRows([])
+    setPaletteSessionAction("browse")
+    if (!saved) return
+    const text = textOverride ?? saved.text
+    setPendingImages(saved.images)
+    setSelectedImageIndex(saved.selectedImageIndex)
+    setHistoryIndex(saved.historyIndex)
+    setHistoryDraft(saved.historyDraft)
+    setInputText(text)
+    if (inputRef) inputRef.cursorOffset = textOverride === undefined ? Math.min(saved.cursorOffset, text.length) : text.length
+    if (scroll) scroll.scrollTop = saved.scrollTop
+  }
+
+  const openPalette = () => {
+    if (!inputRef || !props.getPaletteEntries) return false
+    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    savedComposer = {
+      text: "",
+      cursorOffset: 0,
+      images: [...pendingImages()],
+      selectedImageIndex: selectedImageIndex(),
+      historyIndex: historyIndex(),
+      historyDraft: historyDraft(),
+      scrollTop: scroll?.scrollTop ?? 0,
+    }
+    const generation = ++paletteGeneration
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
+    setInputText("")
+    setPaletteQuery("")
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSelectedIndex(0)
+    setPaletteMode("search")
+    setConnectProviders([])
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    connectAbortController = undefined
+    resolveBrowserPrompt = undefined
+    setPaletteSessionInputs([])
+    setPaletteSessionRows([])
+    setPaletteSessionAction("browse")
+    setPaletteOpen(true)
+    Promise.resolve(props.getPaletteEntries())
+      .then((entries) => {
+        if (!paletteOpen() || generation !== paletteGeneration) return
+        setPaletteEntries(entries)
+        const results = searchPaletteEntries(entries, paletteQuery())
+        setPaletteResults(results)
+        setPaletteSelectedIndex(0)
+      })
+      .catch((error) => {
+        if (paletteOpen() && generation === paletteGeneration) {
+          notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+        }
+      })
+    return true
+  }
+
+  const entityPaletteEntries = (type: "skill" | "model" | "provider") => paletteEntries()
+    .filter((entry) => entry.type === type)
+    .sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
+
+  const openEntityPalette = (mode: "skills" | "models", type: "skill" | "model") => {
+    setPaletteMode(mode)
+    setPaletteQuery("")
+    setPaletteResults(entityPaletteEntries(type))
+    setPaletteSelectedIndex(0)
+  }
+
+  const openConnectProviders = async () => {
+    setPaletteMode("connect-providers")
+    setPaletteQuery("")
+    paletteInputRef?.clear()
+    setPaletteSelectedIndex(0)
+    setConnectProvider(undefined)
+    setConnectApiKey("")
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setConnectResult(undefined)
+    const providers = await (async () => {
+      try {
+        return buildConnectProviderRows(await authStatus(), loadConfig().providers)
+      } catch {
+        return buildConnectProviderRows([], loadConfig().providers)
+      }
+    })()
+    const entries = providers.map((provider): PaletteEntry => ({
+      key: `provider:${provider.id}`,
+      type: "provider",
+      id: provider.id,
+      label: provider.name,
+      detail: `${provider.detail}${provider.status ? ` · ${provider.status}` : ""}`,
+      searchText: [provider.name, provider.id, provider.detail, provider.status ?? ""],
+      action: { type: "provider", providerId: provider.id },
+    }))
+    setConnectProviders(providers)
+    setPaletteEntries(entries)
+    setPaletteResults(entries)
+  }
+
+  const finishConnect = async (provider: ConnectProviderRow) => {
+    const refreshed = await authStatus()
+    const status = refreshed.find((item) => item.providerId.toLowerCase() === provider.id.toLowerCase())
+    setConnectResult(status?.origin === "environment"
+      ? { kind: "info", message: `✓ Stored credential for ${provider.name}; its environment credential remains active` }
+      : { kind: "success", message: `✓ Connected to ${provider.name}` })
+    setPaletteMode("connect-result")
+    setTimeout(() => {
+      if (paletteOpen() && paletteMode() === "connect-result") restoreComposer()
+    }, 1200)
+  }
+
+  const failConnect = (provider: ConnectProviderRow, error: unknown) => {
+    setConnectApiKey("")
+    setPaletteQuery("")
+    setConnectResult({ kind: "error", message: safeConnectError(error) })
+    notifyWarn(`Connect ${provider.name}`, safeConnectError(error), 4000)
+  }
+
+  const authorizeProvider = async (provider: ConnectProviderRow, method?: "browser" | "device") => {
+    connectAbortController = new AbortController()
+    setConnectDeviceCode(undefined)
+    setConnectBrowserUrl(undefined)
+    setConnectAwaitingBrowserInput(false)
+    setPaletteQuery("")
+    setPaletteMode("connect-authorizing")
+    try {
+      await loginOAuth({
+        providerId: provider.id,
+        persistence: "store",
+        method,
+        signal: connectAbortController.signal,
+        onDeviceCode: ({ verificationUri, userCode }) => setConnectDeviceCode({ verificationUri, userCode }),
+        onBrowserUrl: (url) => setConnectBrowserUrl(url),
+        onBrowserPrompt: () => {
+          setConnectAwaitingBrowserInput(true)
+          return new Promise<string>((resolve) => { resolveBrowserPrompt = resolve })
+        },
+      })
+      await finishConnect(provider)
+    } catch (error) {
+      if (connectAbortController?.signal.aborted) return
+      failConnect(provider, error)
+      setPaletteMode(provider.id === "codex" ? "connect-codex-method" : "connect-providers")
+    } finally {
+      connectAbortController = undefined
+      resolveBrowserPrompt = undefined
+      setConnectAwaitingBrowserInput(false)
+    }
+  }
+
+  const chooseConnectProvider = async () => {
+    const providerId = paletteResults()[paletteSelectedIndex()]?.action.type === "provider"
+      ? paletteResults()[paletteSelectedIndex()]?.action.providerId
+      : undefined
+    const provider = connectProviders().find((item) => item.id === providerId)
+    if (!provider) return
+    setConnectProvider(provider)
+    setConnectResult(undefined)
+    if (provider.kind === "custom") {
+      setConnectResult({
+        kind: "info",
+        message: provider.environmentVariable
+          ? `Set ${provider.environmentVariable} to change this provider's API key`
+          : "Configure api_key_env, then set that environment variable",
+      })
+      setPaletteMode("connect-result")
+    } else if (provider.kind === "none") {
+      setConnectResult({ kind: "success", message: `✓ ${provider.name} needs no authentication` })
+      setPaletteMode("connect-result")
+    } else if (provider.kind === "api-key") {
+      setConnectApiKey("")
+      setPaletteQuery("")
+        setPaletteMode("connect-api-key")
+    } else if (provider.id === "codex") {
+      setPaletteSelectedIndex(0)
+      setPaletteMode("connect-codex-method")
+    } else {
+      await authorizeProvider(provider, "device")
+    }
+  }
+
+  const updatePaletteQuery = () => {
+    if (!paletteInputRef) return
+    const query = paletteInputRef.plainText
+    if (paletteMode() === "connect-api-key") {
+      setPaletteQuery(query)
+      setConnectApiKey(query)
       return
     }
-
-    const spaceIndex = newValue.indexOf(" ")
-
-    // If there's a space, the command part is done — dismiss dropdown
-    if (spaceIndex !== -1) {
-      setSlash(SLASH_INACTIVE)
+    if (paletteMode() === "connect-authorizing" && connectAwaitingBrowserInput()) {
+      setPaletteQuery(query)
       return
     }
-
-    const query = newValue.slice(1)
-    const filtered = filterCommands(query, MAX_DROPDOWN_ITEMS)
-
-    setSlash({
-      active: true,
-      mode: "commands",
-      query,
-      items: filtered,
-      pickerItems: [],
-      sessionRows: [],
-      worktreeRows: [],
-      selectedIndex: 0,
-    })
+    if (paletteMode().startsWith("connect-") && paletteMode() !== "connect-providers") return
+    if (paletteMode() === "sessions") {
+      setPaletteQuery(query)
+      if (paletteSessionAction() === "rename") return
+      const result = searchSessionTree(paletteSessionInputs(), query)
+      const rows = buildSessionTreeRows(result.sessions, state.store.sessionId)
+      setPaletteSessionRows(rows)
+      setPaletteSelectedIndex(firstSelectableSessionRow(rows, result.firstMatchId ?? state.store.sessionId))
+      return
+    }
+    const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
+    const entityType = paletteMode() === "skills" ? "skill" : paletteMode() === "models" ? "model" : paletteMode() === "connect-providers" ? "provider" : undefined
+    const entries = entityType
+      ? paletteEntries().filter((entry) => entry.type === entityType)
+      : paletteEntries()
+    const results = entityType && !query.trim()
+      ? entityPaletteEntries(entityType)
+      : searchPaletteEntries(entries, query)
+    setPaletteQuery(query)
+    setPaletteResults(results)
+    setPaletteSelectedIndex(Math.max(0, preservePaletteSelectionIndex(selectedKey, results)))
   }
 
   // ---------------------------------------------------------------------------
@@ -389,13 +658,13 @@ export const App: Component<AppProps> = (props) => {
 
     const s = slash()
 
-    // Sessions / worktree pickers: block all input changes (no filtering)
-    if ((s.mode === "sessions" || s.mode === "worktrees") && s.active) {
+    // Worktree picker does not accept text input.
+    if (s.mode === "worktrees" && s.active) {
       return
     }
 
     // Choice pickers: filter the list by what the user types
-    if ((s.mode === "models" || s.mode === "profiles" || s.mode === "skills") && s.active) {
+    if (s.mode === "profiles" && s.active) {
       const options = getChoiceOptions(s.mode)
       if (!options) return
       const query = newValue
@@ -407,9 +676,11 @@ export const App: Component<AppProps> = (props) => {
 
     setInputValue(newValue)
 
-    // Slash and mention are mutually exclusive — slash takes precedence
+    if (newValue === "/" && openPalette()) return
+
+    // Explicit slash commands remain submittable, but command discovery belongs to the palette.
     if (newValue.startsWith("/")) {
-      updateSlashFromValue(newValue)
+      setSlash(SLASH_INACTIVE)
       setMention(MENTION_INACTIVE)
     } else {
       setSlash(SLASH_INACTIVE)
@@ -433,22 +704,42 @@ export const App: Component<AppProps> = (props) => {
     setInputValue(text)
   }
 
-  const openSessionsPicker = (): boolean => {
+  const openSessionsPalette = (
+    preferredSessionId?: string,
+    query = "",
+  ): boolean => {
     if (!props.getSessions) return false
+    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (!paletteOpen()) {
+      savedComposer = {
+        text: "",
+        cursorOffset: 0,
+        images: [...pendingImages()],
+        selectedImageIndex: selectedImageIndex(),
+        historyIndex: historyIndex(),
+        historyDraft: historyDraft(),
+        scrollTop: scroll?.scrollTop ?? 0,
+      }
+    }
     const sessions = props.getSessions()
     const sid = state.store.sessionId
-    const sessionRows = buildSessionTreeRows(sessions, sid)
-    setSlash({
-      active: true,
-      mode: "sessions",
-      query: "",
-      items: [],
-      pickerItems: [],
-      sessionRows,
-      worktreeRows: [],
-      selectedIndex: firstSelectableSessionRow(sessionRows, sid),
-    })
+    const result = searchSessionTree(sessions, query)
+    const sessionRows = buildSessionTreeRows(result.sessions, sid)
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
     setInputText("")
+    setPaletteMode("sessions")
+    setPaletteQuery(query)
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSessionInputs(sessions)
+    setPaletteSessionRows(sessionRows)
+    setPaletteSessionAction("browse")
+    setPaletteSelectedIndex(firstSelectableSessionRow(
+      sessionRows,
+      preferredSessionId ?? result.firstMatchId ?? sid,
+    ))
+    setPaletteOpen(true)
     return true
   }
 
@@ -475,7 +766,6 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: [],
-      sessionRows: [],
       worktreeRows: rows,
       selectedIndex: firstSelectableWorktreeRow(rows),
     })
@@ -483,11 +773,9 @@ export const App: Component<AppProps> = (props) => {
     return true
   }
 
-  const getChoiceOptions = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getModels?.() : mode === "profiles" ? props.getProfiles?.() : props.getSkills?.()
+  const getChoiceOptions = (_mode: ChoicePickerMode) => props.getProfiles?.()
 
-  const getCurrentChoice = (mode: ChoicePickerMode) =>
-    mode === "models" ? props.getCurrentModel?.() ?? "" : mode === "profiles" ? props.getCurrentProfile?.() ?? "" : props.getCurrentSkill?.() ?? ""
+  const getCurrentChoice = (_mode: ChoicePickerMode) => props.getCurrentProfile?.() ?? ""
 
   const openChoicePicker = (mode: ChoicePickerMode): boolean => {
     const options = getChoiceOptions(mode)
@@ -498,7 +786,6 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
-      sessionRows: [],
       worktreeRows: [],
       selectedIndex: 0,
     })
@@ -529,7 +816,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    if (commandId === "sessions" && !args && openSessionsPicker()) {
+    if (commandId === "connect" && !args && paletteOpen()) {
+      void openConnectProviders()
+      return
+    }
+
+    if (commandId === "sessions" && !args && openSessionsPalette()) {
       return
     }
 
@@ -545,6 +837,7 @@ export const App: Component<AppProps> = (props) => {
     }
 
     if (commandId === "async-msg") {
+      clearQueuedMessages()
       dispatch(state, { type: "open-async-panel", sessionId: null, title: "msg" })
       return
     }
@@ -553,8 +846,8 @@ export const App: Component<AppProps> = (props) => {
     if (props.onCommand) {
       Promise.resolve(props.onCommand(commandId, args, state.store.sessionId))
         .then((res) => {
-          if (res?.handled && res.next === "sessions-picker") {
-            openSessionsPicker()
+          if (res?.handled && res.next === "sessions-palette") {
+            openSessionsPalette()
           }
         })
     }
@@ -566,15 +859,18 @@ export const App: Component<AppProps> = (props) => {
   // Returns true if the key was consumed.
   // ---------------------------------------------------------------------------
 
-  const handleDropdownKey = (name: string, isTab: boolean, isReturn: boolean, isEscape: boolean): boolean => {
+  const handleDropdownKey = (
+    name: string,
+    isTab: boolean,
+    isReturn: boolean,
+    isEscape: boolean,
+  ): boolean => {
     const s = slash()
     if (s.active) {
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
-          selectedIndex: prev.mode === "sessions"
-            ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, -1)
-            : prev.mode === "worktrees"
+          selectedIndex: prev.mode === "worktrees"
               ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, -1)
               : Math.max(0, prev.selectedIndex - 1),
         }))
@@ -584,18 +880,14 @@ export const App: Component<AppProps> = (props) => {
       if (name === "down") {
         const totalItems = s.mode === "commands"
           ? s.items.length
-          : s.mode === "sessions"
-            ? s.sessionRows.length
-            : s.mode === "worktrees"
+          : s.mode === "worktrees"
               ? s.worktreeRows.length
               : s.pickerItems.length
         setSlash((prev) => {
           if (totalItems === 0) return prev
           return {
             ...prev,
-            selectedIndex: prev.mode === "sessions"
-              ? moveSessionRowSelection(prev.sessionRows, prev.selectedIndex, 1)
-              : prev.mode === "worktrees"
+            selectedIndex: prev.mode === "worktrees"
                 ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, 1)
                 : Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
@@ -604,30 +896,18 @@ export const App: Component<AppProps> = (props) => {
       }
 
       if (isTab || isReturn) {
-        // --- Session picker mode ---
-        if (s.mode === "sessions") {
-          const selected = s.sessionRows[s.selectedIndex]
-          if (selected?.type === "session" || selected?.type === "orphan") {
-            setSlash(SLASH_INACTIVE)
-            setInputText("")
-            if (props.onCommand) {
-              props.onCommand("sessions", selected.id, state.store.sessionId)
-            }
-          }
-          return true
-        }
-
         // --- Worktree picker mode ---
         if (s.mode === "worktrees") {
           const selected = s.worktreeRows[s.selectedIndex]
           if (selected?.type === "worktree") {
+            clearQueuedMessages()
             setSlash(SLASH_INACTIVE)
             setInputText("")
             if (props.onCommand) {
               Promise.resolve(props.onCommand("worktree", selected.id, state.store.sessionId))
                 .then((res) => {
-                  if (res?.handled && res.next === "sessions-picker") {
-                    openSessionsPicker()
+                  if (res?.handled && res.next === "sessions-palette") {
+                    openSessionsPalette()
                   }
                 })
             }
@@ -636,18 +916,12 @@ export const App: Component<AppProps> = (props) => {
         }
 
         // --- Choice picker mode ---
-        if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
+        if (s.mode === "profiles") {
           const selected = s.pickerItems[s.selectedIndex]
           if (selected) {
             setSlash(SLASH_INACTIVE)
             setInputText("")
-            const command = s.mode === "models" ? "model" : s.mode === "profiles" ? "profile" : "skills"
-            if (props.onCommand) {
-              props.onCommand(command, selected.id, state.store.sessionId)
-            }
-            if (s.mode === "models") {
-              state.setStore("status", "modelName", selected.id)
-            }
+            props.onCommand?.("profile", selected.id, state.store.sessionId)
           }
           return true
         }
@@ -656,11 +930,6 @@ export const App: Component<AppProps> = (props) => {
         if (s.items.length > 0) {
           const selected = s.items[s.selectedIndex]
           if (selected) {
-            // /sessions → transition to session picker
-            if (selected.id === "sessions" && isReturn && openSessionsPicker()) {
-              return true
-            }
-
             // /worktree → transition to worktree picker
             if (selected.id === "worktree" && isReturn && openWorktreePicker()) {
               return true
@@ -747,7 +1016,7 @@ export const App: Component<AppProps> = (props) => {
   // Submit handler
   // ---------------------------------------------------------------------------
 
-  const handleSubmit = (text: string) => {
+  const prepareSubmission = (text: string): QueuedUserMessage | undefined => {
     setMention(MENTION_INACTIVE)
     setSlash(SLASH_INACTIVE)
     // Reset history navigation on submit
@@ -763,7 +1032,7 @@ export const App: Component<AppProps> = (props) => {
       if (commandId) {
         executeCommand(commandId, args)
         setInputText("")
-        return
+        return undefined
       }
     }
 
@@ -795,12 +1064,98 @@ export const App: Component<AppProps> = (props) => {
     // Auto-scroll to bottom
     scroll?.scrollBy({ x: 0, y: Infinity })
 
-    props.onSubmit(
+    return {
+      id: generateId(),
       text,
+      images: imgs.length > 0 ? [...imgs] : undefined,
+      context: context || undefined,
+    }
+  }
+
+  const sendSubmission = (message: QueuedUserMessage) => {
+    props.onSubmit(
+      message.text,
       state.store.sessionId,
-      imgs.length > 0 ? imgs.map((img) => ({ mime: img.mime, data: img.data })) : undefined,
-      context || undefined,
+      message.images?.map((image) => ({ mime: image.mime, data: image.data })),
+      message.context,
     )
+  }
+
+  const handleSubmit = (text: string) => {
+    const message = prepareSubmission(text)
+    if (!message) return
+    if (state.store.running) {
+      setQueuedMessages((messages) => [...messages, message])
+    } else {
+      sendSubmission(message)
+    }
+  }
+
+  let dequeuePending = false
+  const [dequeueTick, setDequeueTick] = createSignal(0)
+  createEffect(() => {
+    dequeueTick()
+    if (
+      dequeuePending
+      || state.store.running
+      || state.store.permission
+      || state.store.question
+      || state.store.asyncPanel
+      || queuedMessages().length === 0
+    ) return
+
+    dequeuePending = true
+    queueMicrotask(() => {
+      let next: QueuedUserMessage | undefined
+      if (!state.store.running && !state.store.permission && !state.store.question && !state.store.asyncPanel) {
+        setQueuedMessages((messages) => {
+          next = messages[0]
+          if (next?.id === selectedQueuedMessageId()) setSelectedQueuedMessageId(null)
+          return next ? messages.slice(1) : messages
+        })
+        if (next) sendSubmission(next)
+      }
+      queueMicrotask(() => {
+        dequeuePending = false
+        setDequeueTick((tick) => tick + 1)
+      })
+    })
+  })
+
+  const selectQueuedMessage = (direction: 1 | -1) => {
+    const messages = queuedMessages()
+    if (messages.length === 0) return
+    const selectedIndex = messages.findIndex((message) => message.id === selectedQueuedMessageId())
+    const nextIndex = selectedIndex === -1
+      ? (direction === 1 ? 0 : messages.length - 1)
+      : (selectedIndex + direction + messages.length) % messages.length
+    setSelectedQueuedMessageId(messages[nextIndex].id)
+  }
+
+  const removeSelectedQueuedMessage = () => {
+    const selectedId = selectedQueuedMessageId()
+    if (!selectedId) return
+    setQueuedMessages((messages) => {
+      const selectedIndex = messages.findIndex((message) => message.id === selectedId)
+      if (selectedIndex === -1) return messages
+      const next = messages.filter((message) => message.id !== selectedId)
+      setSelectedQueuedMessageId(next[Math.min(selectedIndex, next.length - 1)]?.id ?? null)
+      return next
+    })
+  }
+
+  const sendSelectedQueuedMessageNow = () => {
+    const selectedId = selectedQueuedMessageId()
+    if (!selectedId || !state.store.running || !state.store.sessionId) return
+    setQueuedMessages((messages) => {
+      const selectedIndex = messages.findIndex((message) => message.id === selectedId)
+      if (selectedIndex <= 0) return messages
+      const selected = messages[selectedIndex]
+      return [selected, ...messages.slice(0, selectedIndex), ...messages.slice(selectedIndex + 1)]
+    })
+    setSelectedQueuedMessageId(null)
+    // Keep the normal loop-end dispatcher as the serialization boundary.
+    props.onCancel(state.store.sessionId)
   }
 
   // ---------------------------------------------------------------------------
@@ -810,13 +1165,10 @@ export const App: Component<AppProps> = (props) => {
   const autocompleteMode = (): AutocompleteMode | null => {
     const s = slash()
     if (s.active) {
-      if (s.mode === "sessions") {
-        return { type: "sessions", rows: s.sessionRows, selectedIndex: s.selectedIndex }
-      }
       if (s.mode === "worktrees") {
         return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
       }
-      if (s.mode === "models" || s.mode === "profiles" || s.mode === "skills") {
+      if (s.mode === "profiles") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
       return { type: "commands", items: s.items, selectedIndex: s.selectedIndex, query: s.query }
@@ -830,11 +1182,244 @@ export const App: Component<AppProps> = (props) => {
     return null
   }
 
+  const runPaletteSelection = async () => {
+    if (paletteMode() === "connect-providers") {
+      await chooseConnectProvider()
+      return
+    }
+    if (paletteMode() === "connect-api-key") {
+      const provider = connectProvider()
+      if (!provider) return
+      const apiKey = connectApiKey()
+      if (!apiKey.trim()) {
+        failConnect(provider, new Error("empty"))
+        return
+      }
+      try {
+        await loginApiKey({ providerId: provider.id, apiKey, persistence: "store" })
+        setConnectApiKey("")
+        setPaletteQuery("")
+            await finishConnect(provider)
+      } catch (error) {
+        failConnect(provider, error)
+      }
+      return
+    }
+    if (paletteMode() === "connect-codex-method") {
+      const provider = connectProvider()
+      if (provider) await authorizeProvider(provider, paletteSelectedIndex() === 0 ? "browser" : "device")
+      return
+    }
+    if (paletteMode() === "connect-authorizing") {
+      if (connectAwaitingBrowserInput() && resolveBrowserPrompt) {
+        const resolve = resolveBrowserPrompt
+        resolveBrowserPrompt = undefined
+        setConnectAwaitingBrowserInput(false)
+        resolve(paletteQuery())
+        setPaletteQuery("")
+          }
+      return
+    }
+    if (paletteMode() === "connect-result") {
+      restoreComposer()
+      return
+    }
+    if (paletteMode() === "sessions") {
+      const selected = paletteSessionRows()[paletteSelectedIndex()]
+      if (selected?.type !== "session" && selected?.type !== "orphan") return
+      try {
+        if (paletteSessionAction() === "rename") {
+          const title = paletteQuery().trim()
+          if (!title) return
+          await props.onCommand?.(
+            "rename-session",
+            JSON.stringify({ id: selected.id, title }),
+            state.store.sessionId,
+          )
+          openSessionsPalette(selected.id)
+          return
+        }
+        clearQueuedMessages()
+        await props.onCommand?.("sessions", selected.id, state.store.sessionId)
+        restoreComposer()
+      } catch (error) {
+        notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+      }
+      return
+    }
+
+    const entry = paletteResults()[paletteSelectedIndex()]
+    if (!entry) return
+    if (entry.isUnavailable) {
+      notifyInfo("Command palette", `${entry.label} is unavailable`, 2500)
+      return
+    }
+
+    const action = entry.action
+    try {
+      if (action.type === "tool") {
+        notifyInfo("Command palette", "Tool mentions are not supported yet", 2500)
+        return
+      }
+      if (action.type === "model") {
+        await props.onCommand?.("model", action.modelId, state.store.sessionId)
+        restoreComposer()
+        return
+      }
+      if (action.type === "skill") {
+        await props.onCommand?.("skills", action.skillId, state.store.sessionId)
+        restoreComposer()
+        return
+      }
+      const command = filterCommands("", 99).find((item) => item.id === action.commandId)
+      if (action.commandId === "connect") {
+        await openConnectProviders()
+        return
+      }
+      if (action.commandId === "skills") {
+        openEntityPalette("skills", "skill")
+        return
+      }
+      if (action.commandId === "model") {
+        openEntityPalette("models", "model")
+        return
+      }
+      if (action.commandId === "sessions") {
+        openSessionsPalette()
+        return
+      }
+      if (action.commandId === "worktree") {
+        restoreComposer()
+        openWorktreePicker()
+        return
+      }
+      const pickerMode = pickerModeForCommand(action.commandId)
+      if (pickerMode) {
+        restoreComposer()
+        openChoicePicker(pickerMode)
+        return
+      }
+      const requiresArgs = command?.usage?.includes("<") || action.commandId === "compact" || action.commandId === "steer"
+      if (requiresArgs) {
+        restoreComposer(`/${action.commandId} `)
+        return
+      }
+      restoreComposer()
+      executeCommand(action.commandId, action.args ?? "")
+    } catch (error) {
+      notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Global keyboard handler
   // ---------------------------------------------------------------------------
 
   useKeyboard((evt) => {
+    if (paletteOpen()) {
+      if (evt.name === "up") {
+        setPaletteSelectedIndex((index) => paletteMode() === "sessions"
+          ? moveSessionRowSelection(paletteSessionRows(), index, -1)
+          : Math.max(0, index - 1))
+      } else if (evt.name === "down") {
+        const maximum = paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
+        setPaletteSelectedIndex((index) => paletteMode() === "sessions"
+          ? moveSessionRowSelection(paletteSessionRows(), index, 1)
+          : Math.min(Math.max(0, maximum), index + 1))
+      } else if (evt.name === "return") {
+        queueMicrotask(() => { void runPaletteSelection() })
+      } else if (paletteMode() === "sessions" && paletteSessionAction() === "browse" && evt.name === "f2") {
+        const selected = paletteSessionRows()[paletteSelectedIndex()]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const title = paletteSessionInputs().find((session) => session.id === selected.id)?.title ?? ""
+          setPaletteSessionAction("rename")
+          setPaletteQuery(title)
+        }
+      } else if (paletteMode() === "sessions" && paletteSessionAction() === "browse" && evt.name === "f3") {
+        const selected = paletteSessionRows()[paletteSelectedIndex()]
+        if (selected?.type === "session" || selected?.type === "orphan") {
+          const session = paletteSessionInputs().find((item) => item.id === selected.id)
+          if (session && props.onCommand) {
+            void Promise.resolve(props.onCommand(
+              "pin-session",
+              JSON.stringify({ id: session.id, pinned: !session.pinned }),
+              state.store.sessionId,
+            ))
+              .then(() => openSessionsPalette(session.id))
+              .catch((error) => {
+                notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+              })
+          }
+        }
+      } else if (evt.name === "escape") {
+        if (paletteMode() === "connect-authorizing") {
+          connectAbortController?.abort()
+          resolveBrowserPrompt?.("")
+          resolveBrowserPrompt = undefined
+          void openConnectProviders()
+        } else if (paletteMode() === "connect-api-key" || paletteMode() === "connect-codex-method") {
+          setConnectApiKey("")
+          setPaletteQuery("")
+                void openConnectProviders()
+        } else if (paletteMode() === "connect-providers" || paletteMode() === "connect-result") {
+          restoreComposer()
+        } else if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
+          const selected = paletteSessionRows()[paletteSelectedIndex()]
+          openSessionsPalette(selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined)
+        } else {
+          paletteGeneration++
+          restoreComposer()
+        }
+      } else if (evt.name === "tab" || evt.name === "pageup" || evt.name === "pagedown" || evt.name === "home" || evt.name === "end") {
+        // Unsupported in v1; consume so underlying global actions cannot run.
+      } else {
+        return
+      }
+      evt.preventDefault()
+      evt.stopPropagation()
+      return
+    }
+
+    // Arrow keys enter and navigate the queue. Delete removes the selection;
+    // Enter interrupts and sends it after the authoritative loop-end.
+    if (
+      queuedMessages().length > 0
+      && state.store.running
+      && !state.store.permission
+      && !state.store.question
+      && !state.store.asyncPanel
+      && !dropdownActive()
+    ) {
+      const selectedId = selectedQueuedMessageId()
+      if (evt.name === "up") {
+        selectQueuedMessage(1)
+        evt.preventDefault()
+        return
+      }
+      if (evt.name === "down") {
+        if (selectedId) selectQueuedMessage(-1)
+        else selectQueuedMessage(1)
+        evt.preventDefault()
+        return
+      }
+      if (selectedId) {
+        if (evt.name === "backspace" || evt.name === "delete") {
+          removeSelectedQueuedMessage()
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "return") {
+          sendSelectedQueuedMessageNow()
+          evt.preventDefault()
+          return
+        }
+        if (evt.name === "escape") {
+          setSelectedQueuedMessageId(null)
+          evt.preventDefault()
+          return
+        }
+      }
+    }
     // Ctrl+Z / Cmd+Z — undo and move cursor to end
     if ((evt.ctrl || evt.meta || evt.super) && evt.name === "z" && !evt.shift) {
       if (inputRef && !state.store.running) {
@@ -945,8 +1530,10 @@ export const App: Component<AppProps> = (props) => {
         dispatch(state, { type: "clear-permission" })
         dispatch(state, { type: "set-running", running: true })
       } else if (lower === "r") {
+        const remote = state.store.permission.origin?.kind === "subagent"
         respondPermission({ requestId: state.store.permission.requestId, reply: "reject" })
         dispatch(state, { type: "clear-permission" })
+        if (remote) dispatch(state, { type: "set-running", running: true })
       }
       evt.preventDefault()
       return
@@ -1127,6 +1714,7 @@ export const App: Component<AppProps> = (props) => {
         overflow="hidden"
         scrollAcceleration={new MacOSScrollAccel()}
         scrollbarOptions={{ visible: false }}
+        opacity={paletteOpen() ? 0.35 : 1}
       >
         <box flexGrow={1} minHeight={0} />
         <Index each={state.store.messages}>
@@ -1135,13 +1723,18 @@ export const App: Component<AppProps> = (props) => {
             return (
               <>
                 {dividers.map((d) => (
-                  <SteerDivider goal={d.goal} width={dims().width} />
+                  <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
                 ))}
                 <MessageItem message={msg()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
               </>
             )
           }}
         </Index>
+        <For each={state.store.steerDividers.filter((d) => d.insertionIndex === state.store.messages.length)}>
+          {(divider) => (
+            <SteerDivider goal={divider.goal} label={divider.label} width={dims().width} />
+          )}
+        </For>
       </scrollbox>
 
       {/* Permission prompt */}
@@ -1166,7 +1759,7 @@ export const App: Component<AppProps> = (props) => {
         )}
       </Show>
 
-      {/* Autocomplete dropdown — absolute overlay, does NOT shrink scrollbox */}
+      {/* Autocomplete stays in flow immediately above the full composer. */}
       <Autocomplete mode={autocompleteMode()} />
 
       {/* Input area */}
@@ -1174,7 +1767,9 @@ export const App: Component<AppProps> = (props) => {
         onSubmit={handleSubmit}
         onContentChange={handleInputChange}
         onRef={(r: TextareaRenderable) => { inputRef = r }}
-        disabled={state.store.running || !!state.store.permission || !!state.store.question}
+        disabled={!!state.store.permission || !!state.store.question}
+        focused={!paletteOpen()}
+        opacity={paletteOpen() ? 0.35 : 1}
         placeholder=""
         tokensUsed={state.store.status.tokensUsed}
         tokenLimit={state.store.status.tokenLimit}
@@ -1186,6 +1781,30 @@ export const App: Component<AppProps> = (props) => {
         onRemoveImage={removeImage}
         thinkingEffort={state.store.thinkingEffort}
         width={dims().width}
+        queuedMessages={queuedMessages()}
+        selectedQueuedMessageId={selectedQueuedMessageId()}
+      />
+
+      <CommandPalette
+        active={paletteOpen()}
+        mode={paletteMode()}
+        query={paletteQuery()}
+        entries={paletteResults()}
+        sessionRows={paletteSessionRows()}
+        sessionAction={paletteSessionAction()}
+        selectedIndex={paletteSelectedIndex()}
+        onInput={updatePaletteQuery}
+        onRef={(ref) => { paletteInputRef = ref }}
+        connect={{
+          providers: connectProviders(),
+          providerName: connectProvider()?.name,
+          environmentCredentialActive: connectProvider()?.credentialOrigin === "environment",
+          apiKeyLength: connectApiKey().length,
+          deviceCode: connectDeviceCode(),
+          browserUrl: connectBrowserUrl(),
+          awaitingBrowserInput: connectAwaitingBrowserInput(),
+          result: connectResult(),
+        }}
       />
 
       {/* Statistics overlay */}

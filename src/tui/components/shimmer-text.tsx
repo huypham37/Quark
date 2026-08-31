@@ -31,7 +31,7 @@ export interface ShimmerTextProps {
   minOpacity?: number
   /** Opacity at the bright extreme. Default: 1. */
   maxOpacity?: number
-  /** Frame interval in ms. Default: 50. */
+  /** Frame interval in ms. Default: 100. */
   frameMs?: number
 }
 
@@ -56,7 +56,7 @@ export const ShimmerText: Component<ShimmerTextProps> = (props) => {
   const staggerMs = () => props.staggerMs ?? 90
   const minOpacity = () => props.minOpacity ?? 0.3
   const maxOpacity = () => props.maxOpacity ?? 1
-  const frameMs = () => props.frameMs ?? 50
+  const frameMs = () => props.frameMs ?? 100
 
   const [elapsed, setElapsed] = createSignal(0)
 

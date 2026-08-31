@@ -81,6 +81,10 @@ export const PermissionPrompt: Component<PermissionPromptProps> = (props) => {
     typeof props.request.input.accessType === "string"
       ? props.request.input.accessType
       : ""
+  const subagentName = () => {
+    const profile = props.request.origin?.profile
+    return profile ? profile.charAt(0).toUpperCase() + profile.slice(1) : ""
+  }
 
   return (
     <box flexDirection="column" border={["left"]} borderColor={isExternal() && accessType() === "write" ? colors.error : colors.warning}>
@@ -94,7 +98,12 @@ export const PermissionPrompt: Component<PermissionPromptProps> = (props) => {
           </text>
         </Show>
         <Show when={!isExternal()}>
-          <text bold fg={colors.text}>Allow {displayName()}?</text>
+          <Show
+            when={props.request.origin?.kind === "subagent"}
+            fallback={<text bold fg={colors.text}>Allow {displayName()}?</text>}
+          >
+            <text bold fg={colors.text}>{subagentName()} requests {displayName()}</text>
+          </Show>
         </Show>
         <Show when={label()}>
           <text>  </text>

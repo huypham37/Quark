@@ -3,15 +3,16 @@ import { toModelMessages } from "../../src/session/message";
 import type { MessageRow, PartRow } from "../../src/session/message";
 
 describe("toModelMessages aborted message filtering", () => {
-  test("filters out aborted assistant messages and their parts", () => {
+  test("filters out an aborted turn's user and assistant messages", () => {
     const messages: MessageRow[] = [
       {
+        // Aborted user prompt — should not carry into the next turn
         id: "m1",
         sessionId: "s1",
         providerId: "copilot",
         modelId: "gpt-5",
         role: "user",
-        finish: null,
+        finish: "aborted",
         cost: null,
         tokensIn: null,
         tokensOut: null,
@@ -106,25 +107,24 @@ describe("toModelMessages aborted message filtering", () => {
 
     const result = toModelMessages(messages, parts);
 
-    // Should produce 3 messages: m1 (user), m3 (user), m4 (assistant)
-    // m2 (aborted) and its parts must be absent
-    expect(result.length).toBe(3);
+    // Only the next complete turn remains. Both sides of the aborted turn
+    // (m1 user and m2 assistant) and all of their parts must be absent.
+    expect(result.length).toBe(2);
     expect(result[0]!.role).toBe("user");
-    expect(result[1]!.role).toBe("user");
-    expect(result[2]!.role).toBe("assistant");
+    expect(result[1]!.role).toBe("assistant");
 
-    // Normal user content preserved
-    expect((result[0]! as any).content).toBe("Hello");
-    expect((result[1]! as any).content).toBe("Continue please");
+    // Only the next user content is preserved
+    expect((result[0]! as any).content).toBe("Continue please");
 
     // Normal assistant content preserved
-    const assistantContent = result[2]!.content as Array<Record<string, unknown>>;
+    const assistantContent = result[1]!.content as Array<Record<string, unknown>>;
     expect(assistantContent.length).toBe(1);
     expect(assistantContent[0]!.type).toBe("text");
     expect(assistantContent[0]!.text).toBe("Normal response");
 
     // Verify aborted text does not appear anywhere
     const allSerialized = JSON.stringify(result);
+    expect(allSerialized).not.toContain("Hello");
     expect(allSerialized).not.toContain("partial aborted text");
     expect(allSerialized).not.toContain("call-aborted");
   });

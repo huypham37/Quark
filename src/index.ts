@@ -7,19 +7,13 @@ export { bootstrap, type BootstrapOptions } from "./bootstrap"
 // Session management
 export { createSession, getSession } from "./session/session"
 export type { Session, SessionKind } from "./session/session"
-export {
-  createTask,
-  getTask,
-  listTasks,
-  updateTask,
-} from "./task/task"
-export type { Task } from "./task/task"
-
 // Core operations
 export { prompt, cancel, isActive } from "./session/prompt"
 
 export {
   createBranch,
+  compactBranch,
+  createSteerBranch,
   autoBranch,
   buildLineageContext,
   getSessionLineage,
@@ -40,7 +34,6 @@ export type { BusEvents, BusEventName } from "./session/events"
 export {
   evaluate as evaluatePermission,
   ask as askPermission,
-  respond as respondPermission,
   listPending as listPendingPermissions,
   clearSession as clearPermissionSession,
   disabled as disabledTools,
@@ -53,6 +46,7 @@ export {
   RejectedError,
   CorrectedError,
 } from "./permission/permission"
+export { respondPermission } from "./permission/broker"
 
 // Question tool
 export { respondQuestion, type QuestionResponse } from "./tool/question"

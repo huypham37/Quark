@@ -9,13 +9,13 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { bootstrap } from "../bootstrap"
 import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../session/prompt"
-import { createSession, listProjectSessions, getSession } from "../session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
 import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { buildModelPickerOptions } from "./model-picker"
 import { estimateTokens, getLastInputTokens } from "../session/context"
-import { summarizeForBranch, createBranch, splitMessages } from "../session/branch"
+import { compactBranch, createSteerBranch, type BranchResult } from "../session/branch"
 import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills, loadSkill } from "../skill/skill"
@@ -23,11 +23,14 @@ import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { detectFromConfigOrOS } from "./terminal-bg"
+import { createGhosttyTitleController, isGhostty } from "./ghostty-title"
 import { applyTheme, setTerminalBg, lightTheme, darkTheme } from "./theme"
 import { writeClipboard } from "./clipboard"
 import { buildEditorArgv, resolveEditor, type FileTarget } from "./editor"
 import { clearCache as clearSkillCache } from "../skill/skill"
-import { register, clear as clearRegistry } from "../tool/registry"
+import { register, clear as clearRegistry, list as listTools } from "../tool/registry"
+import { buildPaletteEntries } from "./palette-index"
+import { commands } from "./commands"
 import { buildSkillTool } from "../tool/skill"
 import { resetBootstrap } from "../bootstrap"
 import { dismiss, getActive, info as notifyInfo } from "../notification/notification"
@@ -36,7 +39,6 @@ import { exportSessionToMarkdown } from "../commands/export"
 import { runGoal } from "../commands/goal/orchestrator"
 import { authStatus } from "../commands/auth"
 import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
-import { listTasks } from "../task/task"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
@@ -81,8 +83,18 @@ let activeAgent: AgentConfig = agentFromProfile(profile, promptResult.content)
 // Initialize the backend (DB + tools) with profile-bound skills
 await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
 
-// Session starts null — created lazily on first message by prompt()
+// Session starts null — created lazily on first message by prompt(), unless
+// `quark --session <id>` explicitly resumes a persisted conversation.
+const sessionArg = parseArg("--session")
 let currentSession: { id: string } | null = null
+let initialMessages: ReturnType<typeof dbToTuiMessages> = []
+if (sessionArg) {
+  const session = getSession(sessionArg)
+  currentSession = { id: session.id }
+  process.env.QUARK_SESSION_ID = session.id
+  const { messages, parts } = loadMessages(session.id)
+  initialMessages = dbToTuiMessages(messages, parts)
+}
 
 // Listen for lazy session creation from prompt()
 bus.on("session-created", ({ sessionId }) => {
@@ -199,11 +211,51 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
 }
 
 function handleCancel(sessionId: string) {
+  ghosttyTitle.markStopped(sessionId)
   cancel(sessionId)
 }
 
 function handleThinkingEffortChange(thinkingEffort: string) {
   activeAgent = { ...activeAgent, thinkingEffort }
+}
+
+function activateBranch(branch: BranchResult, goal: string, label: string): void {
+  currentSession = { id: branch.sessionId }
+  process.env.QUARK_SESSION_ID = branch.sessionId
+  const child = loadMessages(branch.sessionId)
+  const tuiMessages = dbToTuiMessages(child.messages, child.parts)
+  const visibleMessages = branch.promptMessageId
+    ? tuiMessages.filter((message) => message.id === branch.promptMessageId)
+    : tuiMessages
+  const modelMessages = toModelMessages(child.messages, child.parts)
+  const system = buildSystem(activeAgent)
+  const systemStr = Array.isArray(system) ? system.join("\n") : system
+  const estimatedTokens = estimateTokens(systemStr, modelMessages)
+  bus.emit("session-switch", {
+    kind: branch.promptMessageId ? "branch" : "replace",
+    sessionId: branch.sessionId,
+    messages: visibleMessages as any,
+    estimatedTokens,
+    ...(branch.promptMessageId
+      ? { divider: { id: `branch:${branch.sessionId}`, goal, label } }
+      : {}),
+  })
+}
+
+function runBranchGoal(branch: BranchResult, goal: string): void {
+  if (!branch.promptMessageId) throw new Error("Branch was created without a prompt message")
+  runSeededSession({
+    sessionId: branch.sessionId,
+    userMessageId: branch.promptMessageId,
+    userText: goal,
+    model: modelOverride ?? undefined,
+    agent: activeAgent,
+  }).then(({ sessionId }) => {
+    currentSession = { id: sessionId }
+    process.env.QUARK_SESSION_ID = sessionId
+  }).catch((err) => {
+    bus.emit("error", { sessionId: branch.sessionId, error: err })
+  })
 }
 
 async function handleWorktreeCommand(args: string, sid: string | null): Promise<CommandResult> {
@@ -222,7 +274,7 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
       const result = await switchToWorktree(created.id)
       if (result.success) {
         notifyInfo("Worktree", `Created and switched to: ${created.id}`, 3000)
-        return { handled: true, next: "sessions-picker" }
+        return { handled: true, next: "sessions-palette" }
       }
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
     } catch (err) {
@@ -234,7 +286,7 @@ async function handleWorktreeCommand(args: string, sid: string | null): Promise<
   if (args.trim()) {
     const result = await switchToWorktree(args.trim())
     if (result.success) {
-      return { handled: true, next: "sessions-picker" }
+      return { handled: true, next: "sessions-palette" }
     }
     bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Unknown error") })
     return { handled: true }
@@ -330,7 +382,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /skills works even without an active session
   if (command === "skills") {
     if (!args) {
-      notifyInfo("Skills", "Use /skills to open the skill picker", 3000)
+      notifyInfo("Skills", "Search for a skill in the command palette", 3000)
       return { handled: true }
     }
 
@@ -359,11 +411,39 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
+  if (command === "rename-session") {
+    try {
+      const input = JSON.parse(args) as { id?: string; title?: string }
+      const title = input.title?.trim()
+      const session = listProjectSessions().find((item) => item.id === input.id)
+      if (!session || !title) throw new Error("Invalid session rename")
+      setSessionTitle(session.id, title)
+      notifyInfo("Session", `Renamed to: ${title}`, 2000)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
+    }
+    return { handled: true }
+  }
+
+  if (command === "pin-session") {
+    try {
+      const input = JSON.parse(args) as { id?: string; pinned?: boolean }
+      const session = listProjectSessions().find((item) => item.id === input.id)
+      if (!session || typeof input.pinned !== "boolean") throw new Error("Session not found")
+      setSessionPinned(session.id, input.pinned)
+      notifyInfo("Session", input.pinned ? "Session pinned" : "Session unpinned", 1500)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(message) })
+    }
+    return { handled: true }
+  }
+
   // /sessions works even without an active session (picker can be opened any time)
   if (command === "sessions") {
     if (!args) {
       const sessions = listProjectSessions()
-      const tasks = new Map(listTasks().map((task) => [task.id, task]))
       if (sessions.length === 0) {
         bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
         return { handled: true }
@@ -373,9 +453,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         const isCurrent = s.id === sid
         const date = new Date(s.timeUpdated).toLocaleString()
         const title = s.title ?? "(untitled)"
-        const task = s.taskId ? tasks.get(s.taskId)?.title : undefined
         const marker = isCurrent ? " ← current" : ""
-        return `  ${s.id.slice(0, 8)}  ${title}${task ? `  ·  ${task}` : ""}  ${date}${marker}`
+        return `  ${s.id.slice(0, 8)}  ${title}  ${date}${marker}`
       })
       const header = `Sessions (${sessions.length}):\n`
       bus.emit("user-message", {
@@ -386,11 +465,26 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
+    // Match against the same worktree-scoped list rendered by the session picker.
     const sessions = listProjectSessions()
     const match = sessions.find((s) => s.id.startsWith(args))
     if (!match) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
       return { handled: true }
+    }
+
+    if (match.directory && path.resolve(match.directory) !== path.resolve(process.cwd())) {
+      const worktree = getProjectWorktrees().find((item) =>
+        path.resolve(item.path) === path.resolve(match.directory!))
+      if (!worktree) {
+        bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Session worktree is unavailable") })
+        return { handled: true }
+      }
+      const result = await switchToWorktree(worktree.id)
+      if (!result.success) {
+        bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(result.error ?? "Cannot switch worktree") })
+        return { handled: true }
+      }
     }
 
     currentSession = match
@@ -478,9 +572,11 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         parts.push(`${result.deleted.length} file(s) deleted`)
       }
 
+      const { parts: remainingParts } = loadMessages(sid)
       bus.emit("undo-applied", {
         sessionId: sid,
         keepMessagesUpTo: result.messageId,
+        tokensUsed: getLastInputTokens(remainingParts),
         restored: result.restored.length,
         deleted: result.deleted.length,
       })
@@ -489,75 +585,57 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    case "steer": {
-      if (!args.trim()) {
-        bus.emit("error", { sessionId: sid, error: new Error("Usage: /steer <goal>") })
-        return { handled: true }
-      }
+    case "compact": {
+      bus.emit("steer-start", { sessionId: sid })
+      let branchReady = false
+      try {
+        const goal = args.trim()
+        const { messages, parts } = loadMessages(sid)
+        const model = await resolveModel(loadConfig().small_model)
+        const branch = await compactBranch({
+          sessionId: sid,
+          messages,
+          parts,
+          model,
+          profile: activeAgent.id,
+          prompt: goal || undefined,
+        })
 
+        bus.emit("steer-end", { sessionId: sid })
+        branchReady = true
+        activateBranch(branch, goal || "Compacted history", "Compacted")
+        if (goal) runBranchGoal(branch, goal)
+        notifyInfo("Compact", "Branched with compacted history", 3000)
+      } catch (err) {
+        bus.emit("error", {
+          sessionId: sid,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      } finally {
+        if (!branchReady) bus.emit("steer-end", { sessionId: sid })
+      }
+      return { handled: true }
+    }
+
+    case "steer": {
+      const goal = args.trim()
       bus.emit("steer-start", { sessionId: sid })
       let steeringEnded = false
       try {
-        // Frozen-snapshot semantics: only summarize the parent the first time
-        // it is branched. Subsequent steers reuse the already-frozen summary
-        // so siblings share the same parentSummary and we skip a redundant
-        // LLM call.
-        const parent = getSession(sid)
-        const existing = parent.summary?.trim()
         const { messages, parts } = loadMessages(sid)
-        const { recentMessages, recentParts } = splitMessages(messages, parts)
-        let summary: string
-        if (existing && existing.length > 0) {
-          summary = existing
-        } else {
-          const model = await resolveModel(loadConfig().small_model)
-          summary = await summarizeForBranch({ messages, parts, model })
-        }
-        const branch = createBranch({
+        const branch = createSteerBranch({
           sessionId: sid,
-          summary,
-          prompt: args.trim(),
+          prompt: goal || undefined,
           profile: activeAgent.id,
-          recentMessages,
-          recentParts,
+          messages,
+          parts,
         })
 
-        currentSession = { id: branch.sessionId }
-        process.env.QUARK_SESSION_ID = branch.sessionId
-        const child = loadMessages(branch.sessionId)
-        const tuiMessages = dbToTuiMessages(child.messages, child.parts)
-        const modelMessages = toModelMessages(child.messages, child.parts)
-        const system = buildSystem(activeAgent)
-        const systemStr = Array.isArray(system) ? system.join("\n") : system
-        const estimatedTokens = estimateTokens(systemStr, modelMessages)
         bus.emit("steer-end", { sessionId: sid })
         steeringEnded = true
-        bus.emit("session-switch", {
-          kind: "branch",
-          sessionId: branch.sessionId,
-          messages: tuiMessages as any,
-          estimatedTokens,
-          divider: { id: `branch:${branch.sessionId}`, goal: args.trim() },
-        })
-
-        // The steer prompt is already persisted by createBranch. Start the
-        // child turn after switching the TUI, without saving it again.
-        if (!branch.promptMessageId) {
-          throw new Error("Steer branch was created without a prompt message")
-        }
-        runSeededSession({
-          sessionId: branch.sessionId,
-          userMessageId: branch.promptMessageId,
-          userText: args.trim(),
-          model: modelOverride ?? undefined,
-          agent: activeAgent,
-        }).then(({ sessionId }) => {
-          currentSession = { id: sessionId }
-          process.env.QUARK_SESSION_ID = sessionId
-        }).catch((err) => {
-          bus.emit("error", { sessionId: branch.sessionId, error: err })
-        })
-        notifyInfo("Steer", `Branched to new session`, 3000)
+        activateBranch(branch, goal, "Steered")
+        if (goal) runBranchGoal(branch, goal)
+        notifyInfo("Steer", "Branched to new session", 3000)
       } catch (err) {
         bus.emit("error", {
           sessionId: sid,
@@ -621,23 +699,25 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
     })
   } finally {
     renderer.resume()
+    ghosttyTitle.refresh()
     openingEditor = false
   }
 }
 
+function getProjectWorktrees() {
+  return filterToProjectWorktrees(listWorktrees(rootProjectDir), rootProjectDir, worktreeBase)
+}
+
 function handleGetSessions() {
-  const tasks = new Map(listTasks().map((task) => [task.id, task]))
   return listProjectSessions().map((session) => ({
     ...session,
-    taskTitle: session.taskId ? tasks.get(session.taskId)?.title : undefined,
+    running: isActive(session.id),
   }))
 }
 
 function handleGetWorktrees() {
-  const all = listWorktrees(rootProjectDir)
-  const projectWorktrees = filterToProjectWorktrees(all, rootProjectDir, worktreeBase)
   const currentPath = process.cwd()
-  return projectWorktrees
+  return getProjectWorktrees()
     .filter((wt) => !wt.prunable)
     .map((wt) => ({
     id: wt.id,
@@ -668,12 +748,31 @@ function handleGetCurrentProfile() {
   return activeAgent.id
 }
 
-function handleGetSkills() {
-  return discoverSkills().map((s) => ({ id: s.name, name: s.name }))
-}
-
-function handleGetCurrentSkill() {
-  return ""
+function handleGetPaletteEntries() {
+  const currentModel = handleGetCurrentModel()
+  const activeSkills = new Set(activeAgent.skills)
+  return buildPaletteEntries({
+    commands,
+    models: handleGetModels().map((model) => ({
+      id: model.id,
+      name: model.name,
+      detail: model.detail,
+      provider: model.detail?.split(" · ")[0],
+      isCurrent: model.id === currentModel,
+    })),
+    skills: discoverSkills().map((skill) => ({
+      id: skill.name,
+      name: skill.name,
+      description: skill.description,
+      isCurrent: activeSkills.has(skill.name),
+    })),
+    tools: listTools().map((tool) => ({
+      id: tool.id,
+      name: tool.id,
+      description: tool.description,
+      isUnavailable: true,
+    })),
+  })
 }
 
 function handleCreateAsyncSession(): string {
@@ -684,7 +783,10 @@ function handleCreateAsyncSession(): string {
 // Pre-create the renderer so module-level code (e.g. openEditor) can
 // suspend/resume it when shelling out to an external editor.
 const renderer = await createCliRenderer({
+  // Keep short OpenTUI animations such as notification transitions at 60 FPS.
+  // maxFps also applies when redraws are event-driven rather than continuous.
   targetFps: 60,
+  maxFps: 60,
   exitOnCtrlC: false,
   consoleOptions: {
     keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
@@ -694,6 +796,14 @@ const renderer = await createCliRenderer({
       })
     },
   },
+})
+
+const ghosttyTitle = createGhosttyTitleController({
+  bus,
+  renderer,
+  getSession,
+  initialSessionId: currentSession?.id,
+  enabled: isGhostty(),
 })
 
 // ---------------------------------------------------------------------------
@@ -740,9 +850,9 @@ render(() => (
     getCurrentModel={handleGetCurrentModel}
     getProfiles={handleGetProfiles}
     getCurrentProfile={handleGetCurrentProfile}
-    getSkills={handleGetSkills}
-    getCurrentSkill={handleGetCurrentSkill}
+    getPaletteEntries={handleGetPaletteEntries}
     initialSessionId={currentSession?.id}
+    initialMessages={initialMessages}
     initialModelName={modelName}
     initialSkillCount={skills.length}
     initialThinkingEffort={activeAgent.thinkingEffort}

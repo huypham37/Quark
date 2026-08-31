@@ -11,10 +11,11 @@
 //    f. "continue" → next iteration (tool calls need follow-up)
 //    g. "stop" → break
 
-import { createSession, getSession, touchSession } from "./session";
+import { createSession, getSession, setSessionTitle, touchSession } from "./session";
 import {
   saveUserMessage,
   createAssistantMessage,
+  finishMessage,
   loadMessages,
   toModelMessages,
 } from "./message";
@@ -22,10 +23,7 @@ import { buildSystem } from "./system";
 import { processStream } from "./processor";
 import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
-import {
-  initializeSessionFromMessage,
-  upgradeSessionTitle,
-} from "./initializer";
+import { generateSessionTitle } from "./title";
 import { resolveToolSet } from "../tool/ai-adapter";
 import { buildProviderOptions } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
@@ -63,7 +61,7 @@ bus.on("permission-rejected", (data) => {
  * then iterates the agent loop until the model returns `stop` or `max_steps` is reached.
  *
  * @param input.sessionId - Resume an existing session (optional)
- * @param input.parentSessionId - Link this session as a sub-agent child (optional)
+ * @param input.parentSessionId - Link this session as a sub-agent child (optional; used internally)
  * @param input.parts - User message parts (text content)
  * @param input.images - Optional image attachments (`mime` + base64 `data`)
  * @param input.model - Override the provider and model for this call
@@ -96,7 +94,7 @@ export async function prompt(input: {
   } else {
     const sess = createSession(
       input.ephemeral
-        ? { ephemeral: true }
+        ? { ephemeral: true, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
         : input.parentSessionId
           ? { parentSessionId: input.parentSessionId, kind: "subagent" }
           : undefined,
@@ -163,20 +161,41 @@ async function runTurn(input: {
   active.set(sessionId, controller)
   bus.emit("loop-start", { sessionId })
   let finalSessionId = sessionId
+  const turnMessageIds = new Map<string, string>([[sessionId, userMessageId]])
   try {
-    // Child branches inherit a task. This remains for normal new sessions.
     const session = getSession(sessionId)
-    if (session.kind !== "ephemeral" && !session.taskId) {
-      initializeSessionFromMessage({ sessionId, message: userText, profile: agent.id })
+    if (!session.title) {
+      const fallbackTitle = userText.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "Untitled"
+      setSessionTitle(sessionId, fallbackTitle)
       resolveModel(model ?? loadConfig().small_model, "small")
-        .then((smallModel) => upgradeSessionTitle({ sessionId, message: userText, model: smallModel }))
+        .then((smallModel) => generateSessionTitle({ sessionId, message: userText, model: smallModel }))
         .catch(() => {})
     }
 
-    finalSessionId = await loop(sessionId, userMessageId, controller.signal, agent, model)
+    finalSessionId = await loop(
+      sessionId,
+      userMessageId,
+      controller.signal,
+      agent,
+      model,
+      turnMessageIds,
+    )
   } finally {
+    // loop() can throw after moving to an automatic child branch, before its
+    // return value updates finalSessionId. The newest mapping is authoritative.
+    finalSessionId = Array.from(turnMessageIds.keys()).at(-1) ?? finalSessionId
     if (controller.signal.aborted) {
-      bus.emit("user-message-status", { sessionId: finalSessionId, messageId: userMessageId, status: "aborted" })
+      // Exclude the initiating prompt from future context in the original
+      // session and in every child session created by automatic branching.
+      for (const [turnSessionId, turnMessageId] of turnMessageIds) {
+        finishMessage(turnMessageId, "aborted", undefined, turnSessionId)
+      }
+      const finalUserMessageId = turnMessageIds.get(finalSessionId) ?? userMessageId
+      bus.emit("user-message-status", {
+        sessionId: finalSessionId,
+        messageId: finalUserMessageId,
+        status: "aborted",
+      })
     }
     if (input.forceAgent) setForceAgent(false)
     for (const [id, activeController] of active) {
@@ -232,7 +251,8 @@ async function loop(
   userMessageId: string,
   abort: AbortSignal,
   agent: AgentConfig,
-  modelOpt?: string,
+  modelOpt: string | undefined,
+  turnMessageIds: Map<string, string>,
 ): Promise<string> {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -248,6 +268,7 @@ async function loop(
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
+  let currentUserMessageId = userMessageId;
 
   let step = 0;
   while (true) {
@@ -308,6 +329,11 @@ async function loop(
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
+        const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
+        if (replayedUserMessageId) {
+          currentUserMessageId = replayedUserMessageId
+          turnMessageIds.set(currentSessionId, currentUserMessageId)
+        }
         moveActiveSession(previousSessionId, currentSessionId);
         await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" });
 
@@ -367,7 +393,7 @@ async function loop(
       abort,
       msg: assistantMsg,
       sessionId: currentSessionId,
-      userMessageId,
+      userMessageId: currentUserMessageId,
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       rebuildModel: async (provider, modelId) => {
@@ -413,6 +439,11 @@ async function loop(
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
+        const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
+        if (replayedUserMessageId) {
+          currentUserMessageId = replayedUserMessageId
+          turnMessageIds.set(currentSessionId, currentUserMessageId)
+        }
         moveActiveSession(previousSessionId, currentSessionId);
         await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" });
 

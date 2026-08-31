@@ -103,6 +103,43 @@ describe("Config V2", () => {
     })
   })
 
+  test("accepts canonical legacy DeepSeek input with a deprecation and rejects proxies", () => {
+    const originalWarn = console.warn
+    const warnings: string[] = []
+    console.warn = (message?: unknown) => warnings.push(String(message))
+    try {
+      const providers = parseCustomProviders({
+        deepseek: {
+          base_url: "https://api.deepseek.com/",
+          api_key_env: "DEEPSEEK_API_KEY",
+          billing: "metered",
+        },
+      })
+      expect(providers.deepseek?.base_url).toBe("https://api.deepseek.com")
+      expect(parseCustomProviders({
+        deepseek: {
+          protocol: "openai-compatible",
+          endpoint: "https://api.deepseek.com/v1",
+          credential: { source: "store" },
+          billing: "metered",
+        },
+      }).deepseek).toMatchObject({
+        base_url: "https://api.deepseek.com/v1",
+        legacyCredentialSource: { source: "store" },
+      })
+    } finally {
+      console.warn = originalWarn
+    }
+    expect(warnings.join("\n")).toContain("remove providers.deepseek")
+
+    expect(() => parseCustomProviders({
+      deepseek: {
+        base_url: "https://proxy.example.com/deepseek/v1",
+        api_key_env: "COMPANY_DEEPSEEK_KEY",
+      },
+    })).toThrow(/rename.*company-deepseek/i)
+  })
+
   test("migrates V1 env references without persisting literal secrets", () => {
     const secret = "literal-secret-value"
     fs.writeFileSync(file, `small_model: gpt-4o-mini\nmodels: [gpt-4o]\nproviders:\n  openrouter:\n    baseURL: https://openrouter.ai/api/v1\n    apiKey: env:OPENROUTER_API_KEY\n  company:\n    baseURL: https://company.example/v1\n    apiKey: ${secret}\n`)

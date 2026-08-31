@@ -306,8 +306,8 @@ export function wireEvents(state: AppState) {
         const content = data.input.content
         if (typeof content === "string" && content.length > 0) {
           const lines = content.split("\n")
-          // Stream ~3 lines per tick at 30ms intervals → visible at 60 FPS
-          const linesPerTick = Math.max(1, Math.ceil(lines.length / 40))
+          // Stream ~3 lines per tick at 50ms intervals (~20 FPS).
+          const linesPerTick = Math.max(1, Math.ceil(lines.length / 24))
           let lineIdx = 0
           const timer = setInterval(() => {
             lineIdx = Math.min(lineIdx + linesPerTick, lines.length)
@@ -323,7 +323,7 @@ export function wireEvents(state: AppState) {
                 dispatch(state, { type: "tool-end", messageId: deferred.messageId, callId: deferred.callId, status: deferred.status, output: deferred.output, error: deferred.error, diff: deferred.diff })
               }
             }
-          }, 30)
+          }, 50)
           writeStreamTimers.set(data.callId, timer)
         }
       }
@@ -351,7 +351,6 @@ export function wireEvents(state: AppState) {
       if (data.finish === "aborted") {
         // Remove the aborted partial message from the TUI entirely
         dispatch(state, { type: "remove-message", messageId: data.messageId })
-        dispatch(state, { type: "set-running", running: false })
         if (userMsgTime > 0) {
           dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })
         }
@@ -359,10 +358,9 @@ export function wireEvents(state: AppState) {
         return
       }
       dispatch(state, { type: "assistant-done", messageId: data.messageId })
-      // Unlock input as soon as the final message ends (don't wait for loop-end
-      // which may be delayed by compaction / DB writes)
+      // Keep running true until loop-end. The composer remains editable while
+      // running, and loop-end is the serialization boundary for queued turns.
       if (data.finish === "stop" || data.finish === "length") {
-        dispatch(state, { type: "set-running", running: false })
         // Record duration from user message to assistant completion
         if (userMsgTime > 0) {
           dispatch(state, { type: "set-last-duration", duration: Date.now() - userMsgTime })
@@ -400,8 +398,18 @@ export function wireEvents(state: AppState) {
     unsubs.push(on("permission-request", (data) => {
       dispatch(state, {
         type: "set-permission",
-        request: { requestId: data.requestId, tool: data.tool, input: data.input },
+        request: {
+          requestId: data.requestId,
+          sessionId: data.sessionId,
+          tool: data.tool,
+          input: data.input,
+          origin: data.origin,
+        },
       })
+    }))
+
+    unsubs.push(on("permission-dismiss", (data) => {
+      dispatch(state, { type: "dismiss-permissions", requestIds: data.requestIds })
     }))
 
     unsubs.push(on("tool-running", (data) => {
@@ -466,6 +474,16 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("subagent-tool-running", (data) => {
+      dispatch(state, {
+        type: "subagent-tool-running",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        callId: data.callId,
+      })
+    }))
+
     unsubs.push(on("subagent-tool-end", (data) => {
       dispatch(state, {
         type: "subagent-tool-end",
@@ -510,6 +528,17 @@ export function wireEvents(state: AppState) {
       })
     }))
 
+    unsubs.push(on("subagent-error", (data) => {
+      dispatch(state, {
+        type: "subagent-error",
+        messageId: data.messageId,
+        parentCallId: data.parentCallId,
+        profile: data.profile,
+        kind: data.kind,
+        message: data.message,
+      })
+    }))
+
     // ----- Reasoning / thinking events -----
 
     unsubs.push(on("reasoning-start", (data) => {
@@ -527,7 +556,17 @@ export function wireEvents(state: AppState) {
     // ----- Undo -----
 
     unsubs.push(on("undo-applied", (data) => {
-      dispatch(state, { type: "truncate-messages", upToMessageId: data.keepMessagesUpTo })
+      lastInputTokens = data.tokensUsed
+      if (data.tokensUsed > 0) {
+        sessionTokens.set(sid, data.tokensUsed)
+      } else {
+        sessionTokens.delete(sid)
+      }
+      dispatch(state, {
+        type: "truncate-messages",
+        upToMessageId: data.keepMessagesUpTo,
+        tokensUsed: data.tokensUsed,
+      })
     }))
 
     onCleanup(() => {

@@ -1,11 +1,14 @@
 ---
 title: Specs Index
 date_created: 2026-06-04
-date_modified: 2026-06-07
-revision: 2
+date_modified: 2026-08-29
+revision: 5
 history:
   - 2026-06-04: Initial classification and folder reorganization
   - 2026-06-07: Archived all done specs to specs/archives/
+  - 2026-07-14: Added first-class subagent tool and child permission bridging plan
+  - 2026-07-15: Added agent observability trace spec
+  - 2026-08-29: Added bundled DeepSeek provider migration requirements
 status: done
 ---
 
@@ -29,9 +32,12 @@ status: done
 | [remove-link-task.md](core/remove-link-task.md) | In Progress | Make `taskId` immutable; synchronous init, async title-only upgrade |
 | [task-first-architecture.md](core/task-first-architecture.md) | In Progress | Task as first-class citizen; session branching replaces compaction |
 | [goal-command.md](core/goal-command.md) | Draft | Autonomous `/goal` orchestrator: plan → execute → verify → loop |
+| [subagent-tool-migration.md](subagent-tool-migration.md) | Draft | Replace Bash delegation with a first-class subagent tool, direct TUI integration, and bidirectional child permission bridging |
 | [delegate-tool-migration.md](core/delegate-tool-migration.md) | Draft | Migrate sub-agent spawning from bash to a first-class `delegate` tool |
 | [workspace-boundary-guard.md](workspace-boundary-guard.md) | Draft | Confine tools to workspace root; path-aware permissions; fix undo skip (#155) |
 | [codex-responses-lite.md](codex-responses-lite.md) | Done | Responses Lite adapter for gpt-5.6-luna via codex-consumer; luna-only scoping + exit conditions (#159) |
+| [observability-traces.md](observability-traces.md) | Draft | Bus-driven trace collector writing per-session `trace.jsonl` — latency, tokens/cost, tool success, turn aggregates for downstream evals |
+| [bundled-deepseek-provider.md](bundled-deepseek-provider.md) | Draft | Promote DeepSeek from custom configuration to a bundled API-key provider with safe migration and `/connect` support |
 
 ## 🖥️ TUI / UX
 *Terminal user interface: rendering, themes, input, interaction patterns.*

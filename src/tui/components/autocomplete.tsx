@@ -5,20 +5,18 @@
 // Replaces both FileDropdown and CommandDropdown from the React TUI.
 
 import type { Component } from "solid-js"
-import { For, createEffect } from "solid-js"
+import { For } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import type { ColorInput, ScrollBoxRenderable } from "@opentui/core"
+import type { ColorInput } from "@opentui/core"
 import { colors } from "../theme"
 import type { SlashCommand } from "../commands"
-import type { SessionTreeRow } from "../session-tree-picker"
 import type { WorktreePickerRow } from "../worktree-picker"
 import { CommandCard } from "./command-card"
 import { scrollTopForSelection } from "./autocomplete-scroll"
 
 /** Maximum visible rows in the dropdown */
 const MAX_VISIBLE_ROWS = 5
-const MAX_SESSION_VISIBLE_ROWS = 8
-const SESSION_CARD_INSET = 2
+const CARD_INSET = 2
 
 export interface PickerItem {
   id: string
@@ -30,27 +28,17 @@ export interface PickerItem {
 export type AutocompleteMode =
   | { type: "files"; items: string[]; selectedIndex: number; query: string }
   | { type: "commands"; items: SlashCommand[]; selectedIndex: number; query: string }
-  | { type: "sessions"; rows: SessionTreeRow[]; selectedIndex: number }
   | { type: "worktrees"; rows: WorktreePickerRow[]; selectedIndex: number }
-  | { type: "models"; items: PickerItem[]; selectedIndex: number }
   | { type: "profiles"; items: PickerItem[]; selectedIndex: number }
-  | { type: "skills"; items: PickerItem[]; selectedIndex: number }
   | { type: "tools"; items: PickerItem[]; selectedIndex: number }
 
 export interface AutocompleteProps {
   mode: AutocompleteMode | null
 }
 
-// Height of Prompt (status line 1 + input box minHeight 4) + FooterBar (1)
-// Used to anchor the absolutely-positioned dropdown above the prompt.
-const BOTTOM_OFFSET = 6
-
 export const Autocomplete: Component<AutocompleteProps> = (props) => {
-  // Absolutely positioned overlay — does NOT participate in flex flow,
-  // so the scrollbox keeps its full height when the dropdown appears.
-  // Anchored to bottom={BOTTOM_OFFSET} to sit right above the prompt.
-  //
-  // When mode is null, rows() returns [] and height={0}, rendering nothing.
+  // This remains directly above Prompt in normal flow, so it stays anchored
+  // correctly as the composer grows with images, multiline input, or a queue.
 
   return <AutocompleteContent mode={props.mode} />
 }
@@ -58,6 +46,7 @@ export const Autocomplete: Component<AutocompleteProps> = (props) => {
 /** Row type for the unified list — title, empty text, and data rows all in one array */
 interface DropdownRow {
   label: string
+  detail?: string
   fg: ColorInput
   bg: ColorInput
   bold: boolean
@@ -75,46 +64,21 @@ interface DropdownRow {
 const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props) => {
   const dims = useTerminalDimensions()
   const m = () => props.mode
-  let scrollRef: ScrollBoxRenderable | undefined
   const maxVisibleRows = () => {
-    const isSession = m()?.type === "sessions"
-    const borderRows = isSession ? 2 : 0
-    const available = Math.max(1, dims().height - BOTTOM_OFFSET - borderRows)
-    return Math.min(isSession ? MAX_SESSION_VISIBLE_ROWS : MAX_VISIBLE_ROWS, available)
+    const isCard = m()?.type === "worktrees"
+    const chromeRows = isCard ? 2 : 0
+    const available = Math.max(1, dims().height - 6 - chromeRows)
+    return Math.min(MAX_VISIBLE_ROWS, available)
   }
-
-  // Scroll to keep the selected item anchored at a fixed visual row.
-  // The cursor stays put; the list slides past it (vim `scrolloff` style).
-  createEffect(() => {
-    const mode = m()
-    if (!mode || !scrollRef) return
-    const totalRows = rows().length
-    const viewportHeight = Math.min(totalRows, maxVisibleRows())
-    const newScrollTop = scrollTopForSelection(
-      mode,
-      mode.selectedIndex,
-      totalRows,
-      viewportHeight,
-    )
-    if (newScrollTop !== scrollRef.scrollTop) {
-      scrollRef.scrollTo(newScrollTop)
-    }
-  })
 
   const rows = (): DropdownRow[] => {
     const mode = m()
     if (!mode) return []
     const result: DropdownRow[] = []
 
-    // Optional title row (sessions / choice pickers)
-    if (mode.type === "sessions") {
-      // The sessions picker is a task tree; task headers are rendered below.
-    } else if (mode.type === "models") {
-      result.push({ label: "Models — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
-    } else if (mode.type === "profiles") {
+    // Optional title row for choice pickers.
+    if (mode.type === "profiles") {
       result.push({ label: "Profiles — select and press Enter to switch", fg: colors.primary, bg: colors.dropdownBg, bold: true })
-    } else if (mode.type === "skills") {
-      result.push({ label: "Skills — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     } else if (mode.type === "tools") {
       result.push({ label: "User tools — select and press Enter to add", fg: colors.primary, bg: colors.dropdownBg, bold: true })
     }
@@ -124,16 +88,10 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
       result.push({ label: `No files or directories matching @${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands" && mode.items.length === 0) {
       result.push({ label: `No commands matching /${mode.query}`, fg: colors.muted, bg: colors.dropdownBg, bold: false })
-    } else if (mode.type === "sessions" && mode.rows.length === 0) {
-      result.push({ label: "No sessions found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
     } else if (mode.type === "worktrees" && mode.rows.length === 0) {
       result.push({ label: "No worktrees found", fg: colors.muted, bg: colors.commandCardBg, bold: false })
-    } else if (mode.type === "models" && mode.items.length === 0) {
-      result.push({ label: "No models available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "profiles" && mode.items.length === 0) {
       result.push({ label: "No profiles available", fg: colors.muted, bg: colors.dropdownBg, bold: false })
-    } else if (mode.type === "skills" && mode.items.length === 0) {
-      result.push({ label: "No skills found", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "tools" && mode.items.length === 0) {
       result.push({ label: "No user tools in ~/.config/quark/tools/", fg: colors.muted, bg: colors.dropdownBg, bold: false })
     } else if (mode.type === "commands") {
@@ -160,28 +118,6 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
-    } else if (mode.type === "sessions") {
-      for (let i = 0; i < mode.rows.length; i++) {
-        const item = mode.rows[i]!
-        if (item.type === "spacer") {
-          result.push({ label: "", fg: colors.textDim, bg: colors.commandCardBg, bold: false })
-          continue
-        }
-
-        const sel = i === mode.selectedIndex && (item.type === "session" || item.type === "orphan")
-        const indent = item.type === "session" ? `${"   ".repeat(item.depth)}╰─▶ ` : ""
-        const prefix = item.type === "task" ? (item.current ? "› " : "  ") : "  "
-        result.push({
-          label: item.type === "task"
-            ? `${prefix}${item.label}`
-            : item.type === "orphan"
-              ? `  ${item.label}`
-              : `  ${indent}${item.label}`,
-          fg: sel ? colors.primary : item.type === "task" ? (item.current ? colors.primary : colors.text) : colors.textDim,
-          bg: colors.commandCardBg,
-          bold: sel,
-        })
-      }
     } else if (mode.type === "worktrees") {
       for (let i = 0; i < mode.rows.length; i++) {
         const item = mode.rows[i]!
@@ -197,7 +133,7 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
           bold: sel,
         })
       }
-    } else if (mode.type === "models" || mode.type === "profiles" || mode.type === "skills" || mode.type === "tools") {
+    } else if (mode.type === "profiles" || mode.type === "tools") {
       for (let i = 0; i < mode.items.length; i++) {
         const item = mode.items[i]!
         const sel = i === mode.selectedIndex
@@ -213,49 +149,65 @@ const AutocompleteContent: Component<{ mode: AutocompleteMode | null }> = (props
     return result
   }
 
+  const visibleWindow = () => {
+    const mode = m()
+    const allRows = rows()
+    if (!mode) return allRows
+    const height = Math.min(allRows.length, maxVisibleRows())
+    const start = scrollTopForSelection(mode, mode.selectedIndex, allRows.length, height)
+    return allRows.slice(start, start + height)
+  }
+
   // Compute visible height: min of actual rows and MAX_VISIBLE_ROWS
   const visibleHeight = () => Math.min(rows().length, maxVisibleRows())
-  const isSessionCard = () => m()?.type === "sessions" || m()?.type === "worktrees"
-  const panelBg = () => isSessionCard() ? colors.commandCardBg : colors.dropdownBg
-  const panelHeight = () => isSessionCard() && rows().length > 0 ? visibleHeight() + 2 : visibleHeight()
+  const isCard = () => m()?.type === "worktrees"
+  const bodyHeight = visibleHeight
+  const panelBg = () => isCard() ? colors.commandCardBg : colors.dropdownBg
+  const panelHeight = () => isCard() && rows().length > 0
+    ? bodyHeight() + 2
+    : visibleHeight()
 
-  const content = () => (
-    <scrollbox
-      ref={(r: ScrollBoxRenderable) => (scrollRef = r)}
-      height={visibleHeight()}
-      scrollbarOptions={{ visible: false }}
-      backgroundColor={panelBg()}
-    >
-      <For each={rows()}>
-        {(row) => {
-          // Pad label with spaces to fill the full row width so bg covers all cells.
-          // Keep the row background inside the picker shell, not under its border.
-          const padded = () => {
-            const w = dims().width - (isSessionCard() ? 10 : 6)
-            return row.label.length >= w ? row.label : row.label + " ".repeat(w - row.label.length)
-          }
-          return (
-            <box height={1} backgroundColor={row.bg}>
-              <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
-            </box>
-          )
-        }}
-      </For>
-    </scrollbox>
-  )
+  const content = () => {
+    return (
+      <scrollbox
+        height={bodyHeight()}
+        scrollbarOptions={{ visible: false }}
+        backgroundColor={panelBg()}
+      >
+        <For each={visibleWindow()}>
+          {(row) => {
+            // Keep the row background inside the picker shell, not under its border.
+            const width = () => dims().width - (isCard() ? 10 : 6)
+            const padded = () => row.label.length >= width() ? row.label : row.label + " ".repeat(width() - row.label.length)
+            return row.detail
+              ? (
+                <box height={1} flexDirection="row" backgroundColor={row.bg}>
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{row.label}</text>
+                  <box flexGrow={1} backgroundColor={row.bg} />
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{row.detail}</text>
+                </box>
+              )
+              : (
+                <box height={1} backgroundColor={row.bg}>
+                  <text fg={row.fg} bg={row.bg} bold={row.bold}>{padded()}</text>
+                </box>
+              )
+          }}
+        </For>
+      </scrollbox>
+    )
+  }
 
   return (
     <box
       flexDirection="column"
       paddingX={1}
       height={panelHeight()}
-      position="absolute"
-      bottom={BOTTOM_OFFSET}
-      left={isSessionCard() ? SESSION_CARD_INSET : 0}
-      right={isSessionCard() ? SESSION_CARD_INSET : 0}
-      backgroundColor={rows().length > 0 && !isSessionCard() ? colors.dropdownBg : undefined}
+      left={isCard() ? CARD_INSET : 0}
+      right={isCard() ? CARD_INSET : 0}
+      backgroundColor={rows().length > 0 && !isCard() ? colors.dropdownBg : undefined}
     >
-      {isSessionCard() && rows().length > 0
+      {isCard() && rows().length > 0
         ? <CommandCard height={panelHeight()}>{content()}</CommandCard>
         : content()}
     </box>
