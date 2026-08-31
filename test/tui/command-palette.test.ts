@@ -57,13 +57,15 @@ const model = {
 }
 
 describe("command palette", () => {
-  test("empty state is a centered search surface with a title and footer", async () => {
+  test("empty state is a centered Spotlight-style search field", async () => {
     const lines = await renderPalette("", [])
     const visible = lines.filter((line) => line.trim())
-    expect(visible.join("\n")).toContain("Command palette")
-    expect(visible.join("\n")).toContain("> Search anything in Quark")
-    expect(visible.join("\n")).not.toContain("No results")
-    expect(visible.join("\n")).toContain("Enter select")
+    const frame = visible.join("\n")
+    expect(frame).toContain("> Search anything in Quark")
+    expect(frame).not.toContain("Command palette")
+    expect(frame).not.toContain("No results")
+    expect(frame).not.toContain("Enter select")
+    expect(visible).toHaveLength(3)
     expect(visible[0]!.indexOf("╭")).toBeGreaterThan(5)
   })
 
@@ -246,14 +248,16 @@ describe("command palette", () => {
   test("renders a footer for every standard mode", async () => {
     const modelRows = [model]
     for (const [mode, hint] of [
-      ["search", "Enter select"],
       ["models", "Enter switch"],
       ["skills", "Enter add"],
       ["connect-providers", "Enter connect"],
     ] as const) {
-      const lines = await renderPalette("", mode === "search" ? [] : modelRows, 0, 80, 24, mode)
+      const lines = await renderPalette("", modelRows, 0, 80, 24, mode)
       expect(`${mode}: ${lines.join("\n")}`).toContain(hint)
     }
+
+    const searchLines = await renderPalette("query", modelRows)
+    expect(searchLines.join("\n")).not.toContain("Enter select")
 
     const worktreeRows = [
       { type: "worktree", id: "root", label: "root · main", branch: "main", sessionCount: 0, current: true, root: true },

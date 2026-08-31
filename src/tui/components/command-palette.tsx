@@ -119,11 +119,14 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   // Section contract: title (1) + input (1) + divider (1) + footer (1) + 2 borders
   // = 6 fixed rows + content capacity. Keep the standard viewport fixed when
   // there is room, while shrinking it for short terminals.
+  const spotlightMode = () => !props.mode || props.mode === "search"
   const standardContentRows = () => hasQuery() ? maxVisibleRows() : 0
+  const footerVisible = () => !spotlightMode()
+  const headerHeight = () => connectMode() ? 2 : spotlightMode() ? (hasQuery() ? 2 : 1) : 3
   const contentHeight = () => connectMode()
     ? connectHeight() - 5 // title, divider, footer, and two borders
     : sessionMode() ? sessionRowCount() : standardContentRows()
-  const height = () => connectMode() ? connectHeight() : contentHeight() + 6
+  const height = () => headerHeight() + contentHeight() + (footerVisible() ? 1 : 0) + 2
   const truncate = (value: string, maximum: number) => {
     const chars = Array.from(value)
     if (chars.length <= maximum) return value
@@ -158,20 +161,25 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
     <Show when={props.active}>
       <box position="absolute" left={Math.max(0, Math.floor((dims().width - width()) / 2))} top={Math.max(0, Math.floor((dims().height - 6 - height()) / 2))} width={width()} height={height()} flexDirection="column" borderStyle="rounded" borderColor={colors.outline} backgroundColor={colors.commandCardBg}>
         {/* Header */}
-        <box height={connectMode() ? 2 : 3} flexDirection="column" flexShrink={0} backgroundColor={colors.commandCardBg}>
-          <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}>
-            <text fg={colors.text} bg={colors.commandCardBg} bold>{title()}</text>
-          </box>
+        <box height={headerHeight()} flexDirection="column" flexShrink={0} backgroundColor={colors.commandCardBg}>
+          <Show when={!spotlightMode()}>
+            <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}>
+              <text fg={colors.text} bg={colors.commandCardBg} bold>{title()}</text>
+            </box>
+          </Show>
 
           {/* Header: search/input bar (non-connect modes share the standard input) */}
-        <Show when={!connectMode()}>
-          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
-        </Show>
+          <Show when={!connectMode()}>
+            <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.primary} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
+          </Show>
 
-          <box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box>
+          <Show when={!spotlightMode() || hasQuery()}>
+            <box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box>
+          </Show>
         </box>
 
         {/* Content */}
+        <Show when={contentHeight() > 0}>
         <box height={contentHeight()} flexDirection="column" flexShrink={0} backgroundColor={colors.commandCardBg}>
         <Show when={connectMode()}>
           <Show when={props.mode === "connect-api-key"}>
@@ -221,9 +229,12 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
         </Show>
 
         </box>
+        </Show>
 
-        {/* Footer */}
-        <box height={1} paddingX={1} flexShrink={0} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{truncate(footer(), Math.max(0, width() - 4))}</text></box>
+        <Show when={footerVisible()}>
+          {/* Footer */}
+          <box height={1} paddingX={1} flexShrink={0} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{truncate(footer(), Math.max(0, width() - 4))}</text></box>
+        </Show>
       </box>
     </Show>
   )
