@@ -128,11 +128,10 @@ const MENTION_INACTIVE: MentionState = {
 
 interface SlashState {
   active: boolean
-  mode: "commands" | "worktrees" | ChoicePickerMode
+  mode: "commands" | ChoicePickerMode
   query: string
   items: SlashCommand[]
   pickerItems: PickerItem[]
-  worktreeRows: WorktreePickerRow[]
   selectedIndex: number
 }
 
@@ -142,7 +141,6 @@ const SLASH_INACTIVE: SlashState = {
   query: "",
   items: [],
   pickerItems: [],
-  worktreeRows: [],
   selectedIndex: 0,
 }
 
@@ -259,6 +257,8 @@ export const App: Component<AppProps> = (props) => {
   const [paletteSessionInputs, setPaletteSessionInputs] = createSignal<SessionTreeInput[]>([])
   const [paletteSessionRows, setPaletteSessionRows] = createSignal<SessionTreeRow[]>([])
   const [paletteSessionAction, setPaletteSessionAction] = createSignal<"browse" | "rename">("browse")
+  const [paletteWorktreeInputs, setPaletteWorktreeInputs] = createSignal<WorktreePickerRow[]>([])
+  const [paletteWorktreeRows, setPaletteWorktreeRows] = createSignal<WorktreePickerRow[]>([])
   let paletteGeneration = 0
   let savedComposer: {
     text: string
@@ -426,6 +426,8 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSessionInputs([])
     setPaletteSessionRows([])
     setPaletteSessionAction("browse")
+    setPaletteWorktreeInputs([])
+    setPaletteWorktreeRows([])
     if (!saved) return
     const text = textOverride ?? saved.text
     setPendingImages(saved.images)
@@ -470,6 +472,8 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSessionInputs([])
     setPaletteSessionRows([])
     setPaletteSessionAction("browse")
+    setPaletteWorktreeInputs([])
+    setPaletteWorktreeRows([])
     setPaletteOpen(true)
     Promise.resolve(props.getPaletteEntries())
       .then((entries) => {
@@ -634,6 +638,16 @@ export const App: Component<AppProps> = (props) => {
       setPaletteSelectedIndex(firstSelectableSessionRow(rows, result.firstMatchId ?? state.store.sessionId))
       return
     }
+    if (paletteMode() === "worktrees") {
+      const normalized = query.trim().toLowerCase()
+      const rows = normalized
+        ? paletteWorktreeInputs().filter((row) => row.label.toLowerCase().includes(normalized))
+        : paletteWorktreeInputs()
+      setPaletteQuery(query)
+      setPaletteWorktreeRows(rows)
+      setPaletteSelectedIndex(firstSelectableWorktreeRow(rows))
+      return
+    }
     const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
     const entityType = paletteMode() === "skills" ? "skill" : paletteMode() === "models" ? "model" : paletteMode() === "connect-providers" ? "provider" : undefined
     const entries = entityType
@@ -657,11 +671,6 @@ export const App: Component<AppProps> = (props) => {
     const newValue = inputRef.plainText
 
     const s = slash()
-
-    // Worktree picker does not accept text input.
-    if (s.mode === "worktrees" && s.active) {
-      return
-    }
 
     // Choice pickers: filter the list by what the user types
     if (s.mode === "profiles" && s.active) {
@@ -745,6 +754,18 @@ export const App: Component<AppProps> = (props) => {
 
   const openWorktreePicker = (): boolean => {
     if (!props.getWorktrees) return false
+    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (!paletteOpen()) {
+      savedComposer = {
+        text: "",
+        cursorOffset: 0,
+        images: [...pendingImages()],
+        selectedImageIndex: selectedImageIndex(),
+        historyIndex: historyIndex(),
+        historyDraft: historyDraft(),
+        scrollTop: scroll?.scrollTop ?? 0,
+      }
+    }
     const worktrees = props.getWorktrees()
     const rows = buildWorktreeRows(
       worktrees.map((w) => ({
@@ -760,16 +781,18 @@ export const App: Component<AppProps> = (props) => {
       state.store.activeWorktree?.id ?? "root",
       Object.fromEntries(worktrees.map((w) => [w.id, w.sessionCount])),
     )
-    setSlash({
-      active: true,
-      mode: "worktrees",
-      query: "",
-      items: [],
-      pickerItems: [],
-      worktreeRows: rows,
-      selectedIndex: firstSelectableWorktreeRow(rows),
-    })
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
     setInputText("")
+    paletteInputRef?.clear()
+    setPaletteMode("worktrees")
+    setPaletteQuery("")
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteWorktreeInputs(rows)
+    setPaletteWorktreeRows(rows)
+    setPaletteSelectedIndex(firstSelectableWorktreeRow(rows))
+    setPaletteOpen(true)
     return true
   }
 
@@ -786,7 +809,6 @@ export const App: Component<AppProps> = (props) => {
       query: "",
       items: [],
       pickerItems: buildPickerItems(options, getCurrentChoice(mode)),
-      worktreeRows: [],
       selectedIndex: 0,
     })
     setInputText("")
@@ -870,9 +892,7 @@ export const App: Component<AppProps> = (props) => {
       if (name === "up") {
         setSlash((prev) => ({
           ...prev,
-          selectedIndex: prev.mode === "worktrees"
-              ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, -1)
-              : Math.max(0, prev.selectedIndex - 1),
+          selectedIndex: Math.max(0, prev.selectedIndex - 1),
         }))
         return true
       }
@@ -880,41 +900,18 @@ export const App: Component<AppProps> = (props) => {
       if (name === "down") {
         const totalItems = s.mode === "commands"
           ? s.items.length
-          : s.mode === "worktrees"
-              ? s.worktreeRows.length
-              : s.pickerItems.length
+          : s.pickerItems.length
         setSlash((prev) => {
           if (totalItems === 0) return prev
           return {
             ...prev,
-            selectedIndex: prev.mode === "worktrees"
-                ? moveWorktreeRowSelection(prev.worktreeRows, prev.selectedIndex, 1)
-                : Math.min(totalItems - 1, prev.selectedIndex + 1),
+            selectedIndex: Math.min(totalItems - 1, prev.selectedIndex + 1),
           }
         })
         return true
       }
 
       if (isTab || isReturn) {
-        // --- Worktree picker mode ---
-        if (s.mode === "worktrees") {
-          const selected = s.worktreeRows[s.selectedIndex]
-          if (selected?.type === "worktree") {
-            clearQueuedMessages()
-            setSlash(SLASH_INACTIVE)
-            setInputText("")
-            if (props.onCommand) {
-              Promise.resolve(props.onCommand("worktree", selected.id, state.store.sessionId))
-                .then((res) => {
-                  if (res?.handled && res.next === "sessions-palette") {
-                    openSessionsPalette()
-                  }
-                })
-            }
-          }
-          return true
-        }
-
         // --- Choice picker mode ---
         if (s.mode === "profiles") {
           const selected = s.pickerItems[s.selectedIndex]
@@ -930,11 +927,6 @@ export const App: Component<AppProps> = (props) => {
         if (s.items.length > 0) {
           const selected = s.items[s.selectedIndex]
           if (selected) {
-            // /worktree → transition to worktree picker
-            if (selected.id === "worktree" && isReturn && openWorktreePicker()) {
-              return true
-            }
-
             // /model and /profile → transition to picker (Tab or Enter)
             const pickerMode = pickerModeForCommand(selected.id)
             if (pickerMode && (isReturn || isTab) && openChoicePicker(pickerMode)) {
@@ -1165,9 +1157,6 @@ export const App: Component<AppProps> = (props) => {
   const autocompleteMode = (): AutocompleteMode | null => {
     const s = slash()
     if (s.active) {
-      if (s.mode === "worktrees") {
-        return { type: "worktrees", rows: s.worktreeRows, selectedIndex: s.selectedIndex }
-      }
       if (s.mode === "profiles") {
         return { type: s.mode, items: s.pickerItems, selectedIndex: s.selectedIndex }
       }
@@ -1247,6 +1236,22 @@ export const App: Component<AppProps> = (props) => {
       }
       return
     }
+    if (paletteMode() === "worktrees") {
+      const selected = paletteWorktreeRows()[paletteSelectedIndex()]
+      if (selected?.type !== "worktree") return
+      try {
+        clearQueuedMessages()
+        const result = await props.onCommand?.("worktree", selected.id, state.store.sessionId)
+        if (result?.handled && result.next === "sessions-palette") {
+          openSessionsPalette()
+        } else {
+          restoreComposer()
+        }
+      } catch (error) {
+        notifyWarn("Command palette", error instanceof Error ? error.message : String(error), 4000)
+      }
+      return
+    }
 
     const entry = paletteResults()[paletteSelectedIndex()]
     if (!entry) return
@@ -1289,7 +1294,6 @@ export const App: Component<AppProps> = (props) => {
         return
       }
       if (action.commandId === "worktree") {
-        restoreComposer()
         openWorktreePicker()
         return
       }
@@ -1320,11 +1324,15 @@ export const App: Component<AppProps> = (props) => {
       if (evt.name === "up") {
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
           ? moveSessionRowSelection(paletteSessionRows(), index, -1)
+          : paletteMode() === "worktrees"
+            ? moveWorktreeRowSelection(paletteWorktreeRows(), index, -1)
           : Math.max(0, index - 1))
       } else if (evt.name === "down") {
         const maximum = paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
           ? moveSessionRowSelection(paletteSessionRows(), index, 1)
+          : paletteMode() === "worktrees"
+            ? moveWorktreeRowSelection(paletteWorktreeRows(), index, 1)
           : Math.min(Math.max(0, maximum), index + 1))
       } else if (evt.name === "return") {
         queueMicrotask(() => { void runPaletteSelection() })
@@ -1792,6 +1800,7 @@ export const App: Component<AppProps> = (props) => {
         entries={paletteResults()}
         sessionRows={paletteSessionRows()}
         sessionAction={paletteSessionAction()}
+        worktreeRows={paletteWorktreeRows()}
         selectedIndex={paletteSelectedIndex()}
         onInput={updatePaletteQuery}
         onRef={(ref) => { paletteInputRef = ref }}

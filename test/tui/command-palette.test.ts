@@ -13,6 +13,7 @@ async function renderPalette(
   mode: import("../../src/tui/components/command-palette").PaletteMode = "search",
   sessionRows: unknown[] = [],
   connect?: unknown,
+  worktreeRows: unknown[] = [],
 ) {
   const script = `
     import { testRender } from "@opentui/solid";
@@ -26,6 +27,7 @@ async function renderPalette(
       mode: ${JSON.stringify(mode)},
       sessionRows: ${JSON.stringify(sessionRows)},
       sessionAction: "browse",
+      worktreeRows: ${JSON.stringify(worktreeRows)},
       connect: ${JSON.stringify(connect)},
       onInput() {},
     }), { width: ${width}, height: ${height}, useConsole: false });
@@ -126,6 +128,23 @@ describe("command palette", () => {
     expect(frame).toContain("Skills")
     expect(frame).toContain("Search skills")
     expect(frame).toContain("teaching")
+    expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
+  })
+
+  test("renders worktrees in the centered palette surface", async () => {
+    const rows = [
+      { type: "worktree", id: "root", label: "root · main · 2 sessions", branch: "main", sessionCount: 2, current: true, root: true },
+      { type: "worktree", id: "feature", label: "feature · feat/palette", branch: "feat/palette", sessionCount: 0, current: false, root: false },
+      { type: "disabled", id: "missing", label: "missing (directory missing)", branch: "missing", reason: "directory missing" },
+    ]
+    const lines = await renderPalette("", [], 0, 80, 24, "worktrees", [], undefined, rows)
+    const frame = lines.join("\n")
+
+    expect(frame).toContain("Worktrees")
+    expect(frame).toContain("Search worktrees")
+    expect(frame).toContain("root · main · 2 sessions ← current")
+    expect(frame).toContain("feature · feat/palette")
+    expect(frame).toContain("missing (directory missing)")
     expect(lines.find((line) => line.includes("╭"))!.indexOf("╭")).toBeGreaterThan(5)
   })
 
