@@ -556,7 +556,17 @@ export function wireEvents(state: AppState) {
     // ----- Undo -----
 
     unsubs.push(on("undo-applied", (data) => {
-      dispatch(state, { type: "truncate-messages", upToMessageId: data.keepMessagesUpTo })
+      lastInputTokens = data.tokensUsed
+      if (data.tokensUsed > 0) {
+        sessionTokens.set(sid, data.tokensUsed)
+      } else {
+        sessionTokens.delete(sid)
+      }
+      dispatch(state, {
+        type: "truncate-messages",
+        upToMessageId: data.keepMessagesUpTo,
+        tokensUsed: data.tokensUsed,
+      })
     }))
 
     onCleanup(() => {

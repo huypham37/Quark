@@ -122,7 +122,7 @@ export interface BusEvents {
     | { kind: "branch"; sessionId: string; messages: ConversationMessage[]; estimatedTokens?: number; divider: { id: string; goal: string; label?: string } }
 
   // Undo — emitted when /undo is applied, TUI should truncate messages
-  "undo-applied": { sessionId: string; keepMessagesUpTo: string; restored: number; deleted: number }
+  "undo-applied": { sessionId: string; keepMessagesUpTo: string; tokensUsed: number; restored: number; deleted: number }
 
   // Branching lifecycle — TUI shows a status while a branch is prepared.
   "steer-start": { sessionId: string }

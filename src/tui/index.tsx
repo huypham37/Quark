@@ -572,9 +572,11 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         parts.push(`${result.deleted.length} file(s) deleted`)
       }
 
+      const { parts: remainingParts } = loadMessages(sid)
       bus.emit("undo-applied", {
         sessionId: sid,
         keepMessagesUpTo: result.messageId,
+        tokensUsed: getLastInputTokens(remainingParts),
         restored: result.restored.length,
         deleted: result.deleted.length,
       })

@@ -251,6 +251,53 @@ describe("wireEvents: step-finish token accumulation", () => {
   })
 })
 
+describe("wireEvents: undo", () => {
+  test("truncates the undone turn and restores the remaining token count", () => {
+    const s = setup("undo-with-history")
+    bus.emit("user-message", { sessionId: "undo-with-history", messageId: "u1", text: "first" })
+    bus.emit("assistant-message-start", { sessionId: "undo-with-history", messageId: "a1" })
+    bus.emit("user-message", { sessionId: "undo-with-history", messageId: "u2", text: "second" })
+    bus.emit("assistant-message-start", { sessionId: "undo-with-history", messageId: "a2" })
+    bus.emit("step-finish", {
+      sessionId: "undo-with-history",
+      messageId: "a2",
+      data: { tokens: { input: 500 } } as any,
+    })
+
+    bus.emit("undo-applied", {
+      sessionId: "undo-with-history",
+      keepMessagesUpTo: "u2",
+      tokensUsed: 200,
+      restored: 0,
+      deleted: 0,
+    })
+
+    expect(s.store.messages.map((message) => message.id)).toEqual(["u1", "a1"])
+    expect(s.store.status.tokensUsed).toBe(200)
+  })
+
+  test("resets the token count when no completed turn remains", () => {
+    const s = setup("undo-only-turn")
+    bus.emit("user-message", { sessionId: "undo-only-turn", messageId: "u1", text: "only" })
+    bus.emit("step-finish", {
+      sessionId: "undo-only-turn",
+      messageId: "a1",
+      data: { tokens: { input: 500 } } as any,
+    })
+
+    bus.emit("undo-applied", {
+      sessionId: "undo-only-turn",
+      keepMessagesUpTo: "u1",
+      tokensUsed: 0,
+      restored: 0,
+      deleted: 0,
+    })
+
+    expect(s.store.messages).toEqual([])
+    expect(s.store.status.tokensUsed).toBe(0)
+  })
+})
+
 describe("wireEvents: session-reset and session-switch", () => {
   test("session-reset resets state with new sessionId", () => {
     const s = setup("s1")
