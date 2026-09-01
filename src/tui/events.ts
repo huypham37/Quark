@@ -175,7 +175,12 @@ export function wireEvents(state: AppState) {
   // ---------------------------------------------------------------------------
   const handleAsyncUserMessage = (data: BusEvents["user-message"]) => {
     if (data.sessionId === state.store.asyncPanel?.sessionId) {
-      dispatch(state, { type: "async-add-user-message", id: data.messageId, text: data.text })
+      dispatch(state, {
+        type: "async-add-user-message",
+        id: data.messageId,
+        text: data.text,
+        images: data.images?.map((image, i) => ({ ...image, label: `Image ${i + 1}` })),
+      })
     }
   }
   bus.on("user-message", handleAsyncUserMessage)
@@ -261,7 +266,12 @@ export function wireEvents(state: AppState) {
 
     unsubs.push(on("user-message", (data) => {
       userMsgTime = Date.now()
-      dispatch(state, { type: "add-user-message", id: data.messageId, text: data.text })
+      dispatch(state, {
+        type: "add-user-message",
+        id: data.messageId,
+        text: data.text,
+        images: data.images?.map((image, i) => ({ ...image, label: `Image ${i + 1}` })),
+      })
       // Clear previous duration — new turn starts fresh
       dispatch(state, { type: "set-last-duration", duration: 0 })
     }))

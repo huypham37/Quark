@@ -19,7 +19,12 @@ import type { SubagentErrorKind } from "../subagent/protocol"
  */
 export interface BusEvents {
   // A user message was saved
-  "user-message": { sessionId: string; messageId: string; text: string }
+  "user-message": {
+    sessionId: string
+    messageId: string
+    text: string
+    images?: { mime: string; data: string }[]
+  }
 
   // An assistant message was created (start of response)
   "assistant-message-start": { sessionId: string; messageId: string }

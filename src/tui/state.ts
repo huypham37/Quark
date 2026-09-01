@@ -188,7 +188,7 @@ export type TuiAction =
   | { type: "open-async-panel"; sessionId: string | null; title: string }
   | { type: "set-async-session-id"; sessionId: string }
   | { type: "close-async-panel" }
-  | { type: "async-add-user-message"; id: string; text: string }
+  | { type: "async-add-user-message"; id: string; text: string; images?: { mime: string; data: string; label: string }[] }
   | { type: "async-add-assistant-message"; id: string }
   | { type: "async-text-start"; messageId: string }
   | { type: "async-text-delta"; messageId: string; delta: string; text: string }
@@ -1209,7 +1209,15 @@ export function dispatch(state: AppState, action: TuiAction): void {
         {
           id: action.id,
           role: "user",
-          parts: [{ type: "text", text: action.text }],
+          parts: [
+            { type: "text", text: action.text },
+            ...(action.images ?? []).map((img, i) => ({
+              type: "image" as const,
+              mime: img.mime,
+              data: img.data,
+              label: img.label ?? `Image ${i + 1}`,
+            })),
+          ],
         },
       )
       break

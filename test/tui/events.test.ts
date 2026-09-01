@@ -75,6 +75,25 @@ describe("wireEvents: message lifecycle", () => {
     expect(part.streaming).toBe(false)
   })
 
+  test("user-message preserves image attachments for the live TUI", () => {
+    const s = setup("s1")
+    bus.emit("user-message", {
+      sessionId: "s1",
+      messageId: "u1",
+      text: "look at this",
+      images: [{ mime: "image/png", data: "base64-data" }],
+    })
+
+    const message = s.store.messages[0]!
+    expect(message.parts).toHaveLength(2)
+    expect(message.parts[1]).toMatchObject({
+      type: "image",
+      mime: "image/png",
+      data: "base64-data",
+      label: "Image 1",
+    })
+  })
+
   test("assistant-message-end clears streaming and marks its user message replied", () => {
     const s = setup("s1")
     bus.emit("user-message", { sessionId: "s1", messageId: "u1", text: "hello" })

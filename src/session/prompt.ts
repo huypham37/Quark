@@ -107,7 +107,7 @@ export async function prompt(input: {
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n");
   const userMsg = saveUserMessage({ sessionId, text, images: input.images });
-  bus.emit("user-message", { sessionId, messageId: userMsg.id, text });
+  bus.emit("user-message", { sessionId, messageId: userMsg.id, text, images: input.images });
 
   return runTurn({
     sessionId,
