@@ -135,6 +135,10 @@ interface SlashState {
   selectedIndex: number
 }
 
+interface PaletteSearchSnapshot {
+  entries: PaletteEntry[]
+}
+
 const SLASH_INACTIVE: SlashState = {
   active: false,
   mode: "commands",
@@ -261,6 +265,7 @@ export const App: Component<AppProps> = (props) => {
   const [paletteWorktreeRows, setPaletteWorktreeRows] = createSignal<WorktreePickerRow[]>([])
   const [worktreeCreateError, setWorktreeCreateError] = createSignal<string | undefined>()
   let paletteGeneration = 0
+  let paletteSearchSnapshot: PaletteSearchSnapshot | null = null
   let savedComposer: {
     text: string
     cursorOffset: number
@@ -409,6 +414,7 @@ export const App: Component<AppProps> = (props) => {
   const restoreComposer = (textOverride?: string) => {
     const saved = savedComposer
     savedComposer = null
+    paletteSearchSnapshot = null
     setPaletteOpen(false)
     setPaletteQuery("")
     setPaletteEntries([])
@@ -444,6 +450,7 @@ export const App: Component<AppProps> = (props) => {
   const openPalette = (snapshot?: { text: string; cursorOffset: number }) => {
     if (!inputRef || !props.getPaletteEntries) return false
     if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    paletteSearchSnapshot = null
     savedComposer = {
       text: snapshot?.text ?? "",
       cursorOffset: snapshot?.cursorOffset ?? 0,
@@ -498,6 +505,31 @@ export const App: Component<AppProps> = (props) => {
     .filter((entry) => entry.type === type)
     .sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
 
+  const savePaletteSearch = () => {
+    if (paletteMode() !== "search") return
+    paletteSearchSnapshot = { entries: paletteEntries() }
+  }
+
+  const restorePaletteSearch = () => {
+    const snapshot = paletteSearchSnapshot
+    if (!snapshot) return false
+    paletteSearchSnapshot = null
+    paletteGeneration++
+    setPaletteMode("search")
+    setPaletteQuery("")
+    paletteInputRef?.clear()
+    setPaletteEntries(snapshot.entries)
+    setPaletteResults([])
+    setPaletteSelectedIndex(0)
+    setPaletteSessionInputs([])
+    setPaletteSessionRows([])
+    setPaletteSessionAction("browse")
+    setPaletteWorktreeInputs([])
+    setPaletteWorktreeRows([])
+    setWorktreeCreateError(undefined)
+    return true
+  }
+
   const openEntityPalette = (mode: "skills" | "models", type: "skill" | "model") => {
     setPaletteMode(mode)
     setPaletteQuery("")
@@ -506,6 +538,7 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const openConnectProviders = async () => {
+    const generation = paletteGeneration
     setPaletteMode("connect-providers")
     setPaletteQuery("")
     paletteInputRef?.clear()
@@ -523,6 +556,7 @@ export const App: Component<AppProps> = (props) => {
         return buildConnectProviderRows([], loadConfig().providers)
       }
     })()
+    if (!paletteOpen() || paletteMode() !== "connect-providers" || generation !== paletteGeneration) return
     const entries = providers.map((provider): PaletteEntry => ({
       key: `provider:${provider.id}`,
       type: "provider",
@@ -1313,23 +1347,28 @@ export const App: Component<AppProps> = (props) => {
       }
       const command = filterCommands("", 99).find((item) => item.id === action.commandId)
       if (action.commandId === "connect") {
+        savePaletteSearch()
         await openConnectProviders()
         return
       }
       if (action.commandId === "skills") {
+        savePaletteSearch()
         openEntityPalette("skills", "skill")
         return
       }
       if (action.commandId === "model") {
+        savePaletteSearch()
         openEntityPalette("models", "model")
         return
       }
       if (action.commandId === "sessions") {
-        openSessionsPalette()
+        savePaletteSearch()
+        if (!openSessionsPalette()) paletteSearchSnapshot = null
         return
       }
       if (action.commandId === "worktree") {
-        openWorktreePicker()
+        savePaletteSearch()
+        if (!openWorktreePicker()) paletteSearchSnapshot = null
         return
       }
       const pickerMode = pickerModeForCommand(action.commandId)
@@ -1428,14 +1467,14 @@ export const App: Component<AppProps> = (props) => {
           setConnectApiKey("")
           setPaletteQuery("")
                 void openConnectProviders()
-        } else if (paletteMode() === "connect-providers" || paletteMode() === "connect-result") {
+        } else if (paletteMode() === "connect-result") {
           restoreComposer()
         } else if (paletteMode() === "sessions" && paletteSessionAction() === "rename") {
           const selected = paletteSessionRows()[paletteSelectedIndex()]
           openSessionsPalette(selected?.type === "session" || selected?.type === "orphan" ? selected.id : undefined)
         } else if (paletteMode() === "worktree-create") {
           openWorktreePicker()
-        } else {
+        } else if (!restorePaletteSearch()) {
           paletteGeneration++
           restoreComposer()
         }
