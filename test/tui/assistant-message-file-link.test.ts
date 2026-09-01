@@ -17,7 +17,7 @@ describe("AssistantMessage file links", () => {
       await setup.renderOnce();
       const before = setup.captureCharFrame();
       await setup.mockMouse.click(13, 0);
-      await setup.mockMouse.click(31, 0);
+      await setup.mockMouse.click(25, 0);
       await setup.renderOnce();
       console.log(JSON.stringify({ before, opened }));
       setup.renderer.destroy();
@@ -31,7 +31,7 @@ describe("AssistantMessage file links", () => {
     if (!proc.success) throw new Error(proc.stderr.toString())
 
     const result = JSON.parse(proc.stdout.toString()) as { before: string; opened: unknown[] }
-    expect(result.before).toContain("Compare ↗ first.ts and ↗ second.ts.")
+    expect(result.before).toContain("Compare first.ts and second.ts.")
     expect(result.before).not.toContain("file:///")
     expect(result.opened).toEqual([
       { filePath: "/tmp/first.ts", line: 42, column: 7 },

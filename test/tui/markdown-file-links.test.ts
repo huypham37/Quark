@@ -2,6 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { splitMarkdownFileLinks } from "../../src/tui/markdown-file-links"
 
 describe("inline markdown file links", () => {
+  test("recognizes plain text file references", () => {
+    expect(splitMarkdownFileLinks("A hard-coded loop (orchestrator.ts (file:///tmp/orchestrator.ts#L1-L24))"))
+      .toEqual([{ type: "file-line", parts: [
+        { text: "A hard-coded loop (" },
+        { target: { filePath: "/tmp/orchestrator.ts", line: 1 }, label: "orchestrator.ts" },
+        { text: ")" },
+      ] }])
+  })
+
   test("preserves surrounding paragraph text around a local file link", () => {
     expect(splitMarkdownFileLinks("This is a link: [src/index.ts](file:///tmp/a.ts#L42C7)."))
       .toEqual([{ type: "file-line", parts: [

@@ -18,14 +18,36 @@ export function splitMarkdownFileLinks(content: string): MarkdownSegment[] {
     if (markdown) segments.push({ type: "markdown", content: markdown })
     markdown = ""
   }
+  const plainFileLinks = (text: string): { parts: InlineFileLink[]; count: number } => {
+    const parts: InlineFileLink[] = []
+    const pattern = /([^()\s]+)\s+\((file:\/\/[^)\s]+)\)/g
+    let cursor = 0
+    let count = 0
+    for (const match of text.matchAll(pattern)) {
+      const start = match.index ?? 0
+      const target = parseFileUri(match[2])
+      if (!target) continue
+      if (start > cursor) parts.push({ text: text.slice(cursor, start) })
+      parts.push({ target, label: match[1] })
+      cursor = start + match[0].length
+      count++
+    }
+    if (count === 0) return { parts: [{ text }], count: 0 }
+    if (cursor < text.length) parts.push({ text: text.slice(cursor) })
+    return { parts, count }
+  }
+
   const lineParts = (token: any): InlineFileLink[] | null => {
     const inline = token?.tokens?.filter((child: any) => child.type !== "space")
     if (!inline?.length) return null
     const parts: InlineFileLink[] = []
     let fileLinks = 0
     for (const child of inline) {
-      if (child.type === "text") parts.push({ text: child.text })
-      else if (child.type === "link") {
+      if (child.type === "text") {
+        const plain = plainFileLinks(child.text)
+        parts.push(...plain.parts)
+        fileLinks += plain.count
+      } else if (child.type === "link") {
         const target = parseFileUri(child.href)
         const simpleLabel = child.tokens?.length === 1 && child.tokens[0]?.type === "text"
         if (!target || !simpleLabel) return null

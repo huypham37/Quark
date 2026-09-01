@@ -53,8 +53,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
                 <For each={segment.parts}>
                   {(part) => "text" in part ? <text>{part.text}</text> : (
                     <box flexDirection="row" onMouseUp={() => props.onOpenFile?.(part.target)}>
-                      <text fg={colors.info}>↗ </text>
-                      <text fg={colors.info}><u>{part.label}</u></text>
+                      <text fg={colors.info}>{part.label}</text>
                     </box>
                   )}
                 </For>
