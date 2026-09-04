@@ -405,23 +405,6 @@ export function wireEvents(state: AppState) {
       notifyWarn(`${title} — Retry ${data.attempt}`, `Retrying in ${delayStr}…`, data.delayMs + 1000)
     }))
 
-    unsubs.push(on("permission-request", (data) => {
-      dispatch(state, {
-        type: "set-permission",
-        request: {
-          requestId: data.requestId,
-          sessionId: data.sessionId,
-          tool: data.tool,
-          input: data.input,
-          origin: data.origin,
-        },
-      })
-    }))
-
-    unsubs.push(on("permission-dismiss", (data) => {
-      dispatch(state, { type: "dismiss-permissions", requestIds: data.requestIds })
-    }))
-
     unsubs.push(on("tool-running", (data) => {
       // No tool filter needed — tool-start already filtered, so this is a no-op
       // for read-only tools (the part was never created).

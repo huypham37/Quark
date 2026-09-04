@@ -4,7 +4,7 @@
 // to an output stream. Each message is a single line of JSON.
 //
 // Supports bidirectional communication: the agent can call client methods
-// (e.g. session/request_permission) and await the response.
+// and await the response.
 
 import type { JsonRpcRequest, JsonRpcNotification, RequestId } from "./schema"
 import * as s from "./schema"

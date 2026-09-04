@@ -8,33 +8,10 @@ export type ChildEvent =
   | { e: "tool-input"; t: string; id: string; in: Record<string, unknown> }
   | { e: "tool-running"; id: string }
   | { e: "tool-end"; t: string; id: string; s: "completed" | "error"; err?: string }
-  | {
-      e: "step-finish"
-      tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
-      tokenLimit?: number
-      model?: string
-    }
+  | { e: "step-finish"; tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }; tokenLimit?: number; model?: string }
   | { e: "text-delta"; d: string }
-  | {
-      e: "permission-request"
-      id: string
-      sessionId: string
-      tool: string
-      pattern: string
-      metadata?: Record<string, unknown>
-    }
-  | { e: "permission-dismiss"; ids: string[] }
   | { e: "error"; kind: SubagentErrorKind; message: string }
   | { e: "loop-end" }
-
-export interface PermissionResponseControl {
-  type: "permission-response"
-  requestId: string
-  reply: "once" | "always" | "reject"
-  message?: string
-}
-
-export type ParentControlMessage = PermissionResponseControl
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -74,12 +51,6 @@ export function parseChildEventLine(line: string): ChildEvent | null {
     case "text-delta":
       if (typeof value.d !== "string") break
       return value as ChildEvent
-    case "permission-request":
-      if (!isString(value.id) || !isString(value.sessionId) || !isString(value.tool) || typeof value.pattern !== "string") break
-      return value as ChildEvent
-    case "permission-dismiss":
-      if (!Array.isArray(value.ids) || !value.ids.every(isString)) break
-      return value as ChildEvent
     case "error":
       if (!isString(value.message) || !["provider", "process", "protocol"].includes(String(value.kind))) break
       return value as ChildEvent
@@ -88,21 +59,4 @@ export function parseChildEventLine(line: string): ChildEvent | null {
   }
 
   throw new Error(`Invalid subagent event payload for "${value.e}"`)
-}
-
-export function parseParentControlLine(line: string): ParentControlMessage {
-  const value: unknown = JSON.parse(line)
-  if (
-    !isRecord(value)
-    || value.type !== "permission-response"
-    || !isString(value.requestId)
-    || !["once", "always", "reject"].includes(String(value.reply))
-  ) {
-    throw new Error("Invalid subagent control message")
-  }
-  return value as unknown as ParentControlMessage
-}
-
-export function serializeParentControl(message: ParentControlMessage): string {
-  return `${JSON.stringify(message)}\n`
 }

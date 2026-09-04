@@ -19,7 +19,6 @@ import * as path from "path"
 import * as os from "os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 import { warn as notifyWarn } from "../notification/notification"
-import { type Action } from "../permission/permission"
 import {
   getDefaultThinkingEffort,
   getThinkingModes,
@@ -54,11 +53,6 @@ export interface ProfileDef {
   thinkingEffort?: string
   /** Optional reasoning mode for models that support it. */
   thinkingMode?: string
-  /** Permission rules for this profile's tools.
-   *  Each rule matches a tool ID and an optional file-path pattern,
-   *  and specifies whether to allow, deny, or ask.
-   *  Rules are evaluated with last-match-wins semantics. */
-  permissions?: Array<{ tool: string; pattern?: string; action: Action }>
 }
 
 /**
@@ -109,21 +103,16 @@ function configPaths(): string[] {
 // YAML config parsing
 // ---------------------------------------------------------------------------
 
-function parsePermissions(raw: unknown): Array<{ tool: string; pattern?: string; action: Action }> | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const result: Array<{ tool: string; pattern?: string; action: Action }> = []
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue
-    const r = item as Record<string, unknown>
-    if (typeof r.tool !== "string" || !r.tool) continue
-    if (r.action !== "allow" && r.action !== "deny" && r.action !== "ask") continue
-    result.push({
-      tool: r.tool,
-      pattern: typeof r.pattern === 'string' && r.pattern.length > 0 ? r.pattern : undefined,
-      action: r.action as Action,
-    })
-  }
-  return result.length > 0 ? result : undefined
+/**
+ * Warn that the now-removed `permissions` profile key has been found and is
+ * ignored. Called during YAML parsing so the warning includes the profile ID.
+ */
+function warnObsoletePermissions(profileId: string): void {
+  notifyWarn(
+    "Profile configuration",
+    `profiles.${profileId}.permissions is no longer supported and is being ignored. Remove it from your config.`,
+    0,
+  )
 }
 
 function parseProfilesFromYAML(
@@ -148,6 +137,10 @@ function parseProfilesFromYAML(
       fallbackModel,
     )
 
+    if (p.permissions !== undefined) {
+      warnObsoletePermissions(id)
+    }
+
     profiles[id] = {
       id,
       name: typeof p.name === "string" ? p.name : id,
@@ -157,7 +150,6 @@ function parseProfilesFromYAML(
       subAgents: Array.isArray(p.sub_agents) ? (p.sub_agents as string[]) : undefined,
       ...(parsedModel.model ? { model: parsedModel.model } : {}),
       ...thinking,
-      permissions: parsePermissions(p.permissions),
     }
   }
 
@@ -543,7 +535,6 @@ export function resetProfileCache(): void {
 export const _internal = {
   parseProfilesFromYAML,
   parseProjectOverrides,
-  parsePermissions,
   parseModel,
   parseThinking,
   updateProfileThinking,

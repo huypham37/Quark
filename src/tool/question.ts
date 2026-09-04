@@ -1,6 +1,6 @@
 // Question tool — agent asks the user interactive questions
 //
-// Similar to the permission system: execute() emits a bus event and blocks
+// execute() emits a bus event and blocks until the user responds
 // until the TUI resolves via respondQuestion(). The agent loop pauses while
 // waiting for user input.
 //

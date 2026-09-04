@@ -40,8 +40,6 @@ import {
   type TokenUsage,
 } from "./accounting"
 import { debug } from "../debug"
-import { generateUnifiedDiff } from "../shared/diff-utils"
-import * as fs from "fs"
 
 const dlog = debug("processor")
 
@@ -194,12 +192,9 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
           case "tool-call": {
             const match = toolParts.get(event.toolCallId)
             if (match) {
-              match.data.status = "awaiting_approval"
+              match.data.status = "pending"
               match.data.input = event.input as Record<string, unknown>
               match.data.tool = event.toolName
-
-              // Compute preview diff for write/edit tools (read-only)
-              const previewDiff = computePreviewDiff(event.toolName, match.data.input)
 
               updatePart(match.partId, match.data, sid, mid, "tool")
               bus.emit("tool-input", {
@@ -209,7 +204,6 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
                 tool: event.toolName,
                 callId: event.toolCallId,
                 input: match.data.input,
-                diff: previewDiff,
               })
             }
             break
@@ -390,7 +384,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     } catch (e: any) {
       // Mark any in-flight tool parts as errored and notify the TUI via bus
       for (const [callId, entry] of toolParts) {
-        if (entry.data.status === "pending" || entry.data.status === "awaiting_approval" || entry.data.status === "running") {
+        if (entry.data.status === "pending" || entry.data.status === "running") {
           entry.data.status = "error"
           entry.data.error = "Tool execution aborted"
           updatePart(entry.partId, entry.data, sid, mid, "tool")
@@ -531,42 +525,6 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
     finishMessage(mid, "stop", undefined, sid)
   }
   return "stop"
-}
-
-// Compute a read-only preview diff for write/edit tools during tool-call.
-// This runs BEFORE the tool executes, so the diff is available in the TUI
-// alongside the permission prompt. Uses pure-JS Myers diff (no shell out).
-function computePreviewDiff(tool: string, input: Record<string, unknown>): string | undefined {
-  if (tool !== "write" && tool !== "edit") return undefined
-
-  const filePath = (input.filePath ?? input.path) as string | undefined
-  if (!filePath) return undefined
-
-  try {
-    // Guard against large files (> 100KB)
-    if (fs.existsSync(filePath)) {
-      const stat = fs.statSync(filePath)
-      if (stat.size > 100_000) return undefined
-    }
-
-    const before = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : ""
-
-    let after: string
-    if (tool === "write") {
-      after = (input.content as string) ?? ""
-    } else {
-      // edit: approximate with exact-match replace (real tool has 3 strategies)
-      const oldStr = ((input.old ?? input.oldString) as string) ?? ""
-      const newStr = ((input.new ?? input.newString) as string) ?? ""
-      if (!oldStr || !before) return undefined
-      after = before.replace(oldStr, newStr)
-      if (after === before) return undefined // no match found
-    }
-
-    return generateUnifiedDiff(before, after, filePath)
-  } catch {
-    return undefined // diff failure must not block the permission flow
-  }
 }
 
 // Extract diff string from tool result metadata

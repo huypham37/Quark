@@ -7,7 +7,7 @@ export function createSubagentTool(allowedProfiles: string[]) {
   const allowed = new Set(allowedProfiles)
   return defineTool({
     id: "subagent",
-    description: `Delegate a focused task to an isolated subagent. Available profiles: ${allowedProfiles.join(", ")}. The child resolves its own tools, skills, model, and permissions.`,
+    description: `Delegate a focused task to an isolated subagent. Available profiles: ${allowedProfiles.join(", ")}. The child resolves its own tools, skills, and model.`,
     parameters: z.object({
       profile: z.string().min(1).describe("An available subagent profile ID"),
       prompt: z.string().min(1).describe("A complete, self-contained task for the subagent"),

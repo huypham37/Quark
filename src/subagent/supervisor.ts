@@ -1,18 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { bus } from "../session/events"
-import {
-  clearRemotePermissions,
-  clearRemotePermissionsByChildRequest,
-  registerRemotePermission,
-} from "../permission/broker"
 import type { ToolContext } from "../tool/tool"
 import { resolveSubagentCommand } from "./executable"
 import {
   SUBAGENT_EVENT_PREFIX,
   parseChildEventLine,
-  serializeParentControl,
   type ChildEvent,
-  type ParentControlMessage,
   type SubagentErrorKind,
 } from "./protocol"
 
@@ -97,14 +90,6 @@ export async function runSubagent(
       }
     }
 
-    const send = (message: ParentControlMessage): Promise<void> => new Promise((done, fail) => {
-      if (proc.stdin.destroyed || !proc.stdin.writable) {
-        fail(new Error("Subagent control channel is closed"))
-        return
-      }
-      proc.stdin.write(serializeParentControl(message), (error) => error ? fail(error) : done())
-    })
-
     const failStructured = (kind: SubagentErrorKind, message: string) => {
       structuredError = structuredError ?? new SubagentExecutionError(kind, message)
       bus.emit("subagent-error", { ...base, kind, message })
@@ -148,20 +133,6 @@ export async function runSubagent(
         case "text-delta":
           bus.emit("subagent-text-delta", { ...base, text: event.d })
           break
-        case "permission-request":
-          registerRemotePermission({
-            ...base,
-            childSessionId: event.sessionId,
-            childRequestId: event.id,
-            tool: event.tool,
-            pattern: event.pattern,
-            metadata: event.metadata,
-            send,
-          })
-          break
-        case "permission-dismiss":
-          clearRemotePermissionsByChildRequest(ctx.callId, event.ids)
-          break
         case "error":
           failStructured(event.kind, event.message)
           break
@@ -192,13 +163,9 @@ export async function runSubagent(
     }
 
     // stdout is exclusively the child's model answer. Protocol is accepted only
-    // from stderr so model-generated text cannot forge permission/lifecycle events.
+    // from stderr so model-generated text cannot forge lifecycle events.
     proc.stdout.on("data", (chunk: Buffer) => append("stdout", chunk.toString()))
     proc.stderr.on("data", consumeStderr)
-    proc.stdin.on("error", () => {
-      // A concurrent child exit can race an in-flight control write. The write
-      // callback and process close path perform the user-visible cleanup.
-    })
 
     const terminate = () => {
       if (settled || proc.exitCode !== null || proc.signalCode !== null) return
@@ -219,7 +186,6 @@ export async function runSubagent(
       if (forceKillTimer) clearTimeout(forceKillTimer)
       ctx.abort.removeEventListener("abort", terminate)
       if (stderrBuffer) handleLine(stderrBuffer, "diagnostics")
-      clearRemotePermissions(ctx.callId, ctx.sessionId)
 
       if (ctx.abort.aborted) {
         reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }))

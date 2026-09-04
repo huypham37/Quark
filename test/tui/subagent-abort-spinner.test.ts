@@ -44,7 +44,7 @@ function setupSubAgent(state: ReturnType<typeof createAppState>, opts?: {
       tool: child.tool,
       callId: child.callId,
     })
-    // Resolve input, then pass the child permission gate.
+    // Resolve input, then run the child tool.
     dispatch(state, {
       type: "subagent-tool-input",
       messageId: "m1",

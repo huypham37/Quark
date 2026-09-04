@@ -4,7 +4,6 @@
 // It can be constructed from a ProfileDef (profile-driven) or directly.
 
 import type { ProfileDef } from "./profile/profile";
-import { type Action } from "./permission/permission";
 
 /**
  * Runtime configuration for an active agent instance.
@@ -29,12 +28,6 @@ export interface AgentConfig {
   thinkingEffort?: string;
   /** Optional reasoning mode for models that support it. */
   thinkingMode?: string;
-  /** Permission rules for this agent's tools.
-   *  Each rule matches a tool ID and specifies whether to allow, deny, or ask.
-   *  Rules are evaluated with last-match-wins semantics.
-   *
-   *  TODO: later support argument-level permission via a `pattern` field. */
-  permissions?: Array<{ tool: string; pattern?: string; action: Action }>;
 }
 
 /**
@@ -71,6 +64,5 @@ export function agentFromProfile(
     model: profile.model,
     thinkingEffort: profile.thinkingEffort,
     thinkingMode: profile.thinkingMode,
-    permissions: profile.permissions,
   };
 }

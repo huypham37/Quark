@@ -5,6 +5,7 @@
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
+import { normalizeLegacyToolStatus, LEGACY_INTERRUPTED_ERROR } from "../shared/conversation-view"
 import { getModelLimit } from "../provider/models"
 import { resolveProfile } from "../profile/profile"
 import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
@@ -40,7 +41,7 @@ export interface TuiMessage {
 
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
   | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
 
@@ -56,7 +57,7 @@ export interface TuiSteerDivider {
 export interface SubAgentToolPart {
   tool: string
   callId: string
-  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
+  status: "pending" | "running" | "completed" | "error"
   input: Record<string, unknown>
   error?: string
 }
@@ -97,19 +98,6 @@ export interface TuiStatus {
   cost: number
   modelName: string
   skillCount: number
-}
-
-export interface PermissionRequest {
-  requestId: string
-  sessionId?: string
-  tool: string
-  input: Record<string, unknown>
-  origin?: {
-    kind: "subagent"
-    parentCallId: string
-    profile: string
-    childSessionId: string
-  }
 }
 
 export interface QuestionOption {
@@ -158,9 +146,6 @@ export type TuiAction =
   | { type: "update-status"; partial: Partial<TuiStatus> }
   | { type: "set-error"; message: string }
   | { type: "clear-error" }
-  | { type: "set-permission"; request: PermissionRequest }
-  | { type: "clear-permission" }
-  | { type: "dismiss-permissions"; requestIds: string[] }
   // Sub-agent observability actions
   | { type: "subagent-tool-start"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string }
   | { type: "subagent-tool-input"; messageId: string; parentCallId: string; profile: string; tool: string; callId: string; input: Record<string, unknown> }
@@ -267,7 +252,13 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
           tuiParts.push({ type: "text", text: d.text })
         }
       } else if (p.type === "tool") {
-        const d = JSON.parse(p.data) as ToolPartData
+        const raw = JSON.parse(p.data) as Omit<ToolPartData, "status"> & { status?: string }
+        const status = normalizeLegacyToolStatus(raw.status ?? "pending")
+        let error = raw.error
+        if (status === "error" && raw.status === "awaiting_approval" && !error) {
+          error = LEGACY_INTERRUPTED_ERROR
+        }
+        const d: ToolPartData = { ...raw, status, ...(error !== undefined ? { error } : {}) }
         let subAgent: SubAgentState | undefined
         if (d.tool === "subagent") {
           const profile = d.subAgent?.profile ?? (typeof d.input.profile === "string" ? d.input.profile : "sub-agent")
@@ -354,8 +345,6 @@ export interface AppStore {
   showThinking: boolean
   status: TuiStatus
   error?: string
-  permission?: PermissionRequest
-  permissionQueue: PermissionRequest[]
   question?: QuestionRequest
   questionQueue: QuestionRequest[]
   asyncPanel: AsyncPanel | null
@@ -398,8 +387,6 @@ export function createAppState(initial: {
       skillCount: initial.skillCount,
     },
     error: undefined,
-    permission: undefined,
-    permissionQueue: [],
     question: undefined,
     questionQueue: [],
     asyncPanel: null,
@@ -426,7 +413,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
-          s.permission = undefined
           s.question = undefined
           s.steerDividers = []
         }),
@@ -443,7 +429,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
-          s.permission = undefined
           s.steerDividers = []
         }),
       )
@@ -458,7 +443,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.tokensUsed = 0
           s.status.cost = 0
           s.error = undefined
-          s.permission = undefined
           // Insert divider if not already present (idempotent)
           if (!s.steerDividers.some((d) => d.id === action.divider.id)) {
             s.steerDividers.push({
@@ -590,7 +574,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       if (tiPartIdx === -1) break
       setStore("messages", tiMsgIdx, "parts", tiPartIdx, produce((part: TuiPart) => {
         if (part.type === "tool") {
-          part.status = "awaiting_approval"
+          part.status = "pending"
           part.input = action.input
           part.diff = action.diff
         }
@@ -630,7 +614,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
             part.streamingContent = undefined
             // Cascade status to sub-agent: when the parent tool ends (error or
             // completed), mark the sub-agent as done and transition any
-            // pending/awaiting_approval/running child tools to the parent's terminal status.
+            // pending/running child tools to the parent's terminal status.
             if (part.subAgent) {
               part.subAgent.done = true
               part.subAgent.textPreview = undefined
@@ -640,7 +624,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
               if (part.subAgent.startedAt != null) part.subAgent.durationMs = Date.now() - part.subAgent.startedAt
               const childStatus = action.status === "error" ? "error" as const : "completed" as const
               for (const child of part.subAgent.tools) {
-                if (child.status === "pending" || child.status === "awaiting_approval" || child.status === "running") {
+                if (child.status === "pending" || child.status === "running") {
                   child.status = childStatus
                 }
               }
@@ -719,56 +703,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
 
     case "clear-error":
       setStore("error", undefined)
-      break
-
-    case "set-permission":
-      setStore(
-        produce((s) => {
-          if (s.permission) {
-            // Another prompt is already visible — queue this one
-            s.permissionQueue.push(action.request)
-          } else {
-            s.permission = action.request
-            s.running = false
-          }
-        }),
-      )
-      break
-
-    case "clear-permission":
-      setStore(
-        produce((s) => {
-          const next = s.permissionQueue.shift()
-          if (next) {
-            // Promote next queued request without resuming running state
-            s.permission = next
-          } else {
-            s.permission = undefined
-          }
-        }),
-      )
-      break
-
-    case "dismiss-permissions":
-      setStore(
-        produce((s) => {
-          const ids = new Set(action.requestIds)
-          s.permissionQueue = s.permissionQueue.filter((request) => !ids.has(request.requestId))
-          if (s.permission && ids.has(s.permission.requestId)) {
-            const parentCallId = s.permission.origin?.parentCallId
-            const parentIsActive = parentCallId
-              ? s.messages.some((message) => message.parts.some((part) =>
-                  part.type === "tool"
-                  && part.callId === parentCallId
-                  && part.status !== "completed"
-                  && part.status !== "error"
-                ))
-              : false
-            s.permission = s.permissionQueue.shift()
-            if (!s.permission && parentIsActive) s.running = true
-          }
-        }),
-      )
       break
 
     case "set-question":
@@ -950,7 +884,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore(
         "messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((s: SubAgentState) => {
-          s.tools[childIdx]!.status = "awaiting_approval"
+          s.tools[childIdx]!.status = "pending"
           s.tools[childIdx]!.input = action.input
         }),
       )
@@ -972,7 +906,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
         "messages", msgIdx, "parts", partIdx, "subAgent" as any,
         produce((subAgent: SubAgentState) => {
           const child = subAgent.tools[childIdx]!
-          if (child.status === "awaiting_approval" || child.status === "pending") {
+          if (child.status === "pending") {
             child.status = "running"
           }
         }),
@@ -1152,8 +1086,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           s.status.modelName = action.modelSpec
           s.status.skillCount = action.skillCount
           s.error = undefined
-          s.permission = undefined
-          s.permissionQueue = []
           s.question = undefined
           s.questionQueue = []
           s.steerDividers = []

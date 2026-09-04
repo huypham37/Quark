@@ -24,14 +24,6 @@ export interface ToolContext {
   callId: string
   /** AbortSignal — tool should respect cancellation */
   abort: AbortSignal
-  /**
-   * Request permission before performing a sensitive operation.
-   * Throws {@link DeniedError} or {@link RejectedError} if denied.
-   *
-   * @param tool - The tool ID being checked
-   * @param pattern - The specific resource pattern being accessed (e.g. a file path)
-   */
-  ask(tool: string, pattern: string): Promise<void>
 }
 
 /**
@@ -80,7 +72,7 @@ export interface ToolDef<T extends z.ZodType = z.ZodType> {
   /**
    * Execute the tool.
    * @param args - Validated input arguments (inferred from `parameters`)
-   * @param ctx - Execution context with session info, abort signal, and permission API
+   * @param ctx - Execution context with session info and abort signal
    */
   execute(args: z.infer<T>, ctx: ToolContext): Promise<ToolResult>
 }

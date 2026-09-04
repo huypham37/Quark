@@ -16,14 +16,14 @@ export interface ConversationMessage {
 
 export type ConversationPart =
   | { type: "text"; text: string; streaming?: boolean }
-  | { type: "tool"; tool: string; callId: string; status: "pending" | "awaiting_approval" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: ConversationSubAgentState }
+  | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: ConversationSubAgentState }
   | { type: "thinking"; done: boolean; text: string }
   | { type: "image"; mime: string; data: string; label: string }
 
 export interface ConversationSubAgentToolPart {
   tool: string
   callId: string
-  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
+  status: "pending" | "running" | "completed" | "error"
   input: Record<string, unknown>
   error?: string
 }
@@ -40,6 +40,16 @@ export interface ConversationSubAgentState {
   error?: { kind: "provider" | "process" | "protocol"; message: string }
   done: boolean
 }
+
+// Legacy persisted tool parts may carry `status: "awaiting_approval"` from
+// before the permission feature was removed. Normalize them to a terminal
+// error state so they never render as a permanent spinner.
+export function normalizeLegacyToolStatus(status: string): "pending" | "running" | "completed" | "error" {
+  if (status === "awaiting_approval") return "error"
+  return status as "pending" | "running" | "completed" | "error"
+}
+
+export const LEGACY_INTERRUPTED_ERROR = "Tool execution was interrupted before approval was removed."
 
 export function dbToConversationMessages(
   messages: MessageRow[],
@@ -68,7 +78,14 @@ export function dbToConversationMessages(
         if (d.visibility === "model-only") continue
         if (d.text) viewParts.push({ type: "text", text: d.text })
       } else if (p.type === "tool") {
-        const d = JSON.parse(p.data) as ToolPartData
+        const raw = JSON.parse(p.data) as Omit<ToolPartData, "status"> & { status?: string }
+        // Normalize a legacy `awaiting_approval` status to a terminal error.
+        const status = normalizeLegacyToolStatus(raw.status ?? "pending")
+        let error = raw.error
+        if (status === "error" && raw.status === "awaiting_approval" && !error) {
+          error = LEGACY_INTERRUPTED_ERROR
+        }
+        const d: ToolPartData = { ...raw, status, ...(error !== undefined ? { error } : {}) }
         let subAgent: ConversationSubAgentState | undefined
         if (d.tool === "subagent") {
           const profile = d.subAgent?.profile ?? (typeof d.input.profile === "string" ? d.input.profile : "sub-agent")

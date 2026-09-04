@@ -26,9 +26,6 @@ export default {
       throw new Error("pattern is required")
     }
 
-    // Ask for permission
-    await ctx.ask("glob", args.pattern)
-
     const searchPath = args.path
       ? path.resolve(args.path)
       : process.cwd()

@@ -20,12 +20,10 @@ import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { CommandPalette, type PaletteMode } from "./command-palette"
 import { preservePaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
-import { PermissionPrompt } from "./permission-prompt"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
 import { colors } from "../theme"
-import { respondPermission } from "../../permission/broker"
 import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter, clearFileCache } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
@@ -449,7 +447,7 @@ export const App: Component<AppProps> = (props) => {
 
   const openPalette = (snapshot?: { text: string; cursorOffset: number }) => {
     if (!inputRef || !props.getPaletteEntries) return false
-    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
     paletteSearchSnapshot = null
     savedComposer = {
       text: snapshot?.text ?? "",
@@ -760,7 +758,7 @@ export const App: Component<AppProps> = (props) => {
     query = "",
   ): boolean => {
     if (!props.getSessions) return false
-    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
     if (!paletteOpen()) {
       savedComposer = {
         text: "",
@@ -796,7 +794,7 @@ export const App: Component<AppProps> = (props) => {
 
   const openWorktreePicker = (): boolean => {
     if (!props.getWorktrees) return false
-    if (state.store.permission || state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
+    if (state.store.question || state.store.asyncPanel || statisticsContent() !== null) return false
     if (!paletteOpen()) {
       savedComposer = {
         text: "",
@@ -1134,7 +1132,6 @@ export const App: Component<AppProps> = (props) => {
     if (
       dequeuePending
       || state.store.running
-      || state.store.permission
       || state.store.question
       || state.store.asyncPanel
       || queuedMessages().length === 0
@@ -1143,7 +1140,7 @@ export const App: Component<AppProps> = (props) => {
     dequeuePending = true
     queueMicrotask(() => {
       let next: QueuedUserMessage | undefined
-      if (!state.store.running && !state.store.permission && !state.store.question && !state.store.asyncPanel) {
+      if (!state.store.running && !state.store.question && !state.store.asyncPanel) {
         setQueuedMessages((messages) => {
           next = messages[0]
           if (next?.id === selectedQueuedMessageId()) setSelectedQueuedMessageId(null)
@@ -1493,7 +1490,6 @@ export const App: Component<AppProps> = (props) => {
     if (
       queuedMessages().length > 0
       && state.store.running
-      && !state.store.permission
       && !state.store.question
       && !state.store.asyncPanel
       && !dropdownActive()
@@ -1621,27 +1617,6 @@ export const App: Component<AppProps> = (props) => {
           }
           bus.emit("model-switched", { modelSpec: prev, thinkingEffort: "none" })
         }
-      }
-      evt.preventDefault()
-      return
-    }
-
-    // Permission mode: intercept a/o/r keys
-    if (state.store.permission) {
-      const lower = evt.name.toLowerCase()
-      if (lower === "a") {
-        respondPermission({ requestId: state.store.permission.requestId, reply: "always" })
-        dispatch(state, { type: "clear-permission" })
-        dispatch(state, { type: "set-running", running: true })
-      } else if (lower === "o") {
-        respondPermission({ requestId: state.store.permission.requestId, reply: "once" })
-        dispatch(state, { type: "clear-permission" })
-        dispatch(state, { type: "set-running", running: true })
-      } else if (lower === "r") {
-        const remote = state.store.permission.origin?.kind === "subagent"
-        respondPermission({ requestId: state.store.permission.requestId, reply: "reject" })
-        dispatch(state, { type: "clear-permission" })
-        if (remote) dispatch(state, { type: "set-running", running: true })
       }
       evt.preventDefault()
       return
@@ -1845,11 +1820,6 @@ export const App: Component<AppProps> = (props) => {
         </For>
       </scrollbox>
 
-      {/* Permission prompt */}
-      <Show when={state.store.permission}>
-        {(perm) => <PermissionPrompt request={perm()} />}
-      </Show>
-
       {/* Question prompt */}
       <Show when={state.store.question}>
         {(q) => (
@@ -1875,7 +1845,7 @@ export const App: Component<AppProps> = (props) => {
         onSubmit={handleSubmit}
         onContentChange={handleInputChange}
         onRef={(r: TextareaRenderable) => { inputRef = r }}
-        disabled={!!state.store.permission || !!state.store.question}
+        disabled={!!state.store.question}
         focused={!paletteOpen()}
         opacity={paletteOpen() ? 0.35 : 1}
         placeholder=""
