@@ -2,8 +2,20 @@
 // Tests that tool output is properly passed to and displayed by the scrollable output component
 
 import { describe, test, expect } from "bun:test"
+import { readFileSync } from "fs"
+import { resolve } from "path"
 import { createRoot } from "solid-js"
 import { createAppState, dispatch } from "../../src/tui/state"
+import {
+  IDEAL_RESULT_HEIGHT,
+  MIN_RESULT_HEIGHT,
+  resultViewportCap,
+} from "../../src/tui/components/result-viewport"
+
+const SCROLLABLE_OUTPUT_SRC = readFileSync(
+  resolve(import.meta.dir, "../../src/tui/components/scrollable-output.tsx"),
+  "utf8",
+)
 
 function withRoot<T>(fn: () => T): T {
   let result!: T
@@ -13,6 +25,29 @@ function withRoot<T>(fn: () => T): T {
   })
   return result
 }
+
+describe("pure tool-result viewport", () => {
+  test("renders without connector, count, ellipsis, or text scroll chrome", () => {
+    expect(SCROLLABLE_OUTPUT_SRC).not.toContain("└──")
+    expect(SCROLLABLE_OUTPUT_SRC).not.toContain("[…")
+    expect(SCROLLABLE_OUTPUT_SRC).not.toContain("[scroll")
+    expect(SCROLLABLE_OUTPUT_SRC).not.toContain("…")
+  })
+
+  test("uses a terminal-aware cap with three- and ten-row boundaries", () => {
+    expect(resultViewportCap(40)).toBe(IDEAL_RESULT_HEIGHT)
+    expect(resultViewportCap(18)).toBe(6)
+    expect(resultViewportCap(8)).toBe(MIN_RESULT_HEIGHT)
+    expect(IDEAL_RESULT_HEIGHT).toBe(10)
+    expect(MIN_RESULT_HEIGHT).toBe(3)
+  })
+
+  test("preserves every source line and supports opt-in sticky following", () => {
+    expect(SCROLLABLE_OUTPUT_SRC).toContain('props.content.split("\\n")')
+    expect(SCROLLABLE_OUTPUT_SRC).toContain("<For each={lines()}>")
+    expect(SCROLLABLE_OUTPUT_SRC).toContain("stickyScroll={props.followOutput ?? false}")
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Tool output state tests — verifies the state layer correctly stores and

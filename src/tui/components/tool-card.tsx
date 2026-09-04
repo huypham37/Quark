@@ -109,6 +109,7 @@ const ToolCardBody: Component<ToolCardProps> = (props) => (
       && props.status !== "running"
       && props.status !== "pending"
       && props.tool !== "write"
+      && !props.diff
       && !READ_ONLY_TOOLS.has(props.tool)
     }>
       <ScrollableOutput content={props.output!} />

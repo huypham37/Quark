@@ -245,6 +245,11 @@ describe("ToolCard body polymorphic rendering", () => {
     expect(TOOL_CARD_SRC).toContain("props.output")
   })
 
+  test("empty output and completed diffs do not render a generic result body", () => {
+    expect(TOOL_CARD_SRC).toContain("props.output")
+    expect(TOOL_CARD_SRC).toContain("&& !props.diff")
+  })
+
   test("todo/question/skill/read tools render empty body (read-only: header shown, body suppressed)", () => {
     // The body only shows WriteStreamView, DiffView, or ScrollableOutput
     // — no special cases for todo/question/skill means empty body
