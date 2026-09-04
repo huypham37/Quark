@@ -23,7 +23,6 @@ interface WriteStreamViewProps {
 const MAX_VISIBLE_LINES = 100
 
 const COLOR_ADDED_FG = RGBA.fromHex("#98C379")
-const COLOR_LINENUM  = RGBA.fromHex("#4a5568")
 const COLOR_RULE     = RGBA.fromHex("#2d3748")
 
 function truncateLine(content: string, maxLen = 80): string {
@@ -49,7 +48,7 @@ export const WriteStreamView: Component<WriteStreamViewProps> = (props) => {
         <For each={visibleLines()}>
           {(line, i) => (
             <box flexDirection="row">
-              <text fg={COLOR_LINENUM}>{String(i() + 1).padStart(4)}</text>
+              <text fg={colors.text}>{String(i() + 1).padStart(4)}</text>
               <text fg={colors.muted}>│</text>
               <text fg={COLOR_ADDED_FG}>+</text>
               <text fg={COLOR_ADDED_FG}>{truncateLine(line, maxLineLen())}</text>

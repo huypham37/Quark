@@ -2,9 +2,14 @@
 // Tests pure utility functions for generating and parsing unified diffs
 
 import { describe, test, expect } from "bun:test"
+import { readFileSync } from "fs"
+import { resolve } from "path"
 import type { TuiPart } from "../../src/tui/state"
 import { generateUnifiedDiff, parseDiffHunks } from "../../src/shared/diff-utils"
 import type { DiffLine, DiffHunk } from "../../src/shared/diff-utils"
+
+const DIFF_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/diff-view.tsx"), "utf8")
+const WRITE_STREAM_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/write-stream-view.tsx"), "utf8")
 
 // ---------------------------------------------------------------------------
 // generateUnifiedDiff() tests
@@ -330,6 +335,23 @@ index abc123..def456 100644
     expect(result[0].oldStart).toBe(1)
     expect(result[0].oldLines).toBe(1)
     expect(result[0].newLines).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Diff rendering style regressions
+// ---------------------------------------------------------------------------
+
+describe("diff rendering polish", () => {
+  test("aligns hunk rules and content with the summary after its connector", () => {
+    expect(DIFF_VIEW_SRC).toContain('<box flexDirection="column" marginLeft={4}>')
+  })
+
+  test("uses theme-aware primary text for diff and write-stream line numbers", () => {
+    expect(DIFF_VIEW_SRC).toContain('<text fg={colors.text} flexShrink={0}>{lineNo()}</text>')
+    expect(WRITE_STREAM_VIEW_SRC).toContain('<text fg={colors.text}>{String(i() + 1).padStart(4)}</text>')
+    expect(DIFF_VIEW_SRC).not.toContain("COLOR_LINENUM")
+    expect(WRITE_STREAM_VIEW_SRC).not.toContain("COLOR_LINENUM")
   })
 })
 

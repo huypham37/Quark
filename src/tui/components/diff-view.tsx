@@ -32,7 +32,6 @@ const COLOR_ADDED    = RGBA.fromHex("#3a5c3a")  // dark green bg feel via text c
 const COLOR_REMOVED  = RGBA.fromHex("#5c3a3a")  // dark red bg feel via text color
 const COLOR_ADDED_FG = RGBA.fromHex("#98C379")  // bright green text
 const COLOR_REMOVED_FG = RGBA.fromHex("#E06C75") // bright red text
-const COLOR_LINENUM  = RGBA.fromHex("#4a5568")   // muted blue-gray
 const COLOR_RULE     = RGBA.fromHex("#2d3748")   // very dark rule line
 const COLOR_FILEPATH = RGBA.fromHex("#61AFEF")   // blue
 
@@ -81,7 +80,7 @@ const DiffLineView: Component<{ line: DiffLine; maxDigits: number }> = (props) =
 
   return (
     <box flexDirection="row">
-      <text fg={COLOR_LINENUM} flexShrink={0}>{lineNo()}</text>
+      <text fg={colors.text} flexShrink={0}>{lineNo()}</text>
       <text fg={colors.muted} flexShrink={0}>│ </text>
       <text fg={fgColor()} wrap="wrap" flexShrink={1}>{props.line.content}</text>
     </box>
@@ -125,7 +124,7 @@ export const DiffView: Component<DiffViewProps> = (props) => {
           <text fg={COLOR_REMOVED_FG}>-{changes().removed}</text>
         </box>
         {/* Hunks */}
-        <box flexDirection="column">
+        <box flexDirection="column" marginLeft={4}>
           <text fg={COLOR_RULE}>{rule()}</text>
           <For each={visibleHunks()}>
             {(hunk, i) => (

@@ -245,9 +245,9 @@ describe("ToolCard body polymorphic rendering", () => {
     expect(TOOL_CARD_SRC).toContain("props.output")
   })
 
-  test("empty output and completed diffs do not render a generic result body", () => {
-    expect(TOOL_CARD_SRC).toContain("props.output")
-    expect(TOOL_CARD_SRC).toContain("&& !props.diff")
+  test("completed diffs suppress the generic result body", () => {
+    expect(TOOL_CARD_SRC).toContain('const hasCompletedDiff = () => props.status === "completed" && !!props.diff')
+    expect(TOOL_CARD_SRC).toContain("&& !hasCompletedDiff()")
   })
 
   test("todo/question/skill/read tools render empty body (read-only: header shown, body suppressed)", () => {

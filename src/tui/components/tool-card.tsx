@@ -96,26 +96,30 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
   )
 }
 
-const ToolCardBody: Component<ToolCardProps> = (props) => (
-  <>
-    <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
-      <WriteStreamView content={props.streamingContent!} />
-    </Show>
-    <Show when={props.diff && props.status === "completed"}>
-      <DiffView diff={props.diff!} />
-    </Show>
-    <Show when={
-      props.output
-      && props.status !== "running"
-      && props.status !== "pending"
-      && props.tool !== "write"
-      && !props.diff
-      && !READ_ONLY_TOOLS.has(props.tool)
-    }>
-      <ScrollableOutput content={props.output!} />
-    </Show>
-  </>
-)
+const ToolCardBody: Component<ToolCardProps> = (props) => {
+  const hasCompletedDiff = () => props.status === "completed" && !!props.diff
+
+  return (
+    <>
+      <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
+        <WriteStreamView content={props.streamingContent!} />
+      </Show>
+      <Show when={hasCompletedDiff()}>
+        <DiffView diff={props.diff!} />
+      </Show>
+      <Show when={
+        props.output
+        && props.status !== "running"
+        && props.status !== "pending"
+        && props.tool !== "write"
+        && !hasCompletedDiff()
+        && !READ_ONLY_TOOLS.has(props.tool)
+      }>
+        <ScrollableOutput content={props.output!} />
+      </Show>
+    </>
+  )
+}
 
 export const ToolCard: Component<ToolCardProps> = (props) => (
   <box flexDirection="column">
