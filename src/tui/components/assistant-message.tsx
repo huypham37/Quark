@@ -53,7 +53,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
       {/* Keep one MarkdownRenderable alive while text arrives. Re-lexing into a
           new <For> on every delta remounts it and visibly flashes. */}
       <Show
-        when={props.streaming}
+        when={props.streaming && !splitMarkdownFileLinks(props.text).some((segment) => segment.type === "file-line")}
         fallback={
           <For each={splitMarkdownFileLinks(props.text)}>
             {(segment) => segment.type === "markdown" ? (
@@ -64,7 +64,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
                 <For each={segment.parts}>
                   {(part) => "text" in part ? <text>{part.text}</text> : (
                     <box flexDirection="row" onMouseUp={() => props.onOpenFile?.(part.target)}>
-                      <text fg={colors.info}>{part.label}</text>
+                      <text fg={colors.info} underline>{part.label}</text>
                     </box>
                   )}
                 </For>
