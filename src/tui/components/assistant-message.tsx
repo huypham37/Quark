@@ -4,6 +4,7 @@
 
 import type { Component } from "solid-js"
 import { For, Show } from "solid-js"
+import { CodeRenderable, type RenderNodeContext } from "@opentui/core"
 import { colors } from "../theme"
 import { syntaxStyle } from "../syntax-theme"
 import { splitMarkdownFileLinks } from "../markdown-file-links"
@@ -36,6 +37,16 @@ function prepareContent(text: string): string {
   return text
 }
 
+/** Give fenced code blocks a visible container while retaining OpenTUI syntax highlighting. */
+function renderMarkdownNode(token: { type: string }, context: RenderNodeContext) {
+  const renderable = context.defaultRender()
+  if (token.type !== "code" || !(renderable instanceof CodeRenderable)) return renderable
+
+  renderable.bg = colors.commandCardBg
+  renderable.paddingX = 1
+  return renderable
+}
+
 export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
   <Show when={props.text}>
     <box flexDirection="column" width="100%">
@@ -46,7 +57,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
         fallback={
           <For each={splitMarkdownFileLinks(props.text)}>
             {(segment) => segment.type === "markdown" ? (
-              <markdown content={prepareContent(segment.content)} syntaxStyle={syntaxStyle} conceal={true} streaming={false} width="100%" />
+              <markdown content={prepareContent(segment.content)} syntaxStyle={syntaxStyle} conceal={true} renderNode={renderMarkdownNode} streaming={false} width="100%" />
             ) : (
               <box flexDirection="row" flexWrap="wrap" width="100%">
                 <Show when={segment.marker}><text>{segment.marker}</text></Show>
@@ -62,7 +73,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => (
           </For>
         }
       >
-        <markdown content={prepareContent(props.text)} syntaxStyle={syntaxStyle} conceal={true} streaming={true} width="100%" />
+        <markdown content={prepareContent(props.text)} syntaxStyle={syntaxStyle} conceal={true} renderNode={renderMarkdownNode} streaming={true} width="100%" />
       </Show>
     </box>
   </Show>
