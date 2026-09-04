@@ -205,9 +205,8 @@ context — the parent transcript stores only the tool call and the final result
 ╰─────────────────────────────────────────────────╯
 ```
 
-See [`docs/data-model.md`](docs/data-model.md) for the persistence schema,
-[`docs/acp-integration-guide.md`](docs/acp-integration-guide.md) for the agent
-control protocol, and [`specs/`](specs/) for design records.
+See [`docs/data-model.md`](docs/data-model.md) for the persistence schema and
+[`specs/`](specs/) for design records.
 
 ---
 

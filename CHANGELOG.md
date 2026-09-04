@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** `quark acp` and Quark's Agent Client Protocol server implementation were removed. External editor integrations that depend on ACP must migrate to another supported interface or pin to a prior release.
+
 ### Changed
 
 - Profile model settings now use the flatter `model`, `thinking_effort`, and optional `thinking_mode` fields. The previous nested `model.thinking` form remains readable for migration.

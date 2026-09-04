@@ -5,7 +5,6 @@
 //   quark -p coder -m "help me fix this bug"
 //   quark "quick message without flags"
 //   quark --model claude-sonnet-4.5 "one-off with a specific model"
-//   quark acp                       Start ACP agent (JSON-RPC over stdio)
 
 import { parseArgs } from "util"
 import { bootstrap } from "./bootstrap"
@@ -121,13 +120,6 @@ async function main() {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
       process.exit(1)
     }
-  }
-
-  // Route "quark acp" subcommand to ACP agent entry point
-  if (process.argv[2] === "acp") {
-    const { runAcpEntry } = await import("./acp/entry")
-    await runAcpEntry()
-    process.exit(0)
   }
 
   const args = parseArguments()
