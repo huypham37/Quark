@@ -11,7 +11,6 @@ import { Show, For } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { colors } from "../theme"
-import { RGBA } from "@opentui/core"
 import { FlipPercent } from "./flip-percent"
 import { tokenPercentText, tokenPercentValue } from "./flip-percent-frame"
 
@@ -22,13 +21,6 @@ import { tokenPercentText, tokenPercentValue } from "./flip-percent-frame"
 const PASTE_CHAR_THRESHOLD = 400
 const PASTE_LINE_THRESHOLD = 6
 const PASTE_TOKEN_RE = /\[Pasted #(\d+) \+\d+ lines\]/g
-
-function modelColor(name: string): RGBA {
-  if (name.startsWith("claude")) return RGBA.fromHex("#d4a574") // warm orange for Anthropic
-  if (name.startsWith("gemini")) return RGBA.fromHex("#4285f4") // blue for Google
-  if (name.startsWith("o1") || name.startsWith("o3") || name.startsWith("o4")) return RGBA.fromHex("#10a37f") // green for OpenAI reasoning
-  return RGBA.fromHex("#10a37f") // green for OpenAI (gpt-*)
-}
 
 export interface PromptProps {
   /** Callback when user submits (Cmd+Enter / Ctrl+Enter) — receives trimmed text */
@@ -240,7 +232,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         <FlipPercent value={tokenPercent()} />
         <text fg={colors.statusLine} flexShrink={0}>{topBorder().leftRest}</text>
         <text fg={borderColor()} flexShrink={0}>{topBorder().filler}</text>
-        <text fg={modelColor(modelName())} flexShrink={0}>{topBorder().rightText}</text>
+        <text fg={colors.userBar} flexShrink={0}>{topBorder().rightText}</text>
         <text fg={borderColor()} flexShrink={0}>{topBorder().rightSuffix}</text>
       </box>
     )
