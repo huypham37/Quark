@@ -58,9 +58,6 @@ export default {
       throw new Error("query is required")
     }
 
-    // Ask for permission
-    await ctx.ask("websearch", args.query)
-
     const request: McpSearchRequest = {
       jsonrpc: "2.0",
       id: 1,

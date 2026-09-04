@@ -25,9 +25,6 @@ best experience for both writing code and doing research.
 - **Deterministic, named subagents** — subagents are invoked through
   purpose-built tools, each with its own typed contract. No generic `task` /
   `delegate` verb.
-- **Per-agent permissions** — `allow / deny / ask` rules evaluated per-agent,
-  per-session. Read-only tools default to `allow`; mutating tools default to
-  `deny` unless explicitly opted in.
 - **Progressive-disclosure skills** — three-level loading (metadata →
   instructions → resources) keeps the context window lean.
 - **Session persistence** — per-session JSONL storage with resume, ephemeral
@@ -183,7 +180,7 @@ when a profile lists them in its `tools[]` array. Reference implementations for
 [`examples/tools/`](examples/tools) — copy them into `~/.config/quark/tools/`
 to enable them.
 
-A **subagent** is an agent (prompt + tools + permissions + model) exposed through
+A **subagent** is an agent (prompt + tools + model) exposed through
 a thin, named tool. It runs in its own isolated session (`kind: "subagent"`,
 `parentSessionId` set) so its intermediate reasoning never pollutes the parent's
 context — the parent transcript stores only the tool call and the final result.
@@ -197,11 +194,11 @@ context — the parent transcript stores only the tool call and the final result
 │                  TUI / SDK / CLI                  │
 ├─────────────────────────────────────────────────┤
 │        Baked-in Agents (identities, in code)      │
-│         prompt + tools[] + skills[] + perms       │
-├──────────┬──────────┬───────────┬─────────────────┤
-│  Agent   │  Tool    │  Skill    │  Permission     │
-│  Loop    │  System  │  System   │  System         │
-├──────────┴──────────┴───────────┴─────────────────┤
+│             prompt + tools[] + skills[]            │
+├──────────┬──────────┬───────────┤
+│  Agent   │  Tool    │  Skill    │
+│  Loop    │  System  │  System   │
+├──────────┴──────────┴───────────┤
 │              Persistence (JSONL)                   │
 │   Session (main | subagent | ephemeral)           │
 │        → Message → Part   (parentSessionId)        │
@@ -216,8 +213,8 @@ control protocol, and [`specs/`](specs/) for design records.
 
 ## Using Quark as an SDK
 
-Quark also ships as the `@quark/sdk` package, exposing its session, tool,
-permission, and agent primitives:
+Quark also ships as the `@quark/sdk` package, exposing its session, tool, and
+agent primitives:
 
 ```ts
 import { bootstrap, createSession, prompt } from "@quark/sdk"

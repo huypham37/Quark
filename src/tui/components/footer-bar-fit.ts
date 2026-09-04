@@ -3,8 +3,7 @@
 // Extracted into a .ts module (no JSX) so they can be unit-tested without
 // pulling the OpenTUI/Solid JSX runtime through the test harness.
 //
-// Behavior contract: see specs/permission-feature.md? — no, this is documented
-// in the FooterBar component header. The shrink ladder is the user-visible
+// The shrink ladder is documented in the FooterBar component header and is the user-visible
 // contract; tests in test/tui/footer-bar-adaptive.test.ts lock it down.
 
 // App.tsx no longer applies horizontal padding, so the footer can use the full width.

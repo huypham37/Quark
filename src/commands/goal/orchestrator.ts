@@ -34,15 +34,7 @@ function goalAgent(): AgentConfig {
   const profileId = cfg.goal?.executor_profile ?? "coder"
   const profile = resolveProfile(profileId)
   const promptResult = readPromptFile(profile)
-  const base = agentFromProfile(profile, promptResult.content)
-
-  // Auto-approve all tools — goal mode runs without permission prompts
-  const autoAllow = [{ tool: "*", action: "allow" as const }]
-
-  return {
-    ...base,
-    permissions: autoAllow,
-  }
+  return agentFromProfile(profile, promptResult.content)
 }
 
 // ---------------------------------------------------------------------------

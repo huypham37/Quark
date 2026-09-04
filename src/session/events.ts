@@ -59,26 +59,6 @@ export interface BusEvents {
   "loop-start": { sessionId: string }
   "loop-end": { sessionId: string }
 
-  // Permission request (TUI needs to prompt user)
-  "permission-request": {
-    sessionId: string
-    requestId: string
-    tool: string
-    input: Record<string, unknown>
-    origin?: {
-      kind: "subagent"
-      parentCallId: string
-      profile: string
-      childSessionId: string
-    }
-  }
-
-  // Remove child-process permission prompts that can no longer be answered.
-  "permission-dismiss": { sessionId: string; requestIds: string[] }
-
-  // Permission was rejected by the user — abort the agent loop
-  "permission-rejected": { sessionId: string }
-
   // Question request — agent asks user interactive questions, TUI displays picker
   "question-request": {
     sessionId: string
@@ -154,7 +134,7 @@ export interface BusEvents {
     profile: string; tool: string; callId: string; input: Record<string, unknown>
   }
 
-  // A child tool passed its permission gate and began executing
+  // A child tool began executing
   "subagent-tool-running": {
     sessionId: string; messageId: string; parentCallId: string
     profile: string; callId: string

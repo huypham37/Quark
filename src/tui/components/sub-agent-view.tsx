@@ -9,7 +9,7 @@ import { SubAgentTokenMeter } from "./sub-agent-token-meter"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
-  parentStatus: "pending" | "awaiting_approval" | "running" | "completed" | "error"
+  parentStatus: "pending" | "running" | "completed" | "error"
   defaultExpanded?: boolean
 }
 
@@ -56,10 +56,9 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
 
   const isError = () => props.parentStatus === "error" || !!props.subAgent.error
   const isDone = () => props.subAgent.done
-  const isWaiting = () => props.subAgent.tools.some((tool) => tool.status === "awaiting_approval")
   const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
   const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
-  const meterColor = () => !isError() && !isDone() && !isWaiting() ? colors.borderActive : statusColor()
+  const meterColor = () => !isError() && !isDone() ? colors.borderActive : statusColor()
 
   const durationLabel = () => {
     if (isDone() && props.subAgent.durationMs != null) return ` (${formatSeconds(props.subAgent.durationMs)})`
@@ -71,7 +70,6 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const headerLabel = () => {
     if (isError()) return `${profileName()} failed`
     if (isDone()) return `${profileName()} responded`
-    if (isWaiting()) return `${profileName()} waiting for approval`
     return `Summoning ${profileName()}`
   }
 

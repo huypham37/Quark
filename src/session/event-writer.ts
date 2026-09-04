@@ -20,8 +20,6 @@ export type SubAgentEvent =
   | { e: "tool-end"; t: string; id: string; s: "completed" | "error"; err?: string }
   | { e: "step-finish"; tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }; tokenLimit?: number; model?: string }
   | { e: "text-delta"; d: string }
-  | { e: "permission-request"; id: string; sessionId: string; tool: string; pattern: string; metadata?: Record<string, unknown> }
-  | { e: "permission-dismiss"; ids: string[] }
   | { e: "error"; kind: SubagentErrorKind; message: string }
   | { e: "loop-end" }
 
@@ -97,26 +95,6 @@ export function startEventWriter(options?: { resolvedModel?: string; profile?: s
 
   on("session-created", (data) => {
     emit({ e: "ready", sessionId: data.sessionId, profile, model: displayModel, tokenLimit })
-  })
-
-  on("permission-request", (data) => {
-    const { pattern, ...metadata } = data.input
-    emit({
-      e: "permission-request",
-      id: data.requestId,
-      sessionId: data.origin?.childSessionId ?? data.sessionId,
-      tool: data.tool,
-      pattern: typeof pattern === "string" ? pattern : "*",
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-    })
-  })
-
-  on("permission-dismiss", (data) => {
-    emit({ e: "permission-dismiss", ids: data.requestIds })
-  })
-
-  on("permission-rejected", () => {
-    emitSubagentError("process", "The user rejected a permission request; the subagent was cancelled.")
   })
 
   on("error", (data) => {

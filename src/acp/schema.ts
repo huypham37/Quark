@@ -290,22 +290,6 @@ export const Plan = z.object({
   entries: z.array(PlanEntry),
 })
 
-// ─── Permission ───────────────────────────────────────────────────────────────
-
-export const PermissionOptionKind = z.enum(["allow_once", "allow_always", "reject_once", "reject_always"])
-
-export const PermissionOption = z.object({
-  optionId: z.string(),
-  name: z.string(),
-  kind: PermissionOptionKind,
-  _meta: z.record(z.string(), z.unknown()).optional(),
-})
-
-export const RequestPermissionOutcome = z.union([
-  z.object({ outcome: z.literal("selected"), optionId: z.string() }),
-  z.object({ outcome: z.literal("cancelled") }),
-])
-
 // ─── Available Commands (slash commands) ──────────────────────────────────────
 
 export const AvailableCommandInput = z.object({
@@ -468,24 +452,6 @@ export const CancelNotification = z.object({
 })
 
 // ─── Client Methods (Agent → Client) ──────────────────────────────────────────
-
-export const RequestPermissionRequest = z.object({
-  method: z.literal("session/request_permission"),
-  params: z.object({
-    sessionId: SessionId,
-    toolCall: z.object({
-      toolCallId: z.string(),
-      title: z.string().optional(),
-      kind: ToolKind.optional(),
-    }),
-    options: z.array(PermissionOption),
-    _meta: z.record(z.string(), z.unknown()).optional(),
-  }),
-})
-
-export const RequestPermissionResponse = z.object({
-  outcome: RequestPermissionOutcome,
-})
 
 export const ReadTextFileRequest = z.object({
   method: z.literal("fs/read_text_file"),
@@ -695,8 +661,6 @@ export type NewSessionResponse = z.infer<typeof NewSessionResponse>
 export type LoadSessionRequest = z.infer<typeof LoadSessionRequest>
 export type LoadSessionResponse = z.infer<typeof LoadSessionResponse>
 export type CancelNotification = z.infer<typeof CancelNotification>
-export type RequestPermissionRequest = z.infer<typeof RequestPermissionRequest>
-export type RequestPermissionResponse = z.infer<typeof RequestPermissionResponse>
 export type ReadTextFileRequest = z.infer<typeof ReadTextFileRequest>
 export type ReadTextFileResponse = z.infer<typeof ReadTextFileResponse>
 export type WriteTextFileRequest = z.infer<typeof WriteTextFileRequest>
@@ -707,9 +671,6 @@ export type UserMessageChunk = z.infer<typeof UserMessageChunk>
 export type AgentMessageChunk = z.infer<typeof AgentMessageChunk>
 export type AgentThoughtChunk = z.infer<typeof AgentThoughtChunk>
 export type AvailableCommand = z.infer<typeof AvailableCommand>
-export type PermissionOption = z.infer<typeof PermissionOption>
-export type PermissionOptionKind = z.infer<typeof PermissionOptionKind>
-export type RequestPermissionOutcome = z.infer<typeof RequestPermissionOutcome>
 export type ToolCallLocation = z.infer<typeof ToolCallLocation>
 export type DiffContent = z.infer<typeof DiffContent>
 export type TerminalContent = z.infer<typeof TerminalContent>

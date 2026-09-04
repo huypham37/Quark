@@ -30,24 +30,6 @@ export type { ToolDef, ToolContext, ToolResult, ToolResultContentPart } from "./
 export { bus } from "./session/events"
 export type { BusEvents, BusEventName } from "./session/events"
 
-// Permissions
-export {
-  evaluate as evaluatePermission,
-  ask as askPermission,
-  listPending as listPendingPermissions,
-  clearSession as clearPermissionSession,
-  disabled as disabledTools,
-  type Rule,
-  type Ruleset,
-  type Action,
-  type Reply,
-  type PendingRequest,
-  DeniedError,
-  RejectedError,
-  CorrectedError,
-} from "./permission/permission"
-export { respondPermission } from "./permission/broker"
-
 // Question tool
 export { respondQuestion, type QuestionResponse } from "./tool/question"
 

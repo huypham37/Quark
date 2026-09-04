@@ -134,14 +134,14 @@ describe("wireEvents: tool lifecycle", () => {
     expect(part.status).toBe("pending")
   })
 
-  test("tool-input sets running status and input", () => {
+  test("tool-input preserves pending status and input", () => {
     const s = setup("s1")
     bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
     bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
     bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1", input: { path: "/a.ts" } })
 
     const part = s.store.messages[0]!.parts[0] as any
-    expect(part.status).toBe("awaiting_approval")
+    expect(part.status).toBe("pending")
     expect(part.input).toEqual({ path: "/a.ts" })
 
     // tool-running event transitions to running
@@ -221,21 +221,6 @@ describe("wireEvents: error", () => {
     const notifs = getActive()
     expect(notifs[0]!.title).toBe("Provider Error")
     expect(notifs[0]!.message).toBe("something went wrong")
-  })
-})
-
-describe("wireEvents: permission", () => {
-  test("permission-request sets permission and clears running", () => {
-    const s = setup("s1")
-    bus.emit("loop-start", { sessionId: "s1" })
-    bus.emit("permission-request", {
-      sessionId: "s1",
-      requestId: "r1",
-      tool: "bash",
-      input: { cmd: "ls" },
-    })
-    expect(s.store.permission).toEqual({ requestId: "r1", sessionId: "s1", tool: "bash", input: { cmd: "ls" } })
-    expect(s.store.running).toBe(false)
   })
 })
 
@@ -379,7 +364,7 @@ describe("wireEvents: session-reset and session-switch", () => {
 })
 
 describe("wireEvents: aborted tool state", () => {
-  test("tool stays awaiting_approval if loop-end fires without tool-running or tool-end", () => {
+  test("tool stays pending if loop-end fires without tool-running or tool-end", () => {
     const s = setup("s1")
     bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
     bus.emit("tool-start", { sessionId: "s1", messageId: "m1", partId: "p1", tool: "bash", callId: "c1" })
@@ -389,7 +374,7 @@ describe("wireEvents: aborted tool state", () => {
     bus.emit("loop-end", { sessionId: "s1" })
 
     const part = s.store.messages[0]!.parts[0] as any
-    expect(part.status).toBe("awaiting_approval")
+    expect(part.status).toBe("pending")
   })
 
   test("running tool transitions to error when tool-end with error is emitted before loop-end", () => {
@@ -525,7 +510,7 @@ describe("wireEvents: read-only tool body suppression (not event filtering)", ()
       bus.emit("tool-input", { sessionId: "s1", messageId: "m1", partId: "p1", tool, callId: "c1", input: { path: "/a.ts" } })
 
       const part = s.store.messages[0]!.parts[0] as any
-      expect(part.status).toBe("awaiting_approval")
+      expect(part.status).toBe("pending")
       expect(part.input).toEqual({ path: "/a.ts" })
     }
   })

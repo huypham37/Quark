@@ -1,18 +1,11 @@
 import { jsonSchema, tool, type ToolExecutionOptions, type ToolSet } from "ai"
 import { z } from "zod"
 import type { AgentConfig } from "../agent"
-import {
-  ask as askPermission,
-  CorrectedError,
-  RejectedError,
-  type Ruleset,
-} from "../permission/permission"
 import { extractFilePath, toolPreExecute } from "../commands/undo"
 import { fireHook } from "../plugin/registry"
 import { bus } from "../session/events"
 import { resolveAvailable } from "./registry"
 import type { ToolDef } from "./tool"
-import { extractResourcePath, isInsideWorkspace, getAccessType } from "./workspace-boundary"
 import { createSubagentTool } from "./subagent"
 
 export function resolveToolSet(
@@ -25,15 +18,10 @@ export function resolveToolSet(
   if (agent.subAgents && agent.subAgents.length > 0) {
     defs.push(createSubagentTool([...agent.subAgents]))
   }
-  const ruleset: Ruleset = (agent.permissions ?? []).map((r) => ({
-    tool: r.tool,
-    pattern: r.pattern ?? "*",
-    action: r.action,
-  }))
   const result: ToolSet = {}
 
   for (const def of defs) {
-    result[def.id] = toAITool(def, sessionId, messageId, abort, ruleset)
+    result[def.id] = toAITool(def, sessionId, messageId, abort)
   }
 
   return result
@@ -63,7 +51,6 @@ function toAITool(
   sessionId: string,
   messageId: string,
   abort: AbortSignal,
-  ruleset: Ruleset,
 ) {
   const schema = z.toJSONSchema(def.parameters)
 
@@ -88,42 +75,6 @@ function toAITool(
       }
       const validatedArgs = parseResult.data as Record<string, unknown>
 
-      // Extract the resource path (e.g. file/directory) from parsed args.
-      // Pass it as the permission pattern so the boundary check uses
-      // the actual target, not "*".
-      const resourcePath = extractResourcePath(def.id, validatedArgs)
-      const pattern = resourcePath ?? "*"
-
-      // Build metadata for the TUI permission prompt
-      const metadata: Record<string, unknown> = {}
-      let permissionRuleset = ruleset
-      if (resourcePath && !isInsideWorkspace(resourcePath)) {
-        metadata.isExternal = true
-        metadata.workspace = process.cwd()
-        metadata.accessType = getAccessType(def.id)
-        // Workspace boundaries always ask first. Session-level approvals are
-        // evaluated after this ruleset and can still allow the exact target.
-        permissionRuleset = [
-          ...ruleset,
-          { tool: def.id, pattern, action: "ask" },
-        ]
-      }
-
-      try {
-        await askPermission({
-          sessionId,
-          tool: def.id,
-          pattern,
-          ruleset: permissionRuleset,
-          metadata,
-        })
-      } catch (e) {
-        if (e instanceof RejectedError || e instanceof CorrectedError) {
-          bus.emit("permission-rejected", { sessionId })
-        }
-        throw e
-      }
-
       try {
         const fp = extractFilePath(def.id, validatedArgs)
         if (fp) await toolPreExecute(sessionId, fp)
@@ -138,14 +89,6 @@ function toAITool(
         messageId,
         callId,
         abort: abortSig,
-        async ask(tool: string, pattern: string) {
-          await askPermission({
-            sessionId,
-            tool,
-            pattern,
-            ruleset,
-          })
-        },
       }
 
       const beforeArgs = await fireHook(

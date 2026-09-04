@@ -14,8 +14,6 @@ import { resolveProfile, readPromptFile, listProfiles, loadProfileConfig } from 
 import { bootstrap } from "../bootstrap"
 import { loadConfig } from "../config/config"
 import { debug } from "../debug"
-import { bus } from "../session/events"
-import { respondPermission } from "../permission/broker"
 import type { PartRow } from "../session/message"
 
 const dlog = debug("acp")
@@ -182,57 +180,6 @@ function replaySession(sessionId: string, send: (msg: OutgoingMessage) => void):
   }
 }
 
-// ─── Permission Bridge ───────────────────────────────────────────────────────
-
-function bridgePermissions(
-  sessionId: string,
-  call: (method: string, params: unknown) => Promise<unknown>,
-): () => void {
-  const handler = (data: { sessionId: string; requestId: string; tool: string; input: Record<string, unknown> }) => {
-    if (data.sessionId !== sessionId) return
-
-    const pattern = (data.input.pattern as string) ?? data.tool
-
-    call("session/request_permission", {
-      sessionId,
-      toolCall: {
-        toolCallId: data.requestId,
-        title: data.tool,
-        kind: "other",
-      },
-      options: [
-        { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
-        { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
-        { optionId: "reject-once", name: "Reject", kind: "reject_once" },
-      ],
-    }).then((result) => {
-      const outcome = result as s.RequestPermissionOutcome
-      if (outcome.outcome === "cancelled") {
-        respondPermission({ requestId: data.requestId, reply: "reject" })
-        return
-      }
-      if (outcome.outcome === "selected") {
-        const reply = optionToReply(outcome.optionId)
-        respondPermission({ requestId: data.requestId, reply })
-      }
-    }).catch(() => {
-      respondPermission({ requestId: data.requestId, reply: "reject" })
-    })
-  }
-
-  bus.on("permission-request", handler)
-  return () => bus.off("permission-request", handler)
-}
-
-function optionToReply(optionId: string): "once" | "always" | "reject" {
-  switch (optionId) {
-    case "allow-once": return "once"
-    case "allow-always": return "always"
-    case "reject-once": return "reject"
-    default: return "reject"
-  }
-}
-
 // ─── Session Meta (configOptions + modes) ─────────────────────────────────────
 
 function buildSessionMeta(sessionId: string): {
@@ -388,7 +335,6 @@ async function handlePrompt(
   id: s.RequestId,
   params: unknown,
   send: (msg: OutgoingMessage) => void,
-  call: (method: string, params: unknown) => Promise<unknown>,
 ): Promise<void> {
   const parsed = s.PromptRequest.shape.params.safeParse(params)
   if (!parsed.success) {
@@ -430,9 +376,6 @@ async function handlePrompt(
   const bridge = bridgeSession(sessionId, send)
   state.bridges.push(bridge)
 
-  // Bridge permission requests to editor
-  const unbridgePerms = bridgePermissions(sessionId, call)
-
   let stopReason: s.StopReason = "end_turn"
 
   try {
@@ -452,7 +395,6 @@ async function handlePrompt(
       stopReason = "refusal"
     }
   } finally {
-    unbridgePerms()
     bridge.close()
     state.bridges = state.bridges.filter((b) => b !== bridge)
   }
@@ -621,7 +563,7 @@ export async function runAcpAgent(transport: AcpTransport, profileName?: string)
             ? (sessions.get(parsed.data.sessionId)?.profileId ?? defaultProfileId)
             : defaultProfileId
           void ensureBootstrapped(pid)
-            .then(() => handlePrompt(id, params, transport.send, transport.call))
+            .then(() => handlePrompt(id, params, transport.send))
             .catch((err: unknown) => {
               const message = err instanceof Error ? err.message : String(err)
               dlog("prompt dispatch error: %s", message)

@@ -205,7 +205,7 @@ describe("unified render contract for completed/error tools", () => {
 describe("ToolCard header states", () => {
   test("uses one stable status marker for every lifecycle state", () => {
     expect(TOOL_CARD_SRC).toContain('<text fg={statusColor()}>● </text>')
-    expect(TOOL_CARD_SRC).toContain('status: "pending" | "awaiting_approval" | "running" | "completed" | "error"')
+    expect(TOOL_CARD_SRC).toContain('status: "pending" | "running" | "completed" | "error"')
   })
 
   test("maps terminal and running states to their semantic colors", () => {
@@ -217,10 +217,8 @@ describe("ToolCard header states", () => {
     expect(TOOL_CARD_SRC).toContain("return colors.warning")
   })
 
-  test("maps pending and awaiting approval to the informational color", () => {
-    expect(TOOL_CARD_SRC).toContain('case "pending":')
-    expect(TOOL_CARD_SRC).toContain('case "awaiting_approval":')
-    expect(TOOL_CARD_SRC).toContain("return colors.info")
+  test("maps pending to the informational color", () => {
+    expect(TOOL_CARD_SRC).toContain("default: return colors.info")
   })
 })
 

@@ -190,7 +190,7 @@ describe("dispatch: sub-agent observability", () => {
         callId: "child-1",
         input: { path: "/tmp/file" },
       })
-      expect(part.subAgent.tools[0].status).toBe("awaiting_approval")
+      expect(part.subAgent.tools[0].status).toBe("pending")
 
       dispatch(state, {
         type: "subagent-tool-running",

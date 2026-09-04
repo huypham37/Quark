@@ -35,7 +35,7 @@ export interface PromptProps {
   onSubmit: (text: string) => void
   /** Callback on every content change with current input value */
   onContentChange: () => void
-  /** Whether the input is disabled by a permission or question prompt. */
+  /** Whether the input is disabled by a question prompt. */
   disabled?: boolean
   /** Whether the textarea owns keyboard focus. Defaults to enabled state. */
   focused?: boolean

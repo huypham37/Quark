@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test"
 import { createRoot } from "solid-js"
 import { createAppState, dbToTuiMessages, dispatch } from "../../src/tui/state"
-import { dbToConversationMessages } from "../../src/shared/conversation-view"
+import { dbToConversationMessages, LEGACY_INTERRUPTED_ERROR } from "../../src/shared/conversation-view"
 import type { TuiMessage, TuiPart } from "../../src/tui/state"
 
 // Helper: run a test inside a SolidJS reactive root
@@ -35,7 +35,6 @@ describe("createAppState", () => {
       expect(store.status.modelName).toBe("smart")
       expect(store.status.skillCount).toBe(3)
       expect(store.error).toBeUndefined()
-      expect(store.permission).toBeUndefined()
     })
   })
 
@@ -81,6 +80,18 @@ describe("dispatch: thinking actions", () => {
       expect(s.store.thinkingEffort).toBe("xhigh")
       dispatch(s, { type: "model-switched", modelSpec: "gpt-5-mini", thinkingEffort: "low" })
       expect(s.store.thinkingEffort).toBe("low")
+    })
+  })
+})
+
+describe("legacy tool status migration", () => {
+  test("normalizes awaiting_approval records to a terminal interrupted error", () => {
+    withRoot(() => {
+      const messages = [{ id: "m1", sessionId: "s1", role: "assistant" as const, modelId: null, providerId: null, finish: "stop" as const, cost: null, tokensIn: null, tokensOut: null, timeCreated: 0, timeCompleted: 0 }]
+      const parts = [{ id: "p1", messageId: "m1", sessionId: "s1", type: "tool" as const, data: JSON.stringify({ tool: "write", callId: "c1", status: "awaiting_approval", input: { path: "a.ts" } }) }]
+      const part = dbToTuiMessages(messages, parts)[0]!.parts[0] as Extract<TuiPart, { type: "tool" }>
+      expect(part.status).toBe("error")
+      expect(part.error).toBe("Tool execution was interrupted before approval was removed.")
     })
   })
 })
@@ -531,7 +542,7 @@ describe("dispatch: tool lifecycle", () => {
     })
   })
 
-  test("tool-input sets tool to awaiting_approval with input", () => {
+  test("tool-input preserves pending status with input", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
       dispatch(s, { type: "add-assistant-message", id: "m1" })
@@ -539,7 +550,7 @@ describe("dispatch: tool lifecycle", () => {
       dispatch(s, { type: "tool-input", messageId: "m1", callId: "c1", input: { path: "/foo.ts" } })
 
       const part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
-      expect(part.status).toBe("awaiting_approval")
+      expect(part.status).toBe("pending")
       expect(part.input).toEqual({ path: "/foo.ts" })
 
       // tool-running transitions to running
@@ -585,13 +596,13 @@ describe("dispatch: tool lifecycle", () => {
       const p0 = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
       const p1 = s.store.messages[0]!.parts[1]! as Extract<TuiPart, { type: "tool" }>
       expect(p0.status).toBe("pending") // c1 unchanged
-      expect(p1.status).toBe("awaiting_approval") // c2 updated
+      expect(p1.status).toBe("pending") // c2 updated
       expect(p1.input).toEqual({ path: "/bar.ts" })
     })
   })
 })
 
-describe("dispatch: running, status, error, permission", () => {
+describe("dispatch: running, status, error", () => {
   test("set-running toggles running flag", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
@@ -628,46 +639,6 @@ describe("dispatch: running, status, error, permission", () => {
       dispatch(s, { type: "set-error", message: "boom" })
       dispatch(s, { type: "clear-error" })
       expect(s.store.error).toBeUndefined()
-    })
-  })
-
-  test("set-permission stores request and clears running", () => {
-    withRoot(() => {
-      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
-      dispatch(s, { type: "set-running", running: true })
-      dispatch(s, {
-        type: "set-permission",
-        request: { requestId: "r1", tool: "bash", input: { cmd: "rm -rf" } },
-      })
-      expect(s.store.permission).toEqual({ requestId: "r1", tool: "bash", input: { cmd: "rm -rf" } })
-      expect(s.store.running).toBe(false)
-    })
-  })
-
-  test("clear-permission clears permission", () => {
-    withRoot(() => {
-      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
-      dispatch(s, {
-        type: "set-permission",
-        request: { requestId: "r1", tool: "bash", input: {} },
-      })
-      dispatch(s, { type: "clear-permission" })
-      expect(s.store.permission).toBeUndefined()
-    })
-  })
-
-  test("dismiss-permissions removes visible and queued child requests precisely", () => {
-    withRoot(() => {
-      const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 0 })
-      dispatch(s, { type: "set-running", running: true })
-      dispatch(s, { type: "set-permission", request: { requestId: "remote-1", tool: "read", input: {} } })
-      dispatch(s, { type: "set-permission", request: { requestId: "remote-2", tool: "write", input: {} } })
-      dispatch(s, { type: "set-permission", request: { requestId: "local-1", tool: "bash", input: {} } })
-
-      dispatch(s, { type: "dismiss-permissions", requestIds: ["remote-1", "remote-2"] })
-      expect(s.store.permission?.requestId).toBe("local-1")
-      expect(s.store.permissionQueue).toEqual([])
-      expect(s.store.running).toBe(false)
     })
   })
 })
@@ -724,9 +695,9 @@ describe("dispatch: subagent-done marks parent tool completed", () => {
       dispatch(s, { type: "tool-start", messageId: "a1", tool: "bash", callId: "parent-1" })
       dispatch(s, { type: "tool-input", messageId: "a1", callId: "parent-1", input: { command: "quark --sub-agent --profile coder" } })
       
-      // Verify tool is awaiting_approval
+      // Verify tool remains pending until execution starts
       let part = s.store.messages[0]!.parts[0]! as Extract<TuiPart, { type: "tool" }>
-      expect(part.status).toBe("awaiting_approval")
+      expect(part.status).toBe("pending")
 
       // tool-running transitions to running
       dispatch(s, { type: "tool-running", messageId: "a1", callId: "parent-1" })
@@ -809,16 +780,12 @@ describe("dispatch: worktree actions", () => {
   })
 
   describe("worktree-switched", () => {
-    test("clears sessionId, messages, tokens, cost, permission, question", () => {
+    test("clears sessionId, messages, tokens, cost, question", () => {
       withRoot(() => {
         const s = createAppState({ sessionId: "s1", modelName: "smart", skillCount: 3 })
 
         dispatch(s, { type: "add-user-message", id: "m1", text: "hello" })
         dispatch(s, { type: "update-status", partial: { tokensUsed: 500, cost: 0.01 } })
-        dispatch(s, {
-          type: "set-permission",
-          request: { requestId: "r1", tool: "bash", input: {} },
-        })
         dispatch(s, {
           type: "set-question",
           request: { requestId: "q1", sessionId: "s1", questions: [] },
@@ -837,9 +804,7 @@ describe("dispatch: worktree actions", () => {
         expect(s.store.messages).toEqual([])
         expect(s.store.status.tokensUsed).toBe(0)
         expect(s.store.status.cost).toBe(0)
-        expect(s.store.permission).toBeUndefined()
         expect(s.store.question).toBeUndefined()
-        expect(s.store.permissionQueue).toEqual([])
         expect(s.store.questionQueue).toEqual([])
       })
     })

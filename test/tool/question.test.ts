@@ -1,6 +1,6 @@
 // Tests for the question tool — agent asks user questions, blocks until answered
 //
-// The question tool uses a Promise-based blocking pattern similar to permissions:
+// The question tool uses a Promise-based blocking interaction:
 // execute() emits a bus event and awaits a deferred promise that the TUI resolves.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"

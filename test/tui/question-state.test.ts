@@ -118,7 +118,7 @@ describe("question state", () => {
     expect(state.store.question).toBeUndefined()
   })
 
-  test("question disables running state like permission does", () => {
+  test("question disables running state", () => {
     dispatch(state, { type: "set-running", running: true })
     expect(state.store.running).toBe(true)
 

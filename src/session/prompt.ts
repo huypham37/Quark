@@ -45,12 +45,6 @@ export { resolveModel } from "../provider/resolver";
 // ---------------------------------------------------------------------------
 const active = new Map<string, AbortController>();
 
-// When the user rejects a permission request, abort the entire agent step
-// so the model cannot call another tool.
-bus.on("permission-rejected", (data) => {
-  cancel(data.sessionId);
-});
-
 // ---------------------------------------------------------------------------
 // prompt() — public entry point
 // ---------------------------------------------------------------------------

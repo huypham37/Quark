@@ -7,7 +7,7 @@ const error = "Model tried to call unavailable tool bash. Available tools: read,
 interface ToolFixture {
   tool: string
   callId: string
-  status: "pending" | "awaiting_approval" | "running" | "completed" | "error"
+  status: "pending" | "running" | "completed" | "error"
   input: Record<string, unknown>
   error?: string
 }
