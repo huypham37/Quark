@@ -100,7 +100,8 @@ quark --session <id>
 ## Configuration
 
 Config lives at `~/.config/quark/config.yaml`. Missing files and fields fall
-back to sensible defaults. Models are always written as `provider/model`.
+back to sensible defaults. Models are always written as `provider/model`. Changes
+made through `/settings` apply automatically when the editor closes successfully.
 
 ```yaml
 version: 2

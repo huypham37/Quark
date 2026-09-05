@@ -518,24 +518,10 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
   // /reload-config — reload config without restarting (works without an active session)
   if (command === "reload-config") {
-    for (const n of getActive()) {
-      if (n.title === "Thinking configuration") dismiss(n.id)
-    }
-    resetConfigCache()
-    resetProfileCache()
-    const reloadedProfile = resolveProfile(activeAgent.id)
-    const reloadedPrompt = readPromptFile(reloadedProfile)
-    activeAgent = agentFromProfile(reloadedProfile, reloadedPrompt.content)
-    const currentModel = modelOverride ?? activeAgent.model
-    bus.emit("model-switched", {
-      modelSpec: currentModel,
-      thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
-      thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
-    })
-    refreshLMStudio()
-    notifyInfo("Config", "Config reloaded", 3000)
+    reloadConfig()
     return { handled: true }
   }
+
 
   if (command === "worktree") {
     return handleWorktreeCommand(args, sid)
@@ -676,6 +662,25 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   }
 }
 
+function reloadConfig(): void {
+  for (const n of getActive()) {
+    if (n.title === "Thinking configuration") dismiss(n.id)
+  }
+  resetConfigCache()
+  resetProfileCache()
+  const reloadedProfile = resolveProfile(activeAgent.id)
+  const reloadedPrompt = readPromptFile(reloadedProfile)
+  activeAgent = agentFromProfile(reloadedProfile, reloadedPrompt.content)
+  const currentModel = modelOverride ?? activeAgent.model
+  bus.emit("model-switched", {
+    modelSpec: currentModel,
+    thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
+    thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
+  })
+  refreshLMStudio()
+  notifyInfo("Config", "Config reloaded", 3000)
+}
+
 // The editor inherits the terminal directly, so it renders in the same window
 // like `git commit` opening vim. This is shared by /settings and file links.
 let openingEditor = false
@@ -694,6 +699,7 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
     })
     const code = await proc.exited
     if (code !== 0) throw new Error(`${editor} exited with code ${code}`)
+    if (path.resolve(target.filePath) === path.resolve(CONFIG_PATH)) reloadConfig()
   } catch (err) {
     setImmediate(() => {
       bus.emit("error", {
