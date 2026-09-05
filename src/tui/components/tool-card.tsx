@@ -78,7 +78,7 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
       <box flexShrink={0}><text fg={statusColor()}>• </text></box>
       <text fg={colors.text} flexShrink={0}>{getToolDisplayName(props.tool)} </text>
       <Show when={getToolLabel(props.tool, props.input)}>
-        <text fg={colors.muted} wrap="wrap" flexShrink={1}>{getToolLabel(props.tool, props.input)}</text>
+        <text fg={colors.toolArgs} wrap="wrap" flexShrink={1}>{getToolLabel(props.tool, props.input)}</text>
       </Show>
       <Show when={props.error && props.status === "error"}>
         <text flexShrink={0}> </text>

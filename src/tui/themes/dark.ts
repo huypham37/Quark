@@ -24,6 +24,7 @@ export const darkTheme: Theme = {
 
     userBar: RGBA.fromHex("#589FFF"),
     toolPath: RGBA.fromHex("#E5C07B"),
+    toolArgs: RGBA.fromHex("#7D6E51"),
     toolIcon: RGBA.fromHex("#00d75f"),
     thinkingIcon: RGBA.fromHex("#00d75f"),
 

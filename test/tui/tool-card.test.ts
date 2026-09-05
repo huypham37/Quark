@@ -211,8 +211,8 @@ describe("ToolCard header states", () => {
     expect(TOOL_CARD_SRC).toContain('props.status === "error" ? colors.error : colors.muted')
   })
 
-  test("renders paths as quiet detail text", () => {
-    expect(TOOL_CARD_SRC).toContain('<text fg={colors.muted} wrap="wrap"')
+  test("renders tool arguments with their dedicated color", () => {
+    expect(TOOL_CARD_SRC).toContain('<text fg={colors.toolArgs} wrap="wrap"')
     expect(TOOL_CARD_SRC).not.toContain("underline")
   })
 })
