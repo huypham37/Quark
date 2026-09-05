@@ -81,6 +81,7 @@ interface AppProps {
     prunable: boolean
     missing: boolean
     sessionCount: number
+    timeUpdated: number
   }[]
   getModels?: () => { id: string; name: string; detail?: string }[]
   getCurrentModel?: () => string
@@ -826,6 +827,7 @@ export const App: Component<AppProps> = (props) => {
       })),
       state.store.activeWorktree?.id ?? "root",
       Object.fromEntries(worktrees.map((w) => [w.id, w.sessionCount])),
+      Object.fromEntries(worktrees.map((w) => [w.id, w.timeUpdated])),
     )
     setSlash(SLASH_INACTIVE)
     setMention(MENTION_INACTIVE)

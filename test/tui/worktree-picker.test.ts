@@ -82,6 +82,29 @@ describe("buildWorktreeRows", () => {
     }
   })
 
+  test("sorts non-root worktrees by most recent activity", () => {
+    const worktrees: WorktreeInfo[] = [
+      makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true }),
+      makeWorktree({ id: "older", path: `${worktreeBase}/older`, branch: "older" }),
+      makeWorktree({ id: "newest", path: `${worktreeBase}/newest`, branch: "newest" }),
+      makeWorktree({ id: "middle", path: `${worktreeBase}/middle`, branch: "middle" }),
+    ]
+
+    const rows = buildWorktreeRows(worktrees, "root", {}, {
+      root: 50,
+      older: 100,
+      newest: 300,
+      middle: 200,
+    })
+
+    expect(rows.map((row) => "id" in row ? row.id : null)).toEqual([
+      "root",
+      "newest",
+      "middle",
+      "older",
+    ])
+  })
+
   test("marks current worktree", () => {
     const worktrees: WorktreeInfo[] = [
       makeWorktree({ id: "root", path: projectBase, branch: "main", isRoot: true, isCurrent: false }),

@@ -23,20 +23,24 @@ export type WorktreePickerRow =
 /**
  * Build picker rows from discovered worktrees.
  *
- * Root is always first. Current worktree is highlighted. Prunable and missing
- * worktrees are rendered as disabled rows.
+ * Root is always first, followed by the most recently active worktrees.
+ * Current worktree is highlighted. Prunable and missing worktrees are rendered
+ * as disabled rows.
  */
 export function buildWorktreeRows(
   worktrees: WorktreeInfo[],
   currentId: string | null,
   sessionCounts: Record<string, number>,
+  activityTimes: Record<string, number> = {},
 ): WorktreePickerRow[] {
   // Filter: hide prunable worktrees entirely
   const visible = worktrees.filter((wt) => !wt.prunable)
 
-  // Sort: root first, then alphabetically
+  // Sort: root first, then most recently active
   const sorted = [...visible].sort((a, b) => {
     if (a.isRoot !== b.isRoot) return a.isRoot ? -1 : 1
+    const timeDifference = (activityTimes[b.id] ?? 0) - (activityTimes[a.id] ?? 0)
+    if (timeDifference !== 0) return timeDifference
     return a.id.localeCompare(b.id)
   })
 

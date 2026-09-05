@@ -733,17 +733,21 @@ function handleGetWorktrees() {
   const currentPath = process.cwd()
   return getProjectWorktrees()
     .filter((wt) => !wt.prunable)
-    .map((wt) => ({
-    id: wt.id,
-    path: wt.path,
-    branch: wt.branch ?? getWorktreeBranch(wt),
-    shortHash: wt.shortHash,
-    isRoot: wt.isRoot,
-    isCurrent: path.resolve(wt.path) === path.resolve(currentPath),
-    prunable: wt.prunable,
-    missing: wt.missing,
-    sessionCount: listProjectSessions(wt.path).length,
-  }))
+    .map((wt) => {
+      const sessions = listProjectSessions(wt.path)
+      return {
+        id: wt.id,
+        path: wt.path,
+        branch: wt.branch ?? getWorktreeBranch(wt),
+        shortHash: wt.shortHash,
+        isRoot: wt.isRoot,
+        isCurrent: path.resolve(wt.path) === path.resolve(currentPath),
+        prunable: wt.prunable,
+        missing: wt.missing,
+        sessionCount: sessions.length,
+        timeUpdated: sessions[0]?.timeUpdated ?? (wt.missing ? 0 : fs.statSync(wt.path).birthtimeMs),
+      }
+    })
 }
 
 function handleGetModels() {
