@@ -87,7 +87,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       marginBottom={1}
     >
       <box flexDirection="row" backgroundColor={colors.commandCardBg}>
-        <text fg={statusColor()} flexShrink={0}>● </text>
+        <text fg={statusColor()} flexShrink={0}>• </text>
         <text bold fg={colors.text} flexShrink={0}>{headerLabel()}{durationLabel()}</text>
         <box flexGrow={1} backgroundColor={colors.commandCardBg} />
         <Show when={props.subAgent.modelName || props.subAgent.profile} fallback={null}>
@@ -108,12 +108,12 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
             backgroundColor={colors.commandCardBg}
             onMouseUp={() => setExpanded((value) => !value)}
           >
-            <Show when={expanded()} fallback={<text fg={colors.muted}>▶ Task:</text>}>
+            <Show when={expanded()} fallback={<text fg={colors.muted}>▸ Task:</text>}>
               <text fg={colors.muted} flexShrink={0}>Task:</text>
               <Show when={props.subAgent.prompt}>
                 <text fg={colors.toolPath} wrap="wrap"> {`"${props.subAgent.prompt}"`}</text>
               </Show>
-              <text fg={colors.muted} flexShrink={0}> ▼</text>
+              <text fg={colors.muted} flexShrink={0}> ▾</text>
             </Show>
           </box>
 
@@ -123,7 +123,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
             </For>
             <Show when={!isDone() && props.subAgent.textPreview}>
               <box paddingLeft={2}>
-                <text fg={colors.muted}>● Thinking...</text>
+                <text fg={colors.muted}>• Thinking...</text>
               </box>
             </Show>
             <Show when={props.subAgent.error}>

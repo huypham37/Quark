@@ -3,17 +3,17 @@
 //
 // Dispatches to the appropriate sub-component based on part type:
 // - text → AssistantMessage (or UserMessage for user role)
-// - tool → ToolCard (unified tool rendering)
+// - tool → grouped ToolActivity (individual ToolCards are disclosed on demand)
 // - thinking → ThinkingIndicator
 
 import type { Component } from "solid-js"
-import { Show, Switch, Match, For } from "solid-js"
+import { Show, Switch, Match, Index, createMemo } from "solid-js"
 import { UserMessage } from "./user-message"
 import { AssistantMessage } from "./assistant-message"
-import { ToolCard } from "./tool-card"
+import { ToolActivity } from "./tool-activity-view"
+import { groupMessageParts, type ToolActivityItem } from "./tool-activity"
 import { ThinkingIndicator } from "./thinking"
 import { SubAgentView } from "./sub-agent-view"
-import { colors } from "../theme"
 import type { TuiMessage, TuiPart } from "../state"
 import type { FileTarget } from "../editor"
 
@@ -48,21 +48,6 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
         </box>
       </Match>
 
-      {/* All other tools — ToolCard handles everything */}
-      <Match when={props.part.type === "tool"}>
-        <box marginBottom={1}>
-          <ToolCard
-            tool={asTool().tool}
-            status={asTool().status}
-            input={asTool().input}
-            output={asTool().output}
-            error={asTool().error}
-            diff={asTool().diff}
-            streamingContent={asTool().streamingContent}
-          />
-        </box>
-      </Match>
-
       <Match when={props.part.type === "thinking"}>
         <box marginBottom={1}>
           <ThinkingIndicator
@@ -78,6 +63,8 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
 }
 
 export const MessageItem: Component<MessageItemProps> = (props) => {
+  const displayItems = createMemo(() => groupMessageParts(props.message.parts))
+
   return (
     <Show
       when={props.message.role === "assistant"}
@@ -99,11 +86,27 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
     >
       {/* Assistant message — render all parts */}
       <box flexDirection="column">
-        <For each={props.message.parts}>
-          {(part) => (
-            <PartView part={part} isStreaming={!!props.message.streaming} showThinking={props.showThinking} onOpenFile={props.onOpenFile} />
+        <Index each={displayItems()}>
+          {(item) => (
+            <Show
+              when={item().type === "activity" ? item() as Extract<ToolActivityItem, { type: "activity" }> : undefined}
+              fallback={
+                <PartView
+                  part={(item() as Extract<ToolActivityItem, { type: "part" }>).part}
+                  isStreaming={!!props.message.streaming}
+                  showThinking={props.showThinking}
+                  onOpenFile={props.onOpenFile}
+                />
+              }
+            >
+              {(activity) => (
+                <box marginBottom={1}>
+                  <ToolActivity kind={activity().kind} tools={activity().tools} />
+                </box>
+              )}
+            </Show>
           )}
-        </For>
+        </Index>
       </box>
     </Show>
   )

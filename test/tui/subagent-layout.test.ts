@@ -92,9 +92,9 @@ describe("SubAgentView narrow layout", () => {
     subAgent.done = false
     const lines = renderSubAgent(subAgent, 72, 16, "running", false, true)
 
-    const toolRows = lines.filter((line) => line.includes("● Bash"))
+    const toolRows = lines.filter((line) => line.includes("• Bash"))
     expect(toolRows).toHaveLength(3)
-    expect(lines.join("\n")).not.toContain("●Bas")
+    expect(lines.join("\n")).not.toContain("•Bas")
   })
 
   test("does not split the header status label", () => {
@@ -112,8 +112,8 @@ describe("SubAgentView narrow layout", () => {
       { tool: "bash", callId: "c1", status: "completed", input: { command: "git status --short" } },
     ]), 72, 8, "running")
 
-    expect(lines.join("\n")).toContain("▶ Task:")
-    expect(lines.join("\n")).not.toContain("● Bash")
+    expect(lines.join("\n")).toContain("▸ Task:")
+    expect(lines.join("\n")).not.toContain("• Bash")
   })
 
   test("starts running cards collapsed by default", () => {
@@ -123,8 +123,8 @@ describe("SubAgentView narrow layout", () => {
     subAgent.done = false
     const lines = renderSubAgent(subAgent, 72, 8, "running")
 
-    expect(lines.join("\n")).toContain("▶ Task:")
-    expect(lines.join("\n")).not.toContain("● Bash")
+    expect(lines.join("\n")).toContain("▸ Task:")
+    expect(lines.join("\n")).not.toContain("• Bash")
   })
 
   test("renders a responsive meter with one-eighth-cell gaps", () => {

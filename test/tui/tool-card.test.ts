@@ -42,18 +42,17 @@ describe("ToolCard migration (ToolResultView + ToolInvocationBlock → ToolCard)
     expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-invocation.tsx"))).toBe(false)
   })
 
-  test("message-item.tsx imports ToolCard instead of old components", () => {
-    expect(MESSAGE_ITEM_SRC).toContain('import { ToolCard }')
+  test("message-item.tsx imports grouped tool activities instead of old components", () => {
+    expect(MESSAGE_ITEM_SRC).toContain('import { ToolActivity } from "./tool-activity-view"')
     expect(MESSAGE_ITEM_SRC).not.toContain('import { ToolResultView }')
     expect(MESSAGE_ITEM_SRC).not.toContain('import { ToolInvocationBlock }')
   })
 
-  test("message-item.tsx has only 2 tool-related Match cases", () => {
+  test("message-item.tsx keeps only the first-class sub-agent Match case", () => {
     // Count <Match when={...type === "tool"}> occurrences
     const toolMatches = MESSAGE_ITEM_SRC.match(/when=\{.*type\s*===\s*"tool"/g)
     expect(toolMatches).not.toBeNull()
-    // 2 cases: sub-agent (with ToolCard + SubAgentView) and catch-all (ToolCard only)
-    expect(toolMatches!.length).toBe(2)
+    expect(toolMatches!.length).toBe(1)
   })
 })
 
@@ -204,21 +203,17 @@ describe("unified render contract for completed/error tools", () => {
 
 describe("ToolCard header states", () => {
   test("uses one stable status marker for every lifecycle state", () => {
-    expect(TOOL_CARD_SRC).toContain('<text fg={statusColor()}>● </text>')
+    expect(TOOL_CARD_SRC).toContain('<text fg={statusColor()}>• </text>')
     expect(TOOL_CARD_SRC).toContain('status: "pending" | "running" | "completed" | "error"')
   })
 
-  test("maps terminal and running states to their semantic colors", () => {
-    expect(TOOL_CARD_SRC).toContain('case "completed":')
-    expect(TOOL_CARD_SRC).toContain("return colors.success")
-    expect(TOOL_CARD_SRC).toContain('case "error":')
-    expect(TOOL_CARD_SRC).toContain("return colors.error")
-    expect(TOOL_CARD_SRC).toContain('case "running":')
-    expect(TOOL_CARD_SRC).toContain("return colors.warning")
+  test("reserves semantic color for failures", () => {
+    expect(TOOL_CARD_SRC).toContain('props.status === "error" ? colors.error : colors.muted')
   })
 
-  test("maps pending to the informational color", () => {
-    expect(TOOL_CARD_SRC).toContain("default: return colors.info")
+  test("renders paths as quiet detail text", () => {
+    expect(TOOL_CARD_SRC).toContain('<text fg={colors.muted} wrap="wrap"')
+    expect(TOOL_CARD_SRC).not.toContain("underline")
   })
 })
 

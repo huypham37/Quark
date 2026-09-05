@@ -98,7 +98,7 @@ async function renderAndClick(props: {
 }
 
 describe("ThinkingIndicator click expansion", () => {
-  test("starts collapsed with ▶ and hides text", () => {
+  test("starts collapsed with ▸ and hides text", () => {
     const lines = renderIndicator({
       done: true,
       text: THINKING_TEXT,
@@ -106,8 +106,8 @@ describe("ThinkingIndicator click expansion", () => {
     })
 
     const frame = lines.join("\n")
-    expect(frame).toContain("▶")
-    expect(frame).not.toContain("▼")
+    expect(frame).toContain("▸")
+    expect(frame).not.toContain("▾")
     expect(frame).not.toContain(THINKING_TEXT)
   })
 
@@ -118,12 +118,12 @@ describe("ThinkingIndicator click expansion", () => {
       durationMs: 5000,
     })
 
-    expect(before.join("\n")).toContain("▶")
+    expect(before.join("\n")).toContain("▸")
     expect(before.join("\n")).not.toContain(THINKING_TEXT)
 
     const afterFrame = after.join("\n")
-    expect(afterFrame).toContain("▼")
-    expect(afterFrame).not.toContain("▶")
+    expect(afterFrame).toContain("▾")
+    expect(afterFrame).not.toContain("▸")
     expect(afterFrame).toContain(THINKING_TEXT)
   })
 
@@ -173,15 +173,15 @@ describe("ThinkingIndicator click expansion", () => {
       collapsed: string[]
     }
 
-    expect(expanded.join("\n")).toContain("▼")
+    expect(expanded.join("\n")).toContain("▾")
     expect(expanded.join("\n")).toContain(THINKING_TEXT)
 
-    expect(collapsed.join("\n")).toContain("▶")
-    expect(collapsed.join("\n")).not.toContain("▼")
+    expect(collapsed.join("\n")).toContain("▸")
+    expect(collapsed.join("\n")).not.toContain("▾")
     expect(collapsed.join("\n")).not.toContain(THINKING_TEXT)
   })
 
-  test("shows ▼ and text initially when global showText is true", () => {
+  test("shows ▾ and text initially when global showText is true", () => {
     const lines = renderIndicator({
       done: true,
       text: THINKING_TEXT,
@@ -190,8 +190,8 @@ describe("ThinkingIndicator click expansion", () => {
     })
 
     const frame = lines.join("\n")
-    expect(frame).toContain("▼")
-    expect(frame).not.toContain("▶")
+    expect(frame).toContain("▾")
+    expect(frame).not.toContain("▸")
     expect(frame).toContain(THINKING_TEXT)
   })
 
@@ -203,12 +203,12 @@ describe("ThinkingIndicator click expansion", () => {
       showText: true,
     })
 
-    expect(before.join("\n")).toContain("▼")
+    expect(before.join("\n")).toContain("▾")
     expect(before.join("\n")).toContain(THINKING_TEXT)
 
     const afterFrame = after.join("\n")
-    expect(afterFrame).toContain("▶")
-    expect(afterFrame).not.toContain("▼")
+    expect(afterFrame).toContain("▸")
+    expect(afterFrame).not.toContain("▾")
     expect(afterFrame).not.toContain(THINKING_TEXT)
   })
 
@@ -219,9 +219,9 @@ describe("ThinkingIndicator click expansion", () => {
       durationMs: 5000,
     })
 
-    expect(before.join("\n")).not.toContain("▶")
-    expect(before.join("\n")).not.toContain("▼")
-    expect(after.join("\n")).not.toContain("▶")
-    expect(after.join("\n")).not.toContain("▼")
+    expect(before.join("\n")).not.toContain("▸")
+    expect(before.join("\n")).not.toContain("▾")
+    expect(after.join("\n")).not.toContain("▸")
+    expect(after.join("\n")).not.toContain("▾")
   })
 })

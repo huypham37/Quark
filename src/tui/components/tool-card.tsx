@@ -4,11 +4,8 @@
 // Header (always visible): status circle + tool name + args label
 // Body (polymorphic by tool): WriteStreamView / DiffView / ScrollableOutput / empty
 //
-// Status indicator: static filled circle (●), color by status:
-//   ● Bash  ~/deploy.sh           (running: yellow)
-//   ● Read  ~/package.json        (completed: green)
-//   ● Write  ~/out.ts (EACCES)    (error: red)
-//   ● Read  ~/src/tool.ts         (pending: light blue)
+// Detail rows stay visually quiet because they sit behind progressive
+// disclosure. Only failures use a semantic accent color.
 
 import type { Component } from "solid-js"
 import { Show } from "solid-js"
@@ -73,20 +70,15 @@ function getToolDisplayName(tool: string): string {
 
 const ToolCardHeader: Component<ToolCardProps> = (props) => {
   const statusColor = () => {
-    switch (props.status) {
-      case "completed": return colors.success
-      case "error": return colors.error
-      case "running": return colors.warning
-      default: return colors.info
-    }
+    return props.status === "error" ? colors.error : colors.muted
   }
 
   return (
     <box flexDirection="row">
-      <box flexShrink={0}><text fg={statusColor()}>● </text></box>
-      <text bold fg={colors.text} flexShrink={0}>{getToolDisplayName(props.tool)} </text>
+      <box flexShrink={0}><text fg={statusColor()}>• </text></box>
+      <text fg={colors.text} flexShrink={0}>{getToolDisplayName(props.tool)} </text>
       <Show when={getToolLabel(props.tool, props.input)}>
-        <text fg={colors.toolPath} underline wrap="wrap" flexShrink={1}>{getToolLabel(props.tool, props.input)}</text>
+        <text fg={colors.muted} wrap="wrap" flexShrink={1}>{getToolLabel(props.tool, props.input)}</text>
       </Show>
       <Show when={props.error && props.status === "error"}>
         <text flexShrink={0}> </text>

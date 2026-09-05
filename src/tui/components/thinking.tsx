@@ -1,17 +1,17 @@
 // @jsxImportSource @opentui/solid
 // ThinkingIndicator — shows thinking block with expandable text content
 //
-// Status indicator: static filled circle (●), color by state (matches ToolCard):
-//   ● Thinking ▶                  (collapsed, click to expand)
-//   ● Thinking ▼                  (expanded — shows thinking text below)
-//   ● Thought for 5s ▼            (done, expanded)
+// Status indicator: subtle bullet (•), color by state (matches ToolCard):
+//   • Thinking ▸                  (collapsed, click to expand)
+//   • Thinking ▾                  (expanded — shows thinking text below)
+//   • Thought for 5s ▾            (done, expanded)
 //
 // Click the header row to toggle per-indicator expansion.
 // Ctrl+Shift+T sets the global default; per-item clicks override it.
 
 import type { Component } from "solid-js"
 import { Show, createSignal } from "solid-js"
-import { colors, icons } from "../theme"
+import { colors } from "../theme"
 
 interface ThinkingIndicatorProps {
   done?: boolean
@@ -48,7 +48,7 @@ export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
     return "Thought"
   }
 
-  // Static filled-circle status indicator.
+  // Subtle status indicator.
   //   in-progress → light blue
   //   done        → green
   const statusColor = () => (props.done ? colors.success : colors.info)
@@ -57,10 +57,10 @@ export const ThinkingIndicator: Component<ThinkingIndicatorProps> = (props) => {
     <box flexDirection="column">
       {/* Header row: status icon + label + expand/collapse indicator */}
       <box flexDirection="row" onMouseUp={toggleExpanded}>
-        <text fg={statusColor()}>● </text>
+        <text fg={statusColor()}>• </text>
         <text fg={colors.text}>{props.done ? <i>{label()} </i> : `${label()} `}</text>
         <Show when={hasText()}>
-          <text fg={colors.muted}>{isExpanded() ? "▼" : icons.arrow}</text>
+          <text fg={colors.muted}>{isExpanded() ? "▾" : "▸"}</text>
         </Show>
       </box>
 
