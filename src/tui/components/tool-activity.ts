@@ -1,4 +1,4 @@
-import type { TuiPart } from "../state"
+import type { TuiMessage, TuiPart } from "../state"
 
 export type ToolPart = Extract<TuiPart, { type: "tool" }>
 export type ToolActivityKind = "explore" | "modify" | "internet" | "command" | "other"
@@ -51,4 +51,53 @@ export function groupMessageParts(parts: TuiPart[]): ToolActivityItem[] {
   }
 
   return items
+}
+
+function isToolOnlyAssistant(message: TuiMessage): boolean {
+  return message.role === "assistant"
+    && message.parts.length > 0
+    && message.parts.every((part) => part.type === "tool" && !part.subAgent)
+}
+
+/**
+ * Join adjacent tool-only model steps so their same-purpose calls can render
+ * as one activity. The array keeps its original indexes for steer dividers.
+ */
+export function mergeToolActivityMessages(
+  messages: TuiMessage[],
+  blockedInsertionIndexes: ReadonlySet<number> = new Set(),
+): Array<TuiMessage | undefined> {
+  const merged: Array<TuiMessage | undefined> = new Array(messages.length)
+
+  for (let start = 0; start < messages.length;) {
+    const first = messages[start]!
+    if (!isToolOnlyAssistant(first)) {
+      merged[start] = first
+      start++
+      continue
+    }
+
+    let end = start + 1
+    while (
+      end < messages.length
+      && !blockedInsertionIndexes.has(end)
+      && isToolOnlyAssistant(messages[end]!)
+    ) {
+      end++
+    }
+
+    if (end === start + 1) {
+      merged[start] = first
+    } else {
+      const run = messages.slice(start, end)
+      merged[start] = {
+        ...first,
+        parts: run.flatMap((message) => message.parts),
+        streaming: run.some((message) => message.streaming),
+      }
+    }
+    start = end
+  }
+
+  return merged
 }

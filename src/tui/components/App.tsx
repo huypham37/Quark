@@ -6,7 +6,7 @@
 // Input/autocomplete/footer are pinned at the bottom.
 
 import type { Component } from "solid-js"
-import { For, Index, createSignal, createEffect, onCleanup, Show } from "solid-js"
+import { For, Index, createSignal, createEffect, createMemo, onCleanup, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -15,6 +15,7 @@ import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
 import { MessageItem } from "./message-item"
+import { mergeToolActivityMessages } from "./tool-activity"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -185,6 +186,11 @@ export const App: Component<AppProps> = (props) => {
     skillCount: props.initialSkillCount ?? 0,
     thinkingEffort: props.initialThinkingEffort,
   })
+
+  const activityMessages = createMemo(() => mergeToolActivityMessages(
+    state.store.messages,
+    new Set(state.store.steerDividers.map((divider) => divider.insertionIndex)),
+  ))
 
   // Wire event bus to state store
   wireEvents(state)
@@ -1800,7 +1806,7 @@ export const App: Component<AppProps> = (props) => {
         opacity={paletteOpen() ? 0.35 : 1}
       >
         <box flexGrow={1} minHeight={0} />
-        <Index each={state.store.messages}>
+        <Index each={activityMessages()}>
           {(msg, i) => {
             const dividers = state.store.steerDividers.filter((d) => d.insertionIndex === i)
             return (
@@ -1808,7 +1814,11 @@ export const App: Component<AppProps> = (props) => {
                 {dividers.map((d) => (
                   <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
                 ))}
-                <MessageItem message={msg()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
+                <Show when={msg()}>
+                  {(message) => (
+                    <MessageItem message={message()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
+                  )}
+                </Show>
               </>
             )
           }}
