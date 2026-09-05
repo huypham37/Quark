@@ -28,7 +28,7 @@ export const darkTheme: Theme = {
     thinkingIcon: RGBA.fromHex("#00d75f"),
 
     statusLine: RGBA.fromHex("#808080"),
-    statusModel: RGBA.fromHex("#d7d700"),
+    statusModel: RGBA.fromHex("#5fd7ff"),
     statusSkills: RGBA.fromHex("#00d7d7"),
 
     footerKey: RGBA.fromHex("#00d75f"),
