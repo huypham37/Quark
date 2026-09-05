@@ -94,6 +94,9 @@ describe("command palette navigation", () => {
     test(`Escape returns from ${command.id} to blank search before restoring the composer`, async () => {
       const frames = await navigate(command)
       expect(frames.secondary).toContain(command.title)
+      if (command.id === "model" || command.id === "skills") {
+        expect(frames.secondary).not.toContain(`> /${command.id}`)
+      }
       expect(frames.search).toContain("Search anything in Quark")
       expect(frames.search).not.toContain(`/${command.id}`)
       expect(frames.composer).toContain("saved draft")

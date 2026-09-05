@@ -538,6 +538,7 @@ export const App: Component<AppProps> = (props) => {
   const openEntityPalette = (mode: "skills" | "models", type: "skill" | "model") => {
     setPaletteMode(mode)
     setPaletteQuery("")
+    paletteInputRef?.clear()
     setPaletteResults(entityPaletteEntries(type))
     setPaletteSelectedIndex(0)
   }
