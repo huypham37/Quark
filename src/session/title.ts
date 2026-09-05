@@ -7,23 +7,14 @@
 
 import { generateText, type LanguageModel } from "ai"
 import { setSessionTitle } from "./session"
+import { titlePrompt } from "../prompts/session-title"
 
 /**
  * Build a prompt for generating a session title from a user message.
  * Takes at most the first 500 chars to keep it cheap.
  */
 export function buildTitlePrompt(message: string): string {
-  const snippet = message.slice(0, 500)
-  return [
-    "What topic or area is the user exploring? Reply with ONLY a short topic label (2-5 words).",
-    "Use a noun phrase — NOT a verb/action. Use plain text only — no markdown, no quotes.",
-    "If the user has a clear specific task, name the area it belongs to, not the action.",
-    'Examples: "Auto Title Generation", "Dark Mode Support", "API Authentication", "Database Schema Design", "React Performance"',
-    "",
-    "User: " + snippet,
-    "",
-    "Topic:",
-  ].join("\n")
+  return titlePrompt.replace("{{message}}", message.slice(0, 500))
 }
 
 /**

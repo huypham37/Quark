@@ -12,6 +12,7 @@ import {
   loadMessages,
   saveUserMessage,
 } from "../../src/session/message"
+import { buildCompactionPrompt } from "../../src/prompts/compaction"
 import {
   buildLineageContext,
   compactBranch,
@@ -41,6 +42,14 @@ afterAll(() => {
 })
 
 describe("session branching", () => {
+  test("builds a compaction prompt from the source and transcript", () => {
+    const prompt = buildCompactionPrompt("user: Continue the refactor")
+
+    expect(prompt).toContain("## Files")
+    expect(prompt).toContain("## Context")
+    expect(prompt).toEndWith("user: Continue the refactor")
+  })
+
   test("creates a main child branch with frozen parent summary", () => {
     const parent = createSession()
     updateSession(parent.id, { filesModified: ["src/session/session.ts"] })
