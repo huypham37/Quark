@@ -146,7 +146,12 @@ async function main() {
   }
 
   if (args.watch) {
-    await watchLiveSession(args.watch)
+    try {
+      await watchLiveSession(args.watch)
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      process.exit(1)
+    }
     return
   }
 

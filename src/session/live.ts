@@ -100,7 +100,15 @@ export async function watchLiveSession(sessionId: string): Promise<void> {
         newline = buffer.indexOf("\n")
       }
     })
-    socket.on("error", (error) => connected ? process.stderr.write(`\nLive session ended: ${error.message}\n`) : reject(error))
+    socket.on("error", (error) => {
+      if (connected) {
+        process.stderr.write(`\nLive session ended: ${error.message}\n`)
+      } else if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`Session ${sessionId} is not running locally`))
+      } else {
+        reject(error)
+      }
+    })
     socket.on("close", () => connected && resolve())
   })
 }
