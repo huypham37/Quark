@@ -16,6 +16,7 @@ import { emitSubagentError, startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
 import { setVerbose, debug } from "./debug"
 import { formatArgs } from "./debug/format-tool-args"
+import { startLiveSessionServer, watchLiveSession } from "./session/live"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -38,6 +39,7 @@ Options:
   -p, --profile <name>          Profile to use (default: from config)
   -m, --message <text>          Message text (alternative to positional)
   -s, --session <id>            Resume an existing session
+      --watch <id>              View a running local session, read-only
       --model <id>              Model to use for this run (e.g. copilot/claude-sonnet-4.5)
       --no-store                Run an ephemeral session — never written to disk
       --verbose                 Print every tool call + result to stderr.
@@ -58,6 +60,7 @@ interface ParsedArgs {
   profile?: string
   message?: string
   sessionId?: string
+  watch?: string
   model?: string
   noStore?: boolean
   verbose?: boolean
@@ -72,6 +75,7 @@ function parseArguments(): ParsedArgs {
         profile: { type: "string", short: "p" },
         message: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
+        watch: { type: "string" },
         model: { type: "string" },
         "no-store": { type: "boolean" },
         verbose: { type: "boolean" },
@@ -95,6 +99,7 @@ function parseArguments(): ParsedArgs {
       profile: values.profile,
       message,
       sessionId: values.session,
+      watch: values.watch,
       model: values.model,
       noStore: values["no-store"],
       verbose: values.verbose,
@@ -140,6 +145,11 @@ async function main() {
     process.exit(0)
   }
 
+  if (args.watch) {
+    await watchLiveSession(args.watch)
+    return
+  }
+
   // No message provided → launch interactive TUI
   if (!args.message) {
     const { execFileSync } = await import("child_process")
@@ -169,6 +179,13 @@ async function main() {
     profileTools: profile.tools,
     boundSkills: profile.skills,
   })
+
+  if (args.sessionId) startLiveSessionServer(args.sessionId)
+  bus.on("session-created", ({ sessionId }) => {
+    startLiveSessionServer(sessionId)
+    if (!parentSessionId) process.stderr.write(`Watch this run: quark --watch ${sessionId}\n`)
+  })
+  bus.on("assistant-message-start", ({ sessionId }) => startLiveSessionServer(sessionId))
 
   // The internal subagent supervisor opts into structured stderr events through
   // environment variables, keeping the public CLI free of subagent flags.
