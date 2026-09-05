@@ -106,7 +106,7 @@ export const Notifications: Component = () => {
     switch (type) {
       case "error": return colors.error
       case "warn": return colors.warning
-      case "info": return colors.primary // cyan for info
+      case "info": return colors.statusModel
     }
   }
 
