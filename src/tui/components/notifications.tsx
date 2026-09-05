@@ -60,7 +60,7 @@ const NotificationCard: Component<NotificationCardProps> = (props) => {
         backgroundColor={colors.notificationBg}
       >
         <text fg={props.getColor(props.notification.type)} bg={colors.notificationBg} bold>
-          {props.pad(`${props.getIcon(props.notification.type)} ${props.notification.title}`)}
+          {props.pad(props.notification.type === "info" ? props.notification.title : `${props.getIcon(props.notification.type)} ${props.notification.title}`)}
         </text>
         <text fg={colors.text} bg={colors.notificationBg} wrap="wrap">
           {props.pad(props.notification.message)}
