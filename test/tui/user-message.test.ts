@@ -64,12 +64,12 @@ describe("UserMessage lifecycle presentation", () => {
     expect(messageLines.every((line) => line.startsWith("│"))).toBe(true)
   })
 
-  test("colors replied text with the user bar color", () => {
+  test("colors replied text with the model status color", () => {
     const { lines } = renderUserMessage("replied")
     const textSpan = lines[0]?.spans.find((span) => span.text.includes("lifecycle fixture"))
-    expect(textSpan?.fg?.buffer?.[0]).toBe(0)
+    expect(textSpan?.fg?.buffer?.[0]).toBeCloseTo(95 / 255)
     expect(textSpan?.fg?.buffer?.[1]).toBeCloseTo(215 / 255)
-    expect(textSpan?.fg?.buffer?.[2]).toBeCloseTo(215 / 255)
+    expect(textSpan?.fg?.buffer?.[2]).toBe(1)
     expect(textSpan?.fg?.buffer?.[3]).toBe(1)
   })
 })

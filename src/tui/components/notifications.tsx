@@ -55,14 +55,14 @@ const NotificationCard: Component<NotificationCardProps> = (props) => {
         flexDirection="column"
         paddingX={1}
         paddingY={0}
-        borderStyle="round"
+        borderStyle="rounded"
         borderColor={props.getColor(props.notification.type)}
         backgroundColor={colors.notificationBg}
       >
         <text fg={props.getColor(props.notification.type)} bg={colors.notificationBg} bold>
-          {props.pad(`${props.getIcon(props.notification.type)} ${props.notification.title}`)}
+          {props.pad(props.notification.type === "info" ? props.notification.title : `${props.getIcon(props.notification.type)} ${props.notification.title}`)}
         </text>
-        <text fg={colors.textDim} bg={colors.notificationBg} wrap="wrap">
+        <text fg={colors.text} bg={colors.notificationBg} wrap="wrap">
           {props.pad(props.notification.message)}
         </text>
       </box>
@@ -106,7 +106,7 @@ export const Notifications: Component = () => {
     switch (type) {
       case "error": return colors.error
       case "warn": return colors.warning
-      case "info": return colors.primary // cyan for info
+      case "info": return colors.statusModel
     }
   }
 

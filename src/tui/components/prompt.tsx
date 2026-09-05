@@ -232,7 +232,7 @@ export const Prompt: Component<PromptProps> = (props) => {
         <FlipPercent value={tokenPercent()} />
         <text fg={colors.statusLine} flexShrink={0}>{topBorder().leftRest}</text>
         <text fg={borderColor()} flexShrink={0}>{topBorder().filler}</text>
-        <text fg={colors.userBar} flexShrink={0}>{topBorder().rightText}</text>
+        <text fg={colors.statusModel} flexShrink={0}>{topBorder().rightText}</text>
         <text fg={borderColor()} flexShrink={0}>{topBorder().rightSuffix}</text>
       </box>
     )

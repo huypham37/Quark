@@ -1,5 +1,5 @@
 // @jsxImportSource @opentui/solid
-// UserMessage — renders user input with a cyan left border bar
+// UserMessage — renders user input with a light-blue left border bar
 //
 // Strips <directory> and <file> XML blocks (injected by @ mention resolution)
 // from the displayed text. Mention chips are intentionally not rendered.
@@ -20,8 +20,8 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const cleaned = () => parseContextBlocks(props.text).cleaned
   const failed = () => props.status === "aborted" || props.status === "failed"
   const italic = () => props.status !== undefined && props.status !== "sent"
-  const foreground = () => failed() ? colors.error : props.status === "replied" ? colors.userBar : colors.text
-  const barColor = () => failed() ? colors.error : colors.userBar
+  const foreground = () => failed() ? colors.error : props.status === "replied" ? colors.statusModel : colors.text
+  const barColor = () => failed() ? colors.error : colors.statusModel
 
   return (
     <box flexDirection="column" border={["left"]} borderColor={barColor()} paddingLeft={1}>
