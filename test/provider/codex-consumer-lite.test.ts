@@ -252,7 +252,7 @@ describe("Responses Lite headers (gpt-5.6-luna)", () => {
 // Legacy passthrough (non-Lite models)
 // ---------------------------------------------------------------------------
 
-describe("legacy models are untouched", () => {
+describe("legacy model transport", () => {
 	for (const modelId of ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5"]) {
 		test(`${modelId} keeps legacy body and headers`, async () => {
 			const captured: CapturedRequest[] = []
@@ -275,7 +275,7 @@ describe("legacy models are untouched", () => {
 			expect(body.instructions).toBe("You are helpful.")
 			expect(Array.isArray(body.tools)).toBe(true)
 			expect(body.parallel_tool_calls).toBe(true)
-			expect(body.prompt_cache_key).toBeUndefined()
+			expect(body.prompt_cache_key).toMatch(UUID_V7_RE)
 			expect((body.input as unknown[])[0]).toEqual({ role: "user", content: "hello" })
 
 			expect(headers.get("version")).toBeNull()

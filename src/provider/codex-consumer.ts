@@ -87,7 +87,7 @@ function uuidv7(): string {
  * the legacy builder stays untouched, and this is trivially deletable once
  * the transport situation stabilizes.
  */
-function toResponsesLite(body: CodexRequestBody, sessionId: string): CodexRequestBody {
+function toResponsesLite(body: CodexRequestBody): CodexRequestBody {
 	const input: unknown[] = [
 		// Always present, even with no tools — the backend expects the item.
 		{ type: "additional_tools", role: "developer", tools: body.tools ?? [] },
@@ -106,7 +106,6 @@ function toResponsesLite(body: CodexRequestBody, sessionId: string): CodexReques
 		input,
 		tool_choice: "auto",
 		parallel_tool_calls: false,
-		prompt_cache_key: sessionId,
 		reasoning: { ...body.reasoning, context: "all_turns" },
 	}
 	delete lite.tools
@@ -143,9 +142,9 @@ function applyLiteHeaders(h: Headers, sessionId: string): void {
 export function createCodexConsumer(options: CodexConsumerOptions): LanguageModelV3 {
 	const baseFetch = options.fetch ?? globalThis.fetch.bind(globalThis) as FetchFn
 	const maxRetries = options.maxRetries ?? 0
-	// Stable per provider instance: reused as session-id, x-session-affinity,
-	// and prompt_cache_key across all Lite requests (matches Codex CLI behavior).
-	const liteSessionId = uuidv7()
+	// Stable per provider instance: used as prompt_cache_key for all requests and
+	// as the Lite transport's session-id/x-session-affinity identity.
+	const sessionId = uuidv7()
 
 	return {
 		specificationVersion: "v3",
@@ -191,10 +190,11 @@ export function createCodexConsumer(options: CodexConsumerOptions): LanguageMode
 			const jwt = options.jwt ?? (await options.getToken!())
 			const accountId = options.accountId ?? (await options.getAccountId!())
 			let body = buildRequestBody(options.modelId, opts)
+			body.prompt_cache_key = sessionId
 			const headers = buildHeaders(jwt, accountId)
 			if (RESPONSES_LITE_MODELS.has(options.modelId)) {
-				body = toResponsesLite(body, liteSessionId)
-				applyLiteHeaders(headers, liteSessionId)
+				body = toResponsesLite(body)
+				applyLiteHeaders(headers, sessionId)
 			}
 
 			const response = await fetchWithRetry(
