@@ -3,3 +3,7 @@ dist
 .git
 logs
 test-results
+.DS_Store
+.quark
+.ruff_cache
+.container-build-context.*

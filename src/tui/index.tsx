@@ -751,7 +751,7 @@ function handleGetWorktrees() {
 }
 
 function handleGetModels() {
-  return buildModelPickerOptions(loadConfig().models)
+  return buildModelPickerOptions(loadConfig().modelConfig.favorites)
 }
 
 function handleGetCurrentModel() {

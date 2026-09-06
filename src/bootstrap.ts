@@ -7,6 +7,7 @@
 
 import { register } from "./tool/registry";
 import { readTool } from "./tool/read";
+import { lookTool } from "./tool/look";
 import { buildSkillTool } from "./tool/skill";
 import { ensureStorageRoot } from "./storage/session-jsonl";
 import { loadProfileTools } from "./tool/loader";
@@ -56,6 +57,7 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
 
   // Register built-in tools (always available)
   register(readTool);
+  register(lookTool);
   register(buildSkillTool(opts?.boundSkills));
 
   // Load profile-declared tools from ~/.config/quark/tools/

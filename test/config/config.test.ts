@@ -113,6 +113,8 @@ describe("loadConfig", () => {
     expect(config.models.length).toBeGreaterThan(0)
     expect(config.models).toContain("gpt-4o")
     expect(config.models).toContain("claude-sonnet-4")
+    expect(config.modelConfig.favorites).toContain("openai/gpt-4o")
+    expect(config.modelConfig.favorites).toContain("openai/claude-sonnet-4")
   })
 
   test("returns defaults when config file has invalid YAML", () => {

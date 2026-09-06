@@ -331,7 +331,7 @@ describe("bash tool regular path — abort kills subprocess", () => {
 
 describe("bash tool spawn path — abort kills subprocess via ctx.abort listener", () => {
   /**
-   * Simulates the spawn-based abort path used in examples/tools/bash.ts.
+   * Simulates the spawn-based abort path used by the bash tool.
    *
    * This is the existing sub-agent path. We test that the onAbort listener
    * wired to ctx.abort correctly terminates the process.

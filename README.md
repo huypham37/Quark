@@ -180,10 +180,8 @@ Tools are the product — research-backed and test-backed.
 and `read_session`.
 
 **Profile-declared tools** are loaded by ID from `~/.config/quark/tools/{id}.ts`
-when a profile lists them in its `tools[]` array. Reference implementations for
-`bash`, `edit`, `glob`, `grep`, `todo`, `websearch`, and `write` live in
-[`examples/tools/`](examples/tools) — copy them into `~/.config/quark/tools/`
-to enable them.
+when a profile lists them in its `tools[]` array. Copy a tool implementation into
+that directory to enable it.
 
 A **subagent** is an agent (prompt + tools + model) exposed through
 a thin, named tool. It runs in its own isolated session (`kind: "subagent"`,
