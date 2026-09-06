@@ -20,6 +20,7 @@ import type { FileTarget } from "../editor"
 interface MessageItemProps {
   message: TuiMessage
   showThinking?: boolean
+  continuingToolCallId?: string | null
   onOpenFile?: (target: FileTarget) => void
 }
 
@@ -101,7 +102,11 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
             >
               {(activity) => (
                 <box marginBottom={1}>
-                  <ToolActivity kind={activity().kind} tools={activity().tools} />
+                  <ToolActivity
+                    kind={activity().kind}
+                    tools={activity().tools}
+                    continuingToolCallId={props.continuingToolCallId}
+                  />
                 </box>
               )}
             </Show>

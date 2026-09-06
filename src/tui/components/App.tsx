@@ -15,7 +15,7 @@ import { wireEvents } from "../events"
 import { bus } from "../../session/events"
 import { ready as modelsReady, getModelLimit } from "../../provider/models"
 import { MessageItem } from "./message-item"
-import { mergeToolActivityMessages } from "./tool-activity"
+import { getContinuingToolCallId, mergeToolActivityMessages } from "./tool-activity"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
@@ -191,6 +191,10 @@ export const App: Component<AppProps> = (props) => {
   const activityMessages = createMemo(() => mergeToolActivityMessages(
     state.store.messages,
     new Set(state.store.steerDividers.map((divider) => divider.insertionIndex)),
+  ))
+  const continuingToolCallId = createMemo(() => getContinuingToolCallId(
+    state.store.messages,
+    state.store.running,
   ))
 
   // Wire event bus to state store
@@ -1819,7 +1823,12 @@ export const App: Component<AppProps> = (props) => {
                 ))}
                 <Show when={msg()}>
                   {(message) => (
-                    <MessageItem message={message()} showThinking={state.store.showThinking} onOpenFile={props.onOpenFile} />
+                    <MessageItem
+                      message={message()}
+                      showThinking={state.store.showThinking}
+                      continuingToolCallId={continuingToolCallId()}
+                      onOpenFile={props.onOpenFile}
+                    />
                   )}
                 </Show>
               </>

@@ -80,6 +80,8 @@ try {
 }
 const promptResult = readPromptFile(profile)
 let activeAgent: AgentConfig = agentFromProfile(profile, promptResult.content)
+let pendingSkillContext: string[] = []
+const activatedSkillNames = new Set<string>()
 
 // Initialize the backend (DB + tools) with profile-bound skills
 await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
@@ -162,6 +164,8 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
   const nextProfile = resolveProfile(activeAgent.id)
   const nextPromptResult = readPromptFile(nextProfile)
   activeAgent = agentFromProfile(nextProfile, nextPromptResult.content)
+  pendingSkillContext = []
+  activatedSkillNames.clear()
   await bootstrap({ profileTools: nextProfile.tools, boundSkills: nextProfile.skills })
 
   modelOverride = null
@@ -196,6 +200,8 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
 
 function handleSubmit(text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) {
   const sid = sessionId ?? currentSession?.id
+  const skillContext = pendingSkillContext.join("\n")
+  pendingSkillContext = []
 
   const parts: { type: "text"; text: string }[] = []
   if (context) {
@@ -207,6 +213,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     sessionId: sid,
     parts,
     images,
+    ...(skillContext ? { modelOnlyText: skillContext } : {}),
     model: modelOverride ?? undefined,
     agent: activeAgent,
   }).catch((err) => {
@@ -363,6 +370,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     const newProfile = resolveProfile(targetId)
     const newPromptResult = readPromptFile(newProfile)
     activeAgent = agentFromProfile(newProfile, newPromptResult.content)
+    pendingSkillContext = []
+    activatedSkillNames.clear()
     modelOverride = null
     bus.emit("model-switched", {
       modelSpec: activeAgent.model,
@@ -396,7 +405,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
     const skillName = args.trim()
 
-    if (activeAgent.skills.includes(skillName)) {
+    if (activeAgent.skills.includes(skillName) || activatedSkillNames.has(skillName)) {
       notifyInfo("Skills", `Skill "${skillName}" is already active`, 3000)
       return { handled: true }
     }
@@ -407,13 +416,10 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
 
-    // Temporarily add the skill to the current agent's skill list
-    activeAgent.skills = [...activeAgent.skills, skillName]
-
-    // Re-register the skill tool with expanded boundSkills so the agent can load it
-    clearRegistry()
-    resetBootstrap()
-    await bootstrap({ profileTools: activeAgent.tools, boundSkills: activeAgent.skills })
+    activatedSkillNames.add(skillName)
+    pendingSkillContext.push(
+      `[Activated skill]\n${skill.name}: ${skill.description || "No description provided."}\nUse the skill tool to load it when needed.`,
+    )
 
     notifyInfo("Skills", `Added skill: ${skillName}`, 3000)
     return { handled: true }
@@ -675,6 +681,8 @@ function reloadConfig(): void {
   const reloadedProfile = resolveProfile(activeAgent.id)
   const reloadedPrompt = readPromptFile(reloadedProfile)
   activeAgent = agentFromProfile(reloadedProfile, reloadedPrompt.content)
+  pendingSkillContext = []
+  activatedSkillNames.clear()
   const currentModel = modelOverride ?? activeAgent.model
   bus.emit("model-switched", {
     modelSpec: currentModel,

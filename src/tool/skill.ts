@@ -60,25 +60,8 @@ function getAvailableSkills(boundSkills?: string[]) {
   return discoverSkills()
 }
 
-function buildDescription(boundSkills?: string[]): string {
-  const skills = getAvailableSkills(boundSkills)
-
-  if (skills.length === 0) {
-    return (
-      "Load a specialized skill that provides domain-specific instructions. " +
-      "No skills are currently available."
-    )
-  }
-
-  const list = skills
-    .map((s) => `  - ${s.name}: ${s.description}`)
-    .join("\n")
-
-  return (
-    "Load a specialized skill that provides domain-specific instructions.\n\n" +
-    "Available skills:\n" +
-    list
-  )
+function buildDescription(_boundSkills?: string[]): string {
+  return "Load a specialized skill by name. Activated skills are provided in the conversation context."
 }
 
 // Default instance for backwards compatibility (no profile filtering)

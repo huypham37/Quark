@@ -1,9 +1,6 @@
-// Tests for /skills slash command — skill picker and integration
-//
-// Verifies the full flow from discovering skills → picker items →
-// adding to agent → system prompt update → skill tool re-registration.
-//
-// Tests are written BEFORE implementation (TDD).
+// Tests for /skills slash command — skill picker and integration.
+// Dynamic activation is carried in the next user message so the system prompt
+// and tool definition remain stable for prompt caching.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import * as fs from "fs"
@@ -267,23 +264,19 @@ describe("buildSystem with dynamically added skills", () => {
     expect(joined).not.toContain("Full release instructions")
   })
 
-  test("adding skill changes system prompt output (before vs after)", () => {
+  test("activation context leaves the system prompt unchanged", () => {
     createSkill(tmpDir, "alpha", "Alpha skill", "alpha body")
     createSkill(tmpDir, "beta", "Beta skill", "beta body")
     discoverSkills([tmpDir])
 
-    // Before adding beta
-    const agentBefore = makeAgent({ skills: ["alpha"] })
-    const before = buildSystem(agentBefore).join("\n")
-    expect(before).toContain("alpha")
-    expect(before).not.toContain("beta")
+    const agent = makeAgent({ skills: ["alpha"] })
+    const before = buildSystem(agent).join("\n")
+    const activationContext = "[Activated skill]\nbeta: Beta skill\nUse the skill tool to load it when needed."
+    const after = buildSystem(agent).join("\n")
 
-    // After adding beta
-    const agentAfter = makeAgent({ skills: ["alpha", "beta"] })
-    const after = buildSystem(agentAfter).join("\n")
-    expect(after).toContain("alpha")
-    expect(after).toContain("beta")
-    expect(after).toContain("Beta skill")
+    expect(after).toBe(before)
+    expect(after).not.toContain("beta")
+    expect(activationContext).toContain("beta: Beta skill")
   })
 
   test("empty skills — no skill block in system prompt", () => {
@@ -312,41 +305,23 @@ describe("buildSystem with dynamically added skills", () => {
 // ===========================================================================
 
 describe("buildSkillTool with dynamically added skills", () => {
-  test("tool description includes only initially bound skills", () => {
-    createSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
-    createSkill(tmpDir, "beta", "Beta skill", "beta content")
-    discoverSkills([tmpDir])
+  test("tool description is stable as skills are activated", () => {
+    const before = buildSkillTool(["alpha"])
+    const after = buildSkillTool(["alpha", "beta"])
 
-    // Initial state: only alpha is bound
-    const tool = buildSkillTool(["alpha"])
-    expect(tool.description).toContain("alpha")
-    expect(tool.description).not.toContain("beta")
+    expect(after.description).toBe(before.description)
+    expect(after.description).not.toContain("alpha")
+    expect(after.description).not.toContain("beta")
   })
 
-  test("tool description updates after adding skill", () => {
-    createSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
-    createSkill(tmpDir, "beta", "Beta skill", "beta content")
-    discoverSkills([tmpDir])
-
-    // After adding beta via /skills
-    const tool = buildSkillTool(["alpha", "beta"])
-    expect(tool.description).toContain("alpha")
-    expect(tool.description).toContain("beta")
-  })
-
-  test("all skills available when no boundSkills filter", () => {
-    createSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
-    createSkill(tmpDir, "beta", "Beta skill", "beta content")
-    discoverSkills([tmpDir])
-
+  test("tool description is stable without a bound-skills filter", () => {
     const tool = buildSkillTool()
-    expect(tool.description).toContain("alpha")
-    expect(tool.description).toContain("beta")
+    expect(tool.description).not.toContain("Available skills")
   })
 
-  test("tool shows 'no skills available' when boundSkills match nothing", () => {
+  test("tool description does not vary for unknown bound skills", () => {
     const tool = buildSkillTool(["nonexistent"])
-    expect(tool.description).toContain("No skills are currently available")
+    expect(tool.description).toBe(buildSkillTool().description)
   })
 
   test("execute loads a newly added skill", async () => {

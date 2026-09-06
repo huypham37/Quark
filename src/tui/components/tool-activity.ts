@@ -7,6 +7,27 @@ export type ToolActivityItem =
   | { type: "part"; part: TuiPart }
   | { type: "activity"; kind: ToolActivityKind; tools: ToolPart[] }
 
+/**
+ * Keep the latest tool activity open between model steps. An empty assistant
+ * message is only a streaming placeholder; any actual non-tool part closes it.
+ */
+export function getContinuingToolCallId(messages: TuiMessage[], running: boolean): string | null {
+  if (!running) return null
+
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex--) {
+    const message = messages[messageIndex]!
+    if (message.role !== "assistant") return null
+
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex--) {
+      const part = message.parts[partIndex]!
+      if (part.type !== "tool" || part.subAgent) return null
+      return part.callId
+    }
+  }
+
+  return null
+}
+
 const ACTIVITY_TOOLS: Record<string, ToolActivityKind> = {
   read: "explore",
   grep: "explore",

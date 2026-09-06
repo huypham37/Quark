@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
-import { getToolActivityKind, groupMessageParts, mergeToolActivityMessages } from "../../src/tui/components/tool-activity"
+import { getContinuingToolCallId, getToolActivityKind, groupMessageParts, mergeToolActivityMessages } from "../../src/tui/components/tool-activity"
 import type { TuiMessage, TuiPart } from "../../src/tui/state"
 
 const ROOT = resolve(import.meta.dir, "../..")
@@ -87,6 +87,23 @@ describe("tool activity grouping", () => {
       assistant("read-step", [tool("read")]),
     ], new Set([1]))
     expect(dividerBoundary.filter(Boolean)).toHaveLength(2)
+  })
+
+  test("keeps the latest activity open until non-tool output starts", () => {
+    const completedGrep = tool("grep") as Extract<TuiPart, { type: "tool" }>
+    completedGrep.callId = "grep-call"
+
+    expect(getContinuingToolCallId([
+      assistant("grep-step", [completedGrep]),
+      { ...assistant("next-step", []), streaming: true },
+    ], true)).toBe("grep-call")
+
+    expect(getContinuingToolCallId([
+      assistant("grep-step", [completedGrep]),
+      assistant("next-step", [{ type: "thinking", done: false, text: "" }]),
+    ], true)).toBeNull()
+
+    expect(getContinuingToolCallId([assistant("grep-step", [completedGrep])], false)).toBeNull()
   })
 })
 

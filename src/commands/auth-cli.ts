@@ -121,7 +121,11 @@ function openBrowser(url: string): void {
       ? ["cmd", "/c", "start", "", url]
       : ["xdg-open", url]
   try {
-    spawn(command[0]!, command.slice(1), { stdio: "ignore", detached: true }).unref()
+    const child = spawn(command[0]!, command.slice(1), { stdio: "ignore", detached: true })
+    child.on("error", () => {
+      // The URL is already printed for environments without a browser opener.
+    })
+    child.unref()
   } catch {
     // The URL is already printed for environments without a browser opener.
   }

@@ -106,6 +106,8 @@ export interface PartRow {
 export function saveUserMessage(input: {
   sessionId: string
   text: string
+  /** Hidden model context prepended to this user message. */
+  modelOnlyText?: string
   images?: { mime: string; data: string }[]
   variant?: "steer"
   visibility?: MessageVisibility
@@ -137,7 +139,22 @@ export function saveUserMessage(input: {
     data: { text: input.text, variant: input.variant, visibility: input.visibility } satisfies TextPartData,
   }
 
-  const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [msgEvent, partEvent]
+  const events: (MessageEvent | PartEvent | MessageEndEvent)[] = [msgEvent]
+
+  if (input.modelOnlyText) {
+    events.push({
+      v: 1,
+      ts: now,
+      sessionId: input.sessionId,
+      type: "part",
+      messageId: msgId,
+      partId: generateId(),
+      partType: "text",
+      data: { text: input.modelOnlyText, visibility: "model-only" } satisfies TextPartData,
+    })
+  }
+
+  events.push(partEvent)
 
   // Image parts
   for (const img of input.images ?? []) {

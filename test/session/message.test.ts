@@ -2,6 +2,28 @@ import { describe, test, expect } from "bun:test";
 import { toModelMessages } from "../../src/session/message";
 import type { MessageRow, PartRow } from "../../src/session/message";
 
+describe("model-only user context", () => {
+  test("keeps hidden context before visible user text in model history", () => {
+    const messages: MessageRow[] = [{
+      id: "u1", sessionId: "s1", providerId: null, modelId: null, role: "user",
+      finish: "stop", cost: null, tokensIn: null, tokensOut: null, timeCreated: 1, timeCompleted: 1,
+    }]
+    const parts: PartRow[] = [
+      { id: "p1", messageId: "u1", sessionId: "s1", type: "text", data: JSON.stringify({ text: "[Activated skill]\\nkubernetes: Deploy workloads", visibility: "model-only" }) },
+      { id: "p2", messageId: "u1", sessionId: "s1", type: "text", data: JSON.stringify({ text: "Create a deployment" }) },
+    ]
+
+    const result = toModelMessages(messages, parts)
+    expect(result).toEqual([{
+      role: "user",
+      content: [
+        { type: "text", text: "[Activated skill]\\nkubernetes: Deploy workloads" },
+        { type: "text", text: "Create a deployment" },
+      ],
+    }])
+  })
+})
+
 describe("toModelMessages aborted message filtering", () => {
   test("filters out an aborted turn's user and assistant messages", () => {
     const messages: MessageRow[] = [

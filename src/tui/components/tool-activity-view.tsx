@@ -10,11 +10,16 @@ import { ACTIVITY_LABELS, type ToolActivityKind, type ToolPart } from "./tool-ac
 interface ToolActivityProps {
   kind: ToolActivityKind
   tools: ToolPart[]
+  continuingToolCallId?: string | null
 }
 
 export const ToolActivity: Component<ToolActivityProps> = (props) => {
   const [expanded, setExpanded] = createSignal(false)
-  const active = () => props.tools.some((tool) => tool.status === "pending" || tool.status === "running")
+  const active = () => props.tools.some((tool) =>
+    tool.status === "pending"
+    || tool.status === "running"
+    || tool.callId === props.continuingToolCallId
+  )
   const errorCount = () => props.tools.filter((tool) => tool.status === "error").length
   const label = () => ACTIVITY_LABELS[props.kind][active() ? "active" : "done"]
   const statusColor = () => errorCount() ? colors.error : active() ? colors.info : colors.success

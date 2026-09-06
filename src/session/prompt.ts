@@ -75,6 +75,8 @@ export async function prompt(input: {
   ephemeral?: boolean;
   parts: { type: "text"; text: string }[];
   images?: { mime: string; data: string }[];
+  /** Hidden model context prepended to this user message. */
+  modelOnlyText?: string;
   model?: string;
   agent?: AgentConfig;
 }) {
@@ -100,7 +102,12 @@ export async function prompt(input: {
 
   // Save user message (concatenate all text parts)
   const text = input.parts.map((p) => p.text).join("\n");
-  const userMsg = saveUserMessage({ sessionId, text, images: input.images });
+  const userMsg = saveUserMessage({
+    sessionId,
+    text,
+    images: input.images,
+    ...(input.modelOnlyText ? { modelOnlyText: input.modelOnlyText } : {}),
+  });
   bus.emit("user-message", { sessionId, messageId: userMsg.id, text, images: input.images });
 
   return runTurn({
