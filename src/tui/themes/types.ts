@@ -25,6 +25,7 @@ export type Palette = {
 
   // Message-specific
   userBar: RGBA
+  userMessageBg: RGBA
   toolPath: RGBA
   toolArgs: RGBA
   toolIcon: RGBA

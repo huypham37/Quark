@@ -23,6 +23,7 @@ export const darkTheme: Theme = {
     borderSuccess: RGBA.fromHex("#00d75f"),
 
     userBar: RGBA.fromHex("#589FFF"),
+    userMessageBg: RGBA.fromHex("#555555"),
     toolPath: RGBA.fromHex("#E5C07B"),
     toolArgs: RGBA.fromHex("#7D6E51"),
     toolIcon: RGBA.fromHex("#00d75f"),

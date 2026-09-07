@@ -20,22 +20,25 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const cleaned = () => parseContextBlocks(props.text).cleaned
   const failed = () => props.status === "aborted" || props.status === "failed"
   const italic = () => props.status !== undefined && props.status !== "sent"
-  const foreground = () => failed() ? colors.error : props.status === "replied" ? colors.statusModel : colors.text
-  const barColor = () => failed() ? colors.error : colors.statusModel
+  const foreground = () => failed() ? colors.error : colors.text
+  const barColor = () => failed() ? colors.error : colors.userBar
 
   return (
-    <box flexDirection="column" border={["left"]} borderColor={barColor()} paddingLeft={1}>
-      {/* Text line */}
-      <text fg={foreground()}>{italic() ? <i>{cleaned()}</i> : cleaned()}</text>
+    <box flexDirection="row" flexGrow={1}>
+      <text fg={barColor()} bg={colors.userMessageBg} flexShrink={0}>▏</text>
+      <box flexDirection="column" flexGrow={1} backgroundColor={colors.userMessageBg}>
+        {/* Text line */}
+        <text fg={foreground()}>{italic() ? <i>{cleaned()}</i> : cleaned()}</text>
 
-      {/* Image chips */}
-      <Show when={(props.images?.length ?? 0) > 0}>
-        <box flexDirection="row">
-          <For each={props.images}>
-            {(img) => <text fg={failed() ? colors.error : colors.success}>[{img.label}] </text>}
-          </For>
-        </box>
-      </Show>
+        {/* Image chips */}
+        <Show when={(props.images?.length ?? 0) > 0}>
+          <box flexDirection="row">
+            <For each={props.images}>
+              {(img) => <text fg={failed() ? colors.error : colors.success}>[{img.label}] </text>}
+            </For>
+          </box>
+        </Show>
+      </box>
     </box>
   )
 }

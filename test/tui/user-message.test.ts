@@ -45,31 +45,32 @@ const ITALIC_ATTR = 1 << 2
 describe("UserMessage lifecycle presentation", () => {
   test("renders a sent message without italic", () => {
     const { frame, lines } = renderUserMessage("sent")
-    expect(frame).toContain("│ lifecycle fixture")
-    expect(frame).toContain("│ [Image 1]")
+    expect(frame).toContain("▏lifecycle fixture")
+    expect(frame).toContain(" [Image 1]")
     expect(lines.flatMap((line) => line.spans).some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(false)
   })
 
   test.each(["replied", "aborted", "failed"] as const)("renders a %s message italic and keeps content visible", (status) => {
     const { frame, lines } = renderUserMessage(status)
-    expect(frame).toContain("│ lifecycle fixture")
-    expect(frame).toContain("│ [Image 1]")
+    expect(frame).toContain("▏lifecycle fixture")
+    expect(frame).toContain(" [Image 1]")
     expect(lines.flatMap((line) => line.spans).some((s) => (s.attributes & ITALIC_ATTR) !== 0)).toBe(true)
   })
 
-  test("renders a left border on every wrapped text line", () => {
+  test("keeps wrapped text aligned after the highlight stripe", () => {
     const { frame } = renderUserMessage("sent", "one two three four five six seven", 14)
     const messageLines = frame.split("\n").filter((line) => /\w/.test(line))
     expect(messageLines.length).toBeGreaterThan(1)
-    expect(messageLines.every((line) => line.startsWith("│"))).toBe(true)
+    expect(messageLines[0]?.startsWith("▏")).toBe(true)
+    expect(messageLines.slice(1).every((line) => line.startsWith(" "))).toBe(true)
   })
 
-  test("colors replied text with the model status color", () => {
+  test("colors replied text with the default text color", () => {
     const { lines } = renderUserMessage("replied")
     const textSpan = lines[0]?.spans.find((span) => span.text.includes("lifecycle fixture"))
-    expect(textSpan?.fg?.buffer?.[0]).toBeCloseTo(95 / 255)
-    expect(textSpan?.fg?.buffer?.[1]).toBeCloseTo(215 / 255)
-    expect(textSpan?.fg?.buffer?.[2]).toBe(1)
+    expect(textSpan?.fg?.buffer?.[0]).toBeCloseTo(228 / 255)
+    expect(textSpan?.fg?.buffer?.[1]).toBeCloseTo(228 / 255)
+    expect(textSpan?.fg?.buffer?.[2]).toBeCloseTo(228 / 255)
     expect(textSpan?.fg?.buffer?.[3]).toBe(1)
   })
 })

@@ -26,6 +26,7 @@ export const lightTheme: Theme = {
     borderSuccess: RGBA.fromHex("#008833"),
 
     userBar: RGBA.fromHex("#0087af"),
+    userMessageBg: RGBA.fromHex("#ebebeb"),
     toolPath: RGBA.fromHex("#0044cc"),
     toolArgs: RGBA.fromHex("#7D6E51"),
     toolIcon: RGBA.fromHex("#008833"),
