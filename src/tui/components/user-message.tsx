@@ -20,7 +20,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const cleaned = () => parseContextBlocks(props.text).cleaned
   const failed = () => props.status === "aborted" || props.status === "failed"
   const italic = () => props.status !== undefined && props.status !== "sent"
-  const foreground = () => failed() ? colors.error : props.status === "replied" ? colors.statusModel : colors.text
+  const foreground = () => failed() ? colors.error : colors.text
   const barColor = () => failed() ? colors.error : colors.userBar
 
   return (
