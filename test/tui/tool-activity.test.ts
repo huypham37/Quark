@@ -74,6 +74,27 @@ describe("tool activity grouping", () => {
     expect((items[0] as any).tools).toHaveLength(3)
   })
 
+  test("merges a leading tool run before a reasoning boundary", () => {
+    const messages = mergeToolActivityMessages([
+      assistant("grep-step", [tool("grep")]),
+      assistant("mixed-step", [tool("read"), { type: "thinking", done: true, text: "Checking results" }, tool("read")]),
+    ])
+
+    expect(messages[0]!.parts.map((part) => part.type)).toEqual(["tool", "tool"])
+    expect(groupMessageParts(messages[0]!.parts)).toMatchObject([{ type: "activity", kind: "explore" }])
+    expect(messages[1]!.parts.map((part) => part.type)).toEqual(["thinking", "tool"])
+  })
+
+  test("merges any activity kind before a reasoning boundary", () => {
+    const messages = mergeToolActivityMessages([
+      assistant("search-step", [tool("websearch")]),
+      assistant("mixed-step", [tool("webfetch"), { type: "thinking", done: true, text: "Inspecting source" }]),
+    ])
+
+    expect(groupMessageParts(messages[0]!.parts)).toMatchObject([{ type: "activity", kind: "internet" }])
+    expect(messages[1]!.parts).toMatchObject([{ type: "thinking" }])
+  })
+
   test("does not merge across visible content or a steer divider", () => {
     const visibleBoundary = mergeToolActivityMessages([
       assistant("grep-step", [tool("grep")]),
