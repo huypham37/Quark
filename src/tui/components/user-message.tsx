@@ -24,9 +24,27 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   const barColor = () => failed() ? colors.error : colors.userBar
 
   return (
-    <box flexDirection="row" flexGrow={1}>
-      <text fg={barColor()} bg={colors.userMessageBg} flexShrink={0}>▏</text>
-      <box flexDirection="column" flexGrow={1} backgroundColor={colors.userMessageBg}>
+    <box
+      flexDirection="row"
+      flexGrow={1}
+      backgroundColor={colors.userMessageBg}
+      border={["left"]}
+      borderColor={barColor()}
+      customBorderChars={{
+        topLeft: "",
+        topRight: "",
+        bottomLeft: "",
+        bottomRight: "",
+        horizontal: "",
+        vertical: "▎",
+        topT: "",
+        bottomT: "",
+        leftT: "",
+        rightT: "",
+        cross: "",
+      }}
+    >
+      <box flexDirection="column" flexGrow={1}>
         {/* Text line */}
         <text fg={foreground()}>{italic() ? <i>{cleaned()}</i> : cleaned()}</text>
 
