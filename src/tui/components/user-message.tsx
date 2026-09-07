@@ -26,7 +26,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <text fg={barColor()} bg={colors.userMessageBg} flexShrink={0}>▏</text>
-      <box flexDirection="column" flexGrow={1} backgroundColor={colors.userMessageBg} paddingLeft={1}>
+      <box flexDirection="column" flexGrow={1} backgroundColor={colors.userMessageBg}>
         {/* Text line */}
         <text fg={foreground()}>{italic() ? <i>{cleaned()}</i> : cleaned()}</text>
 
