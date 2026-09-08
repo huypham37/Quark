@@ -1819,7 +1819,10 @@ export const App: Component<AppProps> = (props) => {
             return (
               <>
                 {dividers.map((d) => (
-                  <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
+                  <>
+                    <SteerDivider goal={d.goal} label={d.label} width={dims().width} />
+                    <text> </text>
+                  </>
                 ))}
                 <Show when={msg()}>
                   {(message) => (

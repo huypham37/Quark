@@ -361,6 +361,27 @@ describe("wireEvents: session-reset and session-switch", () => {
     bus.emit("session-switch", { kind: "replace", sessionId: "brand-new-session-xyz", messages: [] })
     expect(s.store.status.tokensUsed).toBe(0)
   })
+
+  test("branch session-switch keeps the old transcript when the child has no visible messages", () => {
+    const s = setup("s1")
+    bus.emit("user-message", { sessionId: "s1", messageId: "m1", text: "old context" })
+
+    bus.emit("session-switch", {
+      kind: "branch",
+      sessionId: "child",
+      messages: [],
+      divider: { id: "branch:child", goal: "Compacted history", label: "Compacted" },
+    })
+
+    expect(s.store.sessionId).toBe("child")
+    expect(s.store.messages.map((message) => message.id)).toEqual(["m1"])
+    expect(s.store.steerDividers).toEqual([{
+      id: "branch:child",
+      goal: "Compacted history",
+      label: "Compacted",
+      insertionIndex: 1,
+    }])
+  })
 })
 
 describe("wireEvents: aborted tool state", () => {

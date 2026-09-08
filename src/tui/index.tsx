@@ -230,24 +230,27 @@ function handleThinkingEffortChange(thinkingEffort: string) {
   activeAgent = { ...activeAgent, thinkingEffort }
 }
 
-function activateBranch(branch: BranchResult, goal: string, label: string): void {
+function activateBranch(branch: BranchResult, goal: string, label: string, retainTranscript = false): void {
   currentSession = { id: branch.sessionId }
   process.env.QUARK_SESSION_ID = branch.sessionId
   const child = loadMessages(branch.sessionId)
   const tuiMessages = dbToTuiMessages(child.messages, child.parts)
   const visibleMessages = branch.promptMessageId
     ? tuiMessages.filter((message) => message.id === branch.promptMessageId)
-    : tuiMessages
+    : retainTranscript
+      ? []
+      : tuiMessages
   const modelMessages = toModelMessages(child.messages, child.parts)
   const system = buildSystem(activeAgent)
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const estimatedTokens = estimateTokens(systemStr, modelMessages)
+  const isBranch = retainTranscript || !!branch.promptMessageId
   bus.emit("session-switch", {
-    kind: branch.promptMessageId ? "branch" : "replace",
+    kind: isBranch ? "branch" : "replace",
     sessionId: branch.sessionId,
     messages: visibleMessages as any,
     estimatedTokens,
-    ...(branch.promptMessageId
+    ...(isBranch
       ? { divider: { id: `branch:${branch.sessionId}`, goal, label } }
       : {}),
   })
@@ -603,7 +606,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
         bus.emit("steer-end", { sessionId: sid })
         branchReady = true
-        activateBranch(branch, goal || "Compacted history", "Compacted")
+        activateBranch(branch, goal || "Compacted history", "Compacted", !goal)
         if (goal) runBranchGoal(branch, goal)
         notifyInfo("Compact", "Branched with compacted history", 3000)
       } catch (err) {

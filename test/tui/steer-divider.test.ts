@@ -6,6 +6,10 @@ const source = readFileSync(
   resolve(import.meta.dir, "../../src/tui/components/steer-divider.tsx"),
   "utf8",
 )
+const appSource = readFileSync(
+  resolve(import.meta.dir, "../../src/tui/components/App.tsx"),
+  "utf8",
+)
 
 describe("SteerDivider", () => {
   test("renders an italic steer label with the goal", () => {
@@ -15,5 +19,9 @@ describe("SteerDivider", () => {
     expect(source).toContain("width: number")
     expect(source).toContain("barChar.repeat")
     expect(source).toContain("left + label + right")
+  })
+
+  test("leaves a blank row before the following message", () => {
+    expect(appSource).toContain('<text> </text>')
   })
 })
