@@ -15,15 +15,6 @@ export interface BranchingConfig {
   auto: boolean
 }
 
-export interface GoalConfig {
-  explore_budget: number
-  max_planned_tasks: number
-  judge_model?: string
-  planner_profile?: string
-  executor_profile?: string
-  verbose?: boolean
-}
-
 export interface ProfileConfig {
   model?: string
   thinking?: { effort?: string; mode?: string }
@@ -57,7 +48,6 @@ export interface QuarkConfig {
   profiles?: Record<string, ProfileConfig>
   providers: Record<string, CustomProviderConfig>
   hide_readonly_tools: boolean
-  goal?: GoalConfig
   /** Optional executable name/path used to open local file links. */
   editor?: string
   /** Compatibility projections; never serialized as V2 fields. */
@@ -68,7 +58,6 @@ export interface QuarkConfig {
 }
 
 const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
-const GOAL_DEFAULTS: GoalConfig = { explore_budget: 5, max_planned_tasks: 20 }
 const DEFAULT_MODELS = {
   small: "openai/gpt-4o-mini",
   favorites: [
@@ -112,21 +101,6 @@ function parseBranching(raw: unknown): BranchingConfig {
     threshold: typeof value.threshold === "number" && value.threshold > 0 && value.threshold <= 1
       ? value.threshold
       : BRANCHING_DEFAULTS.threshold,
-  }
-}
-
-function parseGoal(raw: unknown): GoalConfig | undefined {
-  if (!raw || typeof raw !== "object") return undefined
-  const value = raw as Record<string, unknown>
-  return {
-    explore_budget: typeof value.explore_budget === "number" && value.explore_budget > 0
-      ? value.explore_budget : GOAL_DEFAULTS.explore_budget,
-    max_planned_tasks: typeof value.max_planned_tasks === "number" && value.max_planned_tasks > 0
-      ? value.max_planned_tasks : GOAL_DEFAULTS.max_planned_tasks,
-    judge_model: typeof value.judge_model === "string" ? value.judge_model : undefined,
-    planner_profile: typeof value.planner_profile === "string" ? value.planner_profile : undefined,
-    executor_profile: typeof value.executor_profile === "string" ? value.executor_profile : undefined,
-    verbose: typeof value.verbose === "boolean" ? value.verbose : undefined,
   }
 }
 
@@ -267,7 +241,6 @@ export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
       ? raw.profiles as Record<string, ProfileConfig> : undefined,
     providers: parseCustomProviders(raw.providers),
     hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
-    goal: parseGoal(raw.goal),
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
     legacy: false,
   })
@@ -310,7 +283,6 @@ function parseV1(raw: Record<string, unknown>): QuarkConfig {
     branching: parseBranching(raw.branching),
     providers: parseV1Providers(raw.providers),
     hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
-    goal: parseGoal(raw.goal),
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
     legacy: true,
     models: legacyFavorites,
@@ -350,7 +322,6 @@ export function serializeConfig(config: QuarkConfig): string {
     ...(config.profiles ? { profiles: config.profiles } : {}),
     providers,
     hide_readonly_tools: config.hide_readonly_tools,
-    ...(config.goal ? { goal: config.goal } : {}),
     ...(config.editor ? { editor: config.editor } : {}),
   })
 }
@@ -412,7 +383,7 @@ export function registerProvider(id: string, config: ProviderConfig): void {
   runtimeProviders[normalized] = config
 }
 
-export function setConfigField<K extends "max_steps" | "branching" | "hide_readonly_tools" | "goal">(
+export function setConfigField<K extends "max_steps" | "branching" | "hide_readonly_tools">(
   key: K,
   value: QuarkConfig[K],
 ): void
