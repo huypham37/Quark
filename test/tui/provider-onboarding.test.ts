@@ -1,33 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { __setModelsDevDataForTest } from "../../src/provider/models"
-import { buildModelPickerOptions } from "../../src/tui/model-picker"
 import { firstRunAuthMessage, formatAuthStatuses } from "../../src/tui/auth-status"
-
-describe("descriptor-backed model picker", () => {
-  test("renders canonical identity with provider auth and billing annotations", () => {
-    __setModelsDevDataForTest({
-      openrouter: {
-        id: "openrouter",
-        models: {
-          "vendor/model": { id: "vendor/model", name: "Friendly Model", limit: { context: 10, output: 2 } },
-        },
-      },
-    })
-    const options = buildModelPickerOptions([
-      "openrouter/vendor/model",
-      "ollama/private-model",
-      "company/private-model",
-    ])
-    expect(options[0]).toEqual({
-      id: "openrouter/vendor/model",
-      name: "Friendly Model",
-      detail: "OpenRouter · API key · metered",
-    })
-    expect(options[1]?.detail).toBe("Ollama · no auth · free")
-    expect(options[2]?.detail).toBe("company · metadata unknown")
-    __setModelsDevDataForTest(null)
-  })
-})
 
 describe("auth onboarding presentation", () => {
   test("shows origin and expiry without credentials", () => {

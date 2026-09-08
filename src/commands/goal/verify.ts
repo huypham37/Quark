@@ -47,7 +47,7 @@ export async function judge(
   model?: LanguageModel,
 ): Promise<{ pass: boolean; output: string }> {
   try {
-    const resolvedModel = model ?? await resolveModel(loadConfig().small_model)
+    const resolvedModel = model ?? await resolveModel(loadConfig().modelConfig.small)
     const systemPrompt = [
       "You are a judge. Answer the following question based on the context provided.",
       "Answer ONLY with YES or NO, followed by a brief one-line reason.",

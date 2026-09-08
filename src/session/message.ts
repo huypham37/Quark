@@ -11,7 +11,7 @@ import { generateId } from "ai"
 import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from "ai"
 import { appendEvents, replaySessionFile } from "../storage/session-jsonl"
 import type { ToolResultContentPart } from "../tool/tool"
-import type { ModelRef, PricingDescriptor } from "../provider/catalog"
+import type { ModelRef, PricingDescriptor } from "../provider/catalog-types"
 import type { Charge, TokenUsage, UsageAggregate } from "./accounting"
 import type {
   MessageEvent,

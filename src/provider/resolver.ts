@@ -21,7 +21,10 @@ import {
   type ResolvedCredential,
 } from "./credentials"
 import type { ProviderDefinition } from "./definitions"
-import { ModelRegistry, parseModelRef, type ModelDescriptor, type ModelRef, type PricingDescriptor } from "./catalog"
+import { parseModelRef, type ModelRef, type PricingDescriptor } from "./catalog-types"
+import { CatalogRegistry } from "./catalog-registry"
+import { CatalogSnapshotStore, createCatalogSnapshot, type CatalogModel } from "./catalog-snapshot"
+import { pricingFromCatalogModel } from "./catalog-runtime"
 import { loadLegacyProviderCredential } from "./legacy-credentials"
 import { createBundledProviderRegistry, type ProviderRegistry, type ProviderRuntime } from "./registry"
 
@@ -29,7 +32,7 @@ export interface ResolvedModel {
   languageModel: LanguageModel
   ref: ModelRef
   provider: ProviderRuntime
-  descriptor: ModelDescriptor
+  catalogModel: CatalogModel
   pricingSnapshot: PricingDescriptor
   providerOptionsKey: string
 }
@@ -40,11 +43,13 @@ export interface ResolveModelOptions {
   refreshCodexToken?: typeof refreshCodexToken
   credentialStore?: CredentialStore
   registry?: ProviderRegistry
+  catalog?: CatalogRegistry
 }
 
 function createLegacyProviderDefinition(id: string, config: ProviderConfig): ProviderDefinition {
   return {
     id,
+    catalogProviderId: id,
     name: id,
     protocol: "openai-compatible",
     defaultEndpoint: config.baseURL,
@@ -52,7 +57,6 @@ function createLegacyProviderDefinition(id: string, config: ProviderConfig): Pro
       type: "api-key",
       environmentVariables: config.apiKey.startsWith("env:") ? [config.apiKey.slice(4)] : [],
     },
-    metadataProviderId: id,
     providerOptionsKey: id,
     billing: "unknown",
   }
@@ -72,6 +76,20 @@ function registerLegacyProvider(
   })
 }
 
+const EMPTY_CATALOG = createCatalogSnapshot({}, { fetchedAt: 0 })
+let defaultCatalog: CatalogRegistry | undefined
+
+function getDefaultCatalog(): CatalogRegistry {
+  if (defaultCatalog) return defaultCatalog
+  const store = new CatalogSnapshotStore()
+  defaultCatalog = new CatalogRegistry(store.loadCache() ?? EMPTY_CATALOG)
+  return defaultCatalog
+}
+
+export function createRuntimeProviderRegistry(options: ResolveModelOptions = {}): ProviderRegistry {
+  return buildRegistry(options)
+}
+
 function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
   if (options.registry) return options.registry
   const registry = createBundledProviderRegistry((definition) => createProviderAdapter(definition, {
@@ -86,11 +104,11 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
     if (!registry.get(providerId)) {
       const definition: ProviderDefinition = {
         id: providerId,
+        catalogProviderId: providerId,
         name: providerId,
         protocol: "openai-compatible",
         defaultEndpoint: config.base_url,
         auth: { type: "api-key", environmentVariables: config.api_key_env ? [config.api_key_env] : [] },
-        metadataProviderId: providerId,
         providerOptionsKey: providerId,
         billing: config.billing,
       }
@@ -111,7 +129,7 @@ async function resolveCredential(
   provider: CredentialProviderDefinition,
   options: ResolveModelOptions,
 ): Promise<ResolvedCredential | null> {
-  if (provider.id === "codex" && options.codexTokenStore) {
+  if (provider.id === "openai-codex" && options.codexTokenStore) {
     const token = options.codexTokenStore.load()
     return token
       ? new RedactedResolvedCredential({
@@ -139,7 +157,7 @@ export async function resolveModelRuntime(
   options: ResolveModelOptions = {},
 ): Promise<ResolvedModel> {
   const cfg = loadConfig()
-  const spec = modelSpec ?? (kind === "small" ? cfg.small_model : undefined)
+  const spec = modelSpec ?? (kind === "small" ? cfg.modelConfig.small : undefined)
   if (!spec) {
     throw new Error(
       "No model specified. Set a model via --model, agent profile, or /model command.",
@@ -164,39 +182,59 @@ export async function resolveModelRuntime(
   }
 
   const registry = buildRegistry(options)
-  let runtime = registry.get(providerId)
-  if (!runtime) {
+  let directRuntime = registry.get(providerId)
+  if (!directRuntime) {
     const legacyConfig = getProviderConfig(providerId)
     if (legacyConfig) {
       registerLegacyProvider(registry, providerId, legacyConfig)
-      runtime = registry.require(providerId)
+      directRuntime = registry.require(providerId)
     }
   }
-  if (!runtime) {
-    throw new Error(`Unknown provider "${providerId}".`)
+
+  const candidates = directRuntime
+    ? [directRuntime, ...registry.list().filter((candidate) =>
+        candidate.definition.id !== directRuntime.definition.id
+        && candidate.definition.catalogProviderId === directRuntime.definition.catalogProviderId)]
+    : registry.list().filter((candidate) => candidate.definition.catalogProviderId === providerId)
+  if (candidates.length === 0) throw new Error(`Unknown provider "${providerId}".`)
+
+  let runtime = candidates[0]!
+  let credential: ResolvedCredential | null = null
+  for (const candidate of candidates) {
+    const resolved = candidate.source === "configured"
+      ? await new DefaultCredentialResolver(
+          options.credentialStore ?? await createDefaultCredentialStore(),
+          undefined,
+          process.env,
+        ).resolve({
+          provider: candidate.definition,
+          source: candidate.credentialSource,
+          interactive: false,
+        })
+      : await resolveCredential(candidate.definition, options)
+    const compatible = candidate.definition.auth.type === "none"
+      || (candidate.definition.auth.type === "api-key" && resolved?.credential.type === "api-key")
+      || (candidate.definition.auth.type === "oauth-device" && resolved?.credential.type === "oauth")
+    if (compatible) {
+      runtime = candidate
+      credential = resolved
+      break
+    }
   }
 
-  let credential: ResolvedCredential | null
-  if (runtime.source === "configured") {
-    const store = options.credentialStore ?? await createDefaultCredentialStore()
-    credential = await new DefaultCredentialResolver(store, undefined, process.env).resolve({
-      provider: runtime.definition,
-      source: runtime.credentialSource,
-      interactive: false,
-    })
-  } else {
-    credential = await resolveCredential(runtime.definition, options)
+  const ref = parseModelRef(`${runtime.definition.catalogProviderId}/${modelId}`)
+  const catalog = options.catalog ?? getDefaultCatalog()
+  const catalogModel = catalog.getModel(runtime.definition.catalogProviderId, ref.modelId)
+  if (!catalogModel) {
+    throw new Error(`Model "${ref.spec}" is not present in the exact catalog.`)
   }
-
-  const ref = parseModelRef(`${runtime.definition.id}/${modelId}`)
-  const descriptor = new ModelRegistry().resolve(ref, runtime.definition)
   const languageModel = await runtime.adapter.createLanguageModel({ modelId, credential })
   return {
     languageModel,
     ref,
     provider: runtime,
-    descriptor,
-    pricingSnapshot: structuredClone(descriptor.pricing),
+    catalogModel,
+    pricingSnapshot: pricingFromCatalogModel(catalogModel),
     providerOptionsKey: runtime.definition.providerOptionsKey,
   }
 }

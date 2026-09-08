@@ -28,7 +28,6 @@ import { isOverContextThreshold, getContextWindow } from "./context"
 import { bus } from "./events"
 import { fireHook } from "../plugin/registry"
 import { loadConfig } from "../config/config"
-import { getModelLimit } from "../provider/models"
 import type { ResolvedModel } from "../provider/resolver"
 import {
   addTokenUsage,
@@ -308,8 +307,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
             if (!needsBranch && usage?.inputTokens) {
               const cfg = loadConfig()
               if (cfg.branching.auto) {
-                const modelLimit = input.resolvedModel?.descriptor.limits
-                  ?? getModelLimit(input.modelId ?? "")
+                const modelLimit = input.resolvedModel?.catalogModel.limit ?? null
                 const ctxWindow = getContextWindow(modelLimit)
 
                 if (ctxWindow > 0 && isOverContextThreshold(usage.inputTokens, ctxWindow, cfg.branching.threshold)) {

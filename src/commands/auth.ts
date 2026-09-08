@@ -42,11 +42,11 @@ function definition(providerId: string): ProviderDefinition {
   if (!custom) throw new Error(`Unknown provider "${providerId}".`)
   return {
     id: normalized,
+    catalogProviderId: normalized,
     name: normalized,
     protocol: "openai-compatible",
     defaultEndpoint: custom.base_url,
     auth: { type: "api-key", environmentVariables: custom.api_key_env ? [custom.api_key_env] : [] },
-    metadataProviderId: normalized,
     providerOptionsKey: normalized,
     billing: custom.billing,
   }

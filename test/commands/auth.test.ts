@@ -113,7 +113,7 @@ describe("auth commands", () => {
   test("Codex OAuth device login stores refresh and account metadata", async () => {
     const store = new MemoryStore()
     await loginOAuth({
-      providerId: "codex",
+      providerId: "openai-codex",
       persistence: "store",
       method: "device",
       onDeviceCode: () => {},
@@ -126,7 +126,7 @@ describe("auth commands", () => {
       },
     })
 
-    expect(await store.get("codex")).toEqual({
+    expect(await store.get("openai-codex")).toEqual({
       type: "oauth",
       access: "access",
       refresh: "refresh",

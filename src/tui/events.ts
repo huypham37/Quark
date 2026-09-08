@@ -152,6 +152,7 @@ export function wireEvents(state: AppState) {
     dispatch(state, {
       type: "model-switched",
       modelSpec: data.modelSpec,
+      catalogModel: data.catalogModel,
       thinkingEffort: data.thinkingEffort,
       thinkingMode: data.thinkingMode,
     })

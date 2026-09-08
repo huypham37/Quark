@@ -1,6 +1,6 @@
 import type { JSONObject } from "@ai-sdk/provider"
 import type { LanguageModelUsage } from "ai"
-import type { ModelRef, PriceRates, PricingDescriptor } from "../provider/catalog"
+import type { ModelRef, PriceRates, PricingDescriptor } from "../provider/catalog-types"
 
 export interface TokenUsage {
   input?: number

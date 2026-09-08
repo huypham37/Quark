@@ -435,7 +435,7 @@ describe("parseProfilesFromYAML", () => {
     expect(profiles.coder.thinkingMode).toBe("pro")
   })
 
-  test("falls back to the model default for an effort unsupported by the profile model", () => {
+  test("preserves an effort for runtime validation against the selected catalog model", () => {
     const profiles = parseProfilesFromYAML({
       profiles: {
         coder: {
@@ -445,10 +445,10 @@ describe("parseProfilesFromYAML", () => {
       },
     }, "/tmp")
     expect(profiles.coder.model).toBe("opencode/deepseek-v4-flash")
-    expect(profiles.coder.thinkingEffort).toBe("none")
+    expect(profiles.coder.thinkingEffort).toBe("xhigh")
   })
 
-  test("falls back to none when the profile model does not support thinking", () => {
+  test("preserves an effort when the profile model does not support thinking", () => {
     const profiles = parseProfilesFromYAML({
       profiles: {
         coder: {
@@ -458,10 +458,10 @@ describe("parseProfilesFromYAML", () => {
       },
     }, "/tmp")
     expect(profiles.coder.model).toBe("copilot/gpt-4o")
-    expect(profiles.coder.thinkingEffort).toBe("none")
+    expect(profiles.coder.thinkingEffort).toBe("high")
   })
 
-  test("validates thinking against the fallback model when model is omitted", () => {
+  test("preserves thinking against the fallback model when model is omitted", () => {
     const profiles = parseProfilesFromYAML({
       profiles: { coder: { thinking_effort: "high" } },
     }, "/tmp", "copilot/gpt-5")
@@ -469,7 +469,7 @@ describe("parseProfilesFromYAML", () => {
     expect(profiles.coder.thinkingEffort).toBe("high")
   })
 
-  test("warns and drops thinking_mode for a model without mode support", () => {
+  test("preserves thinking_mode for runtime validation against a model without mode support", () => {
     const profiles = parseProfilesFromYAML({
       profiles: {
         coder: {
@@ -481,15 +481,10 @@ describe("parseProfilesFromYAML", () => {
     }, "/tmp")
 
     expect(profiles.coder.thinkingEffort).toBe("high")
-    expect(profiles.coder.thinkingMode).toBeUndefined()
-    expect(getActive()).toContainEqual(expect.objectContaining({
-      type: "warn",
-      title: "Thinking configuration",
-      message: expect.stringContaining('thinking_mode "pro" is not supported'),
-    }))
+    expect(profiles.coder.thinkingMode).toBe("pro")
   })
 
-  test("warns and drops an invalid mode for a model with mode support", () => {
+  test("preserves an invalid mode for runtime validation against a model with mode support", () => {
     const profiles = parseProfilesFromYAML({
       profiles: {
         coder: {
@@ -501,12 +496,7 @@ describe("parseProfilesFromYAML", () => {
     }, "/tmp")
 
     expect(profiles.coder.thinkingEffort).toBe("high")
-    expect(profiles.coder.thinkingMode).toBeUndefined()
-    expect(getActive()).toContainEqual(expect.objectContaining({
-      type: "warn",
-      title: "Thinking configuration",
-      message: expect.stringContaining("Supported modes: standard, pro"),
-    }))
+    expect(profiles.coder.thinkingMode).toBe("ultra")
   })
 
   test("parses string model field", () => {
@@ -1108,7 +1098,7 @@ profiles:
     expect(getActive().filter((notification) => notification.title === "Profile")).toHaveLength(0)
   })
 
-  test("falls back to the model default when project YAML has unsupported thinking", () => {
+  test("preserves unsupported thinking for runtime catalog validation", () => {
     writeConfig(`
 profiles:
   finder:
@@ -1116,12 +1106,7 @@ profiles:
     thinking_effort: xhigh
 `)
 
-    expect(resolveProfile("finder").thinkingEffort).toBe("none")
-    expect(getActive()).toContainEqual(expect.objectContaining({
-      type: "warn",
-      title: "Thinking configuration",
-      message: expect.stringContaining('profiles.finder.thinking_effort "xhigh"'),
-    }))
+    expect(resolveProfile("finder").thinkingEffort).toBe("xhigh")
   })
 
   test("invalid sub-agent ID — stripped from result, warn notification fires", () => {

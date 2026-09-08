@@ -7,6 +7,7 @@ import { createRoot } from "solid-js"
 import { createAppState, dbToTuiMessages, dispatch } from "../../src/tui/state"
 import { dbToConversationMessages, LEGACY_INTERRUPTED_ERROR } from "../../src/shared/conversation-view"
 import type { TuiMessage, TuiPart } from "../../src/tui/state"
+import type { CatalogModel } from "../../src/provider/catalog-snapshot"
 
 // Helper: run a test inside a SolidJS reactive root
 function withRoot<T>(fn: () => T): T {
@@ -76,7 +77,21 @@ describe("dispatch: thinking actions", () => {
     withRoot(() => {
       const s = createAppState({ sessionId: "s1", modelName: "gpt-5", skillCount: 0, thinkingEffort: "high" })
       expect(s.store.thinkingEffort).toBe("high")
-      dispatch(s, { type: "cycle-thinking", modelId: "gpt-5" })
+      const catalogModel = {
+        id: "gpt-5",
+        name: "GPT-5",
+        description: "test",
+        attachment: false,
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["none", "high", "xhigh"] }],
+        tool_call: true,
+        release_date: "2025-01-01",
+        last_updated: "2025-01-01",
+        modalities: { input: ["text"], output: ["text"] },
+        open_weights: false,
+        limit: { context: 1000, output: 100 },
+      } satisfies CatalogModel
+      dispatch(s, { type: "cycle-thinking", model: catalogModel })
       expect(s.store.thinkingEffort).toBe("xhigh")
       dispatch(s, { type: "model-switched", modelSpec: "gpt-5-mini", thinkingEffort: "low" })
       expect(s.store.thinkingEffort).toBe("low")
