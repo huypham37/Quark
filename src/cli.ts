@@ -16,7 +16,6 @@ import { emitSubagentError, startEventWriter } from "./session/event-writer"
 import { loadConfig } from "./config/config"
 import { setVerbose, debug } from "./debug"
 import { formatArgs } from "./debug/format-tool-args"
-import { startLiveSessionServer, watchLiveSession } from "./session/live"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -60,7 +59,6 @@ interface ParsedArgs {
   profile?: string
   message?: string
   sessionId?: string
-  watch?: string
   model?: string
   noStore?: boolean
   verbose?: boolean
@@ -75,7 +73,6 @@ function parseArguments(): ParsedArgs {
         profile: { type: "string", short: "p" },
         message: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
-        watch: { type: "string" },
         model: { type: "string" },
         "no-store": { type: "boolean" },
         verbose: { type: "boolean" },
@@ -99,7 +96,6 @@ function parseArguments(): ParsedArgs {
       profile: values.profile,
       message,
       sessionId: values.session,
-      watch: values.watch,
       model: values.model,
       noStore: values["no-store"],
       verbose: values.verbose,
@@ -145,16 +141,6 @@ async function main() {
     process.exit(0)
   }
 
-  if (args.watch) {
-    try {
-      await watchLiveSession(args.watch)
-    } catch (error) {
-      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-      process.exit(1)
-    }
-    return
-  }
-
   // No message provided → launch interactive TUI
   if (!args.message) {
     const { execFileSync } = await import("child_process")
@@ -184,13 +170,6 @@ async function main() {
     profileTools: profile.tools,
     boundSkills: profile.skills,
   })
-
-  if (args.sessionId) startLiveSessionServer(args.sessionId)
-  bus.on("session-created", ({ sessionId }) => {
-    startLiveSessionServer(sessionId)
-    if (!parentSessionId) process.stderr.write(`Watch this run: quark --watch ${sessionId}\n`)
-  })
-  bus.on("assistant-message-start", ({ sessionId }) => startLiveSessionServer(sessionId))
 
   // The internal subagent supervisor opts into structured stderr events through
   // environment variables, keeping the public CLI free of subagent flags.

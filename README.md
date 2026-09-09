@@ -80,9 +80,6 @@ quark --no-store "what does this regex do?"
 # Resume an existing session
 quark --session <id>
 
-# View a running local session from another terminal (read-only)
-quark --watch <id>
-
 ```
 
 ### CLI flags
@@ -92,7 +89,6 @@ quark --watch <id>
 | `-p, --profile <name>` | Profile to use (default: from config) |
 | `-m, --message <text>` | Message text (alternative to a positional arg) |
 | `-s, --session <id>` | Resume an existing session |
-| `--watch <id>` | View a running local session in another terminal (read-only) |
 | `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
 | `--no-store` | Run an ephemeral session — never written to disk |
 | `--verbose` | Print every tool call + result to stderr |
