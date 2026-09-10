@@ -1,6 +1,6 @@
 // Tests for Codex provider resolution in the model resolver.
 //
-// Verifies that `resolveModel("codex/gpt-4o")` correctly routes to the
+// Verifies that `resolveModel("openai/gpt-4o")` correctly routes to the
 // OpenAI Codex provider with proper token loading and error handling.
 //
 // Pattern: Integration-style tests using isolated token persistence.
@@ -16,6 +16,8 @@ import {
 import { resolveModel } from "../../src/provider/resolver"
 import type { CredentialStore } from "../../src/provider/credential-store"
 import type { Credential } from "../../src/provider/credentials"
+import { CatalogRegistry } from "../../src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
 
 class MemoryCredentialStore implements CredentialStore {
   value: Credential | null = null
@@ -64,10 +66,36 @@ function expiredToken(): CodexToken {
   }
 }
 
+function catalog(): CatalogRegistry {
+  const models = Object.fromEntries(["gpt-4o", "gpt-4.1", "o3"].map((id) => [id, {
+    id,
+    name: id,
+    description: "test model",
+    attachment: false,
+    reasoning: false,
+    tool_call: true,
+    release_date: "2025-01-01",
+    last_updated: "2025-01-01",
+    modalities: { input: ["text"], output: ["text"] },
+    open_weights: false,
+    limit: { context: 1000, output: 100 },
+  }]))
+  return new CatalogRegistry(createCatalogSnapshot({
+    openai: {
+      id: "openai",
+      name: "OpenAI",
+      npm: "@openai/codex",
+      env: ["OPENAI_API_KEY"],
+      doc: "https://example.test",
+      models,
+    },
+  }))
+}
+
 // ---------------------------------------------------------------------------
 // resolveModel — codex provider routing
 // ---------------------------------------------------------------------------
-describe("resolveModel(codex/...)", () => {
+describe("resolveModel(openai/...) through the OpenAI Codex connection", () => {
   let tokenDir: string
   let tokenStore: CodexTokenStore
 
@@ -91,7 +119,7 @@ describe("resolveModel(codex/...)", () => {
       metadata: { accountId: token.accountId },
     }
 
-    const model = await resolveModel("codex/gpt-4o", "main", { credentialStore })
+    const model = await resolveModel("openai/gpt-4o", "main", { catalog: catalog(), credentialStore })
 
     expect(model.modelId).toBe("gpt-4o")
     expect(model.provider).toBe("codex-consumer")
@@ -100,7 +128,7 @@ describe("resolveModel(codex/...)", () => {
   test("returns a configured model when codex token is present", async () => {
     tokenStore.save(validToken())
 
-    const model = await resolveModel("codex/gpt-4o", "main", {
+    const model = await resolveModel("openai/gpt-4o", "main", { catalog: catalog(),
       codexTokenStore: tokenStore,
     })
 
@@ -109,32 +137,32 @@ describe("resolveModel(codex/...)", () => {
     expect(model.provider).toBe("codex-consumer")
   })
 
-  test("returns model with correct model ID for codex/gpt-4.1", async () => {
+  test("returns model with correct model ID for openai/gpt-4.1", async () => {
     tokenStore.save(validToken())
 
-    const model = await resolveModel("codex/gpt-4.1", "main", {
+    const model = await resolveModel("openai/gpt-4.1", "main", { catalog: catalog(),
       codexTokenStore: tokenStore,
     })
 
     expect(model.modelId).toBe("gpt-4.1")
   })
 
-  test("returns model with correct model ID for codex/o3", async () => {
+  test("returns model with correct model ID for openai/o3", async () => {
     tokenStore.save(validToken())
 
-    const model = await resolveModel("codex/o3", "main", {
+    const model = await resolveModel("openai/o3", "main", { catalog: catalog(),
       codexTokenStore: tokenStore,
     })
 
     expect(model.modelId).toBe("o3")
   })
 
-  test("throws helpful error when no codex token file exists", async () => {
+  test("throws a credential error when neither OpenAI connection is authenticated", async () => {
     await expect(
-      resolveModel("codex/gpt-4o", "main", {
+      resolveModel("openai/gpt-4o", "main", { catalog: catalog(),
         codexTokenStore: tokenStore,
       }),
-    ).rejects.toThrow(/No Codex token.*codex-login/i)
+    ).rejects.toThrow(/No credential found.*OPENAI_API_KEY/i)
   })
 
   test("auto-refreshes expired token before resolving", async () => {
@@ -142,7 +170,7 @@ describe("resolveModel(codex/...)", () => {
     const refreshed = validToken()
     let refreshToken = ""
     let authorization = ""
-    const model = await resolveModel("codex/gpt-4o", "main", {
+    const model = await resolveModel("openai/gpt-4o", "main", { catalog: catalog(),
       codexFetch: async (_url, init) => {
         authorization = new Headers(init?.headers).get("authorization") ?? ""
         return new Response("", { status: 200 })
@@ -167,7 +195,7 @@ describe("resolveModel(codex/...)", () => {
 
   test("instructs the user to sign in when refresh is rejected", async () => {
     tokenStore.save(expiredToken())
-    const model = await resolveModel("codex/gpt-4o", "main", {
+    const model = await resolveModel("openai/gpt-4o", "main", { catalog: catalog(),
       codexTokenStore: tokenStore,
       refreshCodexToken: async () => {
         throw new Error("refresh failed (401)")
@@ -179,6 +207,6 @@ describe("resolveModel(codex/...)", () => {
         prompt: [],
         maxOutputTokens: 1,
       }),
-    ).rejects.toThrow(/Codex login expired.*codex-login.*401/i)
+    ).rejects.toThrow(/Codex login expired.*auth login openai-codex.*401/i)
   })
 })

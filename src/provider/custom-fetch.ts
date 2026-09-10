@@ -37,7 +37,7 @@ export function getCustomFetch(
     copilotInstances.set("copilot", fetch)
     return fetch
   }
-  if (providerId === "codex" && options) {
+  if (providerId === "openai-codex" && options) {
     return createCodexFetch(options)
   }
   return undefined

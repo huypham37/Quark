@@ -70,7 +70,7 @@ function runCli(args: string[]) {
 // ---------------------------------------------------------------------------
 
 describe("CLI with invalid thinking config (issue #166)", () => {
-  test("uses the model default and warns when profile has unsupported thinking effort", () => {
+  test("reports exact-catalog validation when profile has unsupported thinking effort", () => {
     writeProjectConfig(`
 profiles:
   finder:
@@ -82,11 +82,11 @@ profiles:
 
     const stderr = result.stderr.toString()
 
-    expect(result.exitCode).toBe(0)
-    expect(stderr).not.toContain("at validateThinkingEffort")
+    expect(result.exitCode).not.toBe(0)
+    expect(stderr).toContain("not present in the exact catalog")
   })
 
-  test("uses none and warns when profile model does not support thinking", () => {
+  test("reports exact-catalog validation when profile model does not support thinking", () => {
     writeProjectConfig(`
 profiles:
   bad:
@@ -98,11 +98,8 @@ profiles:
 
     const stderr = result.stderr.toString()
 
-    expect(result.exitCode).toBe(0)
-    expect(stderr).toContain("Thinking configuration")
-    expect(stderr).toContain("gpt-4o")
-    expect(stderr).toContain('Using default "none"')
-    expect(stderr).not.toContain("at validateThinkingEffort")
+    expect(result.exitCode).not.toBe(0)
+    expect(stderr).toContain("not present in the exact catalog")
   })
 
   test("valid thinking config does NOT cause a spurious error", () => {
@@ -122,10 +119,10 @@ profiles:
     // it must NOT fail with a thinking-config error.
     expect(stderr).not.toContain("Invalid thinking effort")
     expect(stderr).not.toContain("Thinking is not supported")
-    expect(stderr).not.toContain("at validateThinkingEffort")
+    expect(stderr).not.toContain("at profile validation")
   })
 
-  test("uses the model default when an inactive profile has invalid thinking", () => {
+  test("does not eagerly validate inactive profile thinking", () => {
     writeProjectConfig(`
 profiles:
   badprofile:
@@ -137,10 +134,7 @@ profiles:
 
     const stderr = result.stderr.toString()
 
-    expect(result.exitCode).toBe(0)
-    expect(stderr).toContain("Thinking configuration")
-    expect(stderr).toContain("profiles.badprofile.thinking_effort")
-    expect(stderr).toContain('Using default "none"')
-    expect(stderr).not.toContain("at validateThinkingEffort")
+    expect(result.exitCode).not.toBe(0)
+    expect(stderr).toContain("not present in the exact catalog")
   })
 })

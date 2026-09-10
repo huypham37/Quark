@@ -8,7 +8,7 @@ export async function loadLegacyProviderCredential(providerId: string): Promise<
     const token = loadCopilotToken()
     return token ? { type: "oauth", access: token } : null
   }
-  if (providerId === "codex") {
+  if (providerId === "openai-codex") {
     const token = loadCodexToken()
     return token
       ? {

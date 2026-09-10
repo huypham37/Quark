@@ -106,15 +106,10 @@ beforeEach(() => {
 // loadConfig — defaults
 // ---------------------------------------------------------------------------
 describe("loadConfig", () => {
-  test("returns defaults when config file is missing", () => {
+  test("returns the default small model when config file is missing", () => {
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4o-mini")
-    expect(config.models).toBeArray()
-    expect(config.models.length).toBeGreaterThan(0)
-    expect(config.models).toContain("gpt-4o")
-    expect(config.models).toContain("claude-sonnet-4")
-    expect(config.modelConfig.favorites).toContain("openai/gpt-4o")
-    expect(config.modelConfig.favorites).toContain("openai/claude-sonnet-4")
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
+    expect(config.small_model).toBe("openai/gpt-4o-mini")
   })
 
   test("returns defaults when config file has invalid YAML", () => {
@@ -122,47 +117,30 @@ describe("loadConfig", () => {
     fs.writeFileSync(configFile, ": : : invalid yaml {{{\n", "utf-8")
 
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4o-mini")
-    expect(config.models).toBeArray()
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
   })
 
   test("reads small_model from file", () => {
     writeConfig({ small_model: "gpt-4.1-nano" })
 
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4.1-nano")
+    expect(config.modelConfig.small).toBe("openai/gpt-4.1-nano")
+    expect(config.small_model).toBe("openai/gpt-4.1-nano")
   })
 
-  test("reads models array from file", () => {
+  test("ignores legacy models input", () => {
     writeConfig({ models: ["model-a", "model-b"] })
 
     const config = loadConfig()
-    expect(config.models).toEqual(["model-a", "model-b"])
-  })
-
-  test("falls back to default models when array contains non-strings", () => {
-    fs.mkdirSync(configDir, { recursive: true })
-    fs.writeFileSync(configFile, "models:\n  - valid\n  - 123\n", "utf-8")
-
-    const config = loadConfig()
-    // Should fall back to defaults because not all elements are strings
-    expect(config.models).toContain("gpt-4o")
-    expect(config.models).not.toContain("valid")
-  })
-
-  test("falls back to default models when models is not an array", () => {
-    writeConfig({ models: "not-an-array" })
-
-    const config = loadConfig()
-    expect(config.models).toBeArray()
-    expect(config.models).toContain("gpt-4o")
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
+    expect("models" in config).toBe(false)
   })
 
   test("falls back to default for empty string fields", () => {
     writeConfig({ small_model: "" })
 
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4o-mini")
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
   })
 
   test("falls back to default for non-string fields", () => {
@@ -170,18 +148,18 @@ describe("loadConfig", () => {
     fs.writeFileSync(configFile, "small_model: true\n", "utf-8")
 
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4o-mini")
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
   })
 
-  test("reads all fields together", () => {
+  test("reads the small model while ignoring legacy favorites", () => {
     writeConfig({
       models: ["a", "b", "c"],
       small_model: "tiny-model",
     })
 
     const config = loadConfig()
-    expect(config.models).toEqual(["a", "b", "c"])
-    expect(config.small_model).toBe("tiny-model")
+    expect(config.modelConfig.small).toBe("openai/tiny-model")
+    expect("models" in config).toBe(false)
   })
 
   test("does not expose top-level thinking fields as global defaults", () => {
@@ -203,24 +181,24 @@ describe("loadConfig caching", () => {
   test("returns cached result on second call", () => {
     writeConfig({ small_model: "first-model" })
     const first = loadConfig()
-    expect(first.small_model).toBe("first-model")
+    expect(first.modelConfig.small).toBe("openai/first-model")
 
     // Change file on disk — loadConfig should still return cached
     writeConfig({ small_model: "second-model" })
     const second = loadConfig()
-    expect(second.small_model).toBe("first-model")
+    expect(second.modelConfig.small).toBe("openai/first-model")
     expect(second).toBe(first) // Same object reference
   })
 
   test("resetConfigCache forces re-read", () => {
     writeConfig({ small_model: "original" })
     const first = loadConfig()
-    expect(first.small_model).toBe("original")
+    expect(first.modelConfig.small).toBe("openai/original")
 
     writeConfig({ small_model: "updated" })
     resetConfigCache()
     const second = loadConfig()
-    expect(second.small_model).toBe("updated")
+    expect(second.modelConfig.small).toBe("openai/updated")
   })
 })
 
@@ -230,7 +208,7 @@ describe("loadConfig caching", () => {
 describe("model spec format", () => {
   test("small_model defaults include provider prefix", () => {
     const config = loadConfig()
-    expect(config.small_model).toBe("gpt-4o-mini")
+    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
   })
 
   test("reads model specs with provider prefix", () => {
@@ -238,8 +216,7 @@ describe("model spec format", () => {
       small_model: "opencode/deepseek-v4-pro",
     })
     const config = loadConfig()
-    expect(config.small_model).toBe("opencode/deepseek-v4-pro")
-    expect(config.small_model).toBe("opencode/deepseek-v4-pro")
+    expect(config.modelConfig.small).toBe("opencode/deepseek-v4-pro")
   })
 })
 
@@ -259,17 +236,6 @@ describe("setConfigField", () => {
     expect((data.models as Record<string, unknown>).small).toBe("openai/new-model")
   })
 
-  test("merges with existing config", () => {
-    writeConfig({ small_model: "existing-model" })
-
-    setConfigField("models", ["a", "b"])
-
-    const data = readConfigFile()
-    expect(data.version).toBe(2)
-    expect((data.models as Record<string, unknown>).small).toBe("openai/existing-model")
-    expect((data.models as Record<string, unknown>).favorites).toEqual(["openai/a", "openai/b"])
-  })
-
   test("overwrites existing field", () => {
     writeConfig({ small_model: "old" })
 
@@ -282,21 +248,11 @@ describe("setConfigField", () => {
   test("invalidates cache so next loadConfig reads fresh", () => {
     writeConfig({ small_model: "before" })
     const before = loadConfig()
-    expect(before.small_model).toBe("before")
+    expect(before.modelConfig.small).toBe("openai/before")
 
     setConfigField("small_model", "after")
     const after = loadConfig()
-    expect(after.small_model).toBe("openai/after")
-  })
-
-  test("can set models array", () => {
-    setConfigField("models", ["x", "y", "z"])
-
-    const data = readConfigFile()
-    expect((data.models as Record<string, unknown>).favorites).toEqual(["openai/x", "openai/y", "openai/z"])
-
-    const config = loadConfig()
-    expect(config.models).toEqual(["openai/x", "openai/y", "openai/z"])
+    expect(after.modelConfig.small).toBe("openai/after")
   })
 
 })
@@ -331,6 +287,6 @@ describe("resetConfigCache", () => {
     writeConfig({ small_model: "v2" })
     resetConfigCache()
 
-    expect(loadConfig().small_model).toBe("v2")
+    expect(loadConfig().modelConfig.small).toBe("openai/v2")
   })
 })

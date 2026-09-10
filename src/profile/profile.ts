@@ -19,11 +19,6 @@ import * as path from "path"
 import * as os from "os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 import { warn as notifyWarn } from "../notification/notification"
-import {
-  getDefaultThinkingEffort,
-  getThinkingModes,
-  validateThinkingEffort,
-} from "../provider/thinking"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,13 +124,7 @@ function parseProfilesFromYAML(
     if (!val || typeof val !== "object") continue
     const p = val as Record<string, unknown>
     const parsedModel = parseModel(p.model, id)
-    const thinking = parseThinking(
-      p,
-      parsedModel.legacyThinking,
-      parsedModel.model,
-      id,
-      fallbackModel,
-    )
+    const thinking = parseThinking(p, parsedModel.legacyThinking)
 
     if (p.permissions !== undefined) {
       warnObsoletePermissions(id)
@@ -181,9 +170,6 @@ function parseModel(
 function parseThinking(
   profile: Record<string, unknown>,
   legacy: Record<string, unknown> | undefined,
-  modelId: string | undefined,
-  profileId: string,
-  fallbackModel?: string,
 ): Pick<ProfileDef, "thinkingEffort" | "thinkingMode"> {
   const flatEffort = typeof profile.thinking_effort === "string" && profile.thinking_effort
     ? profile.thinking_effort
@@ -203,44 +189,13 @@ function parseThinking(
 
   if (!effort && !mode) return {}
 
-  const effectiveModel = modelId ?? fallbackModel
-  if (!effectiveModel) return {}
   const result: Pick<ProfileDef, "thinkingEffort" | "thinkingMode"> = {}
 
-  if (effort) {
-    try {
-      validateThinkingEffort(effectiveModel, effort)
-      result.thinkingEffort = effort
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const fallback = getDefaultThinkingEffort(effectiveModel)
-      notifyWarn(
-        "Thinking configuration",
-        `profiles.${profileId}.thinking_effort "${effort}" is invalid for "${effectiveModel}". Using default "${fallback}". ${message}`,
-        0,
-      )
-      result.thinkingEffort = fallback
-    }
-  }
-
-  if (mode) {
-    const modes = getThinkingModes(effectiveModel)
-    if (!modes) {
-      notifyWarn(
-        "Thinking configuration",
-        `profiles.${profileId}.thinking_mode "${mode}" is not supported by "${effectiveModel}". Ignoring it.`,
-        0,
-      )
-    } else if (!modes.includes(mode)) {
-      notifyWarn(
-        "Thinking configuration",
-        `profiles.${profileId}.thinking_mode "${mode}" is invalid for "${effectiveModel}". Supported modes: ${modes.join(", ")}. Ignoring it.`,
-        0,
-      )
-    } else {
-      result.thinkingMode = mode
-    }
-  }
+  // Catalog-aware validation belongs at runtime, after the shared catalog is loaded.
+  // Profile loading must preserve user-entered values even when no model is set.
+  // It must not retain a hard-coded model capability map.
+  if (effort) result.thinkingEffort = effort
+  if (mode) result.thinkingMode = mode
 
   return result
 }

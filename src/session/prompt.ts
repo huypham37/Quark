@@ -25,9 +25,9 @@ import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
 import { generateSessionTitle } from "./title";
 import { resolveToolSet } from "../tool/ai-adapter";
-import { buildProviderOptions } from "../provider/thinking";
 import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel, resolveModelRuntime } from "../provider/resolver";
+import type { CatalogRegistry } from "../provider/catalog-registry";
 import { defaultAgent, type AgentConfig } from "../agent";
 import { loadConfig } from "../config/config";
 
@@ -79,6 +79,7 @@ export async function prompt(input: {
   modelOnlyText?: string;
   model?: string;
   agent?: AgentConfig;
+  catalog?: CatalogRegistry;
 }) {
   const agent = input.agent ?? defaultAgent;
 
@@ -117,6 +118,7 @@ export async function prompt(input: {
     model: input.model,
     agent,
     forceAgent: !!input.parentSessionId,
+    catalog: input.catalog,
   });
 }
 
@@ -130,6 +132,7 @@ export async function runSeededSession(input: {
   userText: string
   model?: string
   agent?: AgentConfig
+  catalog?: CatalogRegistry
 }) {
   getSession(input.sessionId)
   return runTurn({
@@ -138,6 +141,7 @@ export async function runSeededSession(input: {
     userText: input.userText,
     model: input.model,
     agent: input.agent ?? defaultAgent,
+    catalog: input.catalog,
   })
 }
 
@@ -148,6 +152,7 @@ async function runTurn(input: {
   model?: string
   agent: AgentConfig
   forceAgent?: boolean
+  catalog?: CatalogRegistry
 }) {
   const { sessionId, userMessageId, userText, model, agent } = input
   process.env.QUARK_SESSION_ID = sessionId
@@ -168,7 +173,7 @@ async function runTurn(input: {
     if (!session.title) {
       const fallbackTitle = userText.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "Untitled"
       setSessionTitle(sessionId, fallbackTitle)
-      resolveModel(model ?? loadConfig().small_model, "small")
+      resolveModel(model ?? loadConfig().modelConfig.small, "small", { catalog: input.catalog })
         .then((smallModel) => generateSessionTitle({ sessionId, message: userText, model: smallModel }))
         .catch(() => {})
     }
@@ -180,6 +185,7 @@ async function runTurn(input: {
       agent,
       model,
       turnMessageIds,
+      input.catalog,
     )
   } finally {
     // loop() can throw after moving to an automatic child branch, before its
@@ -254,6 +260,7 @@ async function loop(
   agent: AgentConfig,
   modelOpt: string | undefined,
   turnMessageIds: Map<string, string>,
+  catalog?: CatalogRegistry,
 ): Promise<string> {
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -261,11 +268,9 @@ async function loop(
   const agentModelSpec = agent.model;
   const modelSpec = modelOpt ?? agentModelSpec;
   const usingAgentModel = modelOpt === undefined || modelOpt === agentModelSpec;
-  const resolvedModel = await resolveModelRuntime(modelSpec);
-  const effectiveModel = resolvedModel.ref.modelId;
-  const effectiveProvider = resolvedModel.ref.providerId;
+  const resolvedModel = await resolveModelRuntime(modelSpec, "main", { catalog });
   const model = resolvedModel.languageModel;
-  const modelLimit = resolvedModel.descriptor.limits;
+  const modelLimit = resolvedModel.catalogModel.limit;
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
@@ -374,12 +379,9 @@ async function loop(
     );
 
     // 6. Stream + process
-    const providerId = effectiveProvider;
-    const thinkingProviderOptions = buildProviderOptions({
-      providerOptionsKey: resolvedModel.providerOptionsKey,
-      modelId: effectiveModel,
-      modelCapability: resolvedModel.descriptor.capabilities.reasoning,
-      thinkingConfig: {
+    const thinkingProviderOptions = resolvedModel.provider.adapter.encodeReasoning?.({
+      model: resolvedModel.catalogModel,
+      config: {
         effort: usingAgentModel ? agent.thinkingEffort ?? "none" : "none",
         mode: usingAgentModel ? agent.thinkingMode ?? "standard" : "standard",
         modeExplicit: usingAgentModel && agent.thinkingMode !== undefined,
@@ -398,14 +400,12 @@ async function loop(
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       rebuildModel: async (provider, modelId) => {
-        const rebuilt = await resolveModelRuntime(`${provider}/${modelId}`)
+        const rebuilt = await resolveModelRuntime(`${provider}/${modelId}`, "main", { catalog })
         return {
           resolvedModel: rebuilt,
-          providerOptions: buildProviderOptions({
-            providerOptionsKey: rebuilt.providerOptionsKey,
-            modelId: rebuilt.ref.modelId,
-            modelCapability: rebuilt.descriptor.capabilities.reasoning,
-            thinkingConfig: { effort: "none", mode: "standard", modeExplicit: false },
+          providerOptions: rebuilt.provider.adapter.encodeReasoning?.({
+            model: rebuilt.catalogModel,
+            config: { effort: "none", mode: "standard", modeExplicit: false },
           }),
         }
       },

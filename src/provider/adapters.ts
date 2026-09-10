@@ -9,6 +9,7 @@ import type { ResolvedCredential } from "./credentials"
 import type { ProviderDefinition } from "./definitions"
 import { getCustomFetch } from "./custom-fetch"
 import type { ProviderAdapter } from "./registry"
+import { encodeCatalogReasoning } from "./reasoning"
 
 export interface ProviderAdapterOptions {
   codexFetch?: FetchFn
@@ -41,10 +42,10 @@ function requireOAuth(
   credential: ResolvedCredential | null,
 ) {
   if (credential?.credential.type !== "oauth") {
-    const remediation = definition.id === "codex" || definition.id === "copilot"
+    const remediation = definition.id === "openai-codex" || definition.id === "copilot"
       ? `Run quark auth login ${definition.id} to sign in first.`
       : "Run the login flow first."
-    throw new Error(`No ${definition.id === "codex" ? "Codex" : definition.name} token found. ${remediation}`)
+    throw new Error(`No ${definition.id === "openai-codex" ? "Codex" : definition.name} token found. ${remediation}`)
   }
   return credential.credential
 }
@@ -55,6 +56,7 @@ export function createProviderAdapter(
 ): ProviderAdapter {
   return {
     definition,
+    encodeReasoning: ({ model, config }) => encodeCatalogReasoning({ definition, model, config }),
     async createLanguageModel({ modelId, credential }): Promise<LanguageModel> {
       if (definition.protocol === "openai") {
         return createOpenAI({
@@ -92,10 +94,10 @@ export function createProviderAdapter(
               }
             } catch (error) {
               const detail = error instanceof Error ? error.message : String(error)
-              const remediation = definition.id === "codex"
-                ? "Run quark auth login codex to sign in again."
+              const remediation = definition.id === "openai-codex"
+                ? "Run quark auth login openai-codex to sign in again."
                 : "Sign in again."
-              const name = definition.id === "codex" ? "Codex" : definition.name
+              const name = definition.id === "openai-codex" ? "Codex" : definition.name
               throw new Error(`${name} login expired. ${remediation} ${detail}`)
             }
           }

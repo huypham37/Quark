@@ -10,7 +10,7 @@ describe("connect provider display data", () => {
       ["openrouter", "api-key"],
       ["deepseek", "api-key"],
       ["copilot", "oauth"],
-      ["codex", "oauth"],
+      ["openai-codex", "oauth"],
       ["ollama", "none"],
       ["lmstudio", "none"],
     ])
@@ -45,7 +45,7 @@ describe("connect provider display data", () => {
   test("filters providers by name, ID, or authentication detail", () => {
     const providers = buildConnectProviderRows()
     expect(searchConnectProviderRows(providers, "deep").map((provider) => provider.id)).toEqual(["deepseek"])
-    expect(searchConnectProviderRows(providers, "oauth").map((provider) => provider.id)).toEqual(["copilot", "codex"])
+    expect(searchConnectProviderRows(providers, "oauth").map((provider) => provider.id)).toEqual(["copilot", "openai-codex"])
     expect(searchConnectProviderRows(providers, "")).toBe(providers)
   })
 

@@ -13,14 +13,14 @@ import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
 import { wireEvents } from "../events"
 import { bus } from "../../session/events"
-import { ready as modelsReady, getModelLimit } from "../../provider/models"
+import type { CatalogModel } from "../../provider/catalog-snapshot"
 import { MessageItem } from "./message-item"
 import { getContinuingToolCallId, mergeToolActivityMessages } from "./tool-activity"
 import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { CommandPalette, type PaletteMode } from "./command-palette"
-import { preservePaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
+import { preservePaletteSelectionIndex, retainPaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
@@ -93,6 +93,8 @@ interface AppProps {
   initialModelName?: string
   initialSkillCount?: number
   initialThinkingEffort?: string
+  getCatalogModel?: (spec: string) => CatalogModel | null
+  onProviderConnected?: () => Promise<void> | void
 }
 
 interface QueuedUserMessage {
@@ -186,6 +188,7 @@ export const App: Component<AppProps> = (props) => {
     modelName: props.initialModelName ?? "smart",
     skillCount: props.initialSkillCount ?? 0,
     thinkingEffort: props.initialThinkingEffort,
+    getCatalogModel: props.getCatalogModel,
   })
 
   const activityMessages = createMemo(() => mergeToolActivityMessages(
@@ -232,10 +235,9 @@ export const App: Component<AppProps> = (props) => {
     },
   })
 
-  // Update tokenLimit once models.dev data is available
-  modelsReady.then(() => {
-    const lim = getModelLimit(state.store.status.modelName)
-    const limit = lim?.context ?? lim?.input
+  createEffect(() => {
+    const model = props.getCatalogModel?.(state.store.status.modelName)
+    const limit = model?.limit.context ?? model?.limit.input
     if (limit) state.setStore("status", "tokenLimit", limit)
   })
 
@@ -557,6 +559,27 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSelectedIndex(0)
   }
 
+  const refreshOpenPaletteEntries = async () => {
+    if (!paletteOpen() || (paletteMode() !== "search" && paletteMode() !== "models") || !props.getPaletteEntries) return
+
+    const selectedKey = paletteResults()[paletteSelectedIndex()]?.key
+    const generation = ++paletteGeneration
+    const entries = await props.getPaletteEntries()
+    if (!paletteOpen() || generation !== paletteGeneration) return
+
+    setPaletteEntries(entries)
+    if (paletteMode() === "models" && paletteSearchSnapshot) paletteSearchSnapshot = { entries }
+    const visibleEntries = paletteMode() === "models"
+      ? entries.filter((entry) => entry.type === "model").sort((a, b) => Number(Boolean(b.isCurrent)) - Number(Boolean(a.isCurrent)) || a.label.localeCompare(b.label))
+      : searchPaletteEntries(entries, paletteQuery())
+    setPaletteResults(visibleEntries)
+    setPaletteSelectedIndex(retainPaletteSelectionIndex(selectedKey, visibleEntries))
+  }
+
+  const onCatalogRefreshed = () => { void refreshOpenPaletteEntries() }
+  bus.on("catalog-refreshed", onCatalogRefreshed)
+  onCleanup(() => bus.off("catalog-refreshed", onCatalogRefreshed))
+
   const openConnectProviders = async () => {
     const generation = paletteGeneration
     setPaletteMode("connect-providers")
@@ -592,6 +615,7 @@ export const App: Component<AppProps> = (props) => {
   }
 
   const finishConnect = async (provider: ConnectProviderRow) => {
+    await props.onProviderConnected?.()
     const refreshed = await authStatus()
     const status = refreshed.find((item) => item.providerId.toLowerCase() === provider.id.toLowerCase())
     setConnectResult(status?.origin === "environment"
@@ -634,7 +658,7 @@ export const App: Component<AppProps> = (props) => {
     } catch (error) {
       if (connectAbortController?.signal.aborted) return
       failConnect(provider, error)
-      setPaletteMode(provider.id === "codex" ? "connect-codex-method" : "connect-providers")
+      setPaletteMode(provider.id === "openai-codex" ? "connect-codex-method" : "connect-providers")
     } finally {
       connectAbortController = undefined
       resolveBrowserPrompt = undefined
@@ -665,7 +689,7 @@ export const App: Component<AppProps> = (props) => {
       setConnectApiKey("")
       setPaletteQuery("")
         setPaletteMode("connect-api-key")
-    } else if (provider.id === "codex") {
+    } else if (provider.id === "openai-codex") {
       setPaletteSelectedIndex(0)
       setPaletteMode("connect-codex-method")
     } else {
@@ -1834,7 +1858,7 @@ export const App: Component<AppProps> = (props) => {
         evt.preventDefault()
         return
       }
-      dispatch(state, { type: "cycle-thinking", modelId: state.store.status.modelName })
+      dispatch(state, { type: "cycle-thinking", model: props.getCatalogModel?.(state.store.status.modelName) ?? null })
       props.onThinkingEffortChange?.(state.store.thinkingEffort)
       evt.preventDefault()
       return

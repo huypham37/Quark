@@ -237,3 +237,8 @@ export function preservePaletteSelectionIndex(selectedKey: string | undefined, e
   const key = preservePaletteSelection(selectedKey, entries)
   return key === undefined ? -1 : entries.findIndex((entry) => entry.key === key)
 }
+
+/** Keeps a refreshed view unselected when its previous item disappeared. */
+export function retainPaletteSelectionIndex(selectedKey: string | undefined, entries: readonly PaletteEntry[]): number {
+  return selectedKey === undefined ? -1 : entries.findIndex((entry) => entry.key === selectedKey)
+}

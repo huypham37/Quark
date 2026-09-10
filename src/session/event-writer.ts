@@ -8,7 +8,6 @@
 // Activated by the internal subagent supervisor via QUARK_EMIT_EVENTS=1.
 
 import { bus } from "./events"
-import { getModelLimit } from "../provider/models"
 import type { SubagentErrorKind } from "../subagent/protocol"
 
 // Compact event shapes — keep wire size small
@@ -43,7 +42,7 @@ export function emitSubagentError(kind: SubagentErrorKind, message: string): voi
  * @param resolvedModel - The actual model string being used (resolved from CLI flag > profile > config), used for display in the parent TUI.
  * Returns a cleanup function to unsubscribe.
  */
-export function startEventWriter(options?: { resolvedModel?: string; profile?: string }): () => void {
+export function startEventWriter(options?: { resolvedModel?: string; tokenLimit?: number; profile?: string }): () => void {
   const unsubs: (() => void)[] = []
 
   // Resolve the model once at startup — use the passed model if provided
@@ -52,8 +51,7 @@ export function startEventWriter(options?: { resolvedModel?: string; profile?: s
 
   // Emit metadata immediately so the parent TUI can show model + context limit
   // right away, instead of waiting for the first step-finish.
-  const limit = displayModel ? getModelLimit(displayModel) : null
-  const tokenLimit = limit?.context ?? limit?.input ?? 0
+  const tokenLimit = options?.tokenLimit ?? 0
   emit({ e: "step-finish", tokens: { input: 0, output: 0 }, tokenLimit, model: displayModel })
 
   function on<K extends keyof import("./events").BusEvents>(
@@ -87,9 +85,6 @@ export function startEventWriter(options?: { resolvedModel?: string; profile?: s
   })
 
   on("step-finish", (data) => {
-    // Include the model's token limit so the parent can show context window %
-    const limit = displayModel ? getModelLimit(displayModel) : null
-    const tokenLimit = limit?.context ?? limit?.input ?? 0
     emit({ e: "step-finish", tokens: data.data.tokens, tokenLimit, model: displayModel })
   })
 

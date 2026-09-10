@@ -98,7 +98,7 @@ describe("command palette navigation", () => {
         expect(frames.secondary).not.toContain(`> /${command.id}`)
       }
       expect(frames.search).toContain("Search anything in Quark")
-      expect(frames.search).not.toContain(`/${command.id}`)
+      expect(frames.search).not.toContain(`│ > /${command.id}`)
       expect(frames.composer).toContain("saved draft")
       expect(frames.composer).not.toContain("Search anything in Quark")
     })

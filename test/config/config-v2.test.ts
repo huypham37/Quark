@@ -20,7 +20,6 @@ function representativeConfig() {
     version: 2,
     models: {
       small: "openai/gpt-5-mini",
-      favorites: ["openrouter/anthropic/claude-sonnet-4.6"],
     },
     providers: {
       "quark-go": {
@@ -41,8 +40,19 @@ describe("Config V2", () => {
       billing: "subscription",
     })
     const serialized = serializeConfig(loaded)
+    expect(serialized).toContain("small: openai/gpt-5-mini")
+    expect(serialized).not.toContain("favorites:")
     expect(serialized).not.toContain("credential:")
     expect(serialized).not.toContain("protocol:")
+  })
+
+  test("ignores obsolete favorites", () => {
+    const raw = representativeConfig() as Record<string, any>
+    raw.models.favorites = ["openai/old-model"]
+    const config = parseConfigV2(raw)
+    expect(config.modelConfig).toEqual({ small: "openai/gpt-5-mini" })
+    expect((config as Record<string, unknown>).models).toBeUndefined()
+    expect(serializeConfig(config)).not.toContain("favorites:")
   })
 
   test("preserves an optional editor setting", () => {
@@ -149,6 +159,9 @@ describe("Config V2", () => {
     const parsed = parse(persisted) as Record<string, any>
     expect(migrated.legacy).toBe(false)
     expect(parsed.version).toBe(2)
+    expect(parsed.models).toEqual({ small: "openai/gpt-4o-mini" })
+    expect(parsed.models.favorites).toBeUndefined()
+    expect(parsed.small_model).toBeUndefined()
     expect(parsed.providers.openrouter).toBeUndefined()
     expect(parsed.providers.company).toBeUndefined()
     expect(persisted).not.toContain(secret)

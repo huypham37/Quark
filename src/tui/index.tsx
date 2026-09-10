@@ -12,8 +12,8 @@ import { prompt, cancel, isActive, resolveModel, runSeededSession } from "../ses
 import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "../session/session"
 import { loadMessages, toModelMessages } from "../session/message"
 import { buildSystem } from "../session/system"
-import { getModelLimit, refreshLMStudio } from "../provider/models"
 import { buildModelPickerOptions } from "./model-picker"
+import { CatalogModelRuntime } from "./catalog-model-runtime"
 import { estimateTokens, getLastInputTokens } from "../session/context"
 import { compactBranch, createSteerBranch, type BranchResult } from "../session/branch"
 import { bus } from "../session/events"
@@ -109,8 +109,10 @@ const modelName = activeAgent.model
 const startupAuthMessage = firstRunAuthMessage(modelName, await authStatus())
 if (startupAuthMessage) setImmediate(() => notifyInfo("Provider authentication", startupAuthMessage, 8000))
 
-// Populate LM Studio model cache (non-blocking)
-refreshLMStudio()
+// Catalog/activity state is owned by the TUI entrypoint. Cache loading is local;
+// network refresh is explicitly backgrounded and never happens at import time.
+const catalogModels = await CatalogModelRuntime.create()
+void catalogModels.refresh()
 
 // Runtime-only model override — set by /model picker, NOT persisted to config
 let modelOverride: string | null = null
@@ -164,6 +166,8 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
   await bootstrap({ profileTools: nextProfile.tools, boundSkills: nextProfile.skills })
 
   modelOverride = null
+  catalogModels.reloadProviders()
+  void catalogModels.refresh()
 
   // Update worktree state
   const branch = target.branch ?? getWorktreeBranch(target)
@@ -179,6 +183,7 @@ async function switchToWorktree(id: string): Promise<{ success: boolean; error?:
   bus.emit("session-reset", { sessionId: null })
   bus.emit("model-switched", {
     modelSpec: currentModel,
+    catalogModel: (() => { const parsed = parseModelSpec(currentModel); return parsed.provider ? catalogModels.catalog.getModel(parsed.provider, parsed.model) ?? undefined : undefined })(),
     thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
     thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
   })
@@ -211,6 +216,7 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     ...(skillContext ? { modelOnlyText: skillContext } : {}),
     model: modelOverride ?? undefined,
     agent: activeAgent,
+    catalog: catalogModels.catalog,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid ?? "unknown", error: err })
   })
@@ -259,6 +265,7 @@ function runBranchGoal(branch: BranchResult, goal: string): void {
     userText: goal,
     model: modelOverride ?? undefined,
     agent: activeAgent,
+    catalog: catalogModels.catalog,
   }).then(({ sessionId }) => {
     currentSession = { id: sessionId }
     process.env.QUARK_SESSION_ID = sessionId
@@ -334,7 +341,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       return { handled: true }
     }
     modelOverride = args.trim()
-    bus.emit("model-switched", { modelSpec: modelOverride, thinkingEffort: "none" })
+    bus.emit("model-switched", { modelSpec: modelOverride, catalogModel: (() => { const parsed = parseModelSpec(modelOverride); return parsed.provider ? catalogModels.catalog.getModel(parsed.provider, parsed.model) ?? undefined : undefined })(), thinkingEffort: "none" })
     notifyInfo("Model", `Switched to: ${modelOverride}`, 3000)
     return { handled: true }
   }
@@ -589,7 +596,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       try {
         const goal = args.trim()
         const { messages, parts } = loadMessages(sid)
-        const model = await resolveModel(loadConfig().small_model)
+        const model = await resolveModel(loadConfig().modelConfig.small, "small", { catalog: catalogModels.catalog })
         const branch = await compactBranch({
           sessionId: sid,
           messages,
@@ -664,10 +671,12 @@ function reloadConfig(): void {
   const currentModel = modelOverride ?? activeAgent.model
   bus.emit("model-switched", {
     modelSpec: currentModel,
+    catalogModel: (() => { const parsed = parseModelSpec(currentModel); return parsed.provider ? catalogModels.catalog.getModel(parsed.provider, parsed.model) ?? undefined : undefined })(),
     thinkingEffort: modelOverride ? "none" : activeAgent.thinkingEffort ?? "none",
     thinkingMode: modelOverride ? undefined : activeAgent.thinkingMode,
   })
-  refreshLMStudio()
+  catalogModels.reloadProviders()
+  void catalogModels.refresh()
   notifyInfo("Config", "Config reloaded", 3000)
 }
 
@@ -737,7 +746,7 @@ function handleGetWorktrees() {
 }
 
 function handleGetModels() {
-  return buildModelPickerOptions(loadConfig().modelConfig.favorites)
+  return buildModelPickerOptions(catalogModels.active, catalogModels.catalog)
 }
 
 function handleGetCurrentModel() {
@@ -855,6 +864,11 @@ render(() => (
     getProfiles={handleGetProfiles}
     getCurrentProfile={handleGetCurrentProfile}
     getPaletteEntries={handleGetPaletteEntries}
+    getCatalogModel={(spec) => {
+      const parsed = parseModelSpec(spec)
+      return parsed.provider ? catalogModels.catalog.getModel(parsed.provider, parsed.model) : null
+    }}
+    onProviderConnected={() => catalogModels.refreshAuthentication()}
     initialSessionId={currentSession?.id}
     initialMessages={initialMessages}
     initialModelName={modelName}

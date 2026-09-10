@@ -1,5 +1,23 @@
 import type { LanguageModel } from "ai"
+import type { JSONObject } from "@ai-sdk/provider"
+import type { CatalogModel } from "./catalog-snapshot"
 import type { CredentialSourceConfig, ResolvedCredential } from "./credentials"
+
+export interface ReasoningRequestConfig {
+  effort: string
+  mode: string
+  modeExplicit: boolean
+  budgetTokens?: number
+}
+
+export type ProviderOptions = Record<string, JSONObject>
+
+export interface ReasoningEncodingInput {
+  model: CatalogModel
+  config: ReasoningRequestConfig
+}
+
+export type ReasoningEncoder = (input: ReasoningEncodingInput) => ProviderOptions | undefined
 import {
   BUNDLED_PROVIDER_DEFINITIONS,
   type ProviderDefinition,
@@ -12,6 +30,7 @@ export interface ProviderAdapter {
     modelId: string
     credential: ResolvedCredential | null
   }): Promise<LanguageModel>
+  encodeReasoning?: ReasoningEncoder
 }
 
 export interface ProviderRuntime extends ProviderRegistration {

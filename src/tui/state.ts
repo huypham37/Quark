@@ -6,9 +6,9 @@
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "../session/message"
 import { normalizeLegacyToolStatus, LEGACY_INTERRUPTED_ERROR } from "../shared/conversation-view"
-import { getModelLimit } from "../provider/models"
 import { resolveProfile } from "../profile/profile"
-import { type ThinkingEffort, getThinkingLevels } from "../provider/thinking"
+import type { CatalogModel } from "../provider/catalog-snapshot"
+import { thinkingCapabilityFromCatalog } from "../provider/catalog-runtime"
 import type { SubagentErrorKind } from "../subagent/protocol"
 
 // ---------------------------------------------------------------------------
@@ -155,14 +155,14 @@ export type TuiAction =
   | { type: "subagent-text-delta"; messageId: string; parentCallId: string; profile: string; text: string }
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "subagent-error"; messageId: string; parentCallId: string; profile: string; kind: SubagentErrorKind; message: string }
-  | { type: "cycle-thinking"; modelId: string }
+  | { type: "cycle-thinking"; model: CatalogModel | null }
   | { type: "toggle-show-thinking" }
   | { type: "reasoning-start"; messageId: string }
   | { type: "set-question"; request: QuestionRequest }
   | { type: "clear-question" }
   | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
   | { type: "reasoning-end"; messageId: string }
-  | { type: "model-switched"; modelSpec: string; thinkingEffort?: ThinkingEffort; thinkingMode?: string }
+  | { type: "model-switched"; modelSpec: string; catalogModel?: CatalogModel; thinkingEffort?: string; thinkingMode?: string }
   | { type: "truncate-messages"; upToMessageId: string; tokensUsed: number }
   | { type: "remove-message"; messageId: string }
   // Worktree actions
@@ -211,11 +211,15 @@ function parseSubAgentCommand(cmd: string): { profile: string; prompt?: string }
 
 // Resolve the model name and token limit for a sub-agent profile so the
 // card can show them immediately, before the first step-finish arrives.
-function resolveSubAgentModelMeta(profileId: string): { modelName: string; tokenLimit: number } {
+function resolveSubAgentModelMeta(
+  profileId: string,
+  getCatalogModel?: (spec: string) => CatalogModel | null,
+): { modelName: string; tokenLimit: number } {
   try {
     const profile = resolveProfile(profileId)
     const model = profile.model
-    const limit = model ? getModelLimit(model) : null
+    const catalogModel = model ? getCatalogModel?.(model) : null
+    const limit = catalogModel?.limit
     return { modelName: model ?? "unknown", tokenLimit: limit?.context ?? limit?.input ?? 0 }
   } catch {
     return { modelName: "unknown", tokenLimit: 0 }
@@ -341,7 +345,7 @@ export interface AppStore {
   activeWorktree: TuiWorktree | null
   activeBranch: string | null
   worktreeSwitching: boolean
-  thinkingEffort: ThinkingEffort
+  thinkingEffort: string
   showThinking: boolean
   status: TuiStatus
   error?: string
@@ -362,7 +366,8 @@ export function createAppState(initial: {
   messages?: TuiMessage[]
   modelName: string
   skillCount: number
-  thinkingEffort?: ThinkingEffort
+  thinkingEffort?: string
+  getCatalogModel?: (spec: string) => CatalogModel | null
 }): AppState {
   const cwd = process.cwd()
   const [store, setStore] = createStore<AppStore>({
@@ -381,7 +386,7 @@ export function createAppState(initial: {
     showThinking: false,
     status: {
       tokensUsed: 0,
-      tokenLimit: (() => { const lim = getModelLimit(initial.modelName); return lim?.context ?? lim?.input ?? 0 })(),
+      tokenLimit: (() => { const lim = initial.getCatalogModel?.(initial.modelName)?.limit; return lim?.context ?? lim?.input ?? 0 })(),
       cost: 0,
       modelName: initial.modelName,
       skillCount: initial.skillCount,
@@ -737,7 +742,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       break
 
     case "cycle-thinking": {
-      const levels = getThinkingLevels(action.modelId)
+      const levels = action.model ? thinkingCapabilityFromCatalog(action.model)?.levels : null
       if (!levels) {
         // Model doesn't support thinking — force to "none"
         setStore("thinkingEffort", "none")
@@ -789,7 +794,7 @@ export function dispatch(state: AppState, action: TuiAction): void {
       break
 
     case "model-switched": {
-      const lim = getModelLimit(action.modelSpec)
+      const lim = action.catalogModel?.limit
       const newLimit = lim?.context ?? lim?.input ?? 0
       setStore("status", "tokenLimit", newLimit)
       setStore("status", "modelName", action.modelSpec)

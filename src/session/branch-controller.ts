@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage } from "ai"
 import { loadConfig } from "../config/config"
 import { setForceAgent } from "../provider/custom-fetch"
-import { getModelLimit } from "../provider/models"
+import type { CatalogLimit } from "../provider/catalog-snapshot"
 import {
   autoBranch,
   shouldBranchWithRealTokens,
@@ -12,7 +12,7 @@ import type { MessageRow, PartRow } from "./message"
 export function shouldAutoBranch(input: {
   system: string[]
   modelMessages: ModelMessage[]
-  modelLimit: ReturnType<typeof getModelLimit>
+  modelLimit: CatalogLimit | null
   parts: PartRow[]
 }): boolean {
   const cfg = loadConfig()

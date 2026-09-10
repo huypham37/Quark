@@ -70,9 +70,18 @@ describe("processor usage persistence", () => {
     const resolvedModel = {
       languageModel: model,
       ref: { providerId: "codex", modelId: "gpt-5.5", spec: "codex/gpt-5.5" },
-      descriptor: {
-        providerId: "codex", modelId: "gpt-5.5", spec: "codex/gpt-5.5",
-        limits: null, capabilities: {}, pricing: { kind: "subscription" }, available: "unknown",
+      catalogModel: {
+        id: "gpt-5.5",
+        name: "GPT-5.5",
+        description: "test",
+        attachment: false,
+        reasoning: false,
+        tool_call: true,
+        release_date: "2025-01-01",
+        last_updated: "2025-01-01",
+        modalities: { input: ["text"], output: ["text"] },
+        open_weights: false,
+        limit: { context: 1000, output: 100 },
       },
       pricingSnapshot: { kind: "subscription" },
       providerOptionsKey: "openai",
