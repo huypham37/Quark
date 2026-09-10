@@ -48,7 +48,7 @@ export const lightTheme: Theme = {
     scrollbarTrack: RGBA.fromHex("#d0d0d0"),
     scrollbarThumb: RGBA.fromHex("#a0a0a0"),
 
-    cursorColor: RGBA.fromHex("#ffffff"),
+    cursorColor: RGBA.fromHex("#000000"),
   },
   syntax: [
     { scope: ["default", "text"], style: { foreground: "#1c1c1c" } },
