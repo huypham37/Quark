@@ -24,7 +24,7 @@ import { preservePaletteSelectionIndex, retainPaletteSelectionIndex, searchPalet
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
 import { Notifications } from "./notifications"
-import { colors } from "../theme"
+import { activeTheme, colors } from "../theme"
 import { respondQuestion } from "../../tool/question"
 import { getFiles, fuzzyFilter, clearFileCache } from "../../shared/filelist"
 import { filterCommands, type SlashCommand } from "../commands"
@@ -1884,6 +1884,8 @@ export const App: Component<AppProps> = (props) => {
 
   return (
     <box flexDirection="column" width={dims().width} height={dims().height}
+      // Give opacity a light surface to blend against instead of transparent black.
+      backgroundColor={activeTheme.name === "light" ? colors.dropdownBg : undefined}
       onMouseUp={() => copySelection()}
     >
       {/* Message area — native scrollbox */}
