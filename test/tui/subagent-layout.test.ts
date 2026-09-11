@@ -112,8 +112,18 @@ describe("SubAgentView narrow layout", () => {
       { tool: "bash", callId: "c1", status: "completed", input: { command: "git status --short" } },
     ]), 72, 8, "running")
 
-    expect(lines.join("\n")).toContain("▸ Task:")
+    expect(lines.join("\n")).toContain("▸")
+    expect(lines.join("\n")).not.toContain("Task:")
     expect(lines.join("\n")).not.toContain("• Bash")
+  })
+
+  test("places the disclosure control in the header", () => {
+    const lines = renderSubAgent(fixture([]), 100, 10)
+    const header = lines[1] ?? ""
+
+    expect(header).toContain("opencode/deepseek-v4-pro")
+    expect(header).toContain("▸")
+    expect(header).not.toContain("Task:")
   })
 
   test("starts running cards collapsed by default", () => {
@@ -123,15 +133,16 @@ describe("SubAgentView narrow layout", () => {
     subAgent.done = false
     const lines = renderSubAgent(subAgent, 72, 8, "running")
 
-    expect(lines.join("\n")).toContain("▸ Task:")
+    expect(lines.join("\n")).toContain("▸")
+    expect(lines.join("\n")).not.toContain("Task:")
     expect(lines.join("\n")).not.toContain("• Bash")
   })
 
-  test("renders a responsive meter with one-eighth-cell gaps", () => {
+  test("renders a responsive half-row meter", () => {
     const lines = renderSubAgent(fixture([]), 100, 8)
     const meter = lines.find((line) => line.includes("tokens")) ?? ""
 
-    expect(meter).toContain("▉▉")
+    expect(meter).toContain("▄▄")
     expect(meter).toContain("3.9k / 1000k tokens (0.4%)")
   })
 
@@ -149,7 +160,7 @@ describe("SubAgentView narrow layout", () => {
     // Strip the leading "│ " border/padding and any trailing spaces before the label.
     const prefix = line.slice(2, labelColumn).trimEnd()
 
-    expect(prefix).toMatch(/^▉+$/)
+    expect(prefix).toMatch(/^▄+$/)
     expect(prefix.length).toBeGreaterThan(20)
   })
 
@@ -159,7 +170,7 @@ describe("SubAgentView narrow layout", () => {
     expect(lines[0]).toMatch(/^╭─+╮\s*$/)
   })
 
-  test("subagent card spans approximately half the assistant message pane width", () => {
+  test("subagent card spans the full assistant message pane width", () => {
     const width = 80
     const lines = renderSubAgent(fixture([]), width, 8, "error", true)
 
@@ -176,8 +187,8 @@ describe("SubAgentView narrow layout", () => {
     const cardWidth = rightBorder - leftBorder + 1
     const ratio = cardWidth / paneContentWidth
 
-    // Card should be roughly 50% of pane width (±15%)
-    expect(ratio).toBeGreaterThan(0.35)
-    expect(ratio).toBeLessThan(0.65)
+    // Card should span the full pane width (allowing border/layout rounding).
+    expect(ratio).toBeGreaterThan(0.9)
+    expect(ratio).toBeLessThan(1.05)
   })
 })

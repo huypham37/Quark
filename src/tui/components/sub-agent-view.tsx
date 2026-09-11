@@ -57,7 +57,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   const isError = () => props.parentStatus === "error" || !!props.subAgent.error
   const isDone = () => props.subAgent.done
   const statusColor = () => isError() ? colors.error : isDone() ? colors.success : colors.warning
-  const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.borderActive
+  const borderColor = () => isError() ? colors.error : isDone() ? colors.borderSuccess : colors.statusModel
   const meterColor = () => !isError() && !isDone() ? colors.borderActive : statusColor()
 
   const durationLabel = () => {
@@ -78,7 +78,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
   return (
     <box
       flexDirection="column"
-      width="50%"
+      width="100%"
       borderStyle="rounded"
       borderColor={borderColor()}
       backgroundColor={colors.commandCardBg}
@@ -86,12 +86,19 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       paddingY={0}
       marginBottom={1}
     >
-      <box flexDirection="row" backgroundColor={colors.commandCardBg}>
+      <box
+        flexDirection="row"
+        backgroundColor={colors.commandCardBg}
+        onMouseUp={() => hasDetails() && setExpanded((value) => !value)}
+      >
         <text fg={statusColor()} flexShrink={0}>• </text>
         <text bold fg={colors.text} flexShrink={0}>{headerLabel()}{durationLabel()}</text>
         <box flexGrow={1} backgroundColor={colors.commandCardBg} />
         <Show when={props.subAgent.modelName || props.subAgent.profile} fallback={null}>
           <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName ?? profileName()}</text>
+        </Show>
+        <Show when={hasDetails()}>
+          <text fg={colors.muted} flexShrink={0}>{expanded() ? " ▾" : " ▸"}</text>
         </Show>
       </box>
 
@@ -101,21 +108,11 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         color={meterColor()}
       />
 
-      <Show when={hasDetails()}>
+      <Show when={hasDetails() && expanded()}>
         <box flexDirection="column" backgroundColor={colors.commandCardBg}>
-          <box
-            flexDirection="row"
-            backgroundColor={colors.commandCardBg}
-            onMouseUp={() => setExpanded((value) => !value)}
-          >
-            <Show when={expanded()} fallback={<text fg={colors.muted}>▸ Task:</text>}>
-              <text fg={colors.muted} flexShrink={0}>Task:</text>
-              <Show when={props.subAgent.prompt}>
-                <text fg={colors.toolPath} wrap="wrap"> {`"${props.subAgent.prompt}"`}</text>
-              </Show>
-              <text fg={colors.muted} flexShrink={0}> ▾</text>
-            </Show>
-          </box>
+          <Show when={props.subAgent.prompt}>
+            <text paddingLeft={2} fg={colors.toolPath} wrap="wrap">{`Task: "${props.subAgent.prompt}"`}</text>
+          </Show>
 
           <Show when={expanded()}>
             <For each={props.subAgent.tools}>
