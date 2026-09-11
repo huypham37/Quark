@@ -11,7 +11,7 @@ interface SubAgentTokenMeterProps {
   color: string | RGBA
 }
 
-const METER_CELL = "▉"
+const METER_CELL = "▄"
 
 function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens)
@@ -39,11 +39,10 @@ export const SubAgentTokenMeter: Component<SubAgentTokenMeterProps> = (props) =>
     return `${formatTokens(props.tokensUsed)}${limit} tokens (${displayPercentage()})`
   }
 
-  // The meter lives inside a half-width card, so estimate the available width
-  // as roughly half the terminal width minus the label and padding.
+  // Estimate the available width inside the full-width card minus the label and padding.
   const meterSegments = () => Math.max(
     4,
-    Math.floor((dimensions().width - 1) * 0.5 - 5 - tokenLabel().length),
+    Math.floor(dimensions().width - 1 - 5 - tokenLabel().length),
   )
 
   const filledSegments = () => {
