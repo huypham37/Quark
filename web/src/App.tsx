@@ -167,6 +167,7 @@ export function App() {
               status={app.state.status}
               onSubmit={submit}
               onCancel={app.cancel}
+              onThinking={app.setThinking}
             />
             <div class="context-row">
               <span class="context-chip" title={app.state.status.cwd}><FolderIcon />{folder()}</span>

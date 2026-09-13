@@ -18,6 +18,7 @@ import { respondQuestion } from "../src/tool/question"
 import { getBranchFromPath } from "../src/worktree/worktree"
 import { CatalogModelRuntime } from "../src/tui/catalog-model-runtime"
 import { buildModelPickerOptions } from "../src/tui/model-picker"
+import { thinkingCapabilityFromCatalog } from "../src/provider/catalog-runtime"
 
 const streamEvents: BusEventName[] = [
   "user-message",
@@ -88,6 +89,7 @@ export class WebBackend {
   private agent: ReturnType<typeof agentFromProfile>
   private profile: ProfileDef
   private modelOverride: string | null = null
+  private thinkingOverride: string | null = null
   private pendingSkillContext: string[] = []
   private activatedSkills = new Set<string>()
 
@@ -131,6 +133,7 @@ export class WebBackend {
     }
 
     if (url.pathname.startsWith("/api/catalog") || url.pathname === "/api/models" ||
+        url.pathname === "/api/thinking" ||
         url.pathname.startsWith("/api/profile") ||
         url.pathname.startsWith("/api/skill") || url.pathname === "/api/model" ||
         url.pathname === "/api/reload-config") {
@@ -218,7 +221,23 @@ export class WebBackend {
         return json({ error: `Unknown model: ${spec}` }, 404)
       }
       this.modelOverride = spec
-      return json({ modelName: this.modelName(), thinkingEffort: "none" })
+      return json({ status: this.status() })
+    }
+
+    if (pathname === "/api/thinking" && request.method === "POST") {
+      const body = await request.json() as { effort?: string | null }
+      // A null effort clears the override and falls back to the profile default.
+      if (body.effort == null) {
+        this.thinkingOverride = null
+        return json({ status: this.status() })
+      }
+      const effort = body.effort.trim()
+      const levels = this.thinkingLevels()
+      if (!levels.includes(effort)) {
+        return json({ error: `Unsupported thinking effort "${effort ?? ""}". Available: ${levels.join(", ")}` }, 400)
+      }
+      this.thinkingOverride = effort
+      return json({ status: this.status() })
     }
 
     if (pathname === "/api/profiles" && request.method === "GET") {
@@ -233,7 +252,7 @@ export class WebBackend {
         return json({ error: `Profile "${name}" not found. Available: ${listProfiles().join(", ")}` }, 404)
       }
       await this.switchProfile(name)
-      return json({ profile: this.profile.id, modelName: this.modelName() })
+      return json({ status: this.status() })
     }
 
     if (pathname === "/api/skills" && request.method === "GET") {
@@ -266,7 +285,8 @@ export class WebBackend {
       await this.applyProfile(this.profile.id)
       this.catalog.reloadProviders()
       void this.catalog.refresh()
-      return json({ reloaded: true, profile: this.profile.id, modelName: this.modelName() })
+      this.thinkingOverride = null
+      return json({ reloaded: true, status: this.status() })
     }
 
     return null
@@ -279,6 +299,44 @@ export class WebBackend {
 
   private modelName(): string {
     return this.modelOverride ?? this.agent.model ?? loadConfig().modelConfig.small
+  }
+
+  /** Catalog record for the effective model, when the catalog knows it. */
+  private catalogModel() {
+    const parsed = parseModelSpec(this.modelName())
+    return parsed.provider ? this.catalog.catalog.getModel(parsed.provider, parsed.model) : null
+  }
+
+  /** Thinking levels the effective model accepts; always includes "none" first. */
+  private thinkingLevels(): string[] {
+    const model = this.catalogModel()
+    return model ? thinkingCapabilityFromCatalog(model)?.levels ?? ["none"] : ["none"]
+  }
+
+  private thinkingEffort(): string {
+    const levels = this.thinkingLevels()
+    const candidate = this.thinkingOverride ?? this.agent.thinkingEffort ?? "none"
+    return levels.includes(candidate) ? candidate : levels[0] ?? "none"
+  }
+
+  /** Agent bound to the effective model and thinking effort for the next turn. */
+  private requestAgent() {
+    return { ...this.agent, thinkingEffort: this.thinkingEffort() }
+  }
+
+  private status() {
+    const modelName = this.modelName()
+    const model = this.catalogModel()
+    return {
+      modelName,
+      modelLabel: model?.name ?? modelName,
+      thinkingEffort: this.thinkingEffort(),
+      thinkingLevels: this.thinkingLevels(),
+      tokenLimit: model?.limit.context ?? model?.limit.input ?? 0,
+      cwd: process.cwd(),
+      branch: getBranchFromPath(process.cwd()),
+      profile: this.profile.id,
+    }
   }
 
   /** Rebuilds the agent from a profile and re-registers its tools and skills. */
@@ -298,6 +356,7 @@ export class WebBackend {
   private async switchProfile(name: string): Promise<void> {
     await this.applyProfile(name)
     this.modelOverride = null
+    this.thinkingOverride = null
   }
 
   private async branch(kind: "steer" | "compact", sessionId: string, goal: string): Promise<Response> {
@@ -325,12 +384,12 @@ export class WebBackend {
         parentSessionId: sessionId,
         parts: [{ type: "text", text: goal }],
         model: this.modelOverride ?? undefined,
-        agent: this.agent,
+        agent: this.requestAgent(),
         catalog: this.catalog.catalog,
       }).catch((error) => bus.emit("error", { sessionId: result.sessionId, error }))
     }
 
-    return json({ sessionId: result.sessionId, kind, modelName: this.modelName() })
+    return json({ sessionId: result.sessionId, kind, status: this.status() })
   }
 
   private state(requestedId: string | null) {
@@ -343,23 +402,12 @@ export class WebBackend {
     }
     session ??= sessions[0] ?? null
 
-    const modelName = this.modelName()
-    const parsed = parseModelSpec(modelName)
-    const model = parsed.provider ? this.catalog.catalog.getModel(parsed.provider, parsed.model) : null
-
     const data = session ? sessionData(session.id) : { messages: [], tokensUsed: 0 }
     return {
       session: session ? sessionView(session) : null,
       sessions: sessions.map(sessionView),
       ...data,
-      status: {
-        modelName,
-        thinkingEffort: this.modelOverride ? "none" : this.agent.thinkingEffort ?? "none",
-        tokenLimit: model?.limit.context ?? model?.limit.input ?? 0,
-        cwd: process.cwd(),
-        branch: getBranchFromPath(process.cwd()),
-        profile: this.profile.id,
-      },
+      status: this.status(),
     }
   }
 
@@ -377,7 +425,7 @@ export class WebBackend {
       parts: [{ type: "text", text }],
       ...(skillContext ? { modelOnlyText: skillContext } : {}),
       model: this.modelOverride ?? undefined,
-      agent: this.agent,
+      agent: this.requestAgent(),
       catalog: this.catalog.catalog,
     }).catch((error) => bus.emit("error", { sessionId, error }))
 

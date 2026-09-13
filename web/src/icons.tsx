@@ -43,3 +43,11 @@ export function CopyIcon(): JSX.Element {
 export function CheckIcon(): JSX.Element {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 10.5 3.8 3.8 7.2-8.6" /></svg>
 }
+
+export function BoltIcon(): JSX.Element {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 2.5 4.5 11h4l-1 6.5L14.5 9h-4l.5-6.5Z" /></svg>
+}
+
+export function ResetIcon(): JSX.Element {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 8.5A6.5 6.5 0 1 0 17 12" /><path d="M16.8 4v4.5h-4.5" /></svg>
+}

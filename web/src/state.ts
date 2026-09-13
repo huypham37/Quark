@@ -21,7 +21,9 @@ interface WebState {
 
 const EMPTY_STATUS: AppStatus = {
   modelName: "Loading…",
+  modelLabel: "Loading…",
   thinkingEffort: "none",
+  thinkingLevels: ["none"],
   tokenLimit: 0,
   cwd: "Loading…",
   branch: null,
@@ -303,8 +305,16 @@ export function createWebApp(api = new Api()) {
   async function setModel(spec: string) {
     try {
       const result = await api.setModel(spec)
-      setState("status", "modelName", result.modelName)
-      showNotice(`Model: ${result.modelName}`)
+      setState("status", result.status)
+      showNotice(`Model: ${result.status.modelLabel}`)
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function setThinking(effort: string | null) {
+    try {
+      setState("status", (await api.setThinking(effort)).status)
     } catch (error) {
       showNotice(error instanceof Error ? error.message : String(error), "error")
     }
@@ -313,8 +323,8 @@ export function createWebApp(api = new Api()) {
   async function setProfile(name: string) {
     try {
       const result = await api.setProfile(name)
-      setState("status", { modelName: result.modelName, profile: result.profile })
-      showNotice(`Profile: ${result.profile}`)
+      setState("status", result.status)
+      showNotice(`Profile: ${result.status.profile}`)
       await loadCatalog()
     } catch (error) {
       showNotice(error instanceof Error ? error.message : String(error), "error")
@@ -335,7 +345,7 @@ export function createWebApp(api = new Api()) {
   async function reloadConfig() {
     try {
       const result = await api.reloadConfig()
-      setState("status", { modelName: result.modelName, profile: result.profile })
+      setState("status", result.status)
       showNotice("Config reloaded")
       await loadCatalog()
     } catch (error) {
@@ -347,7 +357,7 @@ export function createWebApp(api = new Api()) {
     if (!state.session) return showNotice(`No session to ${kind}.`)
     try {
       const result = await api.branch(kind, state.session.id, goal)
-      setState("status", "modelName", result.modelName)
+      setState("status", result.status)
       await selectSession(result.sessionId)
       // The branch is a brand new session, so the sidebar list needs a refresh.
       setState("sessions", (await api.state(result.sessionId)).sessions)
@@ -364,7 +374,7 @@ export function createWebApp(api = new Api()) {
     window.clearTimeout(noticeTimer)
   }
 
-  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, setModel, setProfile, activateSkill, reloadConfig, branch, loadCatalog, loadModels, showNotice, dispose }
+  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, setModel, setProfile, activateSkill, reloadConfig, branch, loadCatalog, loadModels, setThinking, showNotice, dispose }
 }
 
 export type WebApp = ReturnType<typeof createWebApp>

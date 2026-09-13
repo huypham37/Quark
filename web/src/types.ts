@@ -60,11 +60,19 @@ export interface SessionSummary {
 
 export interface AppStatus {
   modelName: string
+  /** Human-readable model name from the catalog, when known */
+  modelLabel: string
   thinkingEffort: string
+  /** Thinking levels the active model accepts, "none" first */
+  thinkingLevels: string[]
   tokenLimit: number
   cwd: string
   branch: string | null
   profile: string
+}
+
+export interface StatusResponse {
+  status: AppStatus
 }
 
 export interface CatalogModel {
@@ -88,7 +96,7 @@ export interface ModelsResponse {
 export interface BranchResponse {
   sessionId: string
   kind: "steer" | "compact"
-  modelName: string
+  status: AppStatus
 }
 
 export interface QuestionRequest {

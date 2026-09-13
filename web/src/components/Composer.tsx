@@ -1,6 +1,9 @@
-import { Show, createEffect, createMemo, createSignal } from "solid-js"
-import { SendIcon } from "../icons"
+import { Portal } from "solid-js/web"
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { ChevronIcon, SendIcon } from "../icons"
 import { SlashPalette } from "./SlashPalette"
+import { ThinkingPopover } from "./ThinkingPopover"
+import { thinkingEnabled, thinkingTriggerLabel } from "../thinking"
 import { filterSlashCommands, slashParts } from "../slash"
 import type { AppStatus } from "../types"
 
@@ -10,12 +13,17 @@ interface ComposerProps {
   status: AppStatus
   onSubmit: (text: string) => Promise<void>
   onCancel: () => Promise<void>
+  onThinking: (effort: string | null) => void
 }
 
 export function Composer(props: ComposerProps) {
   const [text, setText] = createSignal("")
   const [index, setIndex] = createSignal(0)
+  const [thinking, setThinking] = createSignal(false)
+  const [anchor, setAnchor] = createSignal<{ right: number; bottom: number }>({ right: 0, bottom: 0 })
   let input: HTMLTextAreaElement | undefined
+  let trigger: HTMLButtonElement | undefined
+  let layer: HTMLDivElement | undefined
 
   const parts = createMemo(() => slashParts(text()))
   const menuOpen = createMemo(() => parts() !== null && !parts()!.hasArgs)
@@ -27,6 +35,47 @@ export function Composer(props: ComposerProps) {
   createEffect(() => {
     parts()?.id
     setIndex(0)
+  })
+
+  // The composer clips its own corners, so the popover is portalled and
+  // positioned against the trigger's viewport rect.
+  const measure = () => {
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    setAnchor({ right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.top + 10 })
+  }
+
+  const outside = (event: MouseEvent) => {
+    const target = event.target as Node
+    if (layer?.contains(target) || trigger?.contains(target)) return
+    setThinking(false)
+  }
+  const escape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") setThinking(false)
+  }
+  onMount(() => {
+    document.addEventListener("mousedown", outside)
+    document.addEventListener("keydown", escape)
+  })
+  onCleanup(() => {
+    document.removeEventListener("mousedown", outside)
+    document.removeEventListener("keydown", escape)
+  })
+
+  // The popover is only meaningful for models that expose reasoning levels.
+  createEffect(() => {
+    if (!thinkingEnabled(props.status)) setThinking(false)
+  })
+
+  createEffect(() => {
+    if (!thinking()) return
+    measure()
+    window.addEventListener("resize", measure)
+    window.addEventListener("scroll", measure, true)
+    onCleanup(() => {
+      window.removeEventListener("resize", measure)
+      window.removeEventListener("scroll", measure, true)
+    })
   })
 
   const resize = () => {
@@ -115,9 +164,34 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
         <div class="composer-controls">
-          <div class="model-info" title="Active model">
-            <span>{props.status.modelName}</span>
-            <span class="thinking-badge">{props.status.thinkingEffort === "none" ? "thinking off" : `thinking ${props.status.thinkingEffort}`}</span>
+          <div class="model-info" title={props.status.modelName}>
+            <span>{props.status.modelLabel}</span>
+          </div>
+          <div class="thinking-anchor">
+            <Show when={thinking()}>
+              <Portal>
+                <div class="thinking-layer" ref={layer} style={{ right: `${anchor().right}px`, bottom: `${anchor().bottom}px` }}>
+                  <ThinkingPopover
+                    status={props.status}
+                    onSelect={props.onThinking}
+                    onClose={() => setThinking(false)}
+                  />
+                </div>
+              </Portal>
+            </Show>
+            <button
+              ref={trigger}
+              class="thinking-trigger"
+              type="button"
+              disabled={!thinkingEnabled(props.status)}
+              aria-haspopup="dialog"
+              aria-expanded={thinking()}
+              title={thinkingEnabled(props.status) ? "Thinking effort" : "This model does not support thinking"}
+              onClick={() => setThinking((open) => !open)}
+            >
+              <span>{thinkingTriggerLabel(props.status)}</span>
+              <ChevronIcon />
+            </button>
           </div>
           <button class="send-button" type="submit" aria-label={props.running ? "Stop response" : "Send message"}>
             <SendIcon />

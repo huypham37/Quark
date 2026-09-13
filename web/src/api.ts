@@ -4,6 +4,7 @@ import type {
   ExportResponse,
   ModelsResponse,
   SessionResponse,
+  StatusResponse,
   StateResponse,
   UndoResponse,
 } from "./types"
@@ -68,11 +69,16 @@ export class Api {
     return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/${kind}`, { goal })
   }
 
-  setModel(spec: string): Promise<{ modelName: string; thinkingEffort: string }> {
+  setModel(spec: string): Promise<StatusResponse> {
     return this.post("/api/model", { spec })
   }
 
-  setProfile(name: string): Promise<{ profile: string; modelName: string }> {
+  /** Pass null to clear the override and fall back to the profile default. */
+  setThinking(effort: string | null): Promise<StatusResponse> {
+    return this.post("/api/thinking", { effort })
+  }
+
+  setProfile(name: string): Promise<StatusResponse> {
     return this.post("/api/profile", { name })
   }
 
@@ -80,7 +86,7 @@ export class Api {
     return this.post("/api/skills", { name })
   }
 
-  reloadConfig(): Promise<{ reloaded: boolean; profile: string; modelName: string }> {
+  reloadConfig(): Promise<StatusResponse & { reloaded: boolean }> {
     return this.post("/api/reload-config")
   }
 }
