@@ -187,7 +187,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 .context-chip svg { width: 13px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
 .context-chip.branch { margin-left: auto; font-family: var(--mono); }
 
-.notice { width: min(768px, 100%); margin: 0 auto 8px; padding: 9px 12px; border: 1px solid #efc7c4; border-radius: 10px; background: #fff5f4; color: #9d2f2a; font-size: 11.5px; }
+.notice { width: min(768px, 100%); margin: 0 auto 8px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-muted); color: var(--ink-soft); font-size: 11.5px; }
+.notice.error { border-color: #efc7c4; background: #fff5f4; color: #9d2f2a; }
 .question-panel { width: min(768px, 100%); margin: 0 auto 8px; padding: 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / 8%); }
 .question-panel form, .question-panel fieldset { display: grid; gap: 8px; }
 .question-panel fieldset { margin: 0 0 10px; padding: 0; border: 0; }
@@ -208,10 +209,11 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 .palette-search { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 12px 13px; border-bottom: 1px solid var(--line); }
 .palette-search svg { width: 17px; fill: none; stroke: var(--ink-faint); stroke-width: 1.5; }
 .palette-search input { border: 0; outline: 0; font-size: 13px; }
-.command-palette h2 { margin: 12px 14px 6px; color: var(--ink-faint); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.command-palette h2 { display: flex; align-items: center; justify-content: space-between; margin: 12px 14px 6px; color: var(--ink-faint); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.palette-count { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .palette-list { padding: 0 7px 7px; }
 .palette-list button { display: grid; grid-template-columns: 29px 1fr auto; align-items: center; gap: 10px; width: 100%; padding: 9px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
-.palette-list button:first-child { background: var(--surface-muted); }
+.palette-list button:first-child, .palette-list button.active { background: var(--surface-muted); }
 .palette-icon { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink-soft); font-size: 12px; }
 .palette-list button > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; }
 .palette-list strong { font-size: 12px; font-weight: 610; }

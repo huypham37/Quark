@@ -1,7 +1,7 @@
 import { Show, createEffect, createMemo, createSignal } from "solid-js"
 import { SendIcon } from "../icons"
 import { SlashPalette } from "./SlashPalette"
-import { filterSlashCommands, slashQuery } from "../slash"
+import { filterSlashCommands, slashParts } from "../slash"
 import type { AppStatus } from "../types"
 
 interface ComposerProps {
@@ -10,7 +10,6 @@ interface ComposerProps {
   status: AppStatus
   onSubmit: (text: string) => Promise<void>
   onCancel: () => Promise<void>
-  onCommand: (id: string) => void
 }
 
 export function Composer(props: ComposerProps) {
@@ -18,14 +17,15 @@ export function Composer(props: ComposerProps) {
   const [index, setIndex] = createSignal(0)
   let input: HTMLTextAreaElement | undefined
 
-  const query = createMemo(() => slashQuery(text()))
-  const entries = createMemo(() => query() === null ? [] : filterSlashCommands(query()!))
+  const parts = createMemo(() => slashParts(text()))
+  const menuOpen = createMemo(() => parts() !== null && !parts()!.hasArgs)
+  const entries = createMemo(() => menuOpen() ? filterSlashCommands(parts()!.id) : [])
   const percent = createMemo(() => props.status.tokenLimit
     ? Math.min(100, Math.round(props.tokensUsed / props.status.tokenLimit * 1_000) / 10)
     : 0)
 
   createEffect(() => {
-    query()
+    parts()?.id
     setIndex(0)
   })
 
@@ -49,7 +49,7 @@ export function Composer(props: ComposerProps) {
   }
 
   const keydown = (event: KeyboardEvent) => {
-    if (query() === null) {
+    if (!menuOpen()) {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault()
         void submit()
@@ -71,19 +71,30 @@ export function Composer(props: ComposerProps) {
       const command = list[Math.min(index(), list.length - 1)]
       if (!command) return
       event.preventDefault()
-      reset()
-      props.onCommand(command.id)
+      // Commands that take arguments stay in the composer so they can be typed.
+      if (command.usage) setText(`/${command.id} `)
+      else reset()
+      queueMicrotask(() => { input?.focus(); resize() })
+      if (!command.usage) void props.onSubmit(`/${command.id}`)
     }
   }
 
   return (
     <form classList={{ composer: true, running: props.running }} onSubmit={(event) => { event.preventDefault(); void submit() }}>
-      <Show when={query() !== null}>
+      <Show when={menuOpen()}>
         <SlashPalette
           entries={entries()}
           index={index()}
           onHover={setIndex}
-          onRun={(command) => { reset(); props.onCommand(command.id) }}
+          onRun={(command) => {
+            if (command.usage) {
+              setText(`/${command.id} `)
+              queueMicrotask(() => { input?.focus(); resize() })
+              return
+            }
+            reset()
+            void props.onSubmit(`/${command.id}`)
+          }}
         />
       </Show>
       <textarea

@@ -1,7 +1,7 @@
 import { createStore, produce } from "solid-js/store"
 import { Api } from "./api"
 import { applySubAgentEvent, finishSubAgent, initializeSubAgent, type SubAgentEvent } from "./subagent"
-import type { AppStatus, Message, MessagePart, QuestionRequest, SessionSummary } from "./types"
+import type { AppStatus, CatalogModel, Message, MessagePart, QuestionRequest, SessionSummary } from "./types"
 
 interface WebState {
   sessions: SessionSummary[]
@@ -12,6 +12,11 @@ interface WebState {
   running: boolean
   question: QuestionRequest | null
   notice: string | null
+  noticeKind: "info" | "error"
+  models: CatalogModel[]
+  profiles: string[]
+  skills: string[]
+  activeSkills: string[]
 }
 
 const EMPTY_STATUS: AppStatus = {
@@ -20,6 +25,7 @@ const EMPTY_STATUS: AppStatus = {
   tokenLimit: 0,
   cwd: "Loading…",
   branch: null,
+  profile: "default",
 }
 
 export function createWebApp(api = new Api()) {
@@ -32,13 +38,18 @@ export function createWebApp(api = new Api()) {
     running: false,
     question: null,
     notice: null,
+    noticeKind: "info",
+    models: [],
+    profiles: [],
+    skills: [],
+    activeSkills: [],
   })
 
   let events: EventSource | null = null
   let noticeTimer: number | undefined
 
-  const showNotice = (message: string) => {
-    setState("notice", message)
+  const showNotice = (message: string, kind: "info" | "error" = "info") => {
+    setState({ notice: message, noticeKind: kind })
     window.clearTimeout(noticeTimer)
     noticeTimer = window.setTimeout(() => setState("notice", null), 7_000)
   }
@@ -165,9 +176,9 @@ export function createWebApp(api = new Api()) {
         : session))
     }
     if (type === "session-switch") void selectSession(data.sessionId)
-    if (type === "retry") showNotice(`Retrying in ${Math.round(data.delayMs / 1000)}s: ${data.error}`)
+    if (type === "retry") showNotice(`Retrying in ${Math.round(data.delayMs / 1000)}s: ${data.error}`, "error")
     if (type === "context-too-long") showNotice("Context is full. Preparing a continuation session…")
-    if (type === "error") showNotice(data.error)
+    if (type === "error") showNotice(data.error, "error")
   }
 
   function connectEvents(sessionId: string) {
@@ -181,7 +192,21 @@ export function createWebApp(api = new Api()) {
       else handleEvent(message.type, message.data)
     }
     source.onerror = () => {
-      if (source === events) showNotice("Live connection lost. Reconnecting…")
+      if (source === events) showNotice("Live connection lost. Reconnecting…", "error")
+    }
+  }
+
+  async function loadCatalog() {
+    try {
+      const data = await api.catalog()
+      setState({
+        profiles: data.profiles,
+        skills: data.skills,
+        activeSkills: data.activeSkills,
+        status: { ...state.status, profile: data.profile },
+      })
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
     }
   }
 
@@ -190,8 +215,9 @@ export function createWebApp(api = new Api()) {
       const data = await api.state(localStorage.getItem("quark-session"))
       setState({ sessions: data.sessions, status: data.status })
       if (data.session) activate(data.session, data.messages, data.tokensUsed)
+      void loadCatalog()
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : String(error))
+      showNotice(error instanceof Error ? error.message : String(error), "error")
     }
   }
 
@@ -207,7 +233,7 @@ export function createWebApp(api = new Api()) {
       const data = await api.loadSession(sessionId)
       activate(data.session, data.messages, data.tokensUsed)
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : String(error))
+      showNotice(error instanceof Error ? error.message : String(error), "error")
     }
   }
 
@@ -250,7 +276,7 @@ export function createWebApp(api = new Api()) {
       showNotice(`Undo: ${changes || "no changes"}.`)
       await refreshSession()
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : String(error))
+      showNotice(error instanceof Error ? error.message : String(error), "error")
     }
   }
 
@@ -260,7 +286,76 @@ export function createWebApp(api = new Api()) {
       const result = await api.exportMarkdown(state.session.id)
       showNotice(`Exported ${result.messageCount} message(s) to ${result.filePath}`)
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : String(error))
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function loadModels() {
+    if (state.models.length) return
+    try {
+      const data = await api.models()
+      setState("models", data.models)
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function setModel(spec: string) {
+    try {
+      const result = await api.setModel(spec)
+      setState("status", "modelName", result.modelName)
+      showNotice(`Model: ${result.modelName}`)
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function setProfile(name: string) {
+    try {
+      const result = await api.setProfile(name)
+      setState("status", { modelName: result.modelName, profile: result.profile })
+      showNotice(`Profile: ${result.profile}`)
+      await loadCatalog()
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function activateSkill(name: string) {
+    try {
+      const result = await api.activateSkill(name)
+      setState("activeSkills", result.active)
+      showNotice(result.activated ? `Added skill: ${name}` : result.reason ?? `Skill: ${name}`)
+      await loadCatalog()
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function reloadConfig() {
+    try {
+      const result = await api.reloadConfig()
+      setState("status", { modelName: result.modelName, profile: result.profile })
+      showNotice("Config reloaded")
+      await loadCatalog()
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
+    }
+  }
+
+  async function branch(kind: "steer" | "compact", goal: string) {
+    if (!state.session) return showNotice(`No session to ${kind}.`)
+    try {
+      const result = await api.branch(kind, state.session.id, goal)
+      setState("status", "modelName", result.modelName)
+      await selectSession(result.sessionId)
+      // The branch is a brand new session, so the sidebar list needs a refresh.
+      setState("sessions", (await api.state(result.sessionId)).sessions)
+      showNotice(kind === "steer"
+        ? "Branched to a new session with the full history."
+        : "Branched to a new session with compacted history.")
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), "error")
     }
   }
 
@@ -269,7 +364,7 @@ export function createWebApp(api = new Api()) {
     window.clearTimeout(noticeTimer)
   }
 
-  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, showNotice, dispose }
+  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, setModel, setProfile, activateSkill, reloadConfig, branch, loadCatalog, loadModels, showNotice, dispose }
 }
 
 export type WebApp = ReturnType<typeof createWebApp>

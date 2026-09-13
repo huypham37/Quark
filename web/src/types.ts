@@ -64,6 +64,30 @@ export interface AppStatus {
   tokenLimit: number
   cwd: string
   branch: string | null
+  profile: string
+}
+
+export interface CatalogModel {
+  spec: string
+  name: string
+  provider: string
+}
+
+export interface CatalogResponse {
+  profiles: string[]
+  profile: string
+  skills: string[]
+  activeSkills: string[]
+}
+
+export interface ModelsResponse {
+  models: CatalogModel[]
+}
+
+export interface BranchResponse {
+  sessionId: string
+  kind: "steer" | "compact"
+  modelName: string
 }
 
 export interface QuestionRequest {

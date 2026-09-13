@@ -1,4 +1,12 @@
-import type { ExportResponse, SessionResponse, StateResponse, UndoResponse } from "./types"
+import type {
+  BranchResponse,
+  CatalogResponse,
+  ExportResponse,
+  ModelsResponse,
+  SessionResponse,
+  StateResponse,
+  UndoResponse,
+} from "./types"
 
 export class Api {
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -11,13 +19,25 @@ export class Api {
     return data
   }
 
+  private post<T>(path: string, body?: unknown): Promise<T> {
+    return this.request(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) })
+  }
+
   state(sessionId: string | null): Promise<StateResponse> {
     const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""
     return this.request(`/api/state${query}`)
   }
 
+  catalog(): Promise<CatalogResponse> {
+    return this.request("/api/catalog")
+  }
+
+  models(): Promise<ModelsResponse> {
+    return this.request("/api/models")
+  }
+
   createSession(): Promise<{ session: SessionResponse["session"] }> {
-    return this.request("/api/sessions", { method: "POST" })
+    return this.post("/api/sessions")
   }
 
   loadSession(sessionId: string): Promise<SessionResponse> {
@@ -25,28 +45,42 @@ export class Api {
   }
 
   send(sessionId: string, text: string): Promise<{ sessionId: string }> {
-    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    })
+    return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text })
   }
 
   cancel(sessionId: string): Promise<{ cancelled: boolean }> {
-    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/cancel`, { method: "POST" })
+    return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/cancel`)
   }
 
   answer(requestId: string, answers: string[][], rejected = false): Promise<{ answered: boolean }> {
-    return this.request(`/api/questions/${encodeURIComponent(requestId)}`, {
-      method: "POST",
-      body: JSON.stringify({ answers, rejected }),
-    })
+    return this.post(`/api/questions/${encodeURIComponent(requestId)}`, { answers, rejected })
   }
 
   undo(sessionId: string): Promise<UndoResponse> {
-    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/undo`, { method: "POST" })
+    return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/undo`)
   }
 
   exportMarkdown(sessionId: string): Promise<ExportResponse> {
-    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/export`, { method: "POST" })
+    return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/export`)
+  }
+
+  branch(kind: "steer" | "compact", sessionId: string, goal: string): Promise<BranchResponse> {
+    return this.post(`/api/sessions/${encodeURIComponent(sessionId)}/${kind}`, { goal })
+  }
+
+  setModel(spec: string): Promise<{ modelName: string; thinkingEffort: string }> {
+    return this.post("/api/model", { spec })
+  }
+
+  setProfile(name: string): Promise<{ profile: string; modelName: string }> {
+    return this.post("/api/profile", { name })
+  }
+
+  activateSkill(name: string): Promise<{ activated: boolean; reason?: string; active: string[] }> {
+    return this.post("/api/skills", { name })
+  }
+
+  reloadConfig(): Promise<{ reloaded: boolean; profile: string; modelName: string }> {
+    return this.post("/api/reload-config")
   }
 }

@@ -1,21 +1,7 @@
-import { For, Show, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { SearchIcon } from "../icons"
-import type { SessionSummary } from "../types"
 
-export type PaletteMode = "commands" | "sessions"
-
-interface CommandPaletteProps {
-  mode: PaletteMode
-  query: string
-  sessions: SessionSummary[]
-  onQuery: (query: string) => void
-  onClose: () => void
-  onMode: (mode: PaletteMode) => void
-  onNew: () => Promise<void>
-  onSession: (id: string) => Promise<void>
-}
-
-interface Entry {
+export interface PaletteEntry {
   id: string
   icon: string
   label: string
@@ -24,56 +10,86 @@ interface Entry {
   run: () => void
 }
 
+interface CommandPaletteProps {
+  title: string
+  placeholder: string
+  entries: PaletteEntry[]
+  onClose: () => void
+}
+
+/** The model catalogue alone holds thousands of entries, so cap what we render. */
+const RENDER_LIMIT = 60
+
 export function CommandPalette(props: CommandPaletteProps) {
+  const [query, setQuery] = createSignal("")
+  const [index, setIndex] = createSignal(0)
   let input: HTMLInputElement | undefined
-  const entries = createMemo<Entry[]>(() => {
-    const source = props.mode === "commands"
-      ? [
-          { id: "new", icon: "+", label: "New session", detail: "Start with a clean conversation", shortcut: "⌘ N", run: () => void props.onNew() },
-          { id: "sessions", icon: "S", label: "Sessions", detail: "Open a recent conversation", run: () => props.onMode("sessions") },
-        ]
-      : props.sessions.map((session) => ({
-          id: session.id,
-          icon: "Q",
-          label: session.title,
-          detail: new Date(session.timeUpdated).toLocaleString(),
-          run: () => void props.onSession(session.id),
-        }))
-    const query = props.query.toLowerCase()
-    return source.filter((entry) => `${entry.label} ${entry.detail}`.toLowerCase().includes(query))
+
+  const matches = createMemo(() => {
+    const needle = query().toLowerCase()
+    return props.entries.filter((entry) => `${entry.label} ${entry.detail}`.toLowerCase().includes(needle))
+  })
+  const filtered = createMemo(() => matches().slice(0, RENDER_LIMIT))
+  const truncated = createMemo(() => matches().length - filtered().length)
+
+  createEffect(() => {
+    query()
+    setIndex(0)
   })
 
-  const run = (entry: Entry) => {
+  const run = (entry: PaletteEntry | undefined) => {
+    if (!entry) return props.onClose()
     entry.run()
-    if (entry.id !== "sessions") props.onClose()
+    props.onClose()
   }
 
   const keydown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") props.onClose()
-    const first = entries()[0]
-    if (event.key === "Enter" && first) {
+    const list = filtered()
+    if (event.key === "ArrowDown") {
       event.preventDefault()
-      run(first)
+      setIndex((value) => list.length ? (value + 1) % list.length : 0)
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      setIndex((value) => list.length ? (value - 1 + list.length) % list.length : 0)
+    } else if (event.key === "Escape") {
+      props.onClose()
+    } else if (event.key === "Enter") {
+      event.preventDefault()
+      run(list[Math.min(index(), list.length - 1)])
     }
   }
 
   onMount(() => document.addEventListener("keydown", keydown))
   onCleanup(() => document.removeEventListener("keydown", keydown))
-  createEffect(() => { props.mode; queueMicrotask(() => input?.focus()) })
+  createEffect(() => { props.title; queueMicrotask(() => input?.focus()) })
 
   return (
     <div class="palette-backdrop" onClick={(event) => { if (event.target === event.currentTarget) props.onClose() }}>
       <section class="command-palette" role="dialog" aria-modal="true" aria-labelledby="palette-title">
         <div class="palette-search">
           <SearchIcon />
-          <input ref={input} aria-label="Search commands" placeholder={`Search ${props.mode}…`} value={props.query} onInput={(event) => props.onQuery(event.currentTarget.value)} />
+          <input
+            ref={input}
+            aria-label={props.placeholder}
+            placeholder={props.placeholder}
+            value={query()}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+          />
           <kbd>esc</kbd>
         </div>
-        <h2 id="palette-title">{props.mode === "commands" ? "Commands" : "Sessions"}</h2>
+        <h2 id="palette-title">
+          {props.title}
+          <Show when={truncated() > 0}><span class="palette-count">{filtered().length} of {matches().length}</span></Show>
+        </h2>
         <div class="palette-list">
-          <For each={entries()} fallback={<p class="palette-empty">No matching {props.mode}</p>}>
-            {(entry) => (
-              <button type="button" onClick={() => run(entry)}>
+          <For each={filtered()} fallback={<p class="palette-empty">No matching entries</p>}>
+            {(entry, position) => (
+              <button
+                type="button"
+                classList={{ active: position() === index() }}
+                onMouseMove={() => setIndex(position())}
+                onClick={() => run(entry)}
+              >
                 <span class="palette-icon">{entry.icon}</span>
                 <span><strong>{entry.label}</strong><small>{entry.detail}</small></span>
                 <Show when={entry.shortcut}><kbd>{entry.shortcut}</kbd></Show>
