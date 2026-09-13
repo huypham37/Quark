@@ -37,9 +37,8 @@ button { color: inherit; }
 .sidebar-head { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 6px 0 8px; }
 .sidebar-brand { display: flex; flex: 1; align-items: center; gap: 9px; }
 .sidebar-brand strong { font-size: 14px; font-weight: 650; }
-.brand-mark, .quark-avatar { display: grid; place-items: center; flex: 0 0 auto; background: var(--ink); color: white; font-weight: 700; }
+.brand-mark { display: grid; place-items: center; flex: 0 0 auto; background: var(--ink); color: white; font-weight: 700; }
 .brand-mark { width: 26px; height: 26px; border-radius: 7px; font-size: 11px; }
-.quark-avatar { width: 22px; height: 22px; border-radius: 6px; font-size: 10px; }
 
 .sidebar-nav { display: flex; flex: 1; min-height: 0; flex-direction: column; padding-top: 9px; }
 .sidebar-action, .session-item { display: flex; align-items: center; width: 100%; min-height: 36px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
@@ -75,7 +74,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 .day-divider { margin-bottom: 30px; color: var(--ink-faint); font-size: 11px; text-align: center; }
 
 .message { margin-bottom: 32px; }
-.message-label { margin-bottom: 10px; color: var(--ink-soft); font-size: 12px; font-weight: 620; }
 .message p { margin: 0 0 16px; font-size: 15px; line-height: 1.65; }
 .message h2, .message h3 { margin: 24px 0 10px; letter-spacing: -.015em; }
 .message h2 { font-size: 18px; }
@@ -85,10 +83,14 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 .message p code, .message li code { padding: 2px 5px; border-radius: 5px; background: var(--surface-muted); font: 12px var(--mono); }
 .message pre { overflow-x: auto; margin: 8px 0 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: #f7f7f7; }
 .message pre code { font: 12px/1.6 var(--mono); }
-.message-time { margin-left: 5px; color: var(--ink-faint); font-weight: 450; }
-.assistant-label { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.assistant-message > :last-child { margin-bottom: 0; }
+.message-actions { display: flex; gap: 2px; margin-top: 6px; }
+.message-action { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-faint); cursor: pointer; opacity: 0; transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease; }
+.message-action svg { width: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
+.message:hover .message-action, .message-action:focus-visible { opacity: 1; }
+.message-action:hover { background: var(--surface-muted); color: var(--ink-soft); }
+@media (hover: none) { .message-action { opacity: 1; } }
 .user-message { width: fit-content; max-width: 78%; margin-left: auto; padding: 10px 16px; border-radius: 18px; background: var(--surface-muted); }
-.user-message .message-label { display: none; }
 .user-message p { margin: 0; line-height: 1.55; }
 .user-message[data-status="aborted"] { opacity: .58; }
 

@@ -35,3 +35,11 @@ export function BranchIcon(): JSX.Element {
 export function CloseIcon(): JSX.Element {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
 }
+
+export function CopyIcon(): JSX.Element {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7.5" y="7.5" width="9" height="9" rx="2" /><path d="M13 5.5A2 2 0 0 0 11 3.5H5.5a2 2 0 0 0-2 2V11a2 2 0 0 0 2 2" /></svg>
+}
+
+export function CheckIcon(): JSX.Element {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 10.5 3.8 3.8 7.2-8.6" /></svg>
+}
