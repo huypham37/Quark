@@ -17,6 +17,7 @@ import { createSession, getSession, listProjectSessions, type Session } from "..
 import { respondQuestion } from "../src/tool/question"
 import { getBranchFromPath } from "../src/worktree/worktree"
 import { CatalogModelRuntime } from "../src/tui/catalog-model-runtime"
+import { buildModelPickerOptions } from "../src/tui/model-picker"
 
 const streamEvents: BusEventName[] = [
   "user-message",
@@ -201,9 +202,11 @@ export class WebBackend {
     }
 
     // Kept separate from /api/catalog: the model list is large, so the client
-    // only fetches it when the model picker is actually opened.
+    // only fetches it when the model picker is actually opened. Reuses the
+    // TUI picker so only authenticated providers contribute models.
     if (pathname === "/api/models" && request.method === "GET") {
-      return json({ models: this.listModels() })
+      await this.catalog.active.refresh()
+      return json({ models: buildModelPickerOptions(this.catalog.active, this.catalog.catalog) })
     }
 
     if (pathname === "/api/model" && request.method === "POST") {
@@ -272,16 +275,6 @@ export class WebBackend {
   /** Skills available to the next turn: profile-bound skills plus ones added this session. */
   private activeSkills(): string[] {
     return [...new Set([...this.profile.skills, ...this.activatedSkills])]
-  }
-
-  private listModels() {
-    const models: Array<{ spec: string; name: string; provider: string }> = []
-    for (const provider of this.catalog.catalog.listProviders()) {
-      for (const model of this.catalog.catalog.listModels(provider.id)) {
-        models.push({ spec: `${provider.id}/${model.id}`, name: model.name, provider: provider.name })
-      }
-    }
-    return models.sort((a, b) => a.spec.localeCompare(b.spec))
   }
 
   private modelName(): string {

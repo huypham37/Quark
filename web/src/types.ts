@@ -68,9 +68,10 @@ export interface AppStatus {
 }
 
 export interface CatalogModel {
-  spec: string
+  /** `provider/model` spec accepted by /model and the prompt API */
+  id: string
   name: string
-  provider: string
+  detail?: string
 }
 
 export interface CatalogResponse {

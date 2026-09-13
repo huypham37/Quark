@@ -52,11 +52,11 @@ export function App() {
         }))
       case "models":
         return app.state.models.map((model) => ({
-          id: model.spec,
+          id: model.id,
           icon: "M",
           label: model.name,
-          detail: `${model.provider} · ${model.spec}`,
-          run: () => void app.setModel(model.spec),
+          detail: model.detail ?? model.id,
+          run: () => void app.setModel(model.id),
         }))
       case "profiles":
         return app.state.profiles.map((profile) => ({
