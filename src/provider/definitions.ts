@@ -4,6 +4,7 @@ export type ProviderProtocol =
   | "openai"
   | "anthropic"
   | "openai-compatible"
+  | "opencode-go"
   | "codex-consumer"
 
 export type BillingMode = "metered" | "subscription" | "free" | "unknown"
@@ -69,6 +70,16 @@ export const BUNDLED_PROVIDER_DEFINITIONS = {
     auth: { type: "api-key", environmentVariables: ["DEEPSEEK_API_KEY"] },
     providerOptionsKey: "deepseek",
     billing: "metered",
+  },
+  "opencode-go": {
+    id: "opencode-go",
+    catalogProviderId: "opencode-go",
+    name: "OpenCode Go",
+    protocol: "opencode-go",
+    defaultEndpoint: "https://opencode.ai/zen/go/v1",
+    auth: { type: "api-key", environmentVariables: ["OPENCODE_API_KEY"] },
+    providerOptionsKey: "opencode-go",
+    billing: "subscription",
   },
   copilot: {
     id: "copilot",

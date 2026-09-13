@@ -51,14 +51,24 @@ Run the interactive TUI:
 bun run dev
 ```
 
-Or use the CLI directly:
+Or build and use the CLI directly:
 
 ```bash
-bun run cli --help
+bun run build
+node dist/cli.js --help
 ```
 
-A convenience launcher lives at [`bin/quark`](bin/quark) — add `bin/` to your
-`PATH` (or symlink it) to invoke `quark` from anywhere.
+To install `quark` globally from this checkout:
+
+```bash
+npm link
+```
+
+The interactive TUI requires [Bun](https://bun.sh). One-off messages and CLI
+commands run with Node from the built distribution.
+
+For a local convenience launcher, [`bin/quark`](bin/quark) runs the built CLI
+relative to the repository root. Add `bin/` to your `PATH` after building.
 
 ---
 
@@ -138,6 +148,12 @@ Standard providers require no `providers:` entry. Authenticate interactively wit
 `quark auth login openrouter`, or set a user-managed environment variable for
 headless use. API-key values are never accepted in V2 configuration.
 
+OpenCode Go is bundled as `opencode-go`. After subscribing and copying your key,
+run `quark auth login opencode-go` (or set `OPENCODE_API_KEY`) and select a model
+such as `opencode-go/kimi-k3`. Quark routes each catalog model to its documented
+Chat Completions, Responses, or Anthropic Messages endpoint and sends a stable
+`x-opencode-session` header.
+
 Some models support an additional reasoning mode. For those models—currently
 the GPT-5.6 family—set `thinking_mode: pro` alongside `thinking_effort`. Quark
 warns and ignores the setting when the selected model does not support modes.
@@ -149,9 +165,9 @@ the flat form shown above.
 Per-project overrides go in `.quark/config.yaml` at the repo root.
 
 Set provider API keys through `quark auth login`, or use provider-standard
-environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
-`OPENROUTER_API_KEY`. Quark reads environment variables but never edits shell
-startup files.
+environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`OPENROUTER_API_KEY`, and `OPENCODE_API_KEY`. Quark reads environment variables
+but never edits shell startup files.
 
 ---
 

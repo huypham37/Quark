@@ -19,10 +19,19 @@ function adapter(definition: ProviderDefinition): ProviderAdapter {
 describe("bundled provider definitions", () => {
   test("includes DeepSeek with Quark-owned endpoint and credential destination", () => {
     expect(Object.keys(BUNDLED_PROVIDER_DEFINITIONS)).toEqual([
-      "openai", "anthropic", "openrouter", "deepseek", "copilot", "openai-codex", "ollama", "lmstudio",
+      "openai", "anthropic", "openrouter", "deepseek", "opencode-go", "copilot", "openai-codex", "ollama", "lmstudio",
     ])
     expect(BUNDLED_PROVIDER_DEFINITIONS.openrouter.defaultEndpoint).toBe("https://openrouter.ai/api/v1")
     expect(BUNDLED_PROVIDER_DEFINITIONS.openrouter.auth.environmentVariables).toEqual(["OPENROUTER_API_KEY"])
+    expect(BUNDLED_PROVIDER_DEFINITIONS["opencode-go"]).toMatchObject({
+      id: "opencode-go",
+      catalogProviderId: "opencode-go",
+      name: "OpenCode Go",
+      protocol: "opencode-go",
+      defaultEndpoint: "https://opencode.ai/zen/go/v1",
+      auth: { type: "api-key", environmentVariables: ["OPENCODE_API_KEY"] },
+      billing: "subscription",
+    })
     expect(BUNDLED_PROVIDER_DEFINITIONS.copilot.id).toBe("copilot")
     expect(BUNDLED_PROVIDER_DEFINITIONS.copilot.billing).toBe("subscription")
     expect(BUNDLED_PROVIDER_DEFINITIONS.deepseek).toMatchObject({

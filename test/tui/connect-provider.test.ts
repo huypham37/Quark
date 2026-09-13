@@ -9,6 +9,7 @@ describe("connect provider display data", () => {
       ["anthropic", "api-key"],
       ["openrouter", "api-key"],
       ["deepseek", "api-key"],
+      ["opencode-go", "api-key"],
       ["copilot", "oauth"],
       ["openai-codex", "oauth"],
       ["ollama", "none"],

@@ -10,6 +10,7 @@ import type { ProviderDefinition } from "./definitions"
 import { getCustomFetch } from "./custom-fetch"
 import type { ProviderAdapter } from "./registry"
 import { encodeCatalogReasoning } from "./reasoning"
+import { createOpenCodeGoFetch, openCodeGoApi } from "./opencode-go"
 
 export interface ProviderAdapterOptions {
   codexFetch?: FetchFn
@@ -56,7 +57,18 @@ export function createProviderAdapter(
 ): ProviderAdapter {
   return {
     definition,
-    encodeReasoning: ({ model, config }) => encodeCatalogReasoning({ definition, model, config }),
+    encodeReasoning: ({ model, config }) => {
+      if (definition.protocol !== "opencode-go") {
+        return encodeCatalogReasoning({ definition, model, config })
+      }
+      const api = openCodeGoApi(model.id)
+      const routedDefinition: ProviderDefinition = {
+        ...definition,
+        protocol: api === "messages" ? "anthropic" : api === "responses" ? "openai" : "openai-compatible",
+        providerOptionsKey: api === "messages" ? "anthropic" : api === "responses" ? "openai" : definition.providerOptionsKey,
+      }
+      return encodeCatalogReasoning({ definition: routedDefinition, model, config })
+    },
     async createLanguageModel({ modelId, credential }): Promise<LanguageModel> {
       if (definition.protocol === "openai") {
         return createOpenAI({
@@ -69,6 +81,26 @@ export function createProviderAdapter(
         return createAnthropic({
           apiKey: requireApiKey(definition, credential),
           ...(definition.defaultEndpoint ? { baseURL: definition.defaultEndpoint } : {}),
+        })(modelId)
+      }
+
+      if (definition.protocol === "opencode-go") {
+        const apiKey = requireApiKey(definition, credential)
+        const baseURL = definition.defaultEndpoint
+        if (!baseURL) throw new Error(`Provider "${definition.id}" has no endpoint.`)
+        const fetch = createOpenCodeGoFetch()
+        const api = openCodeGoApi(modelId)
+        if (api === "responses") {
+          return createOpenAI({ apiKey, baseURL, fetch }).responses(modelId)
+        }
+        if (api === "messages") {
+          return createAnthropic({ apiKey, baseURL, fetch })(modelId)
+        }
+        return createOpenAICompatible({
+          name: definition.id,
+          baseURL,
+          apiKey,
+          fetch,
         })(modelId)
       }
 

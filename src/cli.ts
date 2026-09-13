@@ -150,13 +150,21 @@ async function main() {
       ? import.meta.dir
       : dirname(fileURLToPath(import.meta.url))
     const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
-    execFileSync("bun", [
-      "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
-      ...(args.sessionId ? ["--session", args.sessionId] : []),
-    ], {
-      stdio: "inherit",
-      env: { ...process.env, QUARK_DIR: quarkDir },
-    })
+    try {
+      execFileSync("bun", [
+        "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
+        ...(args.sessionId ? ["--session", args.sessionId] : []),
+      ], {
+        stdio: "inherit",
+        env: { ...process.env, QUARK_DIR: quarkDir },
+      })
+    } catch (error: any) {
+      if (error?.code === "ENOENT") {
+        console.error("Interactive mode requires Bun. Install it from https://bun.sh, then run quark again.")
+        process.exit(1)
+      }
+      throw error
+    }
     process.exit(0)
   }
 
