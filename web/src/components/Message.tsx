@@ -54,7 +54,7 @@ export function Message(props: { message: MessageType }) {
           <For each={groupMessageParts(props.message.parts)}>{(item) => {
             if (item.type === "tools") return <ToolActivity parts={item.parts} />
             const part = item.part
-            if (part.type === "text") return <Markdown text={part.text} />
+            if (part.type === "text") return <Markdown text={part.text} streaming={props.message.streaming} />
             if (part.type === "thinking") return <Thinking part={part} />
             if (part.type === "tool") return <SubAgentCard part={part} />
             return null

@@ -90,6 +90,33 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 .message-action { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-faint); cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
 .message-action svg { width: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
 .message-action:hover { background: var(--surface-muted); color: var(--ink); }
+
+.message a { color: var(--blue); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--blue) 32%, transparent); }
+.message a:hover { border-bottom-color: var(--blue); }
+.message strong { font-weight: 620; }
+.message hr { margin: 22px 0; border: 0; border-top: 1px solid var(--line); }
+.message img { max-width: 100%; border-radius: 10px; }
+.message blockquote { margin: 0 0 16px; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-strong); color: var(--ink-soft); }
+.message blockquote > :last-child { margin-bottom: 0; }
+.message li.task-item { list-style: none; }
+.message li.task-item input { margin: 0 7px 0 -21px; }
+.message li p:last-child { margin-bottom: 0; }
+.message .table-scroll { overflow-x: auto; margin: 0 0 18px; }
+.message table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.message th, .message td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.message th { color: var(--ink-soft); font-size: 12px; font-weight: 600; }
+.message tbody tr:last-child td { border-bottom: 0; }
+
+.code-block { margin: 8px 0 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #f7f7f7; }
+.code-head { display: flex; align-items: center; gap: 10px; padding: 5px 7px 5px 13px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.code-lang { flex: 1; overflow: hidden; color: var(--ink-faint); font: 11px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.code-actions { display: flex; align-items: center; gap: 2px; }
+.code-action { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.code-action svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
+.code-action:hover { background: var(--surface-muted); color: var(--ink); }
+.message pre.code-body { margin: 0; padding: 13px 15px; border: 0; border-radius: 0; background: transparent; }
+.message pre.code-body code { font: 12px/1.65 var(--mono); }
+.code-collapsed { padding: 9px 15px; color: var(--ink-faint); font-size: 11.5px; font-style: italic; }
 .user-message { width: fit-content; max-width: 78%; margin-left: auto; padding: 10px 16px; border-radius: 18px; background: var(--surface-muted); }
 .user-message p { margin: 0; line-height: 1.55; }
 .user-message[data-status="aborted"] { opacity: .58; }
