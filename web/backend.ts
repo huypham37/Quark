@@ -2,6 +2,8 @@ import { agentFromProfile } from "../src/agent"
 import { bootstrap } from "../src/bootstrap"
 import { loadConfig, parseModelSpec } from "../src/config/config"
 import { resolveProfile, readPromptFile } from "../src/profile/profile"
+import { exportSessionToMarkdown } from "../src/commands/export"
+import { undoLatest } from "../src/commands/undo"
 import { dbToConversationMessages } from "../src/shared/conversation-view"
 import { getLastInputTokens } from "../src/session/context"
 import { bus, type BusEventName } from "../src/session/events"
@@ -132,6 +134,17 @@ export class WebBackend {
       if (request.method === "POST" && segments[3] === "cancel") {
         cancel(sessionId)
         return json({ cancelled: true })
+      }
+
+      if (request.method === "POST" && segments[3] === "undo") {
+        const result = await undoLatest(sessionId)
+        return json(result
+          ? { undone: true, restored: result.restored, deleted: result.deleted }
+          : { undone: false, restored: [], deleted: [] })
+      }
+
+      if (request.method === "POST" && segments[3] === "export") {
+        return json(exportSessionToMarkdown(sessionId))
       }
     }
 

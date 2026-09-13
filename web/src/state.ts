@@ -238,12 +238,38 @@ export function createWebApp(api = new Api()) {
     setState("question", null)
   }
 
+  async function undo() {
+    if (!state.session) return showNotice("No session to undo.")
+    try {
+      const result = await api.undo(state.session.id)
+      if (!result.undone) return showNotice("Nothing to undo — no tracked file changes.")
+      const changes = [
+        result.restored.length ? `${result.restored.length} file(s) restored` : "",
+        result.deleted.length ? `${result.deleted.length} file(s) deleted` : "",
+      ].filter(Boolean).join(", ")
+      showNotice(`Undo: ${changes || "no changes"}.`)
+      await refreshSession()
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function exportSession() {
+    if (!state.session) return showNotice("No session to export.")
+    try {
+      const result = await api.exportMarkdown(state.session.id)
+      showNotice(`Exported ${result.messageCount} message(s) to ${result.filePath}`)
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   const dispose = () => {
     events?.close()
     window.clearTimeout(noticeTimer)
   }
 
-  return { state, init, newSession, selectSession, send, cancel, answer, dispose }
+  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, showNotice, dispose }
 }
 
 export type WebApp = ReturnType<typeof createWebApp>

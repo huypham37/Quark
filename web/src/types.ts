@@ -90,3 +90,14 @@ export interface SessionResponse {
   messages: Message[]
   tokensUsed: number
 }
+
+export interface UndoResponse {
+  undone: boolean
+  restored: string[]
+  deleted: string[]
+}
+
+export interface ExportResponse {
+  filePath: string
+  messageCount: number
+}

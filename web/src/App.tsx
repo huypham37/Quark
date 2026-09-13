@@ -7,6 +7,7 @@ import { Composer } from "./components/Composer"
 import { QuestionPanel } from "./components/QuestionPanel"
 import { CommandPalette, type PaletteMode } from "./components/CommandPalette"
 import { FolderIcon, BranchIcon } from "./icons"
+import { slashCommands } from "./slash"
 
 export function App() {
   const app = createWebApp()
@@ -28,6 +29,22 @@ export function App() {
   const selectSession = async (id: string) => {
     setDrawer(false)
     await app.selectSession(id)
+  }
+
+  const runCommand = (id: string) => {
+    switch (id) {
+      case "help":
+        return app.showNotice(`Commands: ${slashCommands.map((command) => `/${command.id}`).join("   ")}`)
+      case "new":
+      case "clear":
+        return void app.newSession()
+      case "sessions":
+        return openPalette("sessions")
+      case "undo":
+        return void app.undo()
+      case "export":
+        return void app.exportSession()
+    }
   }
 
   const keydown = (event: KeyboardEvent) => {
@@ -74,6 +91,7 @@ export function App() {
               status={app.state.status}
               onSubmit={app.send}
               onCancel={app.cancel}
+              onCommand={runCommand}
             />
             <div class="context-row">
               <span class="context-chip" title={app.state.status.cwd}><FolderIcon />{folder()}</span>

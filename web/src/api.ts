@@ -1,4 +1,4 @@
-import type { SessionResponse, StateResponse } from "./types"
+import type { ExportResponse, SessionResponse, StateResponse, UndoResponse } from "./types"
 
 export class Api {
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -40,5 +40,13 @@ export class Api {
       method: "POST",
       body: JSON.stringify({ answers, rejected }),
     })
+  }
+
+  undo(sessionId: string): Promise<UndoResponse> {
+    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/undo`, { method: "POST" })
+  }
+
+  exportMarkdown(sessionId: string): Promise<ExportResponse> {
+    return this.request(`/api/sessions/${encodeURIComponent(sessionId)}/export`, { method: "POST" })
   }
 }
