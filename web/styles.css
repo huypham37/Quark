@@ -21,12 +21,14 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+#root { height: 100%; }
 body { margin: 0; overflow: hidden; background: var(--canvas); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
 button, textarea, input { font: inherit; }
 button { color: inherit; }
 
 .app-shell { position: relative; height: 100%; }
 .main-panel { display: grid; grid-template-rows: 52px minmax(0, 1fr) auto; height: 100%; min-width: 0; min-height: 0; }
+.main-panel.empty { grid-template-rows: 52px minmax(0, 1fr) auto minmax(0, 1fr); }
 
 .drawer-scrim { position: fixed; z-index: 8; inset: 0; background: rgb(0 0 0 / 18%); opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease-out); }
 .drawer-scrim.visible { opacity: 1; pointer-events: auto; }
@@ -68,8 +70,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
 
 .conversation { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .conversation-inner { width: min(760px, calc(100% - 48px)); min-height: 100%; margin: 0 auto; padding: 28px 0 52px; }
-.conversation.empty .conversation-inner { display: grid; place-items: center; padding-bottom: 0; }
-.empty-state { display: grid; place-items: center; padding-bottom: 26vh; text-align: center; }
+.conversation.empty .conversation-inner { display: grid; align-content: end; padding-bottom: 0; }
+.empty-state { display: grid; place-items: center; padding-bottom: 34px; text-align: center; }
 .empty-state h1 { margin: 0; font-size: 30px; font-weight: 520; letter-spacing: -.032em; }
 .day-divider { margin-bottom: 30px; color: var(--ink-faint); font-size: 11px; text-align: center; }
 
@@ -217,7 +219,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; backg
   .conversation-inner { width: calc(100% - 30px); padding-top: 18px; }
   .composer-region { padding-inline: 10px; }
   .context-chip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .empty-state { padding-bottom: 22vh; }
+  .empty-state { padding-bottom: 26px; }
   .empty-state h1 { font-size: 24px; }
 }
 

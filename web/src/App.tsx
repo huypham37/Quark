@@ -59,7 +59,7 @@ export function App() {
     <>
       <div class="app-shell">
         <Sidebar app={app} open={drawer()} onClose={() => setDrawer(false)} openSessions={() => openPalette("sessions")} />
-        <section class="main-panel">
+        <section class="main-panel" classList={{ empty: !app.state.messages.length }}>
           <Topbar
             title={app.state.session?.title ?? "New session"}
             toggleSidebar={() => setDrawer((open) => !open)}
