@@ -48,7 +48,9 @@ describe("SubAgentTokenMeter", () => {
     const lines = renderMeter(500000, 1000000)
     const text = lines.join("\n")
 
-    expect(text).toContain("▉")
+    expect(text).toContain("▄")
+    // The redesigned full-width meter uses lower-half blocks for both fill
+    // and remaining capacity; colour differentiates the two segments.
     expect(text).toContain("50%")
   })
 

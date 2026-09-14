@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { MarkdownRenderable, SyntaxStyle } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { darkTheme } from "../../src/tui/themes/dark"
@@ -10,8 +11,8 @@ describe("markdown theme scopes", () => {
     for (const theme of [darkTheme, lightTheme]) {
       const style = SyntaxStyle.fromTheme(theme.syntax)
 
+      // Heading 1 inherits the base heading style; levels 2–6 are overrides.
       expect(style.getStyle("markup.heading")).toBeDefined()
-      expect(style.getStyle("markup.heading.1")).toBeDefined()
       expect(style.getStyle("markup.heading.6")).toBeDefined()
       if (theme === darkTheme) {
         expect(style.getStyle("markup.strong")?.fg?.toInts()).toEqual([229, 192, 123, 255])
@@ -27,7 +28,10 @@ describe("markdown theme scopes", () => {
     expect(source).toContain("<markdown")
     expect(source).toContain("conceal={true}")
     expect(source).toContain("syntaxStyle={syntaxStyle}")
-    expect(source).toContain("streaming={props.streaming ?? false}")
+    // The streaming-only path keeps one MarkdownRenderable mounted to avoid
+    // visible flashing, while file-link segments render non-streaming.
+    expect(source).toContain("streaming={true}")
+    expect(source).toContain("streaming={false}")
   })
 
   test("renders markdown with concealed delimiters and structured tables", async () => {
@@ -35,7 +39,7 @@ describe("markdown theme scopes", () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({ width: 100, height: 30 })
     const markdown = new MarkdownRenderable(renderer, {
       id: "markdown",
-      content: readFileSync("test.md", "utf8"),
+      content: readFileSync(join(import.meta.dir, "fixtures", "markdown.md"), "utf8"),
       syntaxStyle: style,
       conceal: true,
       streaming: false,
