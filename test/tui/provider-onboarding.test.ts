@@ -21,5 +21,9 @@ describe("auth onboarding presentation", () => {
     expect(firstRunAuthMessage("ollama/model", [{
       providerId: "ollama", state: "not-required",
     }])).toBeNull()
+    expect(firstRunAuthMessage("openai/gpt-5.6-terra", [
+      { providerId: "openai", state: "missing" },
+      { providerId: "openai-codex", state: "authenticated", origin: "machine-store" },
+    ])).toBeNull()
   })
 })
