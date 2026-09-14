@@ -97,18 +97,6 @@ export function register(tool: ToolDef): { ok: true } | { ok: false; error: Tool
   return { ok: true }
 }
 
-/**
- * Register a tool, throwing on validation failure.
- * @throws {Error} If the tool fails validation
- * @deprecated Prefer {@link register} which returns a result instead of throwing
- */
-export function registerOrThrow(tool: ToolDef): void {
-  const result = register(tool)
-  if (!result.ok) {
-    throw new Error(`Tool validation failed for '${result.error.toolId}': ${result.error.message}`)
-  }
-}
-
 export function get(id: string): ToolDef | undefined {
   return registry.get(id)
 }

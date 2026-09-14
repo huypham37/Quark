@@ -8,7 +8,7 @@
 // - prompt() with parentSessionId creates a child session
 // - QUARK_SESSION_ID is set in process.env after prompt()
 //
-// DB is initialised with an in-memory SQLite instance.
+// Session storage is redirected to an in-memory JSONL temp directory.
 
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"

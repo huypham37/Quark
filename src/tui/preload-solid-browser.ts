@@ -2,7 +2,7 @@
 // instead of the server build (which is what Bun picks via the "node" condition).
 //
 // Unlike @opentui/solid/preload, this does NOT transform .tsx files through
-// Babel, so it's safe to use alongside React test files.
+// Babel, so it is safe to use alongside plain .ts test files.
 
 import { plugin } from "bun"
 

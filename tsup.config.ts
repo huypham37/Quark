@@ -8,7 +8,6 @@ export default defineConfig([
     clean: true,
     external: [
       // Bun-specific modules (users must run in Bun environment)
-      "bun:sqlite",
       "bun",
 
       // UI dependencies (not needed for SDK usage)
@@ -28,7 +27,6 @@ export default defineConfig([
     dts: false,
     clean: false,
     external: [
-      "bun:sqlite",
       "bun",
       "@opentui/core",
       "@opentui/solid",

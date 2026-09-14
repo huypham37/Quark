@@ -1,6 +1,6 @@
 // Session CRUD — create, get, list, touch
 //
-// Backed by per-session JSONL files instead of SQLite.
+// Backed by per-session JSONL files.
 // Each session lives in ~/.config/quark/session/<id>/
 //
 // Ephemeral sessions are in-memory only — never written to disk.
