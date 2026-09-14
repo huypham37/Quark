@@ -20,7 +20,7 @@ async function serve(request: Request): Promise<Response> {
 }
 
 const server = Bun.serve({
-  hostname: "127.0.0.1",
+  hostname: "0.0.0.0",
   port: Number(Bun.env.PORT ?? 4173),
   fetch: serve,
 })
