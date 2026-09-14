@@ -102,8 +102,3 @@ export function setVerbose(v: boolean): void {
 export function isVerbose(): boolean {
   return includes.has("tool-call") || includes.has("*");
 }
-
-/** @deprecated Use `debug(ns)` instead. */
-export function debugLog(...args: Parameters<typeof console.log>): void {
-  if (includes.has("*")) console.log(...args);
-}

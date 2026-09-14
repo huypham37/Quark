@@ -1,7 +1,7 @@
 // Message persistence — save, load, convert to AI SDK ModelMessage format
 //
-// Backed by per-session JSONL files instead of SQLite.
-// All writes are append-only events. Reads replay the JSONL file.
+// Backed by per-session JSONL files. All writes are append-only events.
+// Reads replay the JSONL file.
 //
 // Key change: updatePart() is replaced by appendPartSnapshot() which appends
 // a new PartEvent for the same partId (later events overwrite earlier ones
