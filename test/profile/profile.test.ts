@@ -1,6 +1,6 @@
 // Tests for profile system
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach, afterAll } from "bun:test"
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
@@ -17,6 +17,17 @@ import {
 } from "../../src/profile/profile"
 import { agentFromProfile } from "../../src/agent"
 import { getActive, dismiss } from "../../src/notification/notification"
+
+// Keep profile tests off the developer's real ~/.config/quark/config.yaml.
+// profile.ts resolves the directory per call, so pin it for every test.
+const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), "quark-profile-test-"))
+const previousConfigDir = process.env.QUARK_CONFIG_DIR
+beforeEach(() => { process.env.QUARK_CONFIG_DIR = emptyHome })
+afterAll(() => {
+  if (previousConfigDir === undefined) delete process.env.QUARK_CONFIG_DIR
+  else process.env.QUARK_CONFIG_DIR = previousConfigDir
+  try { fs.rmSync(emptyHome, { recursive: true, force: true }) } catch {}
+})
 
 const {
   parseProfilesFromYAML,

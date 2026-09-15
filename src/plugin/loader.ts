@@ -12,7 +12,6 @@ import * as path from "path"
 import * as os from "os"
 import { fileURLToPath, pathToFileURL } from "url"
 import { registerHook } from "./registry"
-import { registerProvider } from "../config/config"
 import { error as notifyError } from "../notification/notification"
 import { isVerbose } from "../debug"
 import type { PluginFn, HookName } from "./plugin"
@@ -83,7 +82,6 @@ export async function loadPlugins(): Promise<PluginLoadResult> {
     directory: process.cwd(),
     sessionId: process.env.QUARK_SESSION_ID,
     quarkRoot,
-    registerProvider,
   }
 
   for (const fileName of tsFiles) {

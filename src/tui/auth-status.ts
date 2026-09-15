@@ -39,7 +39,10 @@ export function firstRunAuthMessage(
     || hasAuthenticatedConnection(providerId, statuses)
   ) return null
   const custom = loadConfig().providers[providerId]
-  return custom?.api_key_env
-    ? `Authentication for ${providerId} is ${status.state}. Set ${custom.api_key_env}.`
-    : `Authentication for ${providerId} is ${status.state}. Run: quark auth login ${providerId}`
+  if (!custom) {
+    return `Authentication for ${providerId} is ${status.state}. Run: quark auth login ${providerId}`
+  }
+  return custom.api_key?.startsWith("env:")
+    ? `Authentication for ${providerId} is ${status.state}. Set ${custom.api_key.slice(4)}.`
+    : `Authentication for ${providerId} is ${status.state}. Set providers.${providerId}.api_key in config.yaml.`
 }

@@ -1,10 +1,8 @@
 import type { LanguageModel } from "ai"
 import {
-  getProviderConfig,
   loadConfig,
   parseModelSpec,
-  resolveApiKey,
-  type ProviderConfig,
+  providerCredentialSource,
 } from "../config/config"
 import { fireHook } from "../plugin/registry"
 import { createProviderAdapter } from "./adapters"
@@ -18,6 +16,7 @@ import {
   DefaultCredentialResolver,
   RedactedResolvedCredential,
   type CredentialProviderDefinition,
+  type CredentialSourceConfig,
   type ResolvedCredential,
 } from "./credentials"
 import type { ProviderDefinition } from "./definitions"
@@ -44,36 +43,6 @@ export interface ResolveModelOptions {
   credentialStore?: CredentialStore
   registry?: ProviderRegistry
   catalog?: CatalogRegistry
-}
-
-function createLegacyProviderDefinition(id: string, config: ProviderConfig): ProviderDefinition {
-  return {
-    id,
-    catalogProviderId: id,
-    name: id,
-    protocol: "openai-compatible",
-    defaultEndpoint: config.baseURL,
-    auth: {
-      type: "api-key",
-      environmentVariables: config.apiKey.startsWith("env:") ? [config.apiKey.slice(4)] : [],
-    },
-    providerOptionsKey: id,
-    billing: "unknown",
-  }
-}
-
-function registerLegacyProvider(
-  registry: ProviderRegistry,
-  providerId: string,
-  config: ProviderConfig,
-): void {
-  const definition = createLegacyProviderDefinition(providerId, config)
-  registry.register({
-    definition,
-    adapter: createProviderAdapter(definition),
-    credentialSource: { source: "none" },
-    source: "configured",
-  })
 }
 
 const EMPTY_CATALOG = createCatalogSnapshot({}, { fetchedAt: 0 })
@@ -108,16 +77,17 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
         name: providerId,
         protocol: "openai-compatible",
         defaultEndpoint: config.base_url,
-        auth: { type: "api-key", environmentVariables: config.api_key_env ? [config.api_key_env] : [] },
+        auth: {
+          type: "api-key",
+          environmentVariables: config.api_key?.startsWith("env:") ? [config.api_key.slice(4)] : [],
+        },
         providerOptionsKey: providerId,
-        billing: config.billing,
+        billing: "unknown",
       }
       registry.register({
         definition,
         adapter: createProviderAdapter(definition),
-        credentialSource: config.api_key_env
-          ? { source: "environment", variable: config.api_key_env }
-          : config.legacyCredentialSource!,
+        credentialSource: providerCredentialSource(config),
         source: "configured",
       })
     }
@@ -182,14 +152,7 @@ export async function resolveModelRuntime(
   }
 
   const registry = buildRegistry(options)
-  let directRuntime = registry.get(providerId)
-  if (!directRuntime) {
-    const legacyConfig = getProviderConfig(providerId)
-    if (legacyConfig) {
-      registerLegacyProvider(registry, providerId, legacyConfig)
-      directRuntime = registry.require(providerId)
-    }
-  }
+  const directRuntime = registry.get(providerId)
 
   const candidates = directRuntime
     ? [directRuntime, ...registry.list().filter((candidate) =>

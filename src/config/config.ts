@@ -3,38 +3,27 @@ import * as fs from "node:fs"
 import * as path from "node:path"
 import * as os from "node:os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
-import type { BillingMode } from "../provider/definitions"
 import type { CredentialSourceConfig } from "../provider/credentials"
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "quark")
-const CONFIG_FILE = path.join(CONFIG_DIR, "config.yaml")
-export const CONFIG_PATH = CONFIG_FILE
+/**
+ * Resolved per call, not at import time: QUARK_CONFIG_DIR lets tests keep all
+ * config I/O in a temp directory instead of the developer's real one.
+ */
+export function configPath(): string {
+  const directory = process.env.QUARK_CONFIG_DIR ?? path.join(os.homedir(), ".config", "quark")
+  return path.join(directory, "config.yaml")
+}
 
 export interface BranchingConfig {
   threshold: number
   auto: boolean
 }
 
-export interface ProfileConfig {
-  model?: string
-  thinking?: { effort?: string; mode?: string }
-}
-
 export interface CustomProviderConfig {
   /** OpenAI-compatible endpoint supplied by the user. */
   base_url: string
-  /** Environment variable containing this provider's API key. */
-  api_key_env?: string
-  /** Read-only compatibility for pre-v2.1 custom credential configuration. */
-  legacyCredentialSource?: CredentialSourceConfig
-  /** Optional cost-tracking metadata; it never affects authentication. */
-  billing: BillingMode
-}
-
-/** Legacy V1 provider shape, retained for read/runtime plugin compatibility only. */
-export interface ProviderConfig {
-  baseURL: string
-  apiKey: string
+  /** `env:NAME` reads that environment variable; any other value is used as the literal key. */
+  api_key?: string
 }
 
 export interface QuarkConfig {
@@ -44,15 +33,14 @@ export interface QuarkConfig {
   }
   max_steps: number
   branching: BranchingConfig
-  profiles?: Record<string, ProfileConfig>
+  /** Opaque passthrough; profile semantics live in src/profile/profile.ts. */
+  profiles?: Record<string, unknown>
+  /** Opaque passthrough; consumed by src/profile/profile.ts. */
+  default_profile?: string
   providers: Record<string, CustomProviderConfig>
   hide_readonly_tools: boolean
   /** Optional executable name/path used to open local file links. */
   editor?: string
-  /** Runtime-only compatibility for consumers not yet migrated to modelConfig.small. */
-  small_model: string
-  /** True when the source file had no version and was read through V1 compatibility. */
-  legacy: boolean
 }
 
 const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
@@ -62,18 +50,19 @@ const DEFAULT_MODELS = {
 const BUNDLED_PROVIDER_IDS = new Set([
   "openai", "anthropic", "openrouter", "deepseek", "copilot", "openai-codex", "ollama", "lmstudio",
 ])
+const DEEPSEEK_PROVIDER_ID = "deepseek"
 const DEEPSEEK_ENDPOINT = "https://api.deepseek.com"
 const DEEPSEEK_ENVIRONMENT_VARIABLE = "DEEPSEEK_API_KEY"
-const SECRET_KEYS = /^(apiKey|api_key|token|secret|password)$/i
+const SECRET_KEYS = /^(apiKey|token|secret|password)$/i
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-]*$/
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]*$/
+const PROVIDER_KEYS = new Set(["base_url", "api_key"])
 
 let cached: QuarkConfig | null = null
-const runtimeProviders: Record<string, ProviderConfig> = {}
 
 function readRawConfig(): Record<string, unknown> {
   try {
-    const parsed = parseYAML(fs.readFileSync(CONFIG_FILE, "utf8")) as unknown
+    const parsed = parseYAML(fs.readFileSync(configPath(), "utf8")) as unknown
     return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
   } catch {
     return {}
@@ -103,18 +92,25 @@ function validateModelSpec(spec: string, field: string): string {
   return `${spec.slice(0, slash).toLowerCase()}/${spec.slice(slash + 1)}`
 }
 
-function parseEnvironmentVariable(value: unknown, field: string): string {
-  if (typeof value !== "string" || !ENVIRONMENT_VARIABLE.test(value)) {
-    throw new Error(`${field} must be an uppercase environment-variable name.`)
+function parseApiKey(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${field} must be a non-empty API key or an "env:NAME" reference.`)
   }
-  return value
+  const key = value.trim()
+  if (!key.startsWith("env:")) return key
+  const variable = key.slice(4)
+  if (!ENVIRONMENT_VARIABLE.test(variable)) {
+    throw new Error(`${field} must reference an uppercase environment-variable name after "env:".`)
+  }
+  return `env:${variable}`
 }
 
-function parseBilling(value: unknown, field: string): BillingMode {
-  if (!["metered", "subscription", "free", "unknown"].includes(String(value))) {
-    throw new Error(`${field} is invalid.`)
-  }
-  return value as BillingMode
+/** Maps a configured provider onto its credential source. */
+export function providerCredentialSource(provider: CustomProviderConfig): CredentialSourceConfig {
+  if (!provider.api_key) return { source: "none" }
+  return provider.api_key.startsWith("env:")
+    ? { source: "environment", variable: provider.api_key.slice(4) }
+    : { source: "inline", value: provider.api_key }
 }
 
 function normalizeEndpoint(raw: unknown, field: string): string {
@@ -126,21 +122,10 @@ function normalizeEndpoint(raw: unknown, field: string): string {
   return url.toString().replace(/\/$/, "")
 }
 
-function acceptCanonicalDeepSeek(
-  provider: CustomProviderConfig,
-  rawEndpoint: unknown,
-  value: Record<string, unknown>,
-  allowedKeys: readonly string[],
-): void {
-  const endpoint = typeof rawEndpoint === "string" ? rawEndpoint.replace(/\/$/, "") : ""
-  const credentialCompatible = provider.api_key_env === DEEPSEEK_ENVIRONMENT_VARIABLE
-    || provider.legacyCredentialSource?.source === "store"
-    || provider.legacyCredentialSource?.source === "auto"
-  const canonical = (endpoint === DEEPSEEK_ENDPOINT || endpoint === `${DEEPSEEK_ENDPOINT}/v1`)
-    && credentialCompatible
-    && (provider.billing === "metered" || value.billing === undefined)
-    && Object.keys(value).every((key) => allowedKeys.includes(key))
-  if (!canonical) {
+function warnRedundantDeepSeek(provider: CustomProviderConfig): void {
+  const canonicalEndpoint = provider.base_url === DEEPSEEK_ENDPOINT
+    || provider.base_url === `${DEEPSEEK_ENDPOINT}/v1`
+  if (!canonicalEndpoint || provider.api_key !== `env:${DEEPSEEK_ENVIRONMENT_VARIABLE}`) {
     throw new Error(
       `providers.deepseek conflicts with the bundled DeepSeek provider. Rename the custom provider ID (for example, "company-deepseek") and update model references to use that ID.`,
     )
@@ -155,153 +140,85 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
   for (const [rawId, entry] of Object.entries(raw as Record<string, unknown>)) {
     const id = rawId.toLowerCase()
     if (!PROVIDER_ID.test(rawId) || rawId !== id) throw new Error(`Invalid custom provider ID "${rawId}".`)
-    if (id === "compaction" || (BUNDLED_PROVIDER_IDS.has(id) && id !== "deepseek")) {
+    if (id === "compaction" || (BUNDLED_PROVIDER_IDS.has(id) && id !== DEEPSEEK_PROVIDER_ID)) {
       throw new Error(`Custom provider ID "${id}" is reserved or bundled.`)
     }
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`providers.${id} must be a mapping.`)
     const value = entry as Record<string, unknown>
-    const secret = Object.keys(value).find((key) => SECRET_KEYS.test(key))
-    if (secret) throw new Error(`Secret field providers.${id}.${secret} is forbidden; choose a credential source.`)
-    const hasCanonicalFields = "base_url" in value || "api_key_env" in value
-    const hasLegacyFields = "protocol" in value || "endpoint" in value || "credential" in value
-    if (hasCanonicalFields && hasLegacyFields) {
-      throw new Error(`providers.${id} cannot mix base_url/api_key_env with legacy credential fields.`)
+    const secret = Object.keys(value).find((key) => key !== "api_key" && SECRET_KEYS.test(key))
+    if (secret) throw new Error(`Secret field providers.${id}.${secret} is forbidden; use api_key with an "env:NAME" reference.`)
+    const unsupported = Object.keys(value).find((key) => !PROVIDER_KEYS.has(key))
+    if (unsupported) {
+      throw new Error(`providers.${id}.${unsupported} is not supported; providers accept base_url and api_key only.`)
     }
-    if (hasCanonicalFields) {
-      const provider = {
-        base_url: normalizeEndpoint(value.base_url, `providers.${id}.base_url`),
-        api_key_env: parseEnvironmentVariable(value.api_key_env, `providers.${id}.api_key_env`),
-        billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
-      }
-      if (id === "deepseek") {
-        acceptCanonicalDeepSeek(provider, value.base_url, value, ["base_url", "api_key_env", "billing"])
-      }
-      result[id] = provider
-      continue
-    }
-    if (value.protocol !== "openai-compatible") {
-      throw new Error(`providers.${id}.protocol must be openai-compatible.`)
-    }
-    const credential = value.credential as Record<string, unknown> | undefined
-    const source = credential?.source
-    if (!["environment", "auto", "prompt", "store", "none"].includes(String(source))) {
-      throw new Error(`providers.${id}.credential.source is invalid.`)
-    }
-    const legacyCredentialSource: CredentialSourceConfig = source === "environment"
-      ? { source, variable: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) }
-      : { source: source as "auto" | "prompt" | "store" | "none" }
     const provider: CustomProviderConfig = {
-      base_url: normalizeEndpoint(value.endpoint, `providers.${id}.endpoint`),
-      ...(source === "environment" ? { api_key_env: parseEnvironmentVariable(credential?.variable, `providers.${id}.credential.variable`) } : { legacyCredentialSource }),
-      billing: value.billing === undefined ? "unknown" : parseBilling(value.billing, `providers.${id}.billing`),
+      base_url: normalizeEndpoint(value.base_url, `providers.${id}.base_url`),
+      ...(value.api_key === undefined ? {} : { api_key: parseApiKey(value.api_key, `providers.${id}.api_key`) }),
     }
-    if (id === "deepseek") {
-      acceptCanonicalDeepSeek(provider, value.endpoint, value, ["protocol", "endpoint", "credential", "billing"])
-    }
+    if (id === DEEPSEEK_PROVIDER_ID) warnRedundantDeepSeek(provider)
     result[id] = provider
   }
   return result
 }
 
-function withCompatibility(input: Omit<QuarkConfig, "small_model">): QuarkConfig {
+/** Defaults used when no config file exists yet. */
+export function defaultConfig(): QuarkConfig {
   return {
-    ...input,
-    small_model: input.modelConfig.small,
+    version: 2,
+    modelConfig: { ...DEFAULT_MODELS },
+    max_steps: 100,
+    branching: { ...BRANCHING_DEFAULTS },
+    providers: {},
+    hide_readonly_tools: false,
   }
 }
 
 export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
-  if (raw.version !== 2) throw new Error(`Unsupported config version "${String(raw.version)}".`)
+  if (raw.version !== 2) {
+    throw new Error(
+      raw.version === undefined
+        ? "config.yaml has no \"version\" field. Version 1 configuration is no longer supported; add \"version: 2\", move small_model to models.small, and describe providers with base_url and api_key."
+        : `Unsupported config version "${String(raw.version)}". Quark requires "version: 2" in config.yaml.`,
+    )
+  }
   if (!raw.models || typeof raw.models !== "object" || Array.isArray(raw.models)) {
     throw new Error("models must contain small.")
   }
   const models = raw.models as Record<string, unknown>
-  const modelConfig = {
-    small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
-  }
-  return withCompatibility({
+  return {
     version: 2,
-    modelConfig,
+    modelConfig: {
+      small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
+    },
     max_steps: typeof raw.max_steps === "number" ? raw.max_steps : 100,
     branching: parseBranching(raw.branching),
-    profiles: raw.profiles && typeof raw.profiles === "object"
-      ? raw.profiles as Record<string, ProfileConfig> : undefined,
+    profiles: raw.profiles && typeof raw.profiles === "object" && !Array.isArray(raw.profiles)
+      ? raw.profiles as Record<string, unknown> : undefined,
+    default_profile: nonEmptyString(raw.default_profile, "") || undefined,
     providers: parseCustomProviders(raw.providers),
     hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
-    legacy: false,
-  })
-}
-
-function parseV1Providers(raw: unknown): Record<string, CustomProviderConfig> {
-  if (!raw || typeof raw !== "object") return {}
-  const result: Record<string, CustomProviderConfig> = {}
-  for (const [id, entry] of Object.entries(raw as Record<string, unknown>)) {
-    if (!entry || typeof entry !== "object" || !PROVIDER_ID.test(id) || BUNDLED_PROVIDER_IDS.has(id)) continue
-    const value = entry as Record<string, unknown>
-    if (typeof value.baseURL !== "string") continue
-    const apiKey = typeof value.apiKey === "string" ? value.apiKey : ""
-    if (!apiKey.startsWith("env:") || !ENVIRONMENT_VARIABLE.test(apiKey.slice(4))) continue
-    result[id] = {
-      base_url: normalizeEndpoint(value.baseURL, `providers.${id}.baseURL`),
-      api_key_env: apiKey.slice(4),
-      billing: "unknown",
-    }
-  }
-  return result
-}
-
-function qualifyLegacyModel(spec: string): string {
-  return spec.includes("/") ? spec : `openai/${spec}`
-}
-
-function parseV1(raw: Record<string, unknown>): QuarkConfig {
-  const legacySmall = nonEmptyString(raw.small_model, "gpt-4o-mini")
-  const modelConfig = {
-    small: qualifyLegacyModel(legacySmall),
-  }
-  return {
-    version: 2,
-    modelConfig,
-    max_steps: typeof raw.max_steps === "number" ? raw.max_steps : 100,
-    branching: parseBranching(raw.branching),
-    providers: parseV1Providers(raw.providers),
-    hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
-    editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
-    legacy: true,
-    small_model: modelConfig.small,
   }
 }
 
 export function loadConfig(): QuarkConfig {
   if (cached) return cached
   const raw = readRawConfig()
-  cached = raw.version === undefined ? parseV1(raw) : parseConfigV2(raw)
+  cached = Object.keys(raw).length === 0 ? defaultConfig() : parseConfigV2(raw)
   return cached
 }
 
 export function serializeConfig(config: QuarkConfig): string {
-  const providers = Object.fromEntries(Object.entries(config.providers).map(([id, provider]) => {
-    if (provider.api_key_env) {
-      return [id, {
-        base_url: provider.base_url,
-        api_key_env: provider.api_key_env,
-        ...(provider.billing === "unknown" ? {} : { billing: provider.billing }),
-      }]
-    }
-    // Preserve legacy entries during unrelated writes; do not silently change their credential behavior.
-    return [id, {
-      protocol: "openai-compatible",
-      endpoint: provider.base_url,
-      credential: provider.legacyCredentialSource,
-      ...(provider.billing === "unknown" ? {} : { billing: provider.billing }),
-    }]
-  }))
+  const providers = Object.fromEntries(Object.entries(config.providers).map(([id, provider]) => [id, {
+    base_url: provider.base_url,
+    ...(provider.api_key ? { api_key: provider.api_key } : {}),
+  }]))
   return stringifyYAML({
     version: 2,
     models: config.modelConfig,
     max_steps: config.max_steps,
     branching: config.branching,
+    ...(config.default_profile ? { default_profile: config.default_profile } : {}),
     ...(config.profiles ? { profiles: config.profiles } : {}),
     providers,
     hide_readonly_tools: config.hide_readonly_tools,
@@ -309,7 +226,7 @@ export function serializeConfig(config: QuarkConfig): string {
   })
 }
 
-export function writeConfigV2(config: QuarkConfig, file = CONFIG_FILE): void {
+export function writeConfigV2(config: QuarkConfig, file = configPath()): void {
   const content = serializeConfig(config)
   parseConfigV2(parseYAML(content) as Record<string, unknown>)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
@@ -323,59 +240,16 @@ export function writeConfigV2(config: QuarkConfig, file = CONFIG_FILE): void {
   cached = null
 }
 
-/** Rewrite V1 as normalized V2. Literal secrets are replaced by prompt sources, never copied. */
-export function migrateConfigToV2(file = CONFIG_FILE): QuarkConfig {
-  const raw = (() => {
-    try { return parseYAML(fs.readFileSync(file, "utf8")) as Record<string, unknown> } catch { return {} }
-  })()
-  const config = raw.version === 2 ? parseConfigV2(raw) : parseV1(raw)
-  writeConfigV2({ ...config, legacy: false }, file)
-  return { ...config, legacy: false }
-}
-
-export function resolveApiKey(raw: string): string {
-  return raw.startsWith("env:") ? process.env[raw.slice(4)] ?? "" : raw
-}
-
 export function parseModelSpec(spec: string): { provider?: string; model: string } {
   const index = spec.indexOf("/")
   return index === -1 ? { model: spec } : { provider: spec.slice(0, index), model: spec.slice(index + 1) }
 }
 
-/** Bridge V2 custom providers into the old resolver/plugin shape. */
-export function getProviderConfig(id: string): ProviderConfig | null {
-  const normalized = id.toLowerCase()
-  if (runtimeProviders[normalized]) return runtimeProviders[normalized]!
-  const provider = loadConfig().providers[normalized]
-  if (!provider) return null
-  const apiKey = provider.api_key_env
-    ? `env:${provider.api_key_env}`
-    : provider.legacyCredentialSource?.source === "environment"
-      ? `env:${provider.legacyCredentialSource.variable}`
-      : ""
-  return { baseURL: provider.base_url, apiKey }
-}
-
-/** @deprecated Runtime-only compatibility API; keys are never serialized. */
-export function registerProvider(id: string, config: ProviderConfig): void {
-  const normalized = id.trim().toLowerCase()
-  if (!PROVIDER_ID.test(normalized) || normalized === "compaction") throw new Error(`Invalid or reserved provider ID "${id}".`)
-  if (BUNDLED_PROVIDER_IDS.has(normalized)) throw new Error(`Provider ID "${normalized}" is bundled and cannot be replaced by a plugin.`)
-  if (runtimeProviders[normalized] || loadConfig().providers[normalized]) throw new Error(`Provider ID "${normalized}" is already registered.`)
-  console.warn("[quark] registerProvider(id, { baseURL, apiKey }) is deprecated; register a non-secret provider definition instead.")
-  runtimeProviders[normalized] = config
-}
-
 export function setConfigField<K extends "max_steps" | "branching" | "hide_readonly_tools">(
   key: K,
   value: QuarkConfig[K],
-): void
-export function setConfigField(key: "small_model", value: string): void
-export function setConfigField(key: string, value: unknown): void {
-  const config = loadConfig()
-  if (key === "small_model") config.modelConfig.small = qualifyLegacyModel(value as string)
-  else (config as unknown as Record<string, unknown>)[key] = value
-  writeConfigV2({ ...withCompatibility({ ...config, legacy: false }), legacy: false })
+): void {
+  writeConfigV2({ ...loadConfig(), [key]: value })
 }
 
 export function resetConfigCache(): void {

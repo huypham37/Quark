@@ -24,17 +24,6 @@ export interface PluginContext {
   sessionId?: string
   /** Absolute path to the Quark installation root (useful for locating `scripts/`) */
   quarkRoot: string
-  /**
-   * Register an OpenAI-compatible provider at runtime.
-   *
-   * @deprecated Register a non-secret provider definition instead. This compatibility
-   * API keeps the key in memory only and rejects collisions.
-   *
-   * @param id - Provider ID (used in model strings, e.g. `"myprovider/gpt-4o"`)
-   * @param config.baseURL - OpenAI-compatible API base URL
-   * @param config.apiKey - API key (plain string)
-   */
-  registerProvider: (id: string, config: { baseURL: string; apiKey: string }) => void
 }
 
 // ---------------------------------------------------------------------------

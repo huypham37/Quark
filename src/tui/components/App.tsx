@@ -679,7 +679,7 @@ export const App: Component<AppProps> = (props) => {
         kind: "info",
         message: provider.environmentVariable
           ? `Set ${provider.environmentVariable} to change this provider's API key`
-          : "Configure api_key_env, then set that environment variable",
+          : "Set this provider's api_key in config.yaml",
       })
       setPaletteMode("connect-result")
     } else if (provider.kind === "none") {

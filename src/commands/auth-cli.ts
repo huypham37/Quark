@@ -31,13 +31,11 @@ export async function runAuthCommand(args: string[]): Promise<number> {
       const configured = loadConfig().providers[normalized]
       if (configured) {
         throw new Error(
-          configured.api_key_env
-            ? `"${providerId}" is a custom provider and does not support \`quark auth login\`. Set ${configured.api_key_env} as configured by providers.${normalized}.api_key_env.`
-            : `"${providerId}" is a legacy custom provider and does not support \`quark auth login\`. Migrate it to base_url and api_key_env.`,
+          `"${providerId}" is a custom provider and does not support \`quark auth login\`. Configure providers.${normalized}.api_key in config.yaml.`,
         )
       }
       throw new Error(
-        `"${providerId}" is not a supported provider. Configure an OpenAI-compatible custom provider with base_url and api_key_env instead. Supported providers: ${Object.keys(BUNDLED_PROVIDER_DEFINITIONS).join(", ")}.`,
+        `"${providerId}" is not a supported provider. Configure an OpenAI-compatible custom provider with base_url and api_key instead. Supported providers: ${Object.keys(BUNDLED_PROVIDER_DEFINITIONS).join(", ")}.`,
       )
     }
     if (provider.auth.type === "none") {

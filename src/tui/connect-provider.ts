@@ -38,9 +38,11 @@ export function buildConnectProviderRows(
       id,
       name: id,
       kind: "custom",
-      detail: provider.api_key_env ? `Set ${provider.api_key_env}` : "Configure api_key_env",
+      detail: provider.api_key?.startsWith("env:")
+        ? `Set ${provider.api_key.slice(4)}`
+        : provider.api_key ? "API key configured" : "Configure api_key",
       status: statusById.get(id.toLowerCase())?.state,
-      environmentVariable: provider.api_key_env,
+      environmentVariable: provider.api_key?.startsWith("env:") ? provider.api_key.slice(4) : undefined,
       credentialOrigin: statusById.get(id.toLowerCase())?.origin,
     }))
   return [...bundled, ...custom]

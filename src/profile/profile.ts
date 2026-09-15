@@ -84,7 +84,7 @@ function projectConfigDir(): string {
 }
 
 function globalConfigDir(): string {
-  return path.join(os.homedir(), ".config", "quark")
+  return process.env.QUARK_CONFIG_DIR ?? path.join(os.homedir(), ".config", "quark")
 }
 
 function configPaths(): string[] {

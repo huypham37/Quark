@@ -12,7 +12,7 @@ import { loadLegacyProviderCredential } from "../provider/legacy-credentials"
 import { normalizeDomain, pollForToken, requestDeviceCode } from "../provider/copilot-auth"
 import { loginWithBrowser, loginWithDeviceCode, type CodexToken } from "../provider/codex-auth"
 import type { Credential } from "../provider/credentials"
-import { loadConfig } from "../config/config"
+import { loadConfig, providerCredentialSource } from "../config/config"
 
 export interface OAuthDeviceCode {
   userCode: string
@@ -46,9 +46,12 @@ function definition(providerId: string): ProviderDefinition {
     name: normalized,
     protocol: "openai-compatible",
     defaultEndpoint: custom.base_url,
-    auth: { type: "api-key", environmentVariables: custom.api_key_env ? [custom.api_key_env] : [] },
+    auth: {
+      type: "api-key",
+      environmentVariables: custom.api_key?.startsWith("env:") ? [custom.api_key.slice(4)] : [],
+    },
     providerOptionsKey: normalized,
-    billing: custom.billing,
+    billing: "unknown",
   }
 }
 
@@ -160,11 +163,7 @@ export async function authStatus(services: AuthServices = {}): Promise<ProviderA
     const bundled = providerId in BUNDLED_PROVIDER_DEFINITIONS
     return resolve.status({
       provider,
-      source: bundled
-        ? { source: "auto" }
-        : custom?.api_key_env
-        ? { source: "environment", variable: custom.api_key_env }
-        : custom?.legacyCredentialSource ?? { source: "auto" },
+      source: bundled || !custom ? { source: "auto" } : providerCredentialSource(custom),
     })
   }))
 }

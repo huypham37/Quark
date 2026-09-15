@@ -91,6 +91,32 @@ describe("DefaultCredentialResolver", () => {
     expect(resolved).toBeNull()
   })
 
+  test("inline config keys resolve without touching the store or environment", async () => {
+    const store = new MemoryStore()
+    await store.set("openai", { type: "api-key", value: "stored-secret" })
+    const resolver = new DefaultCredentialResolver(store, undefined, { OPENAI_API_KEY: "environment-secret" })
+
+    const resolved = await resolver.resolve({
+      provider: openai,
+      source: { source: "inline", value: "config-secret" },
+      interactive: false,
+    })
+
+    expect(resolved?.origin).toBe("config")
+    expect(resolved?.credential).toEqual({ type: "api-key", value: "config-secret" })
+    expect(String(resolved)).not.toContain("config-secret")
+  })
+
+  test("an empty inline key resolves to nothing", async () => {
+    const resolver = new DefaultCredentialResolver(new MemoryStore())
+
+    expect(await resolver.resolve({
+      provider: openai,
+      source: { source: "inline", value: "" },
+      interactive: false,
+    })).toBeNull()
+  })
+
   test("prompt fails non-interactively with remediation", async () => {
     const resolver = new DefaultCredentialResolver(new MemoryStore())
     await expect(resolver.resolve({

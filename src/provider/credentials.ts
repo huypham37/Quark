@@ -15,10 +15,13 @@ export type CredentialOrigin =
   | "environment"
   | "machine-store"
   | "legacy-token-file"
+  | "config"
 
 export type CredentialSourceConfig =
   | { source: "auto" }
   | { source: "environment"; variable: string }
+  /** API key written directly into config.yaml. */
+  | { source: "inline"; value: string }
   | { source: "prompt" }
   | { source: "store" }
   | { source: "none" }
@@ -124,6 +127,10 @@ export class DefaultCredentialResolver {
         return null
       case "environment":
         return this.resolveEnvironment(input.source.variable)
+      case "inline":
+        return input.source.value
+          ? new RedactedResolvedCredential({ type: "api-key", value: input.source.value }, "config")
+          : null
       case "store":
         return this.resolveStore(input.provider.id)
       case "prompt": {

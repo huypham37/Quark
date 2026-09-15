@@ -20,7 +20,7 @@ import { bus } from "../session/events"
 import { agentFromProfile, type AgentConfig } from "../agent"
 import { discoverSkills, loadSkill } from "../skill/skill"
 import { dbToTuiMessages } from "./state"
-import { loadConfig, parseModelSpec, resetConfigCache, CONFIG_PATH } from "../config/config"
+import { loadConfig, parseModelSpec, resetConfigCache, configPath } from "../config/config"
 import { resolveProfile, readPromptFile, listProfiles, resetProfileCache } from "../profile/profile"
 import { detectFromConfigOrOS } from "./terminal-bg"
 import { createGhosttyTitleController, isGhostty } from "./ghostty-title"
@@ -683,7 +683,7 @@ function reloadConfig(): void {
 // The editor inherits the terminal directly, so it renders in the same window
 // like `git commit` opening vim. This is shared by /settings and file links.
 let openingEditor = false
-async function openEditor(sid: string | null, target: FileTarget = { filePath: CONFIG_PATH }): Promise<void> {
+async function openEditor(sid: string | null, target: FileTarget = { filePath: configPath() }): Promise<void> {
   if (openingEditor) return
   openingEditor = true
   const editor = resolveEditor(loadConfig().editor)
@@ -698,7 +698,7 @@ async function openEditor(sid: string | null, target: FileTarget = { filePath: C
     })
     const code = await proc.exited
     if (code !== 0) throw new Error(`${editor} exited with code ${code}`)
-    if (path.resolve(target.filePath) === path.resolve(CONFIG_PATH)) reloadConfig()
+    if (path.resolve(target.filePath) === path.resolve(configPath())) reloadConfig()
   } catch (err) {
     setImmediate(() => {
       bus.emit("error", {
