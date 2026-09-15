@@ -70,30 +70,28 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
       : undefined,
   }))
   for (const [providerId, config] of Object.entries(loadConfig().providers)) {
-    // Config rejects IDs that collide with a bundled provider, so the only
-    // entries skipped here are tolerated legacy duplicates (the bundled
-    // definition wins).
-    if (!registry.get(providerId)) {
-      const definition: ProviderDefinition = {
-        id: providerId,
-        catalogProviderId: providerId,
-        name: providerId,
-        protocol: "openai-compatible",
-        defaultEndpoint: config.base_url,
-        auth: {
-          type: "api-key",
-          environmentVariables: config.api_key?.startsWith("env:") ? [config.api_key.slice(4)] : [],
-        },
-        providerOptionsKey: providerId,
-        billing: "unknown",
-      }
-      registry.register({
-        definition,
-        adapter: createProviderAdapter(definition),
-        credentialSource: providerCredentialSource(config),
-        source: "configured",
-      })
+    // Config already rejects IDs that collide with a bundled provider, so a
+    // collision here is a bug: let the registry fail loudly instead of
+    // silently dropping the user's provider.
+    const definition: ProviderDefinition = {
+      id: providerId,
+      catalogProviderId: providerId,
+      name: providerId,
+      protocol: "openai-compatible",
+      defaultEndpoint: config.base_url,
+      auth: {
+        type: "api-key",
+        environmentVariables: config.api_key?.startsWith("env:") ? [config.api_key.slice(4)] : [],
+      },
+      providerOptionsKey: providerId,
+      billing: "unknown",
     }
+    registry.register({
+      definition,
+      adapter: createProviderAdapter(definition),
+      credentialSource: providerCredentialSource(config),
+      source: "configured",
+    })
   }
   return registry
 }
