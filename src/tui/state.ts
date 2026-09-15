@@ -156,7 +156,6 @@ export type TuiAction =
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "subagent-error"; messageId: string; parentCallId: string; profile: string; kind: SubagentErrorKind; message: string }
   | { type: "cycle-thinking"; model: CatalogModel | null }
-  | { type: "toggle-show-thinking" }
   | { type: "reasoning-start"; messageId: string }
   | { type: "set-question"; request: QuestionRequest }
   | { type: "clear-question" }
@@ -346,7 +345,6 @@ export interface AppStore {
   activeBranch: string | null
   worktreeSwitching: boolean
   thinkingEffort: string
-  showThinking: boolean
   status: TuiStatus
   error?: string
   question?: QuestionRequest
@@ -383,7 +381,6 @@ export function createAppState(initial: {
     activeBranch: null,
     worktreeSwitching: false,
     thinkingEffort: initial.thinkingEffort ?? "none",
-    showThinking: false,
     status: {
       tokensUsed: 0,
       tokenLimit: (() => { const lim = initial.getCatalogModel?.(initial.modelName)?.limit; return lim?.context ?? lim?.input ?? 0 })(),
@@ -735,10 +732,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
           }
         }),
       )
-      break
-
-    case "toggle-show-thinking":
-      setStore("showThinking", (prev) => !prev)
       break
 
     case "cycle-thinking": {

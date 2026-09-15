@@ -4,7 +4,7 @@
 // Dispatches to the appropriate sub-component based on part type:
 // - text → AssistantMessage (or UserMessage for user role)
 // - tool → grouped ToolActivity (individual ToolCards are disclosed on demand)
-// - thinking → ThinkingIndicator
+// - thinking → intentionally not rendered
 
 import type { Component } from "solid-js"
 import { Show, Switch, Match, Index, createMemo } from "solid-js"
@@ -12,19 +12,17 @@ import { UserMessage } from "./user-message"
 import { AssistantMessage } from "./assistant-message"
 import { ToolActivity } from "./tool-activity-view"
 import { groupMessageParts, type ToolActivityItem } from "./tool-activity"
-import { ThinkingIndicator } from "./thinking"
 import { SubAgentView } from "./sub-agent-view"
 import type { TuiMessage, TuiPart } from "../state"
 import type { FileTarget } from "../editor"
 
 interface MessageItemProps {
   message: TuiMessage
-  showThinking?: boolean
   continuingToolCallId?: string | null
   onOpenFile?: (target: FileTarget) => void
 }
 
-const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: boolean; onOpenFile?: (target: FileTarget) => void }> = (props) => {
+const PartView: Component<{ part: TuiPart; onOpenFile?: (target: FileTarget) => void }> = (props) => {
   // Helper to cast tool parts
   const asTool = () => props.part as Extract<TuiPart, { type: "tool" }>
 
@@ -49,16 +47,6 @@ const PartView: Component<{ part: TuiPart; isStreaming: boolean; showThinking?: 
         </box>
       </Match>
 
-      <Match when={props.part.type === "thinking"}>
-        <box marginBottom={1}>
-          <ThinkingIndicator
-            done={(props.part as Extract<TuiPart, { type: "thinking" }>).done}
-            text={(props.part as Extract<TuiPart, { type: "thinking" }>).text}
-            durationMs={(props.part as Extract<TuiPart, { type: "thinking" }>).durationMs}
-            showText={props.showThinking}
-          />
-        </box>
-      </Match>
     </Switch>
   )
 }
@@ -94,8 +82,6 @@ export const MessageItem: Component<MessageItemProps> = (props) => {
               fallback={
                 <PartView
                   part={(item() as Extract<ToolActivityItem, { type: "part" }>).part}
-                  isStreaming={!!props.message.streaming}
-                  showThinking={props.showThinking}
                   onOpenFile={props.onOpenFile}
                 />
               }

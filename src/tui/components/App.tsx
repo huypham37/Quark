@@ -1852,12 +1852,6 @@ export const App: Component<AppProps> = (props) => {
 
     // Ctrl+T — cycle thinking effort (none → low → medium → high → xhigh → none)
     if (evt.ctrl && evt.name === "t") {
-      // Ctrl+Shift+T — toggle show thinking text
-      if (evt.shift) {
-        dispatch(state, { type: "toggle-show-thinking" })
-        evt.preventDefault()
-        return
-      }
       dispatch(state, { type: "cycle-thinking", model: props.getCatalogModel?.(state.store.status.modelName) ?? null })
       props.onThinkingEffortChange?.(state.store.thinkingEffort)
       evt.preventDefault()
@@ -1917,7 +1911,6 @@ export const App: Component<AppProps> = (props) => {
                   {(message) => (
                     <MessageItem
                       message={message()}
-                      showThinking={state.store.showThinking}
                       continuingToolCallId={continuingToolCallId()}
                       onOpenFile={props.onOpenFile}
                     />
