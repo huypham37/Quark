@@ -4,6 +4,8 @@ import * as path from "node:path"
 import * as os from "node:os"
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
 import type { CredentialSourceConfig } from "../provider/credentials"
+import { BUNDLED_PROVIDER_IDS } from "../provider/definitions"
+import { validateProviderId } from "../provider/registry"
 
 /**
  * Resolved per call, not at import time: QUARK_CONFIG_DIR lets tests keep all
@@ -47,14 +49,7 @@ const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
 const DEFAULT_MODELS = {
   small: "openai/gpt-4o-mini",
 }
-const BUNDLED_PROVIDER_IDS = new Set([
-  "openai", "anthropic", "openrouter", "deepseek", "copilot", "openai-codex", "ollama", "lmstudio",
-])
-const DEEPSEEK_PROVIDER_ID = "deepseek"
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com"
-const DEEPSEEK_ENVIRONMENT_VARIABLE = "DEEPSEEK_API_KEY"
 const SECRET_KEYS = /^(apiKey|token|secret|password)$/i
-const PROVIDER_ID = /^[a-z0-9][a-z0-9-]*$/
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]*$/
 const PROVIDER_KEYS = new Set(["base_url", "api_key"])
 
@@ -122,15 +117,12 @@ function normalizeEndpoint(raw: unknown, field: string): string {
   return url.toString().replace(/\/$/, "")
 }
 
-function warnRedundantDeepSeek(provider: CustomProviderConfig): void {
-  const canonicalEndpoint = provider.base_url === DEEPSEEK_ENDPOINT
-    || provider.base_url === `${DEEPSEEK_ENDPOINT}/v1`
-  if (!canonicalEndpoint || provider.api_key !== `env:${DEEPSEEK_ENVIRONMENT_VARIABLE}`) {
-    throw new Error(
-      `providers.deepseek conflicts with the bundled DeepSeek provider. Rename the custom provider ID (for example, "company-deepseek") and update model references to use that ID.`,
-    )
-  }
-  console.warn("[quark] providers.deepseek is redundant because DeepSeek is bundled; remove providers.deepseek from config.yaml.")
+/** Bundled providers are configured by Quark itself, never by the user. */
+function assertCustomProviderId(providerId: string): void {
+  if (!BUNDLED_PROVIDER_IDS.has(providerId)) return
+  throw new Error(
+    `providers.${providerId} conflicts with the bundled ${providerId} provider. Rename the custom provider ID (for example, "company-${providerId}") and update model references to use that ID.`,
+  )
 }
 
 export function parseCustomProviders(raw: unknown): Record<string, CustomProviderConfig> {
@@ -138,11 +130,11 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("providers must be a mapping.")
   const result: Record<string, CustomProviderConfig> = {}
   for (const [rawId, entry] of Object.entries(raw as Record<string, unknown>)) {
-    const id = rawId.toLowerCase()
-    if (!PROVIDER_ID.test(rawId) || rawId !== id) throw new Error(`Invalid custom provider ID "${rawId}".`)
-    if (id === "compaction" || (BUNDLED_PROVIDER_IDS.has(id) && id !== DEEPSEEK_PROVIDER_ID)) {
-      throw new Error(`Custom provider ID "${id}" is reserved or bundled.`)
+    if (rawId !== rawId.toLowerCase()) {
+      throw new Error(`Invalid custom provider ID "${rawId}": provider IDs must be lowercase.`)
     }
+    const id = validateProviderId(rawId)
+    assertCustomProviderId(id)
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`providers.${id} must be a mapping.`)
     const value = entry as Record<string, unknown>
     const secret = Object.keys(value).find((key) => key !== "api_key" && SECRET_KEYS.test(key))
@@ -155,7 +147,6 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
       base_url: normalizeEndpoint(value.base_url, `providers.${id}.base_url`),
       ...(value.api_key === undefined ? {} : { api_key: parseApiKey(value.api_key, `providers.${id}.api_key`) }),
     }
-    if (id === DEEPSEEK_PROVIDER_ID) warnRedundantDeepSeek(provider)
     result[id] = provider
   }
   return result

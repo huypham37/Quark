@@ -121,3 +121,8 @@ export const BUNDLED_PROVIDER_DEFINITIONS = {
     billing: "free",
   },
 } as const satisfies Record<string, ProviderDefinition>
+
+/** Provider IDs Quark ships. User config may not redefine them. */
+export const BUNDLED_PROVIDER_IDS: ReadonlySet<string> = new Set(
+  Object.keys(BUNDLED_PROVIDER_DEFINITIONS),
+)

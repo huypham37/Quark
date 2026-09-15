@@ -70,6 +70,9 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
       : undefined,
   }))
   for (const [providerId, config] of Object.entries(loadConfig().providers)) {
+    // Config rejects IDs that collide with a bundled provider, so the only
+    // entries skipped here are tolerated legacy duplicates (the bundled
+    // definition wins).
     if (!registry.get(providerId)) {
       const definition: ProviderDefinition = {
         id: providerId,

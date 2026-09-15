@@ -10,6 +10,7 @@ import {
   serializeConfig,
   writeConfigV2,
 } from "../../src/config/config"
+import { BUNDLED_PROVIDER_IDS } from "../../src/provider/definitions"
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "quark-config-v2-"))
 const file = path.join(directory, "config.yaml")
@@ -128,38 +129,37 @@ describe("Config V2", () => {
     } })).toThrow(/user-info/)
   })
 
-  test("accepts canonical legacy DeepSeek input with a deprecation and rejects proxies", () => {
-    const originalWarn = console.warn
-    const warnings: string[] = []
-    console.warn = (message?: unknown) => warnings.push(String(message))
-    try {
-      const providers = parseCustomProviders({
-        deepseek: {
-          base_url: "https://api.deepseek.com/",
-          api_key: "env:DEEPSEEK_API_KEY",
-        },
-      })
-      expect(providers.deepseek?.base_url).toBe("https://api.deepseek.com")
-      expect(parseCustomProviders({
-        deepseek: {
-          base_url: "https://api.deepseek.com/v1",
-          api_key: "env:DEEPSEEK_API_KEY",
-        },
-      }).deepseek).toEqual({
-        base_url: "https://api.deepseek.com/v1",
+  test("rejects a bundled provider ID even with the canonical bundled endpoint", () => {
+    expect(() => parseCustomProviders({
+      deepseek: {
+        base_url: "https://api.deepseek.com",
         api_key: "env:DEEPSEEK_API_KEY",
-      })
-    } finally {
-      console.warn = originalWarn
-    }
-    expect(warnings.join("\n")).toContain("remove providers.deepseek")
-
+      },
+    })).toThrow(/rename.*company-deepseek/i)
     expect(() => parseCustomProviders({
       deepseek: {
         base_url: "https://proxy.example.com/deepseek/v1",
         api_key: "env:COMPANY_DEEPSEEK_KEY",
       },
     })).toThrow(/rename.*company-deepseek/i)
+  })
+
+  // Regression: config used to carry its own copy of the bundled ID list, which
+  // silently drifted (opencode-go was missing) and let a custom provider shadow
+  // a bundled one without any error.
+  test("rejects a custom provider that shadows any bundled provider ID", () => {
+    expect(BUNDLED_PROVIDER_IDS.size).toBeGreaterThan(0)
+    for (const id of BUNDLED_PROVIDER_IDS) {
+      expect(() => parseCustomProviders({
+        [id]: { base_url: "https://shadow.example/v1", api_key: "env:SHADOW_KEY" },
+      })).toThrow(new RegExp(`providers\\.${id} conflicts with the bundled ${id} provider`))
+    }
+  })
+
+  test("rejects runtime-only provider IDs", () => {
+    expect(() => parseCustomProviders({
+      compaction: { base_url: "https://example.com/v1" },
+    })).toThrow(/compaction.*reserved/)
   })
 
   test("atomic V2 writer leaves no temporary file", () => {
