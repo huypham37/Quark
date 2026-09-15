@@ -2,8 +2,12 @@ import { loadToken as loadCopilotToken } from "./copilot-auth"
 import { loadToken as loadCodexToken } from "./codex-auth"
 import type { Credential } from "./credentials"
 
-/** Compatibility reader only; migration into the machine store requires user consent. */
-export async function loadLegacyProviderCredential(providerId: string): Promise<Credential | null> {
+/**
+ * Reads the OAuth token file copilot-auth/codex-auth write under the config
+ * directory. The machine store is preferred; migrating these files into it
+ * requires user consent, so they remain a supported source.
+ */
+export async function loadOAuthTokenFile(providerId: string): Promise<Credential | null> {
   if (providerId === "copilot") {
     const token = loadCopilotToken()
     return token ? { type: "oauth", access: token } : null

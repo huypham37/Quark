@@ -14,7 +14,7 @@ export type CredentialOrigin =
   | "session"
   | "environment"
   | "machine-store"
-  | "legacy-token-file"
+  | "token-file"
   | "config"
 
 export type CredentialSourceConfig =
@@ -48,7 +48,7 @@ export interface ProviderAuthStatus {
 }
 
 export type CredentialPrompt = (providerId: string) => Promise<Credential | null>
-export type LegacyCredentialLoader = (providerId: string) => Promise<Credential | null>
+export type TokenFileCredentialLoader = (providerId: string) => Promise<Credential | null>
 
 const REDACTED = "[REDACTED]"
 const processSessionCredentials = new Map<string, Credential>()
@@ -98,7 +98,7 @@ export class DefaultCredentialResolver {
     private readonly store: CredentialStore,
     private readonly prompt?: CredentialPrompt,
     private readonly environment: NodeJS.ProcessEnv = process.env,
-    private readonly loadLegacy?: LegacyCredentialLoader,
+    private readonly loadTokenFile?: TokenFileCredentialLoader,
   ) {}
 
   setSessionCredential(providerId: string, credential: Credential): void {
@@ -155,9 +155,9 @@ export class DefaultCredentialResolver {
         }
         const stored = await this.resolveStore(input.provider.id)
         if (stored) return stored
-        if (input.provider.auth.type === "oauth-device" && this.loadLegacy) {
-          const legacy = await this.loadLegacy(input.provider.id)
-          if (legacy) return new RedactedResolvedCredential(legacy, "legacy-token-file")
+        if (input.provider.auth.type === "oauth-device" && this.loadTokenFile) {
+          const tokenFile = await this.loadTokenFile(input.provider.id)
+          if (tokenFile) return new RedactedResolvedCredential(tokenFile, "token-file")
         }
         return null
       }

@@ -8,7 +8,7 @@ import {
   type ProviderAuthStatus,
 } from "../provider/credentials"
 import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../provider/definitions"
-import { loadLegacyProviderCredential } from "../provider/legacy-credentials"
+import { loadOAuthTokenFile } from "../provider/oauth-token-files"
 import { normalizeDomain, pollForToken, requestDeviceCode } from "../provider/copilot-auth"
 import { loginWithBrowser, loginWithDeviceCode, type CodexToken } from "../provider/codex-auth"
 import type { Credential } from "../provider/credentials"
@@ -60,7 +60,7 @@ async function resolver(services: AuthServices): Promise<DefaultCredentialResolv
     services.store ?? await createDefaultCredentialStore(),
     undefined,
     services.environment ?? process.env,
-    loadLegacyProviderCredential,
+    loadOAuthTokenFile,
   )
   return result
 }

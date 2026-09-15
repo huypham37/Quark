@@ -9,7 +9,7 @@ import {
   type ProviderAuthStatus,
 } from "../provider/credentials"
 import { createDefaultCredentialStore, type CredentialStore } from "../provider/credential-store"
-import { loadLegacyProviderCredential } from "../provider/legacy-credentials"
+import { loadOAuthTokenFile } from "../provider/oauth-token-files"
 import { createRuntimeProviderRegistry } from "../provider/resolver"
 import type { ProviderRegistry } from "../provider/registry"
 import { bus } from "../session/events"
@@ -21,7 +21,7 @@ function createAuthResolver(store: CredentialStore): ProviderAuthResolver {
     store,
     undefined,
     process.env,
-    loadLegacyProviderCredential,
+    loadOAuthTokenFile,
   )
   return {
     status(input): Promise<ProviderAuthStatus> {

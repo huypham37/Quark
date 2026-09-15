@@ -138,7 +138,7 @@ describe("DefaultCredentialResolver", () => {
 
     const resolved = await resolver.resolve({ provider: codex, source: { source: "auto" }, interactive: false })
 
-    expect(resolved?.origin).toBe("legacy-token-file")
+    expect(resolved?.origin).toBe("token-file")
   })
 
   test("string, JSON, and inspect output redact credential values", async () => {

@@ -24,7 +24,7 @@ import { parseModelRef, type ModelRef, type PricingDescriptor } from "./catalog-
 import { CatalogRegistry } from "./catalog-registry"
 import { CatalogSnapshotStore, createCatalogSnapshot, type CatalogModel } from "./catalog-snapshot"
 import { pricingFromCatalogModel } from "./catalog-runtime"
-import { loadLegacyProviderCredential } from "./legacy-credentials"
+import { loadOAuthTokenFile } from "./oauth-token-files"
 import { createBundledProviderRegistry, type ProviderRegistry, type ProviderRuntime } from "./registry"
 
 export interface ResolvedModel {
@@ -109,7 +109,7 @@ async function resolveCredential(
           refresh: token.refresh,
           expiresAt: token.expires,
           metadata: { accountId: token.accountId },
-        }, "legacy-token-file")
+        }, "token-file")
       : null
   }
 
@@ -118,7 +118,7 @@ async function resolveCredential(
     store,
     undefined,
     process.env,
-    loadLegacyProviderCredential,
+    loadOAuthTokenFile,
   ).resolve({ provider, source: { source: "auto" }, interactive: false })
 }
 

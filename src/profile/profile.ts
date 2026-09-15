@@ -98,18 +98,6 @@ function configPaths(): string[] {
 // YAML config parsing
 // ---------------------------------------------------------------------------
 
-/**
- * Warn that the now-removed `permissions` profile key has been found and is
- * ignored. Called during YAML parsing so the warning includes the profile ID.
- */
-function warnObsoletePermissions(profileId: string): void {
-  notifyWarn(
-    "Profile configuration",
-    `profiles.${profileId}.permissions is no longer supported and is being ignored. Remove it from your config.`,
-    0,
-  )
-}
-
 function parseProfilesFromYAML(
   raw: Record<string, unknown>,
   configDir: string,
@@ -125,10 +113,6 @@ function parseProfilesFromYAML(
     const p = val as Record<string, unknown>
     const parsedModel = parseModel(p.model, id)
     const thinking = parseThinking(p, parsedModel.legacyThinking)
-
-    if (p.permissions !== undefined) {
-      warnObsoletePermissions(id)
-    }
 
     profiles[id] = {
       id,
