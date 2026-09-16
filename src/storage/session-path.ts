@@ -61,6 +61,11 @@ export function getSessionMetaPath(sessionId: string): string {
   return join(storageRoot, sessionId, "meta.json")
 }
 
+/** Socket used to stream live events to local session observers. */
+export function getLiveSessionSocketPath(sessionId: string): string {
+  return join(storageRoot, sessionId, "live.sock")
+}
+
 /** Get the aggregate session metadata index path. */
 export function getSessionIndexPath(): string {
   return join(storageRoot, "index.json")
