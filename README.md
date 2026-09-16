@@ -260,4 +260,4 @@ the surface area to change.
 
 ## License
 
-No license has been published yet.
+[MIT](LICENSE).

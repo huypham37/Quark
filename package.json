@@ -2,6 +2,7 @@
   "name": "@quark/sdk",
   "version": "0.1.0",
   "description": "Quark — AI coding agent SDK with session management, tools, and streaming",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
