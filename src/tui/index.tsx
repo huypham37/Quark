@@ -41,6 +41,7 @@ import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
+import { startLiveSessionServer } from "../session/live"
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -95,13 +96,16 @@ if (sessionArg) {
   process.env.QUARK_SESSION_ID = session.id
   const { messages, parts } = loadMessages(session.id)
   initialMessages = dbToTuiMessages(messages, parts)
+  startLiveSessionServer(session.id)
 }
 
 // Listen for lazy session creation from prompt()
 bus.on("session-created", ({ sessionId }) => {
   currentSession = { id: sessionId }
   process.env.QUARK_SESSION_ID = sessionId
+  startLiveSessionServer(sessionId)
 })
+bus.on("assistant-message-start", ({ sessionId }) => startLiveSessionServer(sessionId))
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
