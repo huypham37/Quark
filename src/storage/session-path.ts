@@ -66,6 +66,35 @@ export function getLiveSessionSocketPath(sessionId: string): string {
   return join(storageRoot, sessionId, "live.sock")
 }
 
+/**
+ * Directory holding supervisor sockets, addressed by a supervisor-chosen tag.
+ *
+ * Inside the storage root on purpose: `setSessionStorageRoot()` then isolates
+ * these sockets too, so a test never touches the real `~/.config`.
+ *
+ * Session enumeration tolerates it — `scanSessionMetaFiles()` skips any entry
+ * without a readable `meta.json`.
+ */
+export function getLiveSupervisorDir(): string {
+  return join(storageRoot, "live")
+}
+
+/**
+ * Socket a supervisor connects to, named by the tag it supplied.
+ *
+ * Returns `null` for a tag that cannot be a single path component. Rejected
+ * rather than sanitised: stripping characters would let two different tags
+ * collapse onto one path, and a supervisor that misspells its tag would be
+ * silently talking to somebody else's socket.
+ *
+ * The tag arrives from outside the process (`QUARK_SESSION_TAG`), so it is
+ * untrusted — `../` must not be able to escape this directory.
+ */
+export function getLiveSupervisorSocketPath(tag: string): string | null {
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(tag) || tag === "." || tag === "..") return null
+  return join(getLiveSupervisorDir(), `${tag}.sock`)
+}
+
 /** Get the aggregate session metadata index path. */
 export function getSessionIndexPath(): string {
   return join(storageRoot, "index.json")

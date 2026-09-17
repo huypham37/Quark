@@ -109,6 +109,31 @@ quark --watch <id>
 | `-l, --list-profiles` | List available profiles |
 | `-h, --help` | Show help |
 
+### Supervised runs
+
+Something that spawns the TUI — an orchestrator, a session recorder — can name
+itself and be told which session the TUI is on. That id is not otherwise
+obtainable: the terminal title carries the session *name*, `session/index.json`
+cannot tell two sessions in one directory apart, and the id in the child's
+environment is unreadable from outside.
+
+```bash
+QUARK_SESSION_TAG=my-supervisor quark
+# → ~/.config/quark/session/live/my-supervisor.sock
+```
+
+Connect to that socket and read newline-delimited JSON. The first frame is
+`{"event":"ready","data":{"sessionId":null,"tag":"my-supervisor"}}` — `null`
+until the first prompt creates a session, so a supervisor may connect the moment
+it spawns the process. Every move after that is announced as
+`{"event":"active-session","data":{"sessionId":"…"}}`: a new session, a branch,
+`/new`, the session picker. The socket also mirrors live activity for whichever
+session it is on, the way `quark --watch <id>` mirrors a named one.
+
+The tag is opaque — any `[A-Za-z0-9._-]` string up to 64 characters — and Quark
+never learns what it means. A tag that cannot be a filename is refused, and the
+run continues without a socket. With the variable unset, nothing is created.
+
 ---
 
 ## Configuration

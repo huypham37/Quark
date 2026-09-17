@@ -41,7 +41,7 @@ import { firstRunAuthMessage, formatAuthStatuses } from "./auth-status"
 import { listWorktrees, filterToProjectWorktrees, getBranchFromPath, getWorktreeBranch, resolveWorktree, createWorktree } from "../worktree/worktree"
 import * as path from "path"
 import * as fs from "fs"
-import { startLiveSessionServer } from "../session/live"
+import { startLiveSessionServer, startLiveSupervisor } from "../session/live"
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -106,6 +106,14 @@ bus.on("session-created", ({ sessionId }) => {
   startLiveSessionServer(sessionId)
 })
 bus.on("assistant-message-start", ({ sessionId }) => startLiveSessionServer(sessionId))
+
+// A supervisor (an orchestrator that spawned this TUI) names itself through
+// `QUARK_SESSION_TAG` and gets one socket, whatever session we are on — it
+// cannot be addressed by session id, because the id is what it wants. Opt-in:
+// unset, nothing here runs. CLI runs deliberately do not start one, so a
+// subagent that inherits the tag does not open a second socket on it.
+const supervisorTag = process.env.QUARK_SESSION_TAG?.trim()
+if (supervisorTag) startLiveSupervisor(supervisorTag)
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
