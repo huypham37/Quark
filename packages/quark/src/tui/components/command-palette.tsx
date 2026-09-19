@@ -7,6 +7,7 @@ import type { TextareaRenderable } from "@opentui/core"
 import { colors } from "../theme"
 import type { PaletteEntry } from "../palette-index"
 import type { SessionTreeRow } from "../session-tree-picker"
+import type { SettingRow } from "../settings-rows"
 import { sessionControls, type SessionAction } from "../session-controls"
 import type { ConnectProviderRow } from "../connect-provider"
 import type { WorktreePickerRow } from "../worktree-picker"
@@ -16,6 +17,7 @@ const MAX_VISIBLE_SESSIONS = 8
 
 export type PaletteMode =
   | "search"
+  | "settings"
   | "sessions"
   | "skills"
   | "models"
@@ -55,6 +57,7 @@ export interface CommandPaletteProps {
   onInput: () => void
   onRef?: (ref: TextareaRenderable) => void
   mode?: PaletteMode
+  settingsRows?: SettingRow[]
   sessionRows?: SessionTreeRow[]
   sessionAction?: SessionAction
   sessionActionMenu?: SessionActionMenu
@@ -66,6 +69,7 @@ export interface CommandPaletteProps {
 export const CommandPalette: Component<CommandPaletteProps> = (props) => {
   const dims = useTerminalDimensions()
   const sessionMode = () => props.mode === "sessions"
+  const settingsMode = () => props.mode === "settings"
   const worktreeMode = () => props.mode === "worktrees"
   const worktreeCreateMode = () => props.mode === "worktree-create"
   const entityMode = () => props.mode === "skills" || props.mode === "models" || props.mode === "connect-providers"
@@ -104,6 +108,17 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
     return rows.length <= MAX_VISIBLE ? 0 : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), rows.length - MAX_VISIBLE)
   }
   const hasQuery = () => entityMode() || worktreeMode() || Boolean(props.query.trim())
+  const visibleSettings = () => {
+    const rows = props.settingsRows ?? []
+    if (rows.length <= MAX_VISIBLE) return rows
+    const start = Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), rows.length - MAX_VISIBLE)
+    return rows.slice(start, start + MAX_VISIBLE)
+  }
+  const visibleSettingsStart = () => {
+    const rows = props.settingsRows ?? []
+    return rows.length <= MAX_VISIBLE ? 0 : Math.min(Math.max(0, props.selectedIndex - MAX_VISIBLE + 1), rows.length - MAX_VISIBLE)
+  }
+  const settingsRowCount = () => Math.max(1, visibleSettings().length)
   const rows = () => worktreeMode()
     ? Math.max(1, visibleWorktrees().length)
     : hasQuery() && props.entries.length === 0 ? 1 : visible().length
@@ -125,6 +140,8 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
       ? props.worktreeError ? 9 : 8
         : sessionMode()
           ? sessionRowCount() + 6
+        : settingsMode()
+          ? settingsRowCount() + 6
         : hasQuery() ? 4 + MAX_VISIBLE + (entityMode() || worktreeMode() ? 1 : 0) : 3
   const top = () => Math.max(0, Math.floor((dims().height - 6 - height()) / 2))
   const actionMenuWidth = () => Math.min(36, Math.max(20, dims().width - 6))
@@ -186,10 +203,11 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>Enter create · Esc back</text></box>
           </Show>
           <Show when={!worktreeCreateMode()}>
-          <Show when={sessionMode() || worktreeMode() || entityMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.text} bg={colors.commandCardBg} bold>{sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : worktreeMode() ? "Worktrees" : props.mode === "models" ? "Models" : props.mode === "connect-providers" ? "Connect a provider" : "Skills"}</text></box></Show>
-          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.statusModel} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused={!sessionActionMenuOpen()} height={1} flexGrow={1} value={props.query} placeholder={sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
-          <Show when={sessionMode() || rows() > 0}><box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box></Show>
-          <Show when={!sessionMode() && !worktreeMode() && props.query.trim() && props.entries.length === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No results</text></box></Show>
+          <Show when={sessionMode() || worktreeMode() || entityMode() || settingsMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.text} bg={colors.commandCardBg} bold>{settingsMode() ? "Settings" : sessionMode() ? props.sessionAction === "rename" ? "Rename session" : "Sessions" : worktreeMode() ? "Worktrees" : props.mode === "models" ? "Models" : props.mode === "connect-providers" ? "Connect a provider" : "Skills"}</text></box></Show>
+          <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={colors.statusModel} bg={colors.commandCardBg}>{"> "}</text><textarea ref={(ref: TextareaRenderable) => props.onRef?.(ref)} focused={!sessionActionMenuOpen()} height={1} flexGrow={1} value={props.query} placeholder={settingsMode() ? "Search settings" : sessionMode() ? "Search sessions" : worktreeMode() ? "Search worktrees" : props.mode === "skills" ? "Search skills" : props.mode === "models" ? "Search models" : props.mode === "connect-providers" ? "Search providers" : "Search anything in Quark"} placeholderColor={colors.muted} textColor={colors.text} focusedTextColor={colors.text} cursorColor={colors.cursorColor} cursorStyle={{ style: "block", blinking: true }} onContentChange={() => props.onInput()} /></box>
+          <Show when={sessionMode() || settingsMode() || rows() > 0}><box height={1} backgroundColor={colors.commandCardBg}><text fg={colors.outline} bg={colors.commandCardBg}>{"─".repeat(Math.max(0, width() - 2))}</text></box></Show>
+          <Show when={!sessionMode() && !worktreeMode() && !settingsMode() && props.query.trim() && props.entries.length === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No results</text></box></Show>
+          <Show when={settingsMode() && visibleSettings().length === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No matching settings</text></box></Show>
           <Show when={sessionMode() && (props.sessionRows?.length ?? 0) === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No sessions found</text></box></Show>
           <Show when={worktreeMode() && (props.worktreeRows?.length ?? 0) === 0}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>No worktrees found</text></box></Show>
           <Show when={sessionMode()}><For each={visibleSessions()}>{(row, index) => {
@@ -204,7 +222,13 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             const marker = () => row.type === "worktree" ? row.current ? " ← current" : row.root ? " (root)" : "" : ""
             return <box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={row.type === "disabled" ? colors.muted : selected() ? colors.statusModel : colors.text} bg={colors.commandCardBg} bold={selected()}>{selected() ? "❯ " : "  "}{truncate(row.label, Math.max(3, width() - marker().length - 6))}{marker()}</text></box>
           }}</For></Show>
-          <Show when={!sessionMode() && !worktreeMode()}><For each={visible()}>{(entry, index) => {
+          <Show when={settingsMode()}><For each={visibleSettings()}>{(row, index) => {
+            const selected = () => visibleSettingsStart() + index() === props.selectedIndex
+            const editable = () => Boolean(row.cycle)
+            const rendered = () => editable() ? `◀ ${row.value()} ▶` : row.value()
+            return <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={selected() ? colors.statusModel : colors.text} bg={colors.commandCardBg} bold={selected()}>{selected() ? "❯ " : "  "}{truncate(row.label, Math.max(3, width() - rendered().length - 8))}</text><box flexGrow={1} backgroundColor={colors.commandCardBg} /><text fg={editable() ? (selected() ? colors.statusModel : colors.text) : colors.muted} bg={colors.commandCardBg}>{rendered()}</text></box>
+          }}</For></Show>
+          <Show when={!sessionMode() && !worktreeMode() && !settingsMode()}><For each={visible()}>{(entry, index) => {
             const selected = () => visibleStart() + index() === props.selectedIndex
             const type = () => entry.type === "provider" ? "Provider" : entry.type[0]!.toUpperCase() + entry.type.slice(1)
             const state = () => entry.isCurrent ? " · current" : entry.isUnavailable ? " · unavailable" : ""
@@ -213,6 +237,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
             const label = () => truncate(entry.label, Math.max(3, available() - suffix().length - 1))
             return <box height={1} paddingX={1} flexDirection="row" backgroundColor={colors.commandCardBg}><text fg={selected() ? colors.statusModel : colors.muted} bg={colors.commandCardBg} bold={selected()}>{selected() ? "❯ " : "  "}{type().padEnd(9)}</text><text fg={selected() ? colors.statusModel : colors.text} bg={colors.commandCardBg} bold={selected()}>{label()}</text><box flexGrow={1} backgroundColor={colors.commandCardBg} /><text fg={colors.muted} bg={colors.commandCardBg}>{suffix()}</text></box>
           }}</For></Show>
+          <Show when={settingsMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>↑↓ select · ←→ change · Esc back</text></box></Show>
           <Show when={sessionMode()}><box height={1} paddingX={1} backgroundColor={colors.commandCardBg}><text fg={colors.muted} bg={colors.commandCardBg}>{sessionControls(width(), props.sessionAction ?? "browse")}</text></box></Show>
           </Show>
         </Show>

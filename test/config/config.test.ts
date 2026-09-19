@@ -70,6 +70,7 @@ describe("loadConfig", () => {
     expect(config.maxSteps).toBe(100)
     expect(config.providers).toEqual({})
     expect(config.hideReadonlyTools).toBe(false)
+    expect(config.summaryDetail).toBe("normal")
   })
 
   test("returns defaults when the config file has invalid YAML", () => {
@@ -219,6 +220,37 @@ describe("loadConfig — max_steps validation", () => {
 
 // ---------------------------------------------------------------------------
 // setConfigField
+// ---------------------------------------------------------------------------
+describe("summary_detail", () => {
+  test("reads a valid level from file", () => {
+    writeConfig({ version: 3, models: { small: "openai/gpt-5-mini" }, summary_detail: "loud" })
+
+    expect(loadConfig().summaryDetail).toBe("loud")
+  })
+
+  test("falls back to normal for unknown or non-string levels", () => {
+    for (const value of ["verbose", "", 3, null, true, { level: "quiet" }]) {
+      resetConfigCache()
+      writeConfig({ version: 3, models: { small: "openai/gpt-5-mini" }, summary_detail: value })
+      expect(loadConfig().summaryDetail).toBe("normal")
+    }
+  })
+
+  test("round-trips through setConfigField", () => {
+    setConfigField("summaryDetail", "quiet")
+
+    expect(readConfigFile().summary_detail).toBe("quiet")
+    expect(loadConfig().summaryDetail).toBe("quiet")
+  })
+
+  test("absent from an older config without rewriting it as normal", () => {
+    writeConfig({ version: 3, models: { small: "openai/gpt-5-mini" } })
+
+    expect(loadConfig().summaryDetail).toBe("normal")
+    expect(readConfigFile().summary_detail).toBeUndefined()
+  })
+})
+
 // ---------------------------------------------------------------------------
 describe("setConfigField", () => {
   test("creates the config file and directory if missing", () => {

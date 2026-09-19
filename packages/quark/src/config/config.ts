@@ -39,6 +39,23 @@ export interface ModelsConfig {
   small: string
 }
 
+/**
+ * How much of a tool run the transcript shows.
+ *
+ *   quiet   only the collapsed activity summary
+ *   normal  activity summaries expanded, tool call headers only
+ *   loud    everything, including diffs and command output
+ */
+export type SummaryDetail = "quiet" | "normal" | "loud"
+
+export const SUMMARY_DETAIL_LEVELS: readonly SummaryDetail[] = ["quiet", "normal", "loud"]
+
+export const DEFAULT_SUMMARY_DETAIL: SummaryDetail = "normal"
+
+export function isSummaryDetail(value: unknown): value is SummaryDetail {
+  return typeof value === "string" && (SUMMARY_DETAIL_LEVELS as readonly string[]).includes(value)
+}
+
 export interface QuarkConfig {
   /**
    * V2 keeps agents inline under `profiles:`.
@@ -58,6 +75,8 @@ export interface QuarkConfig {
   defaultAgent?: string
   providers: Record<string, CustomProviderConfig>
   hideReadonlyTools: boolean
+  /** Transcript verbosity for tool activity. */
+  summaryDetail: SummaryDetail
   /** Optional executable name/path used to open local file links. */
   editor?: string
 }
@@ -179,6 +198,7 @@ export function defaultConfig(): QuarkConfig {
     branching: { ...BRANCHING_DEFAULTS },
     providers: {},
     hideReadonlyTools: false,
+    summaryDetail: DEFAULT_SUMMARY_DETAIL,
   }
 }
 
@@ -219,6 +239,8 @@ export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
     ...(defaultAgent ? { defaultAgent } : {}),
     providers: parseCustomProviders(raw.providers),
     hideReadonlyTools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
+    // A typo must never brick startup: unknown levels silently fall back.
+    summaryDetail: isSummaryDetail(raw.summary_detail) ? raw.summary_detail : DEFAULT_SUMMARY_DETAIL,
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
   }
 }
@@ -257,6 +279,7 @@ export function serializeConfig(config: QuarkConfig): string {
     ...agentFields,
     providers,
     hide_readonly_tools: config.hideReadonlyTools,
+    summary_detail: config.summaryDetail,
     ...(config.editor ? { editor: config.editor } : {}),
   })
 }
@@ -280,7 +303,7 @@ export function parseModelSpec(spec: string): { provider?: string; model: string
   return index === -1 ? { model: spec } : { provider: spec.slice(0, index), model: spec.slice(index + 1) }
 }
 
-export function setConfigField<K extends "maxSteps" | "branching" | "hideReadonlyTools">(
+export function setConfigField<K extends "maxSteps" | "branching" | "hideReadonlyTools" | "summaryDetail">(
   key: K,
   value: QuarkConfig[K],
 ): void {

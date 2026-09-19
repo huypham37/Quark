@@ -1,4 +1,11 @@
 // @jsxImportSource @opentui/solid
+//
+// SubAgentView — the box around a sub-agent run (header, token meter, optional
+// body with the task prompt and the child tool calls).
+//
+// The summary detail level decides whether the body exists at all: `quiet` keeps
+// only the header, `normal`/`loud` open it by default, and only `loud` shows the
+// child tools' results.
 
 import type { Component } from "solid-js"
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
@@ -6,20 +13,25 @@ import { colors } from "../theme"
 import type { SubAgentState, SubAgentToolPart } from "../state"
 import { ToolCard } from "./tool-card"
 import { SubAgentTokenMeter } from "./sub-agent-token-meter"
+import { summaryDetail, transcriptVisibility } from "../settings-store"
+import type { SummaryDetail } from "../../config/config"
 
 interface SubAgentViewProps {
   subAgent: SubAgentState
   parentStatus: "pending" | "running" | "completed" | "error"
   defaultExpanded?: boolean
+  /** Overrides the live setting. Used by tests and previews. */
+  level?: SummaryDetail
 }
 
-const ChildToolLine: Component<{ tool: SubAgentToolPart }> = (props) => (
+const ChildToolLine: Component<{ tool: SubAgentToolPart; showResult: boolean }> = (props) => (
   <box paddingLeft={2}>
     <ToolCard
       tool={props.tool.tool}
       status={props.tool.status}
       input={props.tool.input}
       error={props.tool.error}
+      showResult={props.showResult}
     />
   </box>
 )
@@ -30,11 +42,15 @@ function formatSeconds(ms: number): string {
 }
 
 export const SubAgentView: Component<SubAgentViewProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(props.defaultExpanded ?? false)
+  const level = () => props.level ?? summaryDetail()
+  const visibility = () => transcriptVisibility(level())
+  // `quiet` renders no body, so the manual disclosure is disabled entirely.
+  const canExpand = () => visibility().expanded
+  const [expanded, setExpanded] = createSignal(props.defaultExpanded ?? visibility().expanded)
   const [liveMs, setLiveMs] = createSignal(0)
 
   createEffect(() => {
-    if (props.subAgent.done) setExpanded(false)
+    if (props.subAgent.done && canExpand()) setExpanded(false)
   })
 
   // Live timer: tick every second while running
@@ -89,7 +105,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
       <box
         flexDirection="row"
         backgroundColor={colors.commandCardBg}
-        onMouseUp={() => hasDetails() && setExpanded((value) => !value)}
+        onMouseUp={() => canExpand() && hasDetails() && setExpanded((value) => !value)}
       >
         <text fg={statusColor()} flexShrink={0}>• </text>
         <text bold fg={colors.text} flexShrink={0}>{headerLabel()}{durationLabel()}</text>
@@ -97,7 +113,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         <Show when={props.subAgent.modelName || props.subAgent.profile} fallback={null}>
           <text fg={colors.muted} flexShrink={1}>{props.subAgent.modelName ?? profileName()}</text>
         </Show>
-        <Show when={hasDetails()}>
+        <Show when={canExpand() && hasDetails()}>
           <text fg={colors.muted} flexShrink={0}>{expanded() ? " ▾" : " ▸"}</text>
         </Show>
       </box>
@@ -108,7 +124,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
         color={meterColor()}
       />
 
-      <Show when={hasDetails() && expanded()}>
+      <Show when={canExpand() && hasDetails() && expanded()}>
         <box flexDirection="column" backgroundColor={colors.commandCardBg}>
           <Show when={props.subAgent.prompt}>
             <text paddingLeft={2} fg={colors.toolPath} wrap="wrap">{`Task: "${props.subAgent.prompt}"`}</text>
@@ -116,7 +132,7 @@ export const SubAgentView: Component<SubAgentViewProps> = (props) => {
 
           <Show when={expanded()}>
             <For each={props.subAgent.tools}>
-              {(tool) => <ChildToolLine tool={tool} />}
+              {(tool) => <ChildToolLine tool={tool} showResult={visibility().results} />}
             </For>
             <Show when={!isDone() && props.subAgent.textPreview}>
               <box paddingLeft={2}>

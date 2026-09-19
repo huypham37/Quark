@@ -32,6 +32,7 @@ import { buildEditorArgv, resolveEditor, type FileTarget } from "./editor"
 import { clearCache as clearSkillCache } from "@quark/runner/skill/skill"
 import { buildPaletteEntries } from "./palette-index"
 import { commands } from "./commands"
+import { syncSettingsFromConfig } from "./settings-store"
 import { dismiss, getActive, info as notifyInfo } from "@quark/runner/notification/notification"
 import { undoLatest } from "@quark/runner/commands/undo"
 import { exportSessionToMarkdown } from "@quark/runner/commands/export"
@@ -521,8 +522,8 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
-  // /settings — open config in $EDITOR (works without an active session)
-  if (command === "settings") {
+  // /configs — open config.yaml in $EDITOR (works without an active session)
+  if (command === "configs") {
     await openEditor(sid)
     return { handled: true }
   }
@@ -665,6 +666,7 @@ function reloadConfig(): Promise<void> {
     if (n.title === "Thinking configuration") dismiss(n.id)
   }
   resetConfigCache()
+  syncSettingsFromConfig()
   return materializeAgent(resolveAgent(activeAgent.id)).then(async (agent) => {
     activeAgent = agent
     await runtime.rebind(activeAgent)
@@ -684,7 +686,7 @@ function reloadConfig(): Promise<void> {
 }
 
 // The editor inherits the terminal directly, so it renders in the same window
-// like `git commit` opening vim. This is shared by /settings and file links.
+// like `git commit` opening vim. This is shared by /configs and file links.
 let openingEditor = false
 async function openEditor(sid: string | null, target: FileTarget = { filePath: configPath() }): Promise<void> {
   if (openingEditor) return
@@ -846,6 +848,10 @@ if (themeArg === "light" || themeArg === "dark") {
 
   setTerminalBg(bg)
 }
+
+// Publish the on-disk settings from the config file before the first render so components read
+// the persisted values (the store falls back to defaults until this runs).
+syncSettingsFromConfig()
 
 render(() => (
   <App

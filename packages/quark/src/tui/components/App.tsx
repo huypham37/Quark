@@ -20,6 +20,7 @@ import { SteerDivider } from "./steer-divider"
 import { Prompt } from "./prompt"
 import { Autocomplete, type PickerItem, type AutocompleteMode } from "./autocomplete"
 import { CommandPalette, type PaletteMode } from "./command-palette"
+import { buildSettingRows, filterSettingRows, type SettingRow } from "../settings-rows"
 import { preservePaletteSelectionIndex, retainPaletteSelectionIndex, searchPaletteEntries, type PaletteEntry } from "../palette-index"
 import { QuestionPrompt, createQuestionKeyHandler } from "./question-prompt"
 import { FooterBar } from "./footer-bar"
@@ -261,6 +262,7 @@ export const App: Component<AppProps> = (props) => {
   const [paletteResults, setPaletteResults] = createSignal<PaletteEntry[]>([])
   const [paletteSelectedIndex, setPaletteSelectedIndex] = createSignal(0)
   const [paletteMode, setPaletteMode] = createSignal<PaletteMode>("search")
+  const [paletteSettingsRows, setPaletteSettingsRows] = createSignal<SettingRow[]>([])
   const [connectProviders, setConnectProviders] = createSignal<ConnectProviderRow[]>([])
   const [connectProvider, setConnectProvider] = createSignal<ConnectProviderRow | undefined>()
   const [connectApiKey, setConnectApiKey] = createSignal("")
@@ -434,6 +436,7 @@ export const App: Component<AppProps> = (props) => {
     setPaletteResults([])
     setPaletteSelectedIndex(0)
     setPaletteMode("search")
+    setPaletteSettingsRows([])
     setConnectProviders([])
     setConnectProvider(undefined)
     setConnectApiKey("")
@@ -485,6 +488,7 @@ export const App: Component<AppProps> = (props) => {
     setPaletteResults([])
     setPaletteSelectedIndex(0)
     setPaletteMode("search")
+    setPaletteSettingsRows([])
     setConnectProviders([])
     setConnectProvider(undefined)
     setConnectApiKey("")
@@ -545,6 +549,7 @@ export const App: Component<AppProps> = (props) => {
     setPaletteSessionAction("browse")
     setPaletteWorktreeInputs([])
     setPaletteWorktreeRows([])
+    setPaletteSettingsRows([])
     setWorktreeCreateError(undefined)
     return true
   }
@@ -555,6 +560,38 @@ export const App: Component<AppProps> = (props) => {
     paletteInputRef?.clear()
     setPaletteResults(entityPaletteEntries(type))
     setPaletteSelectedIndex(0)
+  }
+
+  /**
+   * Open the settings mode. Reachable from `/settings` in the composer and from
+   * the command entry inside the palette, so it must work from cold as well as
+   * from an already-open palette.
+   */
+  const openSettingsPalette = (): boolean => {
+    if (state.store.question || statisticsContent() !== null) return false
+    if (!paletteOpen()) {
+      savedComposer = {
+        text: "",
+        cursorOffset: 0,
+        images: [...pendingImages()],
+        selectedImageIndex: selectedImageIndex(),
+        historyIndex: historyIndex(),
+        historyDraft: historyDraft(),
+        scrollTop: scroll?.scrollTop ?? 0,
+      }
+    }
+    setSlash(SLASH_INACTIVE)
+    setMention(MENTION_INACTIVE)
+    setInputText("")
+    setPaletteMode("settings")
+    setPaletteQuery("")
+    paletteInputRef?.clear()
+    setPaletteEntries([])
+    setPaletteResults([])
+    setPaletteSettingsRows(filterSettingRows(buildSettingRows(), ""))
+    setPaletteSelectedIndex(0)
+    setPaletteOpen(true)
+    return true
   }
 
   const refreshOpenPaletteEntries = async () => {
@@ -708,6 +745,13 @@ export const App: Component<AppProps> = (props) => {
       return
     }
     if (paletteMode().startsWith("connect-") && paletteMode() !== "connect-providers") return
+    if (paletteMode() === "settings") {
+      setPaletteQuery(query)
+      const rows = filterSettingRows(buildSettingRows(), query)
+      setPaletteSettingsRows(rows)
+      setPaletteSelectedIndex(0)
+      return
+    }
     if (paletteMode() === "sessions") {
       setPaletteQuery(query)
       if (paletteSessionAction() === "rename") return
@@ -992,6 +1036,10 @@ export const App: Component<AppProps> = (props) => {
     }
 
     if (commandId === "sessions" && !args && openSessionsPalette()) {
+      return
+    }
+
+    if (commandId === "settings" && !args && openSettingsPalette()) {
       return
     }
 
@@ -1421,6 +1469,12 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
+    if (paletteMode() === "settings") {
+      const row = paletteSettingsRows()[paletteSelectedIndex()]
+      row?.cycle?.(1)
+      return
+    }
+
     const entry = paletteResults()[paletteSelectedIndex()]
     if (!entry) return
     if (entry.isUnavailable) {
@@ -1463,6 +1517,11 @@ export const App: Component<AppProps> = (props) => {
       if (action.commandId === "sessions") {
         savePaletteSearch()
         if (!openSessionsPalette()) paletteSearchSnapshot = null
+        return
+      }
+      if (action.commandId === "settings") {
+        savePaletteSearch()
+        if (!openSettingsPalette()) paletteSearchSnapshot = null
         return
       }
       if (action.commandId === "worktree") {
@@ -1540,12 +1599,15 @@ export const App: Component<AppProps> = (props) => {
             ? moveWorktreeRowSelection(paletteWorktreeRows(), index, -1)
           : Math.max(0, index - 1))
       } else if (evt.name === "down") {
-        const maximum = paletteMode() === "connect-codex-method" ? 1 : paletteResults().length - 1
+        const maximum = paletteMode() === "connect-codex-method" ? 1 : paletteMode() === "settings" ? paletteSettingsRows().length - 1 : paletteResults().length - 1
         setPaletteSelectedIndex((index) => paletteMode() === "sessions"
           ? moveSessionRowSelection(paletteSessionRows(), index, 1)
           : paletteMode() === "worktrees"
             ? moveWorktreeRowSelection(paletteWorktreeRows(), index, 1)
           : Math.min(Math.max(0, maximum), index + 1))
+      } else if (paletteMode() === "settings" && (evt.name === "left" || evt.name === "right")) {
+        const row = paletteSettingsRows()[paletteSelectedIndex()]
+        row?.cycle?.(evt.name === "left" ? -1 : 1)
       } else if (evt.name === "return") {
         queueMicrotask(() => { void runPaletteSelection() })
       } else if (evt.name === "escape") {
@@ -1958,6 +2020,7 @@ export const App: Component<AppProps> = (props) => {
         mode={paletteMode()}
         query={paletteQuery()}
         entries={paletteResults()}
+        settingsRows={paletteSettingsRows()}
         sessionRows={paletteSessionRows()}
         sessionAction={paletteSessionAction()}
         sessionActionMenu={sessionActionMenuOpen() ? {

@@ -23,6 +23,8 @@ interface ToolCardProps {
   error?: string
   diff?: string
   streamingContent?: string
+  /** Render the tool's result body (diff, stdout, streamed write). */
+  showResult?: boolean
 }
 
 function getToolLabel(tool: string, input: Record<string, unknown>): string {
@@ -90,17 +92,19 @@ const ToolCardHeader: Component<ToolCardProps> = (props) => {
 
 const ToolCardBody: Component<ToolCardProps> = (props) => {
   const hasCompletedDiff = () => props.status === "completed" && !!props.diff
+  const showResult = () => props.showResult === true
 
   return (
     <>
-      <Show when={props.tool === "write" && props.status === "running" && props.streamingContent}>
+      <Show when={showResult() && props.tool === "write" && props.status === "running" && props.streamingContent}>
         <WriteStreamView content={props.streamingContent!} />
       </Show>
-      <Show when={hasCompletedDiff()}>
+      <Show when={showResult() && hasCompletedDiff()}>
         <DiffView diff={props.diff!} />
       </Show>
       <Show when={
-        props.output
+        showResult()
+        && props.output
         && props.status !== "running"
         && props.status !== "pending"
         && props.tool !== "write"

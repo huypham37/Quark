@@ -32,9 +32,9 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("c prefix matches compact and connect", () => {
+  test("c prefix matches configs and compact and connect", () => {
     const result = filterCommands("c")
-    expect(result.map((command) => command.id)).toEqual(["compact", "connect"])
+    expect(result.map((command) => command.id)).toEqual(["configs", "compact", "connect"])
   })
 
   test("connect command opens provider authentication", () => {
@@ -98,6 +98,18 @@ describe("filterCommands", () => {
     expect(result.map((c) => c.id)).toContain("skills")
     expect(result.map((c) => c.id)).toContain("steer")
     expect(result.map((c) => c.id)).toContain("statistics")
+  })
+
+  test("settings command describes the native settings palette", () => {
+    const cmd = commands.find((c) => c.id === "settings")!
+    expect(cmd.description).toMatch(/settings/i)
+    expect(cmd.description).not.toMatch(/editor/i)
+  })
+
+  test("configs command replaces the editor-opening settings command", () => {
+    const cmd = filterCommands("configs", 1)[0]!
+    expect(cmd.id).toBe("configs")
+    expect(cmd.description).toMatch(/editor/i)
   })
 
   test("r prefix matches reload-config only", () => {
