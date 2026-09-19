@@ -4,7 +4,7 @@
 // the SolidJS store + dispatch implementation.
 
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
-import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData, ReasoningPartData } from "@quark/runner/session/message"
+import type { MessageRow, PartRow, TextPartData, ToolPartData, ImagePartData } from "@quark/runner/session/message"
 import { normalizeLegacyToolStatus, LEGACY_INTERRUPTED_ERROR } from "@quark/runner/shared/conversation-view"
 import { resolveAgent } from "../agent/agent"
 import type { CatalogModel } from "@quark/runner/provider/catalog-snapshot"
@@ -42,7 +42,6 @@ export interface TuiMessage {
 export type TuiPart =
   | { type: "text"; text: string; streaming?: boolean }
   | { type: "tool"; tool: string; callId: string; status: "pending" | "running" | "completed" | "error"; input: Record<string, unknown>; output?: string; error?: string; diff?: string; streamingContent?: string; subAgent?: SubAgentState }
-  | { type: "thinking"; done: boolean; text: string; startedAt?: number; durationMs?: number }
   | { type: "image"; mime: string; data: string; label: string }
 
 /** Standalone divider row inserted into the message list after a branch. */
@@ -144,11 +143,8 @@ export type TuiAction =
   | { type: "subagent-done"; messageId: string; parentCallId: string; profile: string }
   | { type: "subagent-error"; messageId: string; parentCallId: string; profile: string; kind: SubagentErrorKind; message: string }
   | { type: "cycle-thinking"; model: CatalogModel | null }
-  | { type: "reasoning-start"; messageId: string }
   | { type: "set-question"; request: QuestionRequest }
   | { type: "clear-question" }
-  | { type: "reasoning-delta"; messageId: string; partId: string; delta: string; text: string }
-  | { type: "reasoning-end"; messageId: string }
   | { type: "model-switched"; modelSpec: string; catalogModel?: CatalogModel; thinkingEffort?: string; thinkingMode?: string }
   | { type: "truncate-messages"; upToMessageId: string; tokensUsed: number }
   | { type: "remove-message"; messageId: string }
@@ -276,12 +272,8 @@ export function dbToTuiMessages(messages: MessageRow[], parts: PartRow[]): TuiMe
         // Count existing image parts to derive label number
         const idx = tuiParts.filter((x) => x.type === "image").length + 1
         tuiParts.push({ type: "image", mime: d.mime, data: d.data, label: `Image ${idx}` })
-      } else if (p.type === "reasoning") {
-        const d = JSON.parse(p.data) as ReasoningPartData
-        if (d.text) {
-          tuiParts.push({ type: "thinking", done: true, text: d.text })
-        }
       }
+      // Reasoning parts are deliberately dropped: the TUI never renders them.
       // skip step-start, step-finish — they're metadata
     }
 
@@ -717,46 +709,6 @@ export function dispatch(state: AppState, action: TuiAction): void {
       setStore("thinkingEffort", levels[(idx + 1) % levels.length] ?? "none")
       break
     }
-
-    case "reasoning-start":
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          parts.push({ type: "thinking", done: false, text: "", startedAt: Date.now() })
-        }),
-      )
-      break
-
-    case "reasoning-delta":
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const last = parts[parts.length - 1]
-          if (last && last.type === "thinking") {
-            last.text = action.text
-          }
-        }),
-      )
-      break
-
-    case "reasoning-end":
-      setStore(
-        "messages",
-        (m) => m.id === action.messageId,
-        "parts",
-        produce((parts: TuiPart[]) => {
-          const last = parts[parts.length - 1]
-          if (last && last.type === "thinking") {
-            last.done = true
-            if (last.startedAt != null) last.durationMs = Date.now() - last.startedAt
-          }
-        }),
-      )
-      break
 
     case "model-switched": {
       const lim = action.catalogModel?.limit

@@ -82,12 +82,12 @@ function isActivityTool(part: TuiPart | undefined): part is ToolPart {
 /**
  * Join tool runs across model steps without crossing rendered content.
  *
- * A model step can contain both tool calls and reasoning/text. The former
- * all-or-nothing message rule treated that entire step as a boundary, which
- * split `grep → read → thinking`. Instead, move only a following message's
- * leading tool run into the prior message when its displayed tail is also a
- * tool run. Thinking, text, images, sub-agents, users, and steer dividers are
- * therefore reliable boundaries for every activity kind.
+ * A model step can contain both tool calls and text. The former all-or-nothing
+ * message rule treated that entire step as a boundary, which split
+ * `grep → read → text`. Instead, move only a following message's leading tool
+ * run into the prior message when its displayed tail is also a tool run. Text,
+ * images, sub-agents, users, and steer dividers are therefore reliable
+ * boundaries for every activity kind.
  */
 export function mergeToolActivityMessages(
   messages: TuiMessage[],

@@ -456,20 +456,6 @@ export function wireEvents(state: AppState, bus: TypedBus) {
       })
     }))
 
-    // ----- Reasoning / thinking events -----
-
-    unsubs.push(on("reasoning-start", (data) => {
-      dispatch(state, { type: "reasoning-start", messageId: data.messageId })
-    }))
-
-    unsubs.push(on("reasoning-delta", (data) => {
-      dispatch(state, { type: "reasoning-delta", messageId: data.messageId, partId: data.partId, delta: data.delta, text: data.text })
-    }))
-
-    unsubs.push(on("reasoning-end", (data) => {
-      dispatch(state, { type: "reasoning-end", messageId: data.messageId })
-    }))
-
     // ----- Undo -----
 
     unsubs.push(on("undo-applied", (data) => {
