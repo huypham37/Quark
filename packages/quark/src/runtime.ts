@@ -82,9 +82,9 @@ export interface QuarkRuntime {
 function configPolicies(): Partial<RunPolicies> {
   const config = loadConfig()
   return {
-    maxSteps: config.max_steps,
+    maxSteps: config.maxSteps,
     branching: config.branching,
-    smallModel: config.modelConfig.small,
+    smallModel: config.models.small,
     // Legacy CLI/TUI tracks turns for /undo. Portable policies default this off.
     undo: true,
   }
@@ -118,7 +118,7 @@ export async function createQuarkRuntime(options: QuarkRuntimeOptions): Promise<
   // (a `--model`/`/model` override wins for the turn's title call). Per-call
   // policies merge over the runner's config-derived ones.
   function turnPolicies(model?: string): Partial<RunPolicies> {
-    return { smallModel: model ?? loadConfig().modelConfig.small }
+    return { smallModel: model ?? loadConfig().models.small }
   }
 
   function apply(next: AgentDefinition, plugins: PluginFn[]): void {

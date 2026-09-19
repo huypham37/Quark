@@ -301,7 +301,7 @@ export class WebBackend {
   }
 
   private modelName(): string {
-    return this.modelOverride ?? this.agent.model ?? loadConfig().modelConfig.small
+    return this.modelOverride ?? this.agent.model ?? loadConfig().models.small
   }
 
   /** Catalog record for the effective model, when the catalog knows it. */
@@ -373,7 +373,7 @@ export class WebBackend {
           sessionId,
           messages,
           parts,
-          model: await resolveModel(loadConfig().modelConfig.small, "small", { catalog: this.catalog.catalog }),
+          model: await resolveModel(loadConfig().models.small, "small", { catalog: this.catalog.catalog }),
           profile: this.profile.id,
           prompt: goal || undefined,
         })

@@ -35,19 +35,21 @@ export interface CustomProviderConfig {
   api_key?: string
 }
 
+export interface ModelsConfig {
+  small: string
+}
+
 export interface QuarkConfig {
   version: 2
-  modelConfig: {
-    small: string
-  }
-  max_steps: number
+  models: ModelsConfig
+  maxSteps: number
   branching: BranchingConfig
   /** Opaque passthrough; profile semantics live in profile/profile.ts. */
   profiles?: Record<string, unknown>
   /** Opaque passthrough; consumed by profile/profile.ts. */
-  default_profile?: string
+  defaultProfile?: string
   providers: Record<string, CustomProviderConfig>
-  hide_readonly_tools: boolean
+  hideReadonlyTools: boolean
   /** Optional executable name/path used to open local file links. */
   editor?: string
 }
@@ -56,6 +58,7 @@ const BRANCHING_DEFAULTS: BranchingConfig = { threshold: 0.9, auto: true }
 const DEFAULT_MODELS = {
   small: "openai/gpt-4o-mini",
 }
+const DEFAULT_MAX_STEPS = 100
 const SECRET_KEYS = /^(apiKey|token|secret|password)$/i
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]*$/
 const PROVIDER_KEYS = new Set(["base_url", "api_key"])
@@ -73,6 +76,14 @@ function readRawConfig(): Record<string, unknown> {
 
 function nonEmptyString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback
+}
+
+function parseMaxSteps(raw: unknown): number {
+  if (raw === undefined) return DEFAULT_MAX_STEPS
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) {
+    throw new Error("max_steps must be a positive integer.")
+  }
+  return raw
 }
 
 function parseBranching(raw: unknown): BranchingConfig {
@@ -155,11 +166,11 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
 export function defaultConfig(): QuarkConfig {
   return {
     version: 2,
-    modelConfig: { ...DEFAULT_MODELS },
-    max_steps: 100,
+    models: { ...DEFAULT_MODELS },
+    maxSteps: DEFAULT_MAX_STEPS,
     branching: { ...BRANCHING_DEFAULTS },
     providers: {},
-    hide_readonly_tools: false,
+    hideReadonlyTools: false,
   }
 }
 
@@ -177,16 +188,16 @@ export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
   const models = raw.models as Record<string, unknown>
   return {
     version: 2,
-    modelConfig: {
+    models: {
       small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
     },
-    max_steps: typeof raw.max_steps === "number" ? raw.max_steps : 100,
+    maxSteps: parseMaxSteps(raw.max_steps),
     branching: parseBranching(raw.branching),
     profiles: raw.profiles && typeof raw.profiles === "object" && !Array.isArray(raw.profiles)
       ? raw.profiles as Record<string, unknown> : undefined,
-    default_profile: nonEmptyString(raw.default_profile, "") || undefined,
+    defaultProfile: nonEmptyString(raw.default_profile, "") || undefined,
     providers: parseCustomProviders(raw.providers),
-    hide_readonly_tools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
+    hideReadonlyTools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
   }
 }
@@ -205,13 +216,13 @@ export function serializeConfig(config: QuarkConfig): string {
   }]))
   return stringifyYAML({
     version: 2,
-    models: config.modelConfig,
-    max_steps: config.max_steps,
+    models: config.models,
+    max_steps: config.maxSteps,
     branching: config.branching,
-    ...(config.default_profile ? { default_profile: config.default_profile } : {}),
+    ...(config.defaultProfile ? { default_profile: config.defaultProfile } : {}),
     ...(config.profiles ? { profiles: config.profiles } : {}),
     providers,
-    hide_readonly_tools: config.hide_readonly_tools,
+    hide_readonly_tools: config.hideReadonlyTools,
     ...(config.editor ? { editor: config.editor } : {}),
   })
 }
@@ -235,7 +246,7 @@ export function parseModelSpec(spec: string): { provider?: string; model: string
   return index === -1 ? { model: spec } : { provider: spec.slice(0, index), model: spec.slice(index + 1) }
 }
 
-export function setConfigField<K extends "max_steps" | "branching" | "hide_readonly_tools">(
+export function setConfigField<K extends "maxSteps" | "branching" | "hideReadonlyTools">(
   key: K,
   value: QuarkConfig[K],
 ): void {

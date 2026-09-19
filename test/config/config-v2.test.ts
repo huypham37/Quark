@@ -70,8 +70,8 @@ describe("Config V2", () => {
     const raw = representativeConfig() as Record<string, any>
     raw.models.favorites = ["openai/old-model"]
     const config = parseConfigV2(raw)
-    expect(config.modelConfig).toEqual({ small: "openai/gpt-5-mini" })
-    expect((config as Record<string, unknown>).models).toBeUndefined()
+    expect(config.models).toEqual({ small: "openai/gpt-5-mini" })
+    expect((config.models as Record<string, unknown>).favorites).toBeUndefined()
     expect(serializeConfig(config)).not.toContain("favorites:")
   })
 

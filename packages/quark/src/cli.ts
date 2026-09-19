@@ -209,9 +209,9 @@ async function main() {
         agent,
         ambientInstructions: loadAmbientInstructions,
         policies: {
-          maxSteps: config.max_steps,
+          maxSteps: config.maxSteps,
           branching: config.branching,
-          smallModel: modelOverride ?? config.modelConfig.small,
+          smallModel: modelOverride ?? config.models.small,
           undo: true,
         },
       })

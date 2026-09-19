@@ -66,32 +66,32 @@ describe("loadConfig", () => {
   test("returns defaults when the config file is missing", () => {
     const config = loadConfig()
     expect(config.version).toBe(2)
-    expect(config.modelConfig.small).toBe("openai/gpt-4o-mini")
-    expect(config.max_steps).toBe(100)
+    expect(config.models.small).toBe("openai/gpt-4o-mini")
+    expect(config.maxSteps).toBe(100)
     expect(config.providers).toEqual({})
-    expect(config.hide_readonly_tools).toBe(false)
+    expect(config.hideReadonlyTools).toBe(false)
   })
 
   test("returns defaults when the config file has invalid YAML", () => {
     fs.mkdirSync(configDir, { recursive: true })
     fs.writeFileSync(configFile, ": : : invalid yaml {{{\n", "utf-8")
 
-    expect(loadConfig().modelConfig.small).toBe("openai/gpt-4o-mini")
+    expect(loadConfig().models.small).toBe("openai/gpt-4o-mini")
   })
 
   test("reads models.small from file", () => {
     writeConfig({ version: 2, models: { small: "anthropic/claude-sonnet" } })
 
-    expect(loadConfig().modelConfig.small).toBe("anthropic/claude-sonnet")
+    expect(loadConfig().models.small).toBe("anthropic/claude-sonnet")
   })
 
   test("falls back to the default for empty or non-string models.small", () => {
     writeConfig({ version: 2, models: { small: "" } })
-    expect(loadConfig().modelConfig.small).toBe("openai/gpt-4o-mini")
+    expect(loadConfig().models.small).toBe("openai/gpt-4o-mini")
 
     resetConfigCache()
     writeConfig({ version: 2, models: { small: true } })
-    expect(loadConfig().modelConfig.small).toBe("openai/gpt-4o-mini")
+    expect(loadConfig().models.small).toBe("openai/gpt-4o-mini")
   })
 
   test("rejects an incomplete model specification", () => {
@@ -133,22 +133,22 @@ describe("loadConfig caching", () => {
   test("returns cached result on second call", () => {
     writeConfig({ version: 2, models: { small: "openai/first-model" } })
     const first = loadConfig()
-    expect(first.modelConfig.small).toBe("openai/first-model")
+    expect(first.models.small).toBe("openai/first-model")
 
     // Change file on disk — loadConfig should still return cached
     writeConfig({ version: 2, models: { small: "openai/second-model" } })
     const second = loadConfig()
-    expect(second.modelConfig.small).toBe("openai/first-model")
+    expect(second.models.small).toBe("openai/first-model")
     expect(second).toBe(first) // Same object reference
   })
 
   test("resetConfigCache forces re-read", () => {
     writeConfig({ version: 2, models: { small: "openai/original" } })
-    expect(loadConfig().modelConfig.small).toBe("openai/original")
+    expect(loadConfig().models.small).toBe("openai/original")
 
     writeConfig({ version: 2, models: { small: "openai/updated" } })
     resetConfigCache()
-    expect(loadConfig().modelConfig.small).toBe("openai/updated")
+    expect(loadConfig().models.small).toBe("openai/updated")
   })
 })
 
@@ -169,13 +169,39 @@ describe("loadConfig — branching defaults", () => {
 })
 
 // ---------------------------------------------------------------------------
+// max_steps validation
+// ---------------------------------------------------------------------------
+describe("loadConfig — max_steps validation", () => {
+  test("defaults to 100 when max_steps is absent", () => {
+    writeConfig({ version: 2, models: { small: "openai/gpt-5-mini" } })
+
+    expect(loadConfig().maxSteps).toBe(100)
+  })
+
+  test("accepts a positive integer", () => {
+    writeConfig({ version: 2, models: { small: "openai/gpt-5-mini" }, max_steps: 7 })
+
+    expect(loadConfig().maxSteps).toBe(7)
+  })
+
+  test("rejects explicitly supplied non-integer or non-positive values", () => {
+    for (const max_steps of [0, -1, 1.5, "10", true]) {
+      writeConfig({ version: 2, models: { small: "openai/gpt-5-mini" }, max_steps })
+      resetConfigCache()
+
+      expect(() => loadConfig()).toThrow(/max_steps must be a positive integer/)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // setConfigField
 // ---------------------------------------------------------------------------
 describe("setConfigField", () => {
   test("creates the config file and directory if missing", () => {
     fs.rmSync(configDir, { recursive: true, force: true })
 
-    setConfigField("max_steps", 42)
+    setConfigField("maxSteps", 42)
 
     expect(fs.existsSync(configFile)).toBe(true)
     const data = readConfigFile()
@@ -187,7 +213,7 @@ describe("setConfigField", () => {
   test("overwrites an existing field", () => {
     writeConfig({ version: 2, models: { small: "openai/gpt-5-mini" }, max_steps: 10 })
 
-    setConfigField("max_steps", 25)
+    setConfigField("maxSteps", 25)
 
     expect(readConfigFile().max_steps).toBe(25)
   })
@@ -201,7 +227,7 @@ describe("setConfigField", () => {
       providers: { "quark-go": { base_url: "https://example.test/v1", api_key: "env:QUARK_GO_KEY" } },
     })
 
-    setConfigField("hide_readonly_tools", true)
+    setConfigField("hideReadonlyTools", true)
 
     const data = readConfigFile() as Record<string, any>
     expect(data.default_profile).toBe("general")
@@ -214,11 +240,11 @@ describe("setConfigField", () => {
 
   test("invalidates the cache so the next loadConfig reads fresh values", () => {
     writeConfig({ version: 2, models: { small: "openai/gpt-5-mini" }, max_steps: 10 })
-    expect(loadConfig().max_steps).toBe(10)
+    expect(loadConfig().maxSteps).toBe(10)
 
-    setConfigField("max_steps", 99)
+    setConfigField("maxSteps", 99)
 
-    expect(loadConfig().max_steps).toBe(99)
+    expect(loadConfig().maxSteps).toBe(99)
   })
 })
 
@@ -237,6 +263,6 @@ describe("resetConfigCache", () => {
     writeConfig({ version: 2, models: { small: "openai/v2" } })
     resetConfigCache()
 
-    expect(loadConfig().modelConfig.small).toBe("openai/v2")
+    expect(loadConfig().models.small).toBe("openai/v2")
   })
 })

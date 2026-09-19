@@ -597,7 +597,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       try {
         const goal = args.trim()
         const { messages, parts } = loadMessages(sid)
-        const model = await resolveModel(loadConfig().modelConfig.small, "small", { catalog: catalogModels.catalog })
+        const model = await resolveModel(loadConfig().models.small, "small", { catalog: catalogModels.catalog })
         const branch = await compactBranch({
           sessionId: sid,
           messages,
