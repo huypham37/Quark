@@ -22,8 +22,8 @@ function runScenario(direction: "up" | "down"): ScenarioResult {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
-    import { bus } from "./src/session/events";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
     import { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 
     function findScrollBox(r) {
@@ -37,6 +37,7 @@ function runScenario(direction: "up" | "down"): ScenarioResult {
 
     const setup = await testRender(
       () => createComponent(App, {
+        bus,
         onSubmit() {},
         onCancel() {},
         initialSessionId: "arrow-${direction}-session",
@@ -89,7 +90,7 @@ function runScenario(direction: "up" | "down"): ScenarioResult {
   `
 
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

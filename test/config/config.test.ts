@@ -27,7 +27,7 @@ const {
   loadConfig,
   setConfigField,
   resetConfigCache,
-} = await import("../../src/config/config")
+} = await import("../../packages/quark/src/config/config")
 
 // ---------------------------------------------------------------------------
 // Helpers

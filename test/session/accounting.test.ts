@@ -5,7 +5,7 @@ import {
   calculateCharge,
   normalizeUsage,
   numericAggregateCost,
-} from "../../src/session/accounting"
+} from "../../packages/runner/src/session/accounting"
 
 describe("usage accounting", () => {
   test("normalizes every AI SDK token class and raw usage", () => {

@@ -9,15 +9,15 @@ import {
   type MessageRow,
   type PartRow,
   type StepFinishData,
-} from "../../src/session/message"
-import { bus } from "../../src/session/events"
+} from "../../packages/runner/src/session/message"
+import { bus } from "../../packages/runner/src/session/events"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
-import { createSession } from "../../src/session/session"
-import { bootstrap, resetBootstrap } from "../../src/bootstrap"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
+import { createSession } from "../../packages/runner/src/session/session"
+import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
 
 // ---------------------------------------------------------------------------
 // Test Setup & Helpers

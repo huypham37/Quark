@@ -16,7 +16,6 @@ export interface SlashCommand {
 export const slashCommands: SlashCommand[] = [
   { id: "help", description: "Show available commands" },
   { id: "new", description: "Create a new session" },
-  { id: "clear", description: "Clear messages and start new session" },
   { id: "sessions", description: "Switch to another session" },
   { id: "model", description: "Switch model", usage: "[provider/model]" },
   { id: "profile", description: "Switch profile", usage: "[profile-name]" },

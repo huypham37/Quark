@@ -1,37 +1,26 @@
 {
-  "name": "@quark/sdk",
+  "name": "quark-monorepo",
   "version": "0.1.0",
-  "description": "Quark — AI coding agent SDK with session management, tools, and streaming",
+  "private": true,
+  "description": "Quark monorepo — @quark/runner engine + quark CLI/TUI",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
+  "workspaces": [
+    "packages/*"
   ],
-  "bin": {
-    "quark": "./dist/cli.js"
-  },
   "scripts": {
-    "build": "tsup && tsc --project tsconfig.build.json --emitDeclarationOnly",
-    "typecheck": "tsc --project tsconfig.build.json --noEmit && tsc --project tsconfig.web.json --noEmit",
-    "dev": "bun --preload ./preload.ts src/tui/index.tsx",
+    "build": "bun run --cwd packages/runner build && bun run --cwd packages/quark build",
+    "typecheck": "bun run --cwd packages/runner typecheck && bun run --cwd packages/quark typecheck && tsc --project tsconfig.web.json --noEmit",
+    "test": "bun test",
+    "dev": "bun --preload ./packages/quark/preload.ts packages/quark/src/tui/index.tsx",
+    "cli": "bun --preload ./packages/quark/preload.ts packages/quark/src/cli.ts",
     "web": "bun web/dev.ts",
     "web:build": "vite build --config web/vite.config.ts",
     "web:serve": "bun web/server.ts",
-    "cli": "bun --preload ./preload.ts src/cli.ts",
-    "prepublishOnly": "bun run build",
     "docs": "typedoc"
+  },
+  "dependencies": {
+    "highlight.js": "^11.12.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -39,24 +28,8 @@
     "tsup": "^8.5.1",
     "typedoc": "^0.28.18",
     "typedoc-plugin-markdown": "^4.11.0",
+    "typescript": "^6.0.2",
     "vite": "^7.1.5",
     "vite-plugin-solid": "^2.11.8"
-  },
-  "peerDependencies": {
-    "typescript": "^6.0.2"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.64",
-    "@ai-sdk/openai": "^3.0.41",
-    "@ai-sdk/openai-compatible": "^2.0.41",
-    "@opentui/core": "^0.1.86",
-    "@opentui/solid": "^0.1.86",
-    "ai": "^6.0.116",
-    "highlight.js": "^11.12.0",
-    "marked": "^17.0.6",
-    "solid-js": "^1.9.11",
-    "web-tree-sitter": "0.25.10",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
   }
 }

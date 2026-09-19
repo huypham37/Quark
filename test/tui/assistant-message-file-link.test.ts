@@ -8,7 +8,7 @@ describe("AssistantMessage file links", () => {
     const script = `
       import { testRender } from "@opentui/solid";
       import { createComponent } from "solid-js";
-      import { AssistantMessage } from "./src/tui/components/assistant-message.tsx";
+      import { AssistantMessage } from "./packages/quark/src/tui/components/assistant-message.tsx";
       const opened = [];
       const setup = await testRender(() => createComponent(AssistantMessage, {
         text: "Compare [first.ts](file:///tmp/first.ts#L42C7) and [second.ts](file:///tmp/second.ts#L9).",
@@ -23,7 +23,7 @@ describe("AssistantMessage file links", () => {
       setup.renderer.destroy();
     `
     const proc = Bun.spawnSync({
-      cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+      cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
       cwd: ROOT,
       stdout: "pipe",
       stderr: "pipe",

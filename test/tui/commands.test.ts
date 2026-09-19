@@ -1,7 +1,7 @@
 // Tests for filterCommands — slash command filtering logic
 
 import { describe, test, expect } from "bun:test"
-import { filterCommands, commands } from "../../src/tui/commands"
+import { filterCommands, commands } from "../../packages/quark/src/tui/commands"
 
 describe("filterCommands", () => {
   test("returns all commands when query is empty", () => {
@@ -32,9 +32,9 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("c prefix matches clear, compact, and connect", () => {
+  test("c prefix matches compact and connect", () => {
     const result = filterCommands("c")
-    expect(result.map((command) => command.id)).toEqual(["clear", "compact", "connect"])
+    expect(result.map((command) => command.id)).toEqual(["compact", "connect"])
   })
 
   test("connect command opens provider authentication", () => {
@@ -158,34 +158,6 @@ describe("filterCommands", () => {
 
   test("skills command does not require a usage hint", () => {
     const result = filterCommands("skills")
-    expect(result.length).toBe(1)
-    expect(result[0]!.usage).toBeUndefined()
-  })
-})
-
-// --- /async-msg slash command ---
-
-describe("async-msg command", () => {
-  test("async-msg command exists in commands list", () => {
-    const cmd = commands.find((c) => c.id === "async-msg")
-    expect(cmd).toBeDefined()
-    expect(cmd!.description).toMatch(/side|parallel|panel/i)
-  })
-
-  test("a prefix matches async-msg", () => {
-    const result = filterCommands("a")
-    const ids = result.map((c) => c.id)
-    expect(ids).toContain("async-msg")
-  })
-
-  test("async prefix matches async-msg exclusively", () => {
-    const result = filterCommands("async")
-    expect(result.length).toBe(1)
-    expect(result[0]!.id).toBe("async-msg")
-  })
-
-  test("async-msg has no usage hint", () => {
-    const result = filterCommands("async-msg")
     expect(result.length).toBe(1)
     expect(result[0]!.usage).toBeUndefined()
   })

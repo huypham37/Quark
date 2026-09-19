@@ -3,8 +3,8 @@
 // Compare with test-ttft.ts (raw fetch) to measure SDK overhead.
 
 import { streamText } from "ai"
-import { loadToken } from "../src/provider/copilot-auth"
-import { createCopilotProvider, getModel } from "../src/provider/provider"
+import { loadToken } from "../packages/runner/src/provider/copilot-auth"
+import { createCopilotProvider, getModel } from "../packages/runner/src/provider/provider"
 
 const MODEL = process.argv[2] || "gpt-5-mini"
 const RUNS = parseInt(process.argv[3] || "5", 10)

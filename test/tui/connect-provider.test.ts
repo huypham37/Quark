@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildConnectProviderRows, safeConnectError, searchConnectProviderRows } from "../../src/tui/connect-provider"
+import { buildConnectProviderRows, safeConnectError, searchConnectProviderRows } from "../../packages/quark/src/tui/connect-provider"
 
 describe("connect provider display data", () => {
   test("classifies all bundled providers from their definitions", () => {

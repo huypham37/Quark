@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { isRetryable, retryDelay, sleep, isContextTooLong } from "../../src/session/retry"
+import { isRetryable, retryDelay, sleep, isContextTooLong } from "../../packages/runner/src/session/retry"
 
 describe("isRetryable", () => {
   it("returns false for null/undefined", () => {

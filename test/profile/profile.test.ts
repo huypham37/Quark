@@ -14,9 +14,8 @@ import {
   resetProfileCache,
   loadProfileConfig,
   _internal,
-} from "../../src/profile/profile"
-import { agentFromProfile } from "../../src/agent"
-import { getActive, dismiss } from "../../src/notification/notification"
+} from "../../packages/quark/src/profile/profile"
+import { getActive, dismiss } from "../../packages/runner/src/notification/notification"
 
 // Keep profile tests off the developer's real ~/.config/quark/config.yaml.
 // profile.ts resolves the directory per call, so pin it for every test.
@@ -34,7 +33,6 @@ const {
   parseProjectOverrides,
   updateProfileThinking,
   BUILTIN_CODER,
-  BUILTIN_PROMPT,
 } = _internal
 
 
@@ -120,55 +118,6 @@ describe("readPromptFile", () => {
     }
     const result = readPromptFile(profile)
     expect(result.content).toBe("You are padded.")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// agentFromProfile
-// ---------------------------------------------------------------------------
-
-describe("agentFromProfile", () => {
-  test("creates AgentConfig from profile", () => {
-    const profile = resolveProfile("coder")
-    const promptResult = readPromptFile(profile)
-    const agent = agentFromProfile(profile, promptResult.content)
-
-    expect(agent.id).toBe("coder")
-    expect(agent.prompt.length).toBeGreaterThan(0)
-    expect(agent.prompt).toMatch(/coding|agent/i)
-    expect(agent.tools).toEqual(profile.tools)
-    expect(agent.skills).toEqual(profile.skills)
-  })
-
-  test("preserves custom skills and tools from profile", () => {
-    const profile = {
-      ...BUILTIN_CODER,
-      id: "researcher",
-      name: "Researcher",
-      tools: ["websearch", "webfetch"],
-      skills: ["academic-research"],
-    }
-    const agent = agentFromProfile(profile, "You are a researcher.")
-
-    expect(agent.id).toBe("researcher")
-    expect(agent.prompt).toBe("You are a researcher.")
-    expect(agent.tools).toEqual(["websearch", "webfetch"])
-    expect(agent.skills).toEqual(["academic-research"])
-  })
-
-  test("copies all profile fields to agent", () => {
-    const profile = {
-      ...BUILTIN_CODER,
-      skills: ["test-skill"],
-      model: "codex/gpt-5.6-luna",
-      thinkingEffort: "high",
-      thinkingMode: "pro",
-    }
-    const agent = agentFromProfile(profile, "test")
-    expect(agent.skills).toEqual(["test-skill"])
-    expect(agent.model).toBe("codex/gpt-5.6-luna")
-    expect(agent.thinkingEffort).toBe("high")
-    expect(agent.thinkingMode).toBe("pro")
   })
 })
 
@@ -679,7 +628,7 @@ describe("parseProjectOverrides", () => {
 // ---------------------------------------------------------------------------
 
 describe("profileSkills", () => {
-  const { profileSkills, discoverSkills, clearCache } = require("../../src/skill/skill")
+  const { profileSkills, discoverSkills, clearCache } = require("../../packages/runner/src/skill/skill")
   let tmpDir: string
 
   beforeEach(() => {
@@ -743,8 +692,8 @@ describe("profileSkills", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSkillTool", () => {
-  const { clearCache, discoverSkills } = require("../../src/skill/skill")
-  const { buildSkillTool } = require("../../src/tool/skill")
+  const { clearCache, discoverSkills } = require("../../packages/runner/src/skill/skill")
+  const { buildSkillTool } = require("../../packages/runner/src/tool/skill")
   let tmpDir: string
 
   beforeEach(() => {
@@ -766,42 +715,16 @@ describe("buildSkillTool", () => {
     )
   }
 
-  test("no boundSkills — description lists all discovered skills", () => {
+  test("description is stable as bound skills change", () => {
     writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
     writeSkill(tmpDir, "beta", "Beta skill", "beta content")
     discoverSkills([tmpDir])
 
-    const tool = buildSkillTool()
-    expect(tool.description).toContain("alpha")
-    expect(tool.description).toContain("beta")
-  })
-
-  test("boundSkills filters description to only bound skills", () => {
-    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
-    writeSkill(tmpDir, "beta", "Beta skill", "beta content")
-    writeSkill(tmpDir, "gamma", "Gamma skill", "gamma content")
-    discoverSkills([tmpDir])
-
-    const tool = buildSkillTool(["alpha", "gamma"])
-    expect(tool.description).toContain("alpha")
-    expect(tool.description).toContain("gamma")
-    expect(tool.description).not.toContain("beta")
-  })
-
-  test("empty boundSkills array shows all skills", () => {
-    writeSkill(tmpDir, "alpha", "Alpha skill", "alpha content")
-    discoverSkills([tmpDir])
-
-    const tool = buildSkillTool([])
-    // Empty array means no profile binding — falls through to discoverSkills
-    expect(tool.description).toContain("alpha")
-  })
-
-  test("description shows 'no skills available' when none match", () => {
-    discoverSkills([tmpDir]) // empty dir
-
-    const tool = buildSkillTool(["nonexistent"])
-    expect(tool.description).toContain("No skills are currently available")
+    const unbound = buildSkillTool()
+    const bound = buildSkillTool(["alpha", "beta"])
+    // Stable description keeps the tool definition cacheable across activations.
+    expect(bound.description).toBe(unbound.description)
+    expect(bound.description).not.toContain("alpha")
   })
 
   test("execute loads a skill by name", async () => {
@@ -851,74 +774,50 @@ describe("buildSkillTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSystem with skills", () => {
-  const { clearCache, discoverSkills } = require("../../src/skill/skill")
-  const { buildSystem } = require("../../src/session/system")
-  let tmpDir: string
+  const { buildSystem } = require("../../packages/runner/src/session/system")
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "atom-system-test-"))
-    clearCache()
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-    clearCache()
-  })
-
-  function writeSkill(dir: string, name: string, description: string, content: string) {
-    const skillDir = path.join(dir, name)
-    fs.mkdirSync(skillDir, { recursive: true })
-    fs.writeFileSync(
-      path.join(skillDir, "SKILL.md"),
-      `---\nname: ${name}\ndescription: ${description}\n---\n${content}`,
-    )
+  function skillDef(name: string, description: string, content: string) {
+    return { name, description, content }
   }
 
   test("no skills — system prompt has no skill block", () => {
-    const agent = { id: "test", name: "Test", prompt: "You are a test agent.", tools: [], skills: [] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+    const joined = buildSystem({ instructions: "You are a test agent." }).join("\n")
     expect(joined).not.toContain("Available Skills")
     expect(joined).toContain("You are a test agent.")
     expect(joined).toContain("Working directory:")
   })
 
-  test("with bound skills — system prompt includes L1 metadata", () => {
-    writeSkill(tmpDir, "code-review", "Review code for quality", "Full review instructions...")
-    writeSkill(tmpDir, "git-release", "Manage git releases", "Full release instructions...")
-    discoverSkills([tmpDir])
-
-    const agent = { id: "test", name: "Test", prompt: "You are a coder.", tools: [], skills: ["code-review", "git-release"] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+  test("with concrete skills — system prompt includes L1 metadata", () => {
+    const joined = buildSystem({
+      instructions: "You are a coder.",
+      skills: [
+        skillDef("code-review", "Review code for quality", "Full review instructions..."),
+        skillDef("git-release", "Manage git releases", "Full release instructions..."),
+      ],
+    }).join("\n")
 
     expect(joined).toContain("# Available Skills")
     expect(joined).toContain("code-review")
     expect(joined).toContain("Review code for quality")
     expect(joined).toContain("git-release")
     expect(joined).toContain("Manage git releases")
-    // L2 content (SKILL.md body) should NOT be in the system prompt
+    // L2 content (skill body) should NOT be in the system prompt
     expect(joined).not.toContain("Full review instructions")
     expect(joined).not.toContain("Full release instructions")
   })
 
-  test("skills not in profile are not included", () => {
-    writeSkill(tmpDir, "bound-skill", "I am bound", "bound content")
-    writeSkill(tmpDir, "unbound-skill", "I am unbound", "unbound content")
-    discoverSkills([tmpDir])
-
-    const agent = { id: "test", name: "Test", prompt: "Test.", tools: [], skills: ["bound-skill"] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+  test("only the supplied concrete skills are included", () => {
+    const joined = buildSystem({
+      instructions: "Test.",
+      skills: [skillDef("bound-skill", "I am bound", "bound content")],
+    }).join("\n")
 
     expect(joined).toContain("bound-skill")
     expect(joined).not.toContain("unbound-skill")
   })
 
   test("system prompt always includes environment block", () => {
-    const agent = { id: "test", name: "Test", prompt: "Test.", tools: [], skills: [] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+    const joined = buildSystem({ instructions: "Test." }).join("\n")
     expect(joined).toContain("Working directory:")
     expect(joined).toContain("OS:")
     expect(joined).toContain("Today's date:")
@@ -930,7 +829,7 @@ describe("buildSystem with skills", () => {
 // ---------------------------------------------------------------------------
 
 describe("/profile command", () => {
-  const { filterCommands, commands } = require("../../src/tui/commands")
+  const { filterCommands, commands } = require("../../packages/quark/src/tui/commands")
 
   test("profile command exists in commands list", () => {
     const profileCmd = commands.find((c: any) => c.id === "profile")
@@ -1193,102 +1092,23 @@ profiles:
 })
 
 // ---------------------------------------------------------------------------
-// agentFromProfile — subAgents passthrough
+// sub-agent delegation — profile subAgents become a concrete tool
 // ---------------------------------------------------------------------------
 
-describe("agentFromProfile: subAgents", () => {
-  test("copies subAgents from profile to agent config", () => {
-    const profile = {
-      ...BUILTIN_CODER,
-      subAgents: ["researcher", "worker"],
-    }
-    const agent = agentFromProfile(profile, "test prompt")
-    expect(agent.subAgents).toEqual(["researcher", "worker"])
+describe("profile subAgents → subagent tool", () => {
+  const { createSubagentTool } = require("../../packages/runner/src/tool/subagent")
+
+  test("description lists the allowed child agent IDs", () => {
+    const tool = createSubagentTool(["researcher", "worker"])
+    expect(tool.description).toContain("researcher")
+    expect(tool.description).toContain("worker")
   })
 
-  test("subAgents is undefined when profile has no subAgents", () => {
-    const profile = { ...BUILTIN_CODER }
-    const agent = agentFromProfile(profile, "test prompt")
-    expect(agent.subAgents).toBeUndefined()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// buildSubAgentBlock — system prompt sub-agent section
-// ---------------------------------------------------------------------------
-
-describe("buildSubAgentBlock", () => {
-  const { buildSubAgentBlock } = require("../../src/session/system")
-
-  beforeEach(() => resetProfileCache())
-  afterEach(() => resetProfileCache())
-
-  test("returns null when subAgents is undefined", () => {
-    expect(buildSubAgentBlock(undefined)).toBeNull()
-  })
-
-  test("returns null when subAgents is empty", () => {
-    expect(buildSubAgentBlock([])).toBeNull()
-  })
-
-  test("returns null when all sub-agent IDs are unknown", () => {
-    // Only builtin coder exists in default config
-    expect(buildSubAgentBlock(["nonexistent1", "nonexistent2"])).toBeNull()
-  })
-
-  test("includes known sub-agent profiles with name and id", () => {
-    // "coder" is always available as a builtin profile
-    const block = buildSubAgentBlock(["coder"])
-    expect(block).not.toBeNull()
-    expect(block).toContain("# Available Sub-Agents")
-    expect(block).toContain("Coder")
-    expect(block).toContain("`coder`")
-  })
-
-  test("filters out unknown sub-agent IDs silently", () => {
-    const block = buildSubAgentBlock(["coder", "nonexistent"])
-    expect(block).not.toBeNull()
-    expect(block).toContain("Coder")
-    expect(block).not.toContain("nonexistent")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// buildSystem — sub-agent block integration
-// ---------------------------------------------------------------------------
-
-describe("buildSystem with subAgents", () => {
-  const { buildSystem } = require("../../src/session/system")
-
-  beforeEach(() => resetProfileCache())
-  afterEach(() => resetProfileCache())
-
-  test("no subAgents — system prompt has no sub-agent block", () => {
-    const agent = { id: "test", name: "Test", prompt: "You are a test.", tools: [], skills: [] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
-    expect(joined).not.toContain("Available Sub-Agents")
-  })
-
-  test("with subAgents — system prompt includes sub-agent block", () => {
-    const agent = { id: "test", name: "Test", prompt: "You are a test.", tools: [], skills: [], subAgents: ["coder"] }
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
-    expect(joined).toContain("# Available Sub-Agents")
-    expect(joined).toContain("Coder")
-    expect(joined).toContain("`coder`")
-    expect(joined).toContain("Use the `subagent` tool")
-  })
-
-  test("sub-agent block appears after skill block and before environment", () => {
-    const agent = { id: "test", name: "Test", prompt: "Agent prompt.", tools: [], skills: [], subAgents: ["coder"] }
-    const parts = buildSystem(agent)
-    // parts[0] = agent prompt, last = environment block
-    // sub-agent block should be in between
-    const joined = parts.join("\n")
-    const subIdx = joined.indexOf("Available Sub-Agents")
-    const envIdx = joined.indexOf("Working directory:")
-    expect(subIdx).toBeGreaterThan(-1)
-    expect(envIdx).toBeGreaterThan(subIdx)
+  test("rejects a child ID outside the allowed set", async () => {
+    const tool = createSubagentTool(["researcher"])
+    const ctx = { sessionId: "s", messageId: "m", callId: "c", abort: new AbortController().signal }
+    await expect(tool.execute({ profile: "worker", prompt: "do it" }, ctx)).rejects.toThrow(
+      /not allowed/,
+    )
   })
 })

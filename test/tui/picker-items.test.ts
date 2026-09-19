@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildPickerItems, pickerModeForCommand } from "../../src/tui/picker-items"
+import { buildPickerItems, pickerModeForCommand } from "../../packages/quark/src/tui/picker-items"
 
 describe("buildPickerItems", () => {
   test("sorts current item first and marks it", () => {
@@ -43,6 +43,5 @@ describe("pickerModeForCommand", () => {
     expect(pickerModeForCommand("model")).toBeNull()
     expect(pickerModeForCommand("skills")).toBeNull()
     expect(pickerModeForCommand("new")).toBeNull()
-    expect(pickerModeForCommand("clear")).toBeNull()
   })
 })

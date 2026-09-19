@@ -5,7 +5,7 @@
 // STATUS: Source file DOES NOT EXIST yet — these tests will FAIL at import time.
 
 import { describe, test, expect } from "bun:test"
-import { generatePKCE } from "../../src/provider/pkce"
+import { generatePKCE } from "../../packages/runner/src/provider/pkce"
 
 // ---------------------------------------------------------------------------
 // generatePKCE — produces verifier and challenge for OAuth PKCE flow

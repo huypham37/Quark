@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test"
-import { splitMessages } from "../../src/session/branch"
-import type { MessageRow, PartRow } from "../../src/session/message"
+import { splitMessages } from "../../packages/runner/src/session/branch"
+import type { MessageRow, PartRow } from "../../packages/runner/src/session/message"
 
 // ---------------------------------------------------------------------------
 // Helpers

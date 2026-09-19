@@ -4,10 +4,10 @@
 // execute() emits a bus event and awaits a deferred promise that the TUI resolves.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { bus } from "../../src/session/events"
-import type { ToolContext } from "../../src/tool/tool"
+import { bus } from "../../packages/runner/src/session/events"
+import type { ToolContext } from "../../packages/runner/src/tool/tool"
 
-const { questionTool, respondQuestion } = await import("../../src/tool/question")
+const { questionTool, respondQuestion } = await import("../../packages/runner/src/tool/question")
 
 // Shared test context
 function makeCtx(overrides?: Partial<ToolContext>): ToolContext {

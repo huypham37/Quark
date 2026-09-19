@@ -7,11 +7,12 @@ function renderBranchSwitch(): string {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
-    import { bus } from "./src/session/events";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
 
     const setup = await testRender(
       () => createComponent(App, {
+        bus,
         onSubmit() {},
         onCancel() {},
         initialSessionId: "parent",
@@ -46,7 +47,7 @@ function renderBranchSwitch(): string {
   `
 
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

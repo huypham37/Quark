@@ -5,15 +5,15 @@ import { describe, test, expect } from "bun:test"
 import { readFileSync } from "fs"
 import { resolve } from "path"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
+import { createAppState, dispatch } from "../../packages/quark/src/tui/state"
 import {
   IDEAL_RESULT_HEIGHT,
   MIN_RESULT_HEIGHT,
   resultViewportCap,
-} from "../../src/tui/components/result-viewport"
+} from "../../packages/quark/src/tui/components/result-viewport"
 
 const SCROLLABLE_OUTPUT_SRC = readFileSync(
-  resolve(import.meta.dir, "../../src/tui/components/scrollable-output.tsx"),
+  resolve(import.meta.dir, "../../packages/quark/src/tui/components/scrollable-output.tsx"),
   "utf8",
 )
 

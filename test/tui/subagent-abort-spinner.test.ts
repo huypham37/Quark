@@ -6,7 +6,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
+import { createAppState, dispatch } from "../../packages/quark/src/tui/state"
 
 function withRoot<T>(fn: () => T): T {
   let result!: T

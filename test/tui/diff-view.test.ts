@@ -4,12 +4,12 @@
 import { describe, test, expect } from "bun:test"
 import { readFileSync } from "fs"
 import { resolve } from "path"
-import type { TuiPart } from "../../src/tui/state"
-import { generateUnifiedDiff, parseDiffHunks } from "../../src/shared/diff-utils"
-import type { DiffLine, DiffHunk } from "../../src/shared/diff-utils"
+import type { TuiPart } from "../../packages/quark/src/tui/state"
+import { generateUnifiedDiff, parseDiffHunks } from "../../packages/runner/src/shared/diff-utils"
+import type { DiffLine, DiffHunk } from "../../packages/runner/src/shared/diff-utils"
 
-const DIFF_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/diff-view.tsx"), "utf8")
-const WRITE_STREAM_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/write-stream-view.tsx"), "utf8")
+const DIFF_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/diff-view.tsx"), "utf8")
+const WRITE_STREAM_VIEW_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/write-stream-view.tsx"), "utf8")
 
 // ---------------------------------------------------------------------------
 // generateUnifiedDiff() tests

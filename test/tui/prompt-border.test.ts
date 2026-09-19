@@ -11,7 +11,7 @@ async function renderPrompt(
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { Prompt } from "./src/tui/components/prompt.tsx";
+    import { Prompt } from "./packages/quark/src/tui/components/prompt.tsx";
 
     const setup = await testRender(() => createComponent(Prompt, {
       onSubmit() {},
@@ -29,7 +29,7 @@ async function renderPrompt(
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

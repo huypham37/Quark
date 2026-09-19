@@ -50,8 +50,8 @@ function runCli(args: string[]) {
     cmd: [
       "bun",
       "--preload",
-      join(PROJECT_ROOT, "preload.ts"),
-      join(PROJECT_ROOT, "src", "cli.ts"),
+      join(PROJECT_ROOT, "packages", "quark", "preload.ts"),
+      join(PROJECT_ROOT, "packages", "quark", "src", "cli.ts"),
       ...args,
     ],
     cwd: tempProjectDir,

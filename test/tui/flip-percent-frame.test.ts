@@ -7,7 +7,7 @@ import {
   flipPercentText,
   shouldAnimateTokenPercent,
   tokenPercentValue,
-} from "../../src/tui/components/flip-percent-frame"
+} from "../../packages/quark/src/tui/components/flip-percent-frame"
 
 describe("flip percent frame helpers", () => {
   test("calculates token percentage to one decimal", () => {

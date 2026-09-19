@@ -7,8 +7,8 @@
 
 import { render } from "@opentui/solid"
 import { createCliRenderer } from "@opentui/core"
-import { PulsingText } from "../src/tui/components/pulsing-text"
-import { ShimmerText } from "../src/tui/components/shimmer-text"
+import { PulsingText } from "../packages/quark/src/tui/components/pulsing-text"
+import { ShimmerText } from "../packages/quark/src/tui/components/shimmer-text"
 
 const Demo = () => (
   <box flexDirection="column" padding={2} gap={1}>

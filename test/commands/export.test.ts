@@ -2,15 +2,15 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSession, updateSession } from "../../src/session/session"
+import { createSession, updateSession } from "../../packages/runner/src/session/session"
 import {
   addPart,
   createAssistantMessage,
   finishMessage,
   saveUserMessage,
-} from "../../src/session/message"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { exportSessionToMarkdown } from "../../src/commands/export"
+} from "../../packages/runner/src/session/message"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { exportSessionToMarkdown } from "../../packages/runner/src/commands/export"
 
 let workspace: string
 let storageRoot: string

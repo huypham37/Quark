@@ -6,7 +6,7 @@ import {
   moveSessionRowSelection,
   searchSessionTree,
   type SessionTreeInput,
-} from "../../src/tui/session-tree-picker"
+} from "../../packages/quark/src/tui/session-tree-picker"
 
 const day = (month: number, date: number) => new Date(2026, month - 1, date, 12).getTime()
 

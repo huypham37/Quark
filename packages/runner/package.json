@@ -1,0 +1,278 @@
+{
+  "name": "@quark/runner",
+  "version": "0.1.0",
+  "description": "Quark runner \u2014 AI coding agent engine with session management, tools, and streaming",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./agent": {
+      "types": "./dist/agent.d.ts",
+      "bun": "./src/agent.ts",
+      "import": "./dist/agent.js",
+      "default": "./dist/agent.js"
+    },
+    "./commands/auth": {
+      "types": "./dist/commands/auth.d.ts",
+      "bun": "./src/commands/auth.ts",
+      "import": "./dist/commands/auth.js",
+      "default": "./dist/commands/auth.js"
+    },
+    "./commands/export": {
+      "types": "./dist/commands/export.d.ts",
+      "bun": "./src/commands/export.ts",
+      "import": "./dist/commands/export.js",
+      "default": "./dist/commands/export.js"
+    },
+    "./commands/statistics": {
+      "types": "./dist/commands/statistics.d.ts",
+      "bun": "./src/commands/statistics.ts",
+      "import": "./dist/commands/statistics.js",
+      "default": "./dist/commands/statistics.js"
+    },
+    "./commands/undo": {
+      "types": "./dist/commands/undo.d.ts",
+      "bun": "./src/commands/undo.ts",
+      "import": "./dist/commands/undo.js",
+      "default": "./dist/commands/undo.js"
+    },
+    "./debug": {
+      "types": "./dist/debug.d.ts",
+      "bun": "./src/debug.ts",
+      "import": "./dist/debug.js",
+      "default": "./dist/debug.js"
+    },
+    "./debug/format-tool-args": {
+      "types": "./dist/debug/format-tool-args.d.ts",
+      "bun": "./src/debug/format-tool-args.ts",
+      "import": "./dist/debug/format-tool-args.js",
+      "default": "./dist/debug/format-tool-args.js"
+    },
+    "./notification/notification": {
+      "types": "./dist/notification/notification.d.ts",
+      "bun": "./src/notification/notification.ts",
+      "import": "./dist/notification/notification.js",
+      "default": "./dist/notification/notification.js"
+    },
+    "./provider/active-providers": {
+      "types": "./dist/provider/active-providers.d.ts",
+      "bun": "./src/provider/active-providers.ts",
+      "import": "./dist/provider/active-providers.js",
+      "default": "./dist/provider/active-providers.js"
+    },
+    "./provider/catalog-registry": {
+      "types": "./dist/provider/catalog-registry.d.ts",
+      "bun": "./src/provider/catalog-registry.ts",
+      "import": "./dist/provider/catalog-registry.js",
+      "default": "./dist/provider/catalog-registry.js"
+    },
+    "./provider/catalog-runtime": {
+      "types": "./dist/provider/catalog-runtime.d.ts",
+      "bun": "./src/provider/catalog-runtime.ts",
+      "import": "./dist/provider/catalog-runtime.js",
+      "default": "./dist/provider/catalog-runtime.js"
+    },
+    "./provider/catalog-snapshot": {
+      "types": "./dist/provider/catalog-snapshot.d.ts",
+      "bun": "./src/provider/catalog-snapshot.ts",
+      "import": "./dist/provider/catalog-snapshot.js",
+      "default": "./dist/provider/catalog-snapshot.js"
+    },
+    "./provider/credential-store": {
+      "types": "./dist/provider/credential-store.d.ts",
+      "bun": "./src/provider/credential-store.ts",
+      "import": "./dist/provider/credential-store.js",
+      "default": "./dist/provider/credential-store.js"
+    },
+    "./provider/credentials": {
+      "types": "./dist/provider/credentials.d.ts",
+      "bun": "./src/provider/credentials.ts",
+      "import": "./dist/provider/credentials.js",
+      "default": "./dist/provider/credentials.js"
+    },
+    "./provider/definitions": {
+      "types": "./dist/provider/definitions.d.ts",
+      "bun": "./src/provider/definitions.ts",
+      "import": "./dist/provider/definitions.js",
+      "default": "./dist/provider/definitions.js"
+    },
+    "./provider/oauth-token-files": {
+      "types": "./dist/provider/oauth-token-files.d.ts",
+      "bun": "./src/provider/oauth-token-files.ts",
+      "import": "./dist/provider/oauth-token-files.js",
+      "default": "./dist/provider/oauth-token-files.js"
+    },
+    "./provider/registry": {
+      "types": "./dist/provider/registry.d.ts",
+      "bun": "./src/provider/registry.ts",
+      "import": "./dist/provider/registry.js",
+      "default": "./dist/provider/registry.js"
+    },
+    "./provider/resolver": {
+      "types": "./dist/provider/resolver.d.ts",
+      "bun": "./src/provider/resolver.ts",
+      "import": "./dist/provider/resolver.js",
+      "default": "./dist/provider/resolver.js"
+    },
+    "./session/branch": {
+      "types": "./dist/session/branch.d.ts",
+      "bun": "./src/session/branch.ts",
+      "import": "./dist/session/branch.js",
+      "default": "./dist/session/branch.js"
+    },
+    "./session/context": {
+      "types": "./dist/session/context.d.ts",
+      "bun": "./src/session/context.ts",
+      "import": "./dist/session/context.js",
+      "default": "./dist/session/context.js"
+    },
+    "./session/event-writer": {
+      "types": "./dist/session/event-writer.d.ts",
+      "bun": "./src/session/event-writer.ts",
+      "import": "./dist/session/event-writer.js",
+      "default": "./dist/session/event-writer.js"
+    },
+    "./session/events": {
+      "types": "./dist/session/events.d.ts",
+      "bun": "./src/session/events.ts",
+      "import": "./dist/session/events.js",
+      "default": "./dist/session/events.js"
+    },
+    "./session/message": {
+      "types": "./dist/session/message.d.ts",
+      "bun": "./src/session/message.ts",
+      "import": "./dist/session/message.js",
+      "default": "./dist/session/message.js"
+    },
+    "./session/prompt": {
+      "types": "./dist/session/prompt.d.ts",
+      "bun": "./src/session/prompt.ts",
+      "import": "./dist/session/prompt.js",
+      "default": "./dist/session/prompt.js"
+    },
+    "./session/session": {
+      "types": "./dist/session/session.d.ts",
+      "bun": "./src/session/session.ts",
+      "import": "./dist/session/session.js",
+      "default": "./dist/session/session.js"
+    },
+    "./session/system": {
+      "types": "./dist/session/system.d.ts",
+      "bun": "./src/session/system.ts",
+      "import": "./dist/session/system.js",
+      "default": "./dist/session/system.js"
+    },
+    "./shared/conversation-view": {
+      "types": "./dist/shared/conversation-view.d.ts",
+      "bun": "./src/shared/conversation-view.ts",
+      "import": "./dist/shared/conversation-view.js",
+      "default": "./dist/shared/conversation-view.js"
+    },
+    "./shared/diff-utils": {
+      "types": "./dist/shared/diff-utils.d.ts",
+      "bun": "./src/shared/diff-utils.ts",
+      "import": "./dist/shared/diff-utils.js",
+      "default": "./dist/shared/diff-utils.js"
+    },
+    "./shared/filelist": {
+      "types": "./dist/shared/filelist.d.ts",
+      "bun": "./src/shared/filelist.ts",
+      "import": "./dist/shared/filelist.js",
+      "default": "./dist/shared/filelist.js"
+    },
+    "./skill/skill": {
+      "types": "./dist/skill/skill.d.ts",
+      "bun": "./src/skill/skill.ts",
+      "import": "./dist/skill/skill.js",
+      "default": "./dist/skill/skill.js"
+    },
+    "./storage/session-jsonl": {
+      "types": "./dist/storage/session-jsonl.d.ts",
+      "bun": "./src/storage/session-jsonl.ts",
+      "import": "./dist/storage/session-jsonl.js",
+      "default": "./dist/storage/session-jsonl.js"
+    },
+    "./subagent/protocol": {
+      "types": "./dist/subagent/protocol.d.ts",
+      "bun": "./src/subagent/protocol.ts",
+      "import": "./dist/subagent/protocol.js",
+      "default": "./dist/subagent/protocol.js"
+    },
+    "./tool/look": {
+      "types": "./dist/tool/look.d.ts",
+      "bun": "./src/tool/look.ts",
+      "import": "./dist/tool/look.js",
+      "default": "./dist/tool/look.js"
+    },
+    "./tool/question": {
+      "types": "./dist/tool/question.d.ts",
+      "bun": "./src/tool/question.ts",
+      "import": "./dist/tool/question.js",
+      "default": "./dist/tool/question.js"
+    },
+    "./tool/read": {
+      "types": "./dist/tool/read.d.ts",
+      "bun": "./src/tool/read.ts",
+      "import": "./dist/tool/read.js",
+      "default": "./dist/tool/read.js"
+    },
+    "./tool/skill": {
+      "types": "./dist/tool/skill.d.ts",
+      "bun": "./src/tool/skill.ts",
+      "import": "./dist/tool/skill.js",
+      "default": "./dist/tool/skill.js"
+    },
+    "./tool/subagent": {
+      "types": "./dist/tool/subagent.d.ts",
+      "bun": "./src/tool/subagent.ts",
+      "import": "./dist/tool/subagent.js",
+      "default": "./dist/tool/subagent.js"
+    },
+    "./tool/tool": {
+      "types": "./dist/tool/tool.d.ts",
+      "bun": "./src/tool/tool.ts",
+      "import": "./dist/tool/tool.js",
+      "default": "./dist/tool/tool.js"
+    },
+    "./worktree/worktree": {
+      "types": "./dist/worktree/worktree.d.ts",
+      "bun": "./src/worktree/worktree.ts",
+      "import": "./dist/worktree/worktree.js",
+      "default": "./dist/worktree/worktree.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup && tsc --project tsconfig.build.json --emitDeclarationOnly",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.5.0",
+    "tsup": "^8.5.1"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/openai-compatible": "^2.0.41",
+    "ai": "^6.0.116",
+    "web-tree-sitter": "0.25.10",
+    "zod": "^4.3.6"
+  }
+}

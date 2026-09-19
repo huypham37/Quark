@@ -49,7 +49,7 @@ import {
   getWorktreeBranch,
   resolveWorktree,
   buildCreateArgs,
-} from "../../src/worktree/worktree"
+} from "../../packages/runner/src/worktree/worktree"
 
 // ---------------------------------------------------------------------------
 // Test helpers

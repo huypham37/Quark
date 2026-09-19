@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { TypedBus } from "../../src/session/events"
-import { createGhosttyTitleController, formatTerminalTitle, isGhostty, sanitizeTerminalTitle } from "../../src/tui/ghostty-title"
+import { TypedBus } from "../../packages/runner/src/session/events"
+import { createGhosttyTitleController, formatTerminalTitle, isGhostty, sanitizeTerminalTitle } from "../../packages/quark/src/tui/ghostty-title"
 
 describe("Ghostty terminal title", () => {
   test("detects Ghostty only for interactive terminals", () => {

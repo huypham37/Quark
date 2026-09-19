@@ -4,11 +4,11 @@
 
 import { beforeEach, describe, test, expect } from "bun:test"
 import { RGBA } from "@opentui/core"
-import { activeTheme, applyTheme, colors, setTerminalBg } from "../../src/tui/theme"
-import { darkTheme } from "../../src/tui/themes/dark"
-import { scrollTopForSelection } from "../../src/tui/components/autocomplete-scroll"
-import type { AutocompleteMode } from "../../src/tui/components/autocomplete"
-import { sessionControls } from "../../src/tui/session-controls"
+import { activeTheme, applyTheme, colors, setTerminalBg } from "../../packages/quark/src/tui/theme"
+import { darkTheme } from "../../packages/quark/src/tui/themes/dark"
+import { scrollTopForSelection } from "../../packages/quark/src/tui/components/autocomplete-scroll"
+import type { AutocompleteMode } from "../../packages/quark/src/tui/components/autocomplete"
+import { sessionControls } from "../../packages/quark/src/tui/session-controls"
 
 describe("autocomplete dropdown background", () => {
   beforeEach(() => {

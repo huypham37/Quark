@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { LanguageModel } from "ai"
-import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../src/provider/definitions"
+import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../packages/runner/src/provider/definitions"
 import {
   ProviderRegistry,
   createBundledProviderRegistry,
   type ProviderAdapter,
-} from "../../src/provider/registry"
+} from "../../packages/runner/src/provider/registry"
 
 function adapter(definition: ProviderDefinition): ProviderAdapter {
   return {

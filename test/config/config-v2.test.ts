@@ -9,8 +9,8 @@ import {
   providerCredentialSource,
   serializeConfig,
   writeConfigV2,
-} from "../../src/config/config"
-import { BUNDLED_PROVIDER_IDS } from "../../src/provider/definitions"
+} from "../../packages/quark/src/config/config"
+import { BUNDLED_PROVIDER_IDS } from "../../packages/runner/src/provider/definitions"
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "quark-config-v2-"))
 const file = path.join(directory, "config.yaml")

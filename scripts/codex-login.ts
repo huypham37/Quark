@@ -16,8 +16,8 @@ import {
 	loginWithBrowser,
 	loginWithDeviceCode,
 	saveToken,
-} from "../src/provider/codex-auth"
-import { createCodexFetch } from "../src/provider/codex-fetch"
+} from "../packages/runner/src/provider/codex-auth"
+import { createCodexFetch } from "../packages/runner/src/provider/codex-fetch"
 
 // ---------------------------------------------------------------------------
 // Prompt helper

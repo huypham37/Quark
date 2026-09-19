@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import type { LanguageModel } from "ai"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
-import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
-import { DefaultCredentialResolver, type Credential, type ProviderAuthStatus } from "../../src/provider/credentials"
-import type { CredentialStore } from "../../src/provider/credential-store"
-import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../src/provider/definitions"
-import { ActiveProviderSet } from "../../src/provider/active-providers"
-import { ProviderRegistry, type ProviderAdapter } from "../../src/provider/registry"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
+import { DefaultCredentialResolver, type Credential, type ProviderAuthStatus } from "../../packages/runner/src/provider/credentials"
+import type { CredentialStore } from "../../packages/runner/src/provider/credential-store"
+import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../packages/runner/src/provider/definitions"
+import { ActiveProviderSet } from "../../packages/runner/src/provider/active-providers"
+import { ProviderRegistry, type ProviderAdapter } from "../../packages/runner/src/provider/registry"
 
 class MemoryStore implements CredentialStore {
   readonly values = new Map<string, Credential>()

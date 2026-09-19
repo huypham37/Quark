@@ -92,7 +92,6 @@ export function App() {
       case "help":
         return app.showNotice(`Commands: ${slashCommands.map((item) => `/${item.id}`).join("   ")}`)
       case "new":
-      case "clear":
         return void app.newSession()
       case "sessions":
         return openPalette("sessions")

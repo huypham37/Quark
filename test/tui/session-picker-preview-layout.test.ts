@@ -10,7 +10,7 @@ function renderPreview(rows = `
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { CommandPalette } from "./src/tui/components/command-palette.tsx";
+    import { CommandPalette } from "./packages/quark/src/tui/components/command-palette.tsx";
 
     const setup = await testRender(
       () => createComponent(CommandPalette, {
@@ -32,7 +32,7 @@ function renderPreview(rows = `
   `
 
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",
@@ -46,10 +46,12 @@ function renderSessionPicker(): string {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
 
     const setup = await testRender(
       () => createComponent(App, {
+        bus,
         onSubmit() {},
         onCancel() {},
         getSessions() {
@@ -81,7 +83,7 @@ function renderSessionPicker(): string {
   `
 
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",
@@ -95,11 +97,13 @@ function renderSessionActions(): { frame: string; commands: string[] } {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
 
     const commands = [];
     const setup = await testRender(
       () => createComponent(App, {
+        bus,
         onSubmit() {},
         onCancel() {},
         onCommand(command) { commands.push(command); return { handled: true }; },
@@ -137,7 +141,7 @@ function renderSessionActions(): { frame: string; commands: string[] } {
   `
 
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

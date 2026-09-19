@@ -11,10 +11,10 @@ import { readFileSync } from "fs"
 import { existsSync } from "fs"
 import { resolve } from "path"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
+import { createAppState, dispatch } from "../../packages/quark/src/tui/state"
 
-const TOOL_CARD_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/tool-card.tsx"), "utf8")
-const MESSAGE_ITEM_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/message-item.tsx"), "utf8")
+const TOOL_CARD_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-card.tsx"), "utf8")
+const MESSAGE_ITEM_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/message-item.tsx"), "utf8")
 
 function withRoot<T>(fn: () => T): T {
   let result!: T
@@ -35,11 +35,11 @@ describe("ToolCard migration (ToolResultView + ToolInvocationBlock → ToolCard)
   })
 
   test("old ToolResultView file is deleted", () => {
-    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-result.tsx"))).toBe(false)
+    expect(existsSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-result.tsx"))).toBe(false)
   })
 
   test("old ToolInvocationBlock file is deleted", () => {
-    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-invocation.tsx"))).toBe(false)
+    expect(existsSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-invocation.tsx"))).toBe(false)
   })
 
   test("message-item.tsx imports grouped tool activities instead of old components", () => {

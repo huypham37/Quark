@@ -13,12 +13,13 @@ test("main composer queues and dispatches messages one at a time in FIFO order",
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
-    import { bus } from "./src/session/events";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
     import { TextareaRenderable } from "@opentui/core";
 
     const submissions = [];
     const setup = await testRender(() => createComponent(App, {
+      bus,
       initialSessionId: "queue-session",
       initialModelName: "smart",
       initialSkillCount: 0,
@@ -81,7 +82,7 @@ test("main composer queues and dispatches messages one at a time in FIFO order",
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",
@@ -107,12 +108,13 @@ test("queued messages can be navigated, deleted, and promoted for immediate send
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
-    import { bus } from "./src/session/events";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
 
     const submissions = [];
     let cancellations = 0;
     const setup = await testRender(() => createComponent(App, {
+      bus,
       initialSessionId: "queue-actions-session",
       initialModelName: "smart",
       initialSkillCount: 0,
@@ -180,7 +182,7 @@ test("queued messages can be navigated, deleted, and promoted for immediate send
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

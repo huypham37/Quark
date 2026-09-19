@@ -8,8 +8,8 @@
 // Pattern: follows test/provider/codex-consumer.test.ts mock fetch style.
 
 import { describe, test, expect } from "bun:test"
-import type { FetchFn } from "../../src/provider/codex-auth"
-import { createCodexConsumer } from "../../src/provider/codex-consumer"
+import type { FetchFn } from "../../packages/runner/src/provider/codex-auth"
+import { createCodexConsumer } from "../../packages/runner/src/provider/codex-consumer"
 
 // ---------------------------------------------------------------------------
 // Test helpers

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
-import { getContinuingToolCallId, getToolActivityKind, groupMessageParts, mergeToolActivityMessages } from "../../src/tui/components/tool-activity"
-import type { TuiMessage, TuiPart } from "../../src/tui/state"
+import { getContinuingToolCallId, getToolActivityKind, groupMessageParts, mergeToolActivityMessages } from "../../packages/quark/src/tui/components/tool-activity"
+import type { TuiMessage, TuiPart } from "../../packages/quark/src/tui/state"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
@@ -133,10 +133,12 @@ describe("ToolActivity progressive disclosure", () => {
     const script = `
       import { testRender } from "@opentui/solid";
       import { createComponent } from "solid-js";
-      import { App } from "./src/tui/components/App.tsx";
+      import { App } from "./packages/quark/src/tui/components/App.tsx";
+      import { bus } from "./packages/runner/src/session/events";
 
       const setup = await testRender(
         () => createComponent(App, {
+          bus,
           initialSessionId: "activity-session",
           initialModelName: "smart",
           initialSkillCount: 0,
@@ -159,7 +161,7 @@ describe("ToolActivity progressive disclosure", () => {
       console.log(JSON.stringify(frame));
     `
     const proc = Bun.spawnSync({
-      cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+      cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
       cwd: ROOT,
       stdout: "pipe",
       stderr: "pipe",
@@ -173,7 +175,7 @@ describe("ToolActivity progressive disclosure", () => {
     const script = `
       import { testRender } from "@opentui/solid";
       import { createComponent } from "solid-js";
-      import { ToolActivity } from "./src/tui/components/tool-activity-view.tsx";
+      import { ToolActivity } from "./packages/quark/src/tui/components/tool-activity-view.tsx";
 
       const tools = [
         { type: "tool", tool: "read", callId: "1", status: "completed", input: { path: "/src/a.ts" } },
@@ -192,7 +194,7 @@ describe("ToolActivity progressive disclosure", () => {
       console.log(JSON.stringify({ before, after }));
     `
     const proc = Bun.spawnSync({
-      cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+      cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
       cwd: ROOT,
       stdout: "pipe",
       stderr: "pipe",
@@ -213,7 +215,7 @@ describe("ToolActivity progressive disclosure", () => {
     const script = `
       import { testRender } from "@opentui/solid";
       import { createComponent } from "solid-js";
-      import { ToolActivity } from "./src/tui/components/tool-activity-view.tsx";
+      import { ToolActivity } from "./packages/quark/src/tui/components/tool-activity-view.tsx";
       const setup = await testRender(
         () => createComponent(ToolActivity, {
           kind: "modify",
@@ -227,7 +229,7 @@ describe("ToolActivity progressive disclosure", () => {
       console.log(JSON.stringify(frame));
     `
     const proc = Bun.spawnSync({
-      cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+      cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
       cwd: ROOT,
       stdout: "pipe",
       stderr: "pipe",

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, test, expect } from "bun:test"
 import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
-import type { FetchFn } from "../../src/provider/codex-auth"
+import type { FetchFn } from "../../packages/runner/src/provider/codex-auth"
 import {
   CodexTokenStore,
   decodeJwt,
@@ -24,12 +24,12 @@ import {
   pollDeviceAuth,
   loginWithDeviceCode,
   loginWithBrowser,
-} from "../../src/provider/codex-auth"
+} from "../../packages/runner/src/provider/codex-auth"
 import type {
   CodexToken,
   DeviceAuthInfo,
   DeviceCodeInfo,
-} from "../../src/provider/codex-auth"
+} from "../../packages/runner/src/provider/codex-auth"
 
 // ---------------------------------------------------------------------------
 // Test helpers

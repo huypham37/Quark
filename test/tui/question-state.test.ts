@@ -10,8 +10,8 @@ import {
   dispatch,
   type AppState,
   type QuestionRequest,
-} from "../../src/tui/state"
-import { createQuestionKeyHandler } from "../../src/tui/question-key-handler"
+} from "../../packages/quark/src/tui/state"
+import { createQuestionKeyHandler } from "../../packages/quark/src/tui/question-key-handler"
 
 let state: AppState
 

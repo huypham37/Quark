@@ -16,8 +16,9 @@
 //
 // Group 2 – TUI state bridge (/new-specific wireEvents behaviour)
 //   The /new handler emits  session-reset { sessionId: "<real-id>" }
-//   — i.e. a pre-created, non-null ID.  This is different from /clear
-//   (which emits null) and requires no subsequent session-created event.
+//   — i.e. a pre-created, non-null ID.  This is different from the
+//   worktree-switch reset (which emits null) and requires no subsequent
+//   session-created event.
 //
 //   2a. session-reset with a real ID switches sessionId immediately
 //   2b. session-reset with a real ID clears messages + running state
@@ -30,10 +31,10 @@
 
 import { describe, test, expect, afterEach } from "bun:test"
 import { createRoot } from "solid-js"
-import { commands, filterCommands } from "../../src/tui/commands"
-import { createAppState } from "../../src/tui/state"
-import { wireEvents } from "../../src/tui/events"
-import { bus } from "../../src/session/events"
+import { commands, filterCommands } from "../../packages/quark/src/tui/commands"
+import { createAppState } from "../../packages/quark/src/tui/state"
+import { wireEvents } from "../../packages/quark/src/tui/events"
+import { bus } from "../../packages/runner/src/session/events"
 
 // ── helpers ──────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ function setup(sessionId: string | null = "s1") {
   createRoot((d) => {
     dispose = d
     state = createAppState({ sessionId, modelName: "smart", skillCount: 0 })
-    wireEvents(state)
+    wireEvents(state, bus)
   })
   return state
 }

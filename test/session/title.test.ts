@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildTitlePrompt, validateTitle } from "../../src/session/title"
+import { buildTitlePrompt, validateTitle } from "../../packages/runner/src/session/title"
 
 describe("session title generation", () => {
   test("interpolates a truncated user message into the title prompt source", () => {

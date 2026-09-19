@@ -11,10 +11,10 @@
 // simulated via ReadableStream.
 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test"
-import type { FetchFn } from "../../src/provider/codex-auth"
+import type { FetchFn } from "../../packages/runner/src/provider/codex-auth"
 import {
   createCodexConsumer,
-} from "../../src/provider/codex-consumer"
+} from "../../packages/runner/src/provider/codex-consumer"
 import type { LanguageModelV3, LanguageModelV3StreamPart } from "@ai-sdk/provider"
 
 // ---------------------------------------------------------------------------

@@ -55,7 +55,7 @@ Or build and use the CLI directly:
 
 ```bash
 bun run build
-node dist/cli.js --help
+node packages/quark/dist/cli.js --help
 ```
 
 To install `quark` globally from this checkout:
@@ -90,9 +90,6 @@ quark --no-store "what does this regex do?"
 # Resume an existing session
 quark --session <id>
 
-# View a running local session from another terminal (read-only)
-quark --watch <id>
-
 ```
 
 ### CLI flags
@@ -102,37 +99,11 @@ quark --watch <id>
 | `-p, --profile <name>` | Profile to use (default: from config) |
 | `-m, --message <text>` | Message text (alternative to a positional arg) |
 | `-s, --session <id>` | Resume an existing session |
-| `--watch <id>` | View a running local session in another terminal (read-only) |
 | `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
 | `--no-store` | Run an ephemeral session — never written to disk |
 | `--verbose` | Print every tool call + result to stderr |
 | `-l, --list-profiles` | List available profiles |
 | `-h, --help` | Show help |
-
-### Supervised runs
-
-Something that spawns the TUI — an orchestrator, a session recorder — can name
-itself and be told which session the TUI is on. That id is not otherwise
-obtainable: the terminal title carries the session *name*, `session/index.json`
-cannot tell two sessions in one directory apart, and the id in the child's
-environment is unreadable from outside.
-
-```bash
-QUARK_SESSION_TAG=my-supervisor quark
-# → ~/.config/quark/session/live/my-supervisor.sock
-```
-
-Connect to that socket and read newline-delimited JSON. The first frame is
-`{"event":"ready","data":{"sessionId":null,"tag":"my-supervisor"}}` — `null`
-until the first prompt creates a session, so a supervisor may connect the moment
-it spawns the process. Every move after that is announced as
-`{"event":"active-session","data":{"sessionId":"…"}}`: a new session, a branch,
-`/new`, the session picker. The socket also mirrors live activity for whichever
-session it is on, the way `quark --watch <id>` mirrors a named one.
-
-The tag is opaque — any `[A-Za-z0-9._-]` string up to 64 characters — and Quark
-never learns what it means. A tag that cannot be a filename is refused, and the
-run continues without a socket. With the variable unset, nothing is created.
 
 ---
 
@@ -256,11 +227,11 @@ See [`docs/data-model.md`](docs/data-model.md) for the persistence schema and
 
 ## Using Quark as an SDK
 
-Quark also ships as the `@quark/sdk` package, exposing its session, tool, and
+Quark also ships as the `@quark/runner` package, exposing its session, tool, and
 agent primitives:
 
 ```ts
-import { bootstrap, createSession, prompt } from "@quark/sdk"
+import { createSession, prompt } from "@quark/runner"
 ```
 
 ---

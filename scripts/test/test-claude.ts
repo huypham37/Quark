@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // Raw streaming test for claude-haiku-4.5 via Copilot API
 
-import { loadToken } from "../src/provider/copilot-auth"
-import { createCopilotFetch } from "../src/provider/copilot-fetch"
+import { loadToken } from "../packages/runner/src/provider/copilot-auth"
+import { createCopilotFetch } from "../packages/runner/src/provider/copilot-fetch"
 
 const token = loadToken()
 if (!token) { console.error("No token found"); process.exit(1) }

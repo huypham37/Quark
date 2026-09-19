@@ -7,12 +7,12 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 
-import { discoverSkills, loadSkill, clearCache, type Skill } from "../../src/skill/skill"
-import { buildSystem } from "../../src/session/system"
-import { buildSkillTool } from "../../src/tool/skill"
-import { agentFromProfile } from "../../src/agent"
-import { buildPickerItems, type PickerOption, type PickerEntry } from "../../src/tui/picker-items"
-import type { AgentConfig } from "../../src/agent"
+import { discoverSkills, clearCache, type Skill, type SkillDefinition } from "../../packages/runner/src/skill/skill"
+import { buildSystem } from "../../packages/runner/src/session/system"
+import { buildSkillTool } from "../../packages/runner/src/tool/skill"
+import { defineAgent, type AgentDefinition } from "../../packages/runner/src/agent"
+import { materializeAgent } from "../../packages/quark/src/agent-compat"
+import { buildPickerItems, type PickerOption } from "../../packages/quark/src/tui/picker-items"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,19 +37,23 @@ function skillsToPickerOptions(skills: Skill[]): PickerOption[] {
   return skills.map((s) => ({ id: s.name, name: s.name }))
 }
 
+function skillDef(name: string, description: string, content = "body"): SkillDefinition {
+  return { name, description, content }
+}
+
 /**
- * Build a minimal AgentConfig for testing.
- * Uses a slim profile shape compatible with buildSystem and agentFromProfile.
+ * Build a minimal portable AgentDefinition for testing.
+ * `skills` are concrete definitions — the runner never resolves names from disk.
  */
-function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
+function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
+  return defineAgent({
     id: "test",
     name: "Test Agent",
-    prompt: "You are a test agent.",
-    tools: ["read"],
+    instructions: "You are a test agent.",
+    tools: [],
     skills: [],
     ...overrides,
-  }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -184,33 +188,31 @@ describe("buildPickerItems with skills", () => {
 // ===========================================================================
 
 describe("agent.skills mutation", () => {
-  test("adds a skill name to empty skills array", () => {
+  test("adds a skill to empty skills array", () => {
     const agent = makeAgent({ skills: [] })
-    agent.skills = [...agent.skills, "code-review"]
-    expect(agent.skills).toEqual(["code-review"])
+    agent.skills = [...agent.skills!, skillDef("code-review", "Review code")]
+    expect(agent.skills.map((s) => s.name)).toEqual(["code-review"])
   })
 
-  test("adds a skill name to existing skills", () => {
-    const agent = makeAgent({ skills: ["code-review"] })
-    agent.skills = [...agent.skills, "git-release"]
-    expect(agent.skills).toEqual(["code-review", "git-release"])
+  test("adds a skill to existing skills", () => {
+    const agent = makeAgent({ skills: [skillDef("code-review", "Review code")] })
+    agent.skills = [...agent.skills, skillDef("git-release", "Manage releases")]
+    expect(agent.skills.map((s) => s.name)).toEqual(["code-review", "git-release"])
   })
 
   test("preserves existing skills when adding new one", () => {
-    const agent = makeAgent({ skills: ["alpha", "beta"] })
-    agent.skills = [...agent.skills, "gamma"]
+    const agent = makeAgent({ skills: [skillDef("alpha", "A"), skillDef("beta", "B")] })
+    agent.skills = [...agent.skills, skillDef("gamma", "G")]
     expect(agent.skills).toHaveLength(3)
-    expect(agent.skills).toContain("alpha")
-    expect(agent.skills).toContain("beta")
-    expect(agent.skills).toContain("gamma")
+    expect(agent.skills.map((s) => s.name)).toEqual(["alpha", "beta", "gamma"])
   })
 
   test("multiple additions accumulate", () => {
     const agent = makeAgent({ skills: [] })
-    agent.skills = [...agent.skills, "alpha"]
-    agent.skills = [...agent.skills, "beta"]
-    agent.skills = [...agent.skills, "gamma"]
-    expect(agent.skills).toEqual(["alpha", "beta", "gamma"])
+    agent.skills = [...agent.skills!, skillDef("alpha", "A")]
+    agent.skills = [...agent.skills, skillDef("beta", "B")]
+    agent.skills = [...agent.skills, skillDef("gamma", "G")]
+    expect(agent.skills.map((s) => s.name)).toEqual(["alpha", "beta", "gamma"])
   })
 })
 
@@ -220,20 +222,20 @@ describe("agent.skills mutation", () => {
 
 describe("duplicate skill detection", () => {
   test("detects when skill is already in agent.skills", () => {
-    const agent = makeAgent({ skills: ["code-review", "git-release"] })
-    const isDuplicate = agent.skills.includes("code-review")
+    const agent = makeAgent({ skills: [skillDef("code-review", "R"), skillDef("git-release", "G")] })
+    const isDuplicate = agent.skills!.some((s) => s.name === "code-review")
     expect(isDuplicate).toBe(true)
   })
 
   test("returns false when skill is not in agent.skills", () => {
-    const agent = makeAgent({ skills: ["code-review"] })
-    const isDuplicate = agent.skills.includes("git-release")
+    const agent = makeAgent({ skills: [skillDef("code-review", "R")] })
+    const isDuplicate = agent.skills!.some((s) => s.name === "git-release")
     expect(isDuplicate).toBe(false)
   })
 
   test("returns false when agent.skills is empty", () => {
     const agent = makeAgent({ skills: [] })
-    const isDuplicate = agent.skills.includes("any-skill")
+    const isDuplicate = agent.skills!.some((s) => s.name === "any-skill")
     expect(isDuplicate).toBe(false)
   })
 })
@@ -244,14 +246,14 @@ describe("duplicate skill detection", () => {
 
 describe("buildSystem with dynamically added skills", () => {
   test("system prompt includes L1 metadata for bound skills", () => {
-    createSkill(tmpDir, "code-review", "Review code for quality", "Full review instructions...")
-    createSkill(tmpDir, "git-release", "Manage git releases", "Full release instructions...")
-    discoverSkills([tmpDir])
-
     // Simulate: user added 'git-release' via /skills picker
-    const agent = makeAgent({ skills: ["code-review", "git-release"] })
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+    const agent = makeAgent({
+      skills: [
+        skillDef("code-review", "Review code for quality", "Full review instructions..."),
+        skillDef("git-release", "Manage git releases", "Full release instructions..."),
+      ],
+    })
+    const joined = buildSystem(agent).join("\n")
 
     expect(joined).toContain("# Available Skills")
     expect(joined).toContain("code-review")
@@ -259,17 +261,13 @@ describe("buildSystem with dynamically added skills", () => {
     expect(joined).toContain("git-release")
     expect(joined).toContain("Manage git releases")
 
-    // L2 content (SKILL.md body) must NOT leak into system prompt
+    // L2 content (skill body) must NOT leak into system prompt
     expect(joined).not.toContain("Full review instructions")
     expect(joined).not.toContain("Full release instructions")
   })
 
   test("activation context leaves the system prompt unchanged", () => {
-    createSkill(tmpDir, "alpha", "Alpha skill", "alpha body")
-    createSkill(tmpDir, "beta", "Beta skill", "beta body")
-    discoverSkills([tmpDir])
-
-    const agent = makeAgent({ skills: ["alpha"] })
+    const agent = makeAgent({ skills: [skillDef("alpha", "Alpha skill", "alpha body")] })
     const before = buildSystem(agent).join("\n")
     const activationContext = "[Activated skill]\nbeta: Beta skill\nUse the skill tool to load it when needed."
     const after = buildSystem(agent).join("\n")
@@ -280,21 +278,12 @@ describe("buildSystem with dynamically added skills", () => {
   })
 
   test("empty skills — no skill block in system prompt", () => {
-    const agent = makeAgent({ skills: [] })
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
+    const joined = buildSystem(makeAgent({ skills: [] })).join("\n")
     expect(joined).not.toContain("Available Skills")
   })
 
-  test("skill not on disk — gracefully omitted from system prompt", () => {
-    createSkill(tmpDir, "real-skill", "Real skill", "content")
-    discoverSkills([tmpDir])
-
-    // 'ghost-skill' was added to agent.skills but doesn't exist on disk
-    const agent = makeAgent({ skills: ["real-skill", "ghost-skill"] })
-    const parts = buildSystem(agent)
-    const joined = parts.join("\n")
-
+  test("only supplied concrete skills appear", () => {
+    const joined = buildSystem(makeAgent({ skills: [skillDef("real-skill", "Real skill")] })).join("\n")
     expect(joined).toContain("real-skill")
     expect(joined).not.toContain("ghost-skill")
   })
@@ -306,8 +295,11 @@ describe("buildSystem with dynamically added skills", () => {
 
 describe("buildSkillTool with dynamically added skills", () => {
   test("tool description is stable as skills are activated", () => {
-    const before = buildSkillTool(["alpha"])
-    const after = buildSkillTool(["alpha", "beta"])
+    const before = buildSkillTool(undefined, [skillDef("alpha", "Alpha skill")])
+    const after = buildSkillTool(undefined, [
+      skillDef("alpha", "Alpha skill"),
+      skillDef("beta", "Beta skill"),
+    ])
 
     expect(after.description).toBe(before.description)
     expect(after.description).not.toContain("alpha")
@@ -319,16 +311,8 @@ describe("buildSkillTool with dynamically added skills", () => {
     expect(tool.description).not.toContain("Available skills")
   })
 
-  test("tool description does not vary for unknown bound skills", () => {
-    const tool = buildSkillTool(["nonexistent"])
-    expect(tool.description).toBe(buildSkillTool().description)
-  })
-
-  test("execute loads a newly added skill", async () => {
-    createSkill(tmpDir, "new-skill", "Newly added", "Do the new thing.")
-    discoverSkills([tmpDir])
-
-    const tool = buildSkillTool(["new-skill"])
+  test("execute loads a newly added concrete skill", async () => {
+    const tool = buildSkillTool(undefined, [skillDef("new-skill", "Newly added", "Do the new thing.")])
     const ctx = {
       sessionId: "s1",
       messageId: "m1",
@@ -400,7 +384,11 @@ describe("skills picker edge cases", () => {
 // ===========================================================================
 
 describe("profile switch resets skills", () => {
-  test("agentFromProfile creates agent with profile's declared skills only", () => {
+  // Hermetic skill resolution: never touch the developer's skill directories.
+  const resolveSkills = (names: string[]): SkillDefinition[] =>
+    names.map((name) => skillDef(name, `${name} description`))
+
+  test("materializeAgent creates agent with profile's declared skills only", async () => {
     const profile = {
       id: "custom",
       name: "Custom",
@@ -409,15 +397,15 @@ describe("profile switch resets skills", () => {
       skills: ["declared-skill"],
     }
 
-    const agent = agentFromProfile(profile, "You are custom.")
-    expect(agent.skills).toEqual(["declared-skill"])
+    const agent = await materializeAgent(profile, "You are custom.", { resolveSkills })
+    expect(agent.skills?.map((s) => s.name)).toEqual(["declared-skill"])
     // Skills added via /skills during a previous session would NOT be in the new agent
   })
 
-  test("new agent from profile does not carry over temporary skills", () => {
+  test("new agent from profile does not carry over temporary skills", async () => {
     // Simulate: profile A's base skills are ['alpha']
-    // User adds 'beta' via /skills → agent.skills = ['alpha', 'beta']
-    // Then switches to profile B → new agentFromProfile → only profile B's skills
+    // User adds 'beta' via /skills → agent.skills gains 'beta'
+    // Then switches to profile B → new materializeAgent → only profile B's skills
 
     const profileA = {
       id: "profile-a",
@@ -436,13 +424,13 @@ describe("profile switch resets skills", () => {
     }
 
     // Simulate adding beta to profile A's agent
-    const agentA = agentFromProfile(profileA, "prompt")
-    agentA.skills = [...agentA.skills, "beta"]
-    expect(agentA.skills).toEqual(["alpha", "beta"])
+    const agentA = await materializeAgent(profileA, "prompt", { resolveSkills })
+    agentA.skills = [...(agentA.skills ?? []), skillDef("beta", "beta description")]
+    expect(agentA.skills.map((s) => s.name)).toEqual(["alpha", "beta"])
 
     // Switch to profile B — creates a fresh agent
-    const agentB = agentFromProfile(profileB, "prompt")
-    expect(agentB.skills).toEqual(["gamma"])
+    const agentB = await materializeAgent(profileB, "prompt", { resolveSkills })
+    expect(agentB.skills?.map((s) => s.name)).toEqual(["gamma"])
     // 'beta' from the temporary addition is gone
   })
 })

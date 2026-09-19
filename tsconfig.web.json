@@ -1,11 +1,15 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "types": ["node", "bun"],
-    "lib": ["ESNext", "DOM"],
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js"
+    // Typecheck-only: resolve published @quark/runner subpaths back to source
+    // so files that also import runner source directly share one declaration
+    // identity. Shipped `exports` still point at compiled dist.
+    "paths": {
+      "@quark/runner": ["./packages/runner/src/index.ts"],
+      "@quark/runner/*": ["./packages/runner/src/*.ts"]
+    }
   },
   "include": ["web/**/*.ts", "web/**/*.tsx"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "web/dist"]
 }

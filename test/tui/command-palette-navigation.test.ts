@@ -15,7 +15,8 @@ async function navigate(command: typeof commands[number]) {
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { App } from "./src/tui/components/App.tsx";
+    import { App } from "./packages/quark/src/tui/components/App.tsx";
+    import { bus } from "./packages/runner/src/session/events";
 
     const command = ${JSON.stringify(command)};
     const entries = [
@@ -45,6 +46,7 @@ async function navigate(command: typeof commands[number]) {
       },
     ];
     const setup = await testRender(() => createComponent(App, {
+      bus,
       initialModelName: "smart",
       initialSkillCount: 1,
       onCancel() {},
@@ -80,7 +82,7 @@ async function navigate(command: typeof commands[number]) {
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

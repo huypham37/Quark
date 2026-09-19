@@ -2,9 +2,9 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test"
 import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { getSessionIndexPath, setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot, replaySessionFile, scanSessionMetas } from "../../src/storage/session-jsonl"
-import { createSession, deleteSession, getSession, listAllSessions, setSessionPinned, updateSession } from "../../src/session/session"
+import { getSessionIndexPath, setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot, replaySessionFile, scanSessionMetas } from "../../packages/runner/src/storage/session-jsonl"
+import { createSession, deleteSession, getSession, listAllSessions, setSessionPinned, updateSession } from "../../packages/runner/src/session/session"
 
 let tmpDir: string
 

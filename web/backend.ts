@@ -1,24 +1,26 @@
-import { agentFromProfile } from "../src/agent"
-import { bootstrap, resetBootstrap } from "../src/bootstrap"
-import { loadConfig, parseModelSpec, resetConfigCache } from "../src/config/config"
-import { resolveProfile, readPromptFile, listProfiles, resetProfileCache, type ProfileDef } from "../src/profile/profile"
-import { exportSessionToMarkdown } from "../src/commands/export"
-import { undoLatest } from "../src/commands/undo"
-import { dbToConversationMessages } from "../src/shared/conversation-view"
-import { getLastInputTokens } from "../src/session/context"
-import { bus, type BusEventName } from "../src/session/events"
-import { loadMessages } from "../src/session/message"
-import { cancel, isActive, prompt } from "../src/session/prompt"
-import { compactBranch, createSteerBranch } from "../src/session/branch"
-import { resolveModel } from "../src/provider/resolver"
-import { clearCache as clearSkillCache, discoverSkills, loadSkill } from "../src/skill/skill"
-import { clear as clearRegistry } from "../src/tool/registry"
-import { createSession, getSession, listProjectSessions, type Session } from "../src/session/session"
-import { respondQuestion } from "../src/tool/question"
-import { getBranchFromPath } from "../src/worktree/worktree"
-import { CatalogModelRuntime } from "../src/tui/catalog-model-runtime"
-import { buildModelPickerOptions } from "../src/tui/model-picker"
-import { thinkingCapabilityFromCatalog } from "../src/provider/catalog-runtime"
+import { materializeAgent } from "../packages/quark/src/agent-compat"
+import { loadConfig, parseModelSpec, resetConfigCache } from "../packages/quark/src/config/config"
+import { resolveProfile, readPromptFile, listProfiles, resetProfileCache, type ProfileDef } from "../packages/quark/src/profile/profile"
+import { loadAmbientInstructions } from "../packages/quark/src/ambient"
+import { loadPlugins } from "../packages/quark/src/plugin-loader"
+import { ensureStorageRoot } from "../packages/runner/src/storage/session-jsonl"
+import type { AgentDefinition } from "../packages/runner/src/agent"
+import { exportSessionToMarkdown } from "../packages/runner/src/commands/export"
+import { undoLatest } from "../packages/runner/src/commands/undo"
+import { dbToConversationMessages } from "../packages/runner/src/shared/conversation-view"
+import { getLastInputTokens } from "../packages/runner/src/session/context"
+import { bus, type BusEventName } from "../packages/runner/src/session/events"
+import { loadMessages } from "../packages/runner/src/session/message"
+import { cancel, isActive, prompt } from "../packages/runner/src/session/prompt"
+import { compactBranch, createSteerBranch } from "../packages/runner/src/session/branch"
+import { resolveModel } from "../packages/runner/src/provider/resolver"
+import { clearCache as clearSkillCache, discoverSkills, loadSkill } from "../packages/runner/src/skill/skill"
+import { createSession, getSession, listProjectSessions, type Session } from "../packages/runner/src/session/session"
+import { respondQuestion } from "../packages/runner/src/tool/question"
+import { getBranchFromPath } from "../packages/runner/src/worktree/worktree"
+import { CatalogModelRuntime } from "../packages/quark/src/tui/catalog-model-runtime"
+import { buildModelPickerOptions } from "../packages/quark/src/tui/model-picker"
+import { thinkingCapabilityFromCatalog } from "../packages/runner/src/provider/catalog-runtime"
 
 const streamEvents: BusEventName[] = [
   "user-message",
@@ -86,7 +88,7 @@ function sessionData(sessionId: string) {
 }
 
 export class WebBackend {
-  private agent: ReturnType<typeof agentFromProfile>
+  private agent: AgentDefinition
   private profile: ProfileDef
   private modelOverride: string | null = null
   private thinkingOverride: string | null = null
@@ -95,7 +97,7 @@ export class WebBackend {
 
   private constructor(
     profile: ProfileDef,
-    agent: ReturnType<typeof agentFromProfile>,
+    agent: AgentDefinition,
     private readonly catalog: CatalogModelRuntime,
   ) {
     this.profile = profile
@@ -104,8 +106,9 @@ export class WebBackend {
 
   static async create(): Promise<WebBackend> {
     const profile = resolveProfile()
-    const agent = agentFromProfile(profile, readPromptFile(profile).content)
-    await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
+    const agent = await materializeAgent(profile, readPromptFile(profile).content)
+    ensureStorageRoot()
+    await loadPlugins()
     const catalog = await CatalogModelRuntime.create()
     void catalog.refresh()
     return new WebBackend(profile, agent, catalog)
@@ -339,18 +342,15 @@ export class WebBackend {
     }
   }
 
-  /** Rebuilds the agent from a profile and re-registers its tools and skills. */
+  /** Rebuilds the agent from a profile and reloads its tools and skills. */
   private async applyProfile(profileId: string): Promise<void> {
     resetProfileCache()
     clearSkillCache()
     const profile = resolveProfile(profileId)
     this.profile = profile
-    this.agent = agentFromProfile(profile, readPromptFile(profile).content)
+    this.agent = await materializeAgent(profile, readPromptFile(profile).content)
     this.pendingSkillContext = []
     this.activatedSkills.clear()
-    clearRegistry()
-    resetBootstrap()
-    await bootstrap({ profileTools: profile.tools, boundSkills: profile.skills })
   }
 
   private async switchProfile(name: string): Promise<void> {
@@ -385,6 +385,7 @@ export class WebBackend {
         parts: [{ type: "text", text: goal }],
         model: this.modelOverride ?? undefined,
         agent: this.requestAgent(),
+        ambientInstructions: loadAmbientInstructions,
         catalog: this.catalog.catalog,
       }).catch((error) => bus.emit("error", { sessionId: result.sessionId, error }))
     }
@@ -426,6 +427,7 @@ export class WebBackend {
       ...(skillContext ? { modelOnlyText: skillContext } : {}),
       model: this.modelOverride ?? undefined,
       agent: this.requestAgent(),
+      ambientInstructions: loadAmbientInstructions,
       catalog: this.catalog.catalog,
     }).catch((error) => bus.emit("error", { sessionId, error }))
 

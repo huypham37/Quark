@@ -11,18 +11,18 @@ import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
-import { bootstrap, resetBootstrap } from "../../src/bootstrap"
-import { createSession } from "../../src/session/session"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
+import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
+import { createSession } from "../../packages/runner/src/session/session"
 import {
   createAssistantMessage,
   addPart,
   updatePart,
   loadMessages,
   type ReasoningPartData,
-} from "../../src/session/message"
-import { bus } from "../../src/session/events"
+} from "../../packages/runner/src/session/message"
+import { bus } from "../../packages/runner/src/session/events"
 
 // ---------------------------------------------------------------------------
 // Setup

@@ -8,8 +8,8 @@
 // Pattern: Follows test/provider/copilot-fetch.test.ts mock fetch style.
 
 import { describe, test, expect } from "bun:test"
-import { createCodexFetch } from "../../src/provider/codex-fetch"
-import type { FetchFn } from "../../src/provider/codex-auth"
+import { createCodexFetch } from "../../packages/runner/src/provider/codex-fetch"
+import type { FetchFn } from "../../packages/runner/src/provider/codex-auth"
 
 // ---------------------------------------------------------------------------
 // createCodexFetch — wraps fetch with Bearer auth injection
