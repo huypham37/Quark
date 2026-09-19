@@ -79,10 +79,10 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBe("<model-name>")
   })
 
-  test("profile command has usage hint", () => {
-    const result = filterCommands("profile")
+  test("agent command has usage hint", () => {
+    const result = filterCommands("agent")
     expect(result.length).toBe(1)
-    expect(result[0]!.usage).toBe("<profile-name>")
+    expect(result[0]!.usage).toBe("<agent-name>")
   })
 
   test("help command has no usage hint", () => {

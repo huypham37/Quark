@@ -18,7 +18,7 @@ export const slashCommands: SlashCommand[] = [
   { id: "new", description: "Create a new session" },
   { id: "sessions", description: "Switch to another session" },
   { id: "model", description: "Switch model", usage: "[provider/model]" },
-  { id: "profile", description: "Switch profile", usage: "[profile-name]" },
+  { id: "agent", description: "Switch agent", usage: "[agent-name]" },
   { id: "skills", description: "Add a skill", usage: "<skill-name>" },
   { id: "compact", description: "Branch with LLM-compacted history", usage: "[goal]" },
   { id: "steer", description: "Branch with full history", usage: "[goal]" },

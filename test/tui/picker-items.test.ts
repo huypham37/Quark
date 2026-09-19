@@ -34,8 +34,8 @@ describe("buildPickerItems", () => {
 })
 
 describe("pickerModeForCommand", () => {
-  test("opens the profile picker", () => {
-    expect(pickerModeForCommand("profile")).toBe("profiles")
+  test("opens the agent picker", () => {
+    expect(pickerModeForCommand("agent")).toBe("agents")
   })
 
   test("ignores non-picker commands", () => {

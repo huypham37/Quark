@@ -40,14 +40,22 @@ export interface ModelsConfig {
 }
 
 export interface QuarkConfig {
-  version: 2
+  /**
+   * V2 keeps agents inline under `profiles:`.
+   * V3 moves them to `agents/<id>/agent.yaml` and keeps only app settings here.
+   * A V2 config is still readable; it is written back as V2 so an unmigrated
+   * user never silently loses their inline profiles.
+   */
+  version: 2 | 3
   models: ModelsConfig
   maxSteps: number
   branching: BranchingConfig
-  /** Opaque passthrough; profile semantics live in profile/profile.ts. */
+  /** V2 only: opaque passthrough; profile semantics live in profile/profile.ts. */
   profiles?: Record<string, unknown>
-  /** Opaque passthrough; consumed by profile/profile.ts. */
+  /** V2 only: opaque passthrough; consumed by profile/profile.ts. */
   defaultProfile?: string
+  /** V3 only: agent id resolved from `<config>/agents/<id>/`. */
+  defaultAgent?: string
   providers: Record<string, CustomProviderConfig>
   hideReadonlyTools: boolean
   /** Optional executable name/path used to open local file links. */
@@ -162,10 +170,10 @@ export function parseCustomProviders(raw: unknown): Record<string, CustomProvide
   return result
 }
 
-/** Defaults used when no config file exists yet. */
+/** Defaults used when no config file exists yet (new installs are V3). */
 export function defaultConfig(): QuarkConfig {
   return {
-    version: 2,
+    version: 3,
     models: { ...DEFAULT_MODELS },
     maxSteps: DEFAULT_MAX_STEPS,
     branching: { ...BRANCHING_DEFAULTS },
@@ -175,27 +183,40 @@ export function defaultConfig(): QuarkConfig {
 }
 
 export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
-  if (raw.version !== 2) {
+  const version = raw.version
+  if (version !== 2 && version !== 3) {
     throw new Error(
-      raw.version === undefined
-        ? "config.yaml has no \"version\" field. Version 1 configuration is no longer supported; add \"version: 2\", move small_model to models.small, and describe providers with base_url and api_key."
-        : `Unsupported config version "${String(raw.version)}". Quark requires "version: 2" in config.yaml.`,
+      version === undefined
+        ? "config.yaml has no \"version\" field. Version 1 configuration is no longer supported; add \"version: 3\" and describe providers with base_url and api_key."
+        : `Unsupported config version "${String(version)}". Quark supports "version: 2" and "version: 3" in config.yaml.`,
+    )
+  }
+  if (version === 3 && raw.profiles !== undefined) {
+    throw new Error(
+      "config.yaml is version 3 but still has a \"profiles\" block. Agents now live in agents/<id>/agent.yaml; remove \"profiles\" and \"default_profile\" (run the V2 to V3 migration) so agents have a single source of truth.",
     )
   }
   if (!raw.models || typeof raw.models !== "object" || Array.isArray(raw.models)) {
     throw new Error("models must contain small.")
   }
   const models = raw.models as Record<string, unknown>
+  const profiles = raw.profiles && typeof raw.profiles === "object" && !Array.isArray(raw.profiles)
+    ? raw.profiles as Record<string, unknown> : undefined
+  const defaultProfile = nonEmptyString(raw.default_profile, "") || undefined
+  const defaultAgent = version === 3
+    ? nonEmptyString(raw.default_agent, "") || undefined
+    // A V2 config's default profile is the closest thing to a default agent.
+    : defaultProfile
   return {
-    version: 2,
+    version,
     models: {
       small: validateModelSpec(nonEmptyString(models.small, DEFAULT_MODELS.small), "models.small"),
     },
     maxSteps: parseMaxSteps(raw.max_steps),
     branching: parseBranching(raw.branching),
-    profiles: raw.profiles && typeof raw.profiles === "object" && !Array.isArray(raw.profiles)
-      ? raw.profiles as Record<string, unknown> : undefined,
-    defaultProfile: nonEmptyString(raw.default_profile, "") || undefined,
+    ...(profiles ? { profiles } : {}),
+    ...(defaultProfile ? { defaultProfile } : {}),
+    ...(defaultAgent ? { defaultAgent } : {}),
     providers: parseCustomProviders(raw.providers),
     hideReadonlyTools: typeof raw.hide_readonly_tools === "boolean" ? raw.hide_readonly_tools : false,
     editor: typeof raw.editor === "string" && raw.editor.trim() ? raw.editor.trim() : undefined,
@@ -209,18 +230,31 @@ export function loadConfig(): QuarkConfig {
   return cached
 }
 
+/**
+ * Serialize to the on-disk (snake_case) shape.
+ *
+ * The version follows the data: a config that still carries inline `profiles`
+ * is written back as V2 so those profiles survive. Once they are migrated to
+ * `agents/<id>/agent.yaml` the config is V3 and uses `default_agent`.
+ */
 export function serializeConfig(config: QuarkConfig): string {
   const providers = Object.fromEntries(Object.entries(config.providers).map(([id, provider]) => [id, {
     base_url: provider.base_url,
     ...(provider.api_key ? { api_key: provider.api_key } : {}),
   }]))
+  const version: 2 | 3 = config.profiles ? 2 : 3
+  const agentFields = version === 2
+    ? {
+        ...(config.defaultProfile ? { default_profile: config.defaultProfile } : {}),
+        ...(config.profiles ? { profiles: config.profiles } : {}),
+      }
+    : { ...(config.defaultAgent ? { default_agent: config.defaultAgent } : {}) }
   return stringifyYAML({
-    version: 2,
+    version,
     models: config.models,
     max_steps: config.maxSteps,
     branching: config.branching,
-    ...(config.defaultProfile ? { default_profile: config.defaultProfile } : {}),
-    ...(config.profiles ? { profiles: config.profiles } : {}),
+    ...agentFields,
     providers,
     hide_readonly_tools: config.hideReadonlyTools,
     ...(config.editor ? { editor: config.editor } : {}),

@@ -14,7 +14,7 @@ interface WebState {
   notice: string | null
   noticeKind: "info" | "error"
   models: CatalogModel[]
-  profiles: string[]
+  agents: string[]
   skills: string[]
   activeSkills: string[]
 }
@@ -27,7 +27,7 @@ const EMPTY_STATUS: AppStatus = {
   tokenLimit: 0,
   cwd: "Loading…",
   branch: null,
-  profile: "default",
+  agent: "default",
 }
 
 export function createWebApp(api = new Api()) {
@@ -42,7 +42,7 @@ export function createWebApp(api = new Api()) {
     notice: null,
     noticeKind: "info",
     models: [],
-    profiles: [],
+    agents: [],
     skills: [],
     activeSkills: [],
   })
@@ -202,10 +202,10 @@ export function createWebApp(api = new Api()) {
     try {
       const data = await api.catalog()
       setState({
-        profiles: data.profiles,
+        agents: data.agents,
         skills: data.skills,
         activeSkills: data.activeSkills,
-        status: { ...state.status, profile: data.profile },
+        status: { ...state.status, agent: data.agent },
       })
     } catch (error) {
       showNotice(error instanceof Error ? error.message : String(error), "error")
@@ -320,11 +320,11 @@ export function createWebApp(api = new Api()) {
     }
   }
 
-  async function setProfile(name: string) {
+  async function setAgent(name: string) {
     try {
-      const result = await api.setProfile(name)
+      const result = await api.setAgent(name)
       setState("status", result.status)
-      showNotice(`Profile: ${result.status.profile}`)
+      showNotice(`Agent: ${result.status.agent}`)
       await loadCatalog()
     } catch (error) {
       showNotice(error instanceof Error ? error.message : String(error), "error")
@@ -374,7 +374,7 @@ export function createWebApp(api = new Api()) {
     window.clearTimeout(noticeTimer)
   }
 
-  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, setModel, setProfile, activateSkill, reloadConfig, branch, loadCatalog, loadModels, setThinking, showNotice, dispose }
+  return { state, init, newSession, selectSession, send, cancel, answer, undo, exportSession, setModel, setAgent, activateSkill, reloadConfig, branch, loadCatalog, loadModels, setThinking, showNotice, dispose }
 }
 
 export type WebApp = ReturnType<typeof createWebApp>

@@ -65,7 +65,7 @@ beforeEach(() => {
 describe("loadConfig", () => {
   test("returns defaults when the config file is missing", () => {
     const config = loadConfig()
-    expect(config.version).toBe(2)
+    expect(config.version).toBe(3)
     expect(config.models.small).toBe("openai/gpt-4o-mini")
     expect(config.maxSteps).toBe(100)
     expect(config.providers).toEqual({})
@@ -107,9 +107,32 @@ describe("loadConfig", () => {
   })
 
   test("rejects an unknown config version", () => {
-    writeConfig({ version: 3, models: { small: "openai/gpt-5-mini" } })
+    writeConfig({ version: 4, models: { small: "openai/gpt-5-mini" } })
 
-    expect(() => loadConfig()).toThrow(/Unsupported config version "3"/)
+    expect(() => loadConfig()).toThrow(/Unsupported config version "4"/)
+  })
+
+  test("reads default_agent from a version 3 config", () => {
+    writeConfig({ version: 3, default_agent: "general", models: { small: "openai/gpt-5-mini" } })
+
+    expect(loadConfig().version).toBe(3)
+    expect(loadConfig().defaultAgent).toBe("general")
+  })
+
+  test("rejects a version 3 config that still carries inline profiles", () => {
+    writeConfig({
+      version: 3,
+      models: { small: "openai/gpt-5-mini" },
+      profiles: { coder: { tools: ["read"] } },
+    })
+
+    expect(() => loadConfig()).toThrow(/still has a "profiles" block/)
+  })
+
+  test("a version 2 config keeps its default profile as the default agent", () => {
+    writeConfig({ version: 2, default_profile: "general", models: { small: "openai/gpt-5-mini" } })
+
+    expect(loadConfig().defaultAgent).toBe("general")
   })
 
   test("rejects models that are not a mapping", () => {
@@ -205,7 +228,7 @@ describe("setConfigField", () => {
 
     expect(fs.existsSync(configFile)).toBe(true)
     const data = readConfigFile()
-    expect(data.version).toBe(2)
+    expect(data.version).toBe(3)
     expect(data.max_steps).toBe(42)
     expect((data.models as Record<string, unknown>).small).toBe("openai/gpt-4o-mini")
   })

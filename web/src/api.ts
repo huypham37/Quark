@@ -73,13 +73,13 @@ export class Api {
     return this.post("/api/model", { spec })
   }
 
-  /** Pass null to clear the override and fall back to the profile default. */
+  /** Pass null to clear the override and fall back to the agent default. */
   setThinking(effort: string | null): Promise<StatusResponse> {
     return this.post("/api/thinking", { effort })
   }
 
-  setProfile(name: string): Promise<StatusResponse> {
-    return this.post("/api/profile", { name })
+  setAgent(name: string): Promise<StatusResponse> {
+    return this.post("/api/agent", { name })
   }
 
   activateSkill(name: string): Promise<{ activated: boolean; reason?: string; active: string[] }> {

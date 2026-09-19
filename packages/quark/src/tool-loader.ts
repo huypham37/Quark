@@ -20,8 +20,8 @@ function toolsDir(): string {
   return path.join(configDir(), "tools")
 }
 
-// Built-in tools (registered by bootstrap, not loaded from disk)
-const BUILTIN_TOOLS = new Set(["read", "look", "skill"])
+// Engine-owned tools (supplied by @quark/runner, never loaded from disk)
+const BUILTIN_TOOLS = new Set(["read", "look", "skill", "question"])
 
 export interface LoadResult {
   loaded: string[]
@@ -38,7 +38,8 @@ export interface LoadResult {
 /**
  * Load tools declared in a profile's tools[] array.
  * Each tool is loaded from <config>/tools/{id}.ts
- * Built-in tools (read, look, skill) are skipped.
+ * Engine-owned tools (read, look, skill, question) are skipped — they come
+ * from `@quark/runner` and are materialized by `agent-compat.ts`.
  *
  * @param opts.register - When `false`, return concrete definitions in
  *   {@link LoadResult.defs} without registering them globally. Used by the
@@ -148,3 +149,9 @@ export async function loadProfileTools(
 export function getToolsDir(): string {
   return toolsDir()
 }
+
+/**
+ * Canonical name. `loadProfileTools` is the legacy alias kept for existing
+ * callers (profile path); both refer to the same function.
+ */
+export const loadTools = loadProfileTools
