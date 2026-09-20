@@ -1,6 +1,6 @@
 # Quark
 
-**An ergonomic, tool-first AI agent for coding _and_ research.**
+**An ergonomic, tool-first AI agent for coding _and_ research workflows.**
 
 Quark is a harness — it owns everything around the model: tool execution,
 memory, context management, state persistence, and guardrails. The model is a
@@ -233,6 +233,27 @@ agent primitives:
 ```ts
 import { createSession, prompt } from "@quark/runner"
 ```
+
+---
+
+## Session discovery API
+
+An external process — an orchestrator, a dashboard — can learn which session a
+running TUI is on. Start the TUI with a port, then read the single endpoint:
+
+```bash
+QUARK_API_PORT=47831 quark
+curl http://127.0.0.1:47831/api/session/current
+```
+
+```json
+{ "sessionId": "PRCglgkAzWjgDWhK", "pid": 46695 }
+```
+
+It answers `204 No Content` until the first message creates a session, and
+follows `/new`, session switches, and branches. Read-only, bound to `127.0.0.1`
+only, off unless `QUARK_API_PORT` is set. `@quark/runner` is deliberately not
+involved: it holds many sessions and cannot know which one the user is on.
 
 ---
 
