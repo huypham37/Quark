@@ -22,6 +22,7 @@ import type { AgentDefinition } from "@quark/runner/agent"
 import { discoverSkills, loadSkill } from "@quark/runner/skill/skill"
 import { materializeAgent, resolveAgent, listAgents } from "../agent/agent"
 import { createQuarkRuntime, type QuarkRuntime } from "../runtime"
+import { startSessionApi } from "../session-api"
 import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, configPath } from "../config/config"
 import { detectFromConfigOrOS } from "./terminal-bg"
@@ -106,6 +107,22 @@ runtime.bus.on("session-created", ({ sessionId }) => {
   currentSession = { id: sessionId }
   process.env.QUARK_SESSION_ID = sessionId
 })
+
+// Optional session-discovery API for external processes (e.g. an orchestrator
+// linking its tasks to this session). Read-only, localhost-only, one GET
+// endpoint; off unless QUARK_API_PORT is set. Failure to bind is non-fatal —
+// the TUI must keep working without it.
+const apiPort = Number(process.env.QUARK_API_PORT)
+if (Number.isInteger(apiPort) && apiPort > 0 && apiPort < 65536) {
+  try {
+    const api = startSessionApi({ port: apiPort, getSessionId: () => currentSession?.id ?? null })
+    setImmediate(() =>
+      notifyInfo("Session API", `http://127.0.0.1:${api.port}/api/session/current`, 4000))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`Session API disabled: ${message}\n`)
+  }
+}
 
 // Discover skills and determine model name at startup
 const skills = discoverSkills()
