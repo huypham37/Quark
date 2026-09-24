@@ -63,6 +63,167 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// ---------------------------------------------------------------------------
+// Request body limits + validation
+//
+// The body is bounded *before* it is buffered, so a large or lying
+// Content-Length cannot make the server allocate unbounded memory. Image
+// attachments are validated strictly here (canonical base64, supported MIME)
+// so the engine only ever sees well-formed parts.
+// ---------------------------------------------------------------------------
+
+/** Total wire-size ceiling for a JSON request body. */
+export const MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MiB
+
+/** Max image attachments per message, and the decoded ceiling for each. */
+export const MAX_IMAGES = 8
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MiB decoded (reachable within MAX_BODY_BYTES)
+
+/** MIME types the engine's image pipeline supports (see runner tool/look.ts). */
+export const SUPPORTED_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const
+
+/** An HTTP error the route layer should answer with its status. */
+export class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = "HttpError"
+  }
+}
+
+function formatBytes(n: number): string {
+  return n >= 1024 * 1024 ? `${n / (1024 * 1024)} MiB` : `${Math.ceil(n / 1024)} KiB`
+}
+
+/**
+ * Read a JSON request body, enforcing `limit` before buffering it all.
+ *
+ * An over-limit Content-Length is rejected up front; the streamed size is
+ * checked too, so a missing or lying Content-Length cannot bypass the cap.
+ * Throws {@link HttpError} (413 over limit, 400 malformed body).
+ */
+export async function readJsonBody(request: Request, limit = MAX_BODY_BYTES): Promise<unknown> {
+  const declared = request.headers.get("content-length")
+  if (declared !== null) {
+    const declaredBytes = Number(declared)
+    if (!Number.isInteger(declaredBytes) || declaredBytes < 0) {
+      throw new HttpError(400, "Invalid Content-Length header")
+    }
+    if (declaredBytes > limit) {
+      throw new HttpError(413, `Request body too large (limit ${formatBytes(limit)})`)
+    }
+  }
+
+  const chunks: Uint8Array[] = []
+  let total = 0
+  const stream = request.body
+  if (stream) {
+    const reader = stream.getReader()
+    // ponytail: byte cap only; a 1-byte-chunk flood still costs per-chunk
+    // overhead. Coalesce chunks (or cap their count) if that ever matters.
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > limit) {
+        await reader.cancel().catch(() => {})
+        throw new HttpError(413, `Request body too large (limit ${formatBytes(limit)})`)
+      }
+      chunks.push(value)
+    }
+  }
+
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  try {
+    return JSON.parse(new TextDecoder().decode(merged))
+  } catch {
+    throw new HttpError(400, "Invalid JSON body")
+  }
+}
+
+/** Decode canonical standard base64, or null when the input is not canonical. */
+function decodeCanonicalBase64(value: string): Buffer | null {
+  if (value.length === 0 || value.length % 4 !== 0) return null
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return null
+  const decoded = Buffer.from(value, "base64")
+  // Buffer.from is permissive (accepts stray bits / missing padding); re-encoding
+  // and comparing rejects anything that isn't exactly what we'd send back.
+  return decoded.toString("base64") === value ? decoded : null
+}
+
+export interface MessageInput {
+  text: string
+  images: { mime: string; data: string }[]
+}
+
+/**
+ * Validate the parsed `/messages` body. Text remains required (unchanged
+ * behavior); images are optional, but when present must be an array of
+ * supported, canonically base64-encoded images. Throws {@link HttpError} (400)
+ * naming the offending `images[index]`.
+ */
+export function validateMessageInput(body: unknown): MessageInput {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpError(400, "Request body must be a JSON object")
+  }
+
+  const record = body as Record<string, unknown>
+  if (typeof record.text !== "string") {
+    throw new HttpError(400, "Message text is required")
+  }
+  const text = record.text.trim()
+  if (!text) throw new HttpError(400, "Message text is required")
+
+  return { text, images: validateImages(record.images) }
+}
+
+/** The prompt() input fragment for a validated message. */
+export function messagePromptInput(input: MessageInput): {
+  parts: { type: "text"; text: string }[]
+  images?: MessageInput["images"]
+} {
+  return {
+    parts: [{ type: "text", text: input.text }],
+    // Images only when present, so text-only messages keep their exact shape.
+    ...(input.images.length ? { images: input.images } : {}),
+  }
+}
+
+function validateImages(input: unknown): MessageInput["images"] {
+  if (input == null) return []
+  if (!Array.isArray(input)) throw new HttpError(400, "images must be an array")
+  if (input.length === 0) return []
+  if (input.length > MAX_IMAGES) {
+    throw new HttpError(400, `Too many images (max ${MAX_IMAGES})`)
+  }
+
+  return input.map((item, index) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new HttpError(400, `images[${index}] must be an object with mime and data`)
+    }
+    const { mime, data } = item as Record<string, unknown>
+    if (typeof mime !== "string" || !(SUPPORTED_IMAGE_MIMES as readonly string[]).includes(mime)) {
+      throw new HttpError(
+        400,
+        `images[${index}] has unsupported mime "${String(mime)}". Supported: ${SUPPORTED_IMAGE_MIMES.join(", ")}`,
+      )
+    }
+    const decoded = typeof data === "string" ? decodeCanonicalBase64(data) : null
+    if (!decoded) {
+      throw new HttpError(400, `images[${index}] data must be canonical base64`)
+    }
+    if (decoded.byteLength > MAX_IMAGE_BYTES) {
+      throw new HttpError(400, `images[${index}] is too large (max ${formatBytes(MAX_IMAGE_BYTES)})`)
+    }
+    return { mime, data: data as string }
+  })
+}
+
 function sessionView(session: Session) {
   return {
     id: session.id,
@@ -117,6 +278,7 @@ export class WebBackend {
     try {
       return await this.route(request)
     } catch (error) {
+      if (error instanceof HttpError) return json({ error: error.message }, error.status)
       console.error("[web]", error)
       return json({ error: errorMessage(error) }, 500)
     }
@@ -410,16 +572,16 @@ export class WebBackend {
 
   private async send(request: Request, sessionId: string): Promise<Response> {
     if (isActive(sessionId)) return json({ error: "This session is already running" }, 409)
-    const body = await request.json() as { text?: string }
-    const text = body.text?.trim()
-    if (!text) return json({ error: "Message text is required" }, 400)
+    // Validate before touching pendingSkillContext or prompt(): bad input must
+    // not consume skill context or start a turn.
+    const input = validateMessageInput(await readJsonBody(request))
 
     const skillContext = this.pendingSkillContext.join("\n")
     this.pendingSkillContext = []
 
     void prompt({
       sessionId,
-      parts: [{ type: "text", text }],
+      ...messagePromptInput(input),
       ...(skillContext ? { modelOnlyText: skillContext } : {}),
       model: this.modelOverride ?? undefined,
       agent: this.requestAgent(),

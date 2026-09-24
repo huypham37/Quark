@@ -257,6 +257,42 @@ involved: it holds many sessions and cannot know which one the user is on.
 
 ---
 
+## Web API
+
+The full reference lives at <http://quark-doc.home.arpa> (`docs/api`).
+
+`bun run web:serve` starts the web backend (`web/server.ts`, Bun, default port
+`4173`, override with `PORT`) and serves both the UI and a JSON API under
+`/api/`. External processes can send a message — including image attachments —
+with a single POST:
+
+```bash
+curl -X POST http://127.0.0.1:4173/api/sessions/$SESSION_ID/messages \
+  -H 'content-type: application/json' \
+  -d '{
+    "text": "what is wrong here?",
+    "images": [{ "mime": "image/png", "data": "<base64>" }]
+  }'
+```
+
+`text` is required; `images` is optional and omitted or empty behaves exactly as
+before. Images are base64-encoded (a ~33% wire tax) and validated before the
+engine sees them:
+
+| Limit | Value |
+| -- | -- |
+| Request body | 10 MiB |
+| Images per message | 8 |
+| Decoded size per image | 5 MiB |
+| Supported `mime` | `image/png`, `image/jpeg`, `image/gif`, `image/webp` |
+
+Responses: `202` accepted (turn runs asynchronously — subscribe to
+`GET /api/sessions/:id/events`), `400` malformed body/text/image (the message
+names the offending `images[index]`), `409` session already running, `413` body
+over the ceiling.
+
+---
+
 ## Development
 
 ```bash
