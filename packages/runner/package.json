@@ -146,6 +146,12 @@
       "import": "./dist/session/events.js",
       "default": "./dist/session/events.js"
     },
+    "./session/live-turn": {
+      "types": "./dist/session/live-turn.d.ts",
+      "bun": "./src/session/live-turn.ts",
+      "import": "./dist/session/live-turn.js",
+      "default": "./dist/session/live-turn.js"
+    },
     "./session/message": {
       "types": "./dist/session/message.d.ts",
       "bun": "./src/session/message.ts",
@@ -193,6 +199,12 @@
       "bun": "./src/skill/skill.ts",
       "import": "./dist/skill/skill.js",
       "default": "./dist/skill/skill.js"
+    },
+    "./storage/session-path": {
+      "types": "./dist/storage/session-path.d.ts",
+      "bun": "./src/storage/session-path.ts",
+      "import": "./dist/storage/session-path.js",
+      "default": "./dist/storage/session-path.js"
     },
     "./storage/session-jsonl": {
       "types": "./dist/storage/session-jsonl.d.ts",

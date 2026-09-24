@@ -16,6 +16,7 @@ import { startEventWriter } from "@quark/runner/session/event-writer"
 import { setVerbose, debug } from "@quark/runner/debug"
 import { formatArgs } from "@quark/runner/debug/format-tool-args"
 import { createQuarkRuntime } from "./runtime"
+import { useRunnerSessionRoot } from "./session-root"
 import { loadConfig } from "./config/config"
 import { loadAmbientInstructions } from "./ambient"
 
@@ -182,7 +183,8 @@ async function main() {
   const agentDef = resolveAgent(args.agent)
   const agent = await materializeAgent(agentDef)
 
-  // Portable runtime init: storage root only (no global tools).
+  // Use the REST runner session namespace for new and resumed CLI sessions.
+  useRunnerSessionRoot()
   ensureStorageRoot()
 
   // The internal subagent supervisor opts into structured stderr events through

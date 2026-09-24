@@ -90,6 +90,7 @@ interface AppProps {
   getCurrentAgent?: () => string
   getPaletteEntries?: () => PaletteEntry[] | Promise<PaletteEntry[]>
   initialSessionId?: string
+  initialExternalBusy?: boolean
   initialMessages?: TuiMessage[]
   initialModelName?: string
   initialSkillCount?: number
@@ -203,6 +204,7 @@ export const App: Component<AppProps> = (props) => {
 
   // Wire event bus to state store
   wireEvents(state, props.bus)
+  if (props.initialExternalBusy) dispatch(state, { type: "set-running", running: true })
 
   // Question prompt key handler
   const questionHandler = createQuestionKeyHandler({
@@ -299,14 +301,16 @@ export const App: Component<AppProps> = (props) => {
     setQueuedMessages([])
     setSelectedQueuedMessageId(null)
   }
-  const clearQueueOnSessionChange = () => clearQueuedMessages()
-  props.bus.on("session-reset", clearQueueOnSessionChange)
+  const clearQueueOnSessionChange = (event: { sessionId: string }) => {
+    if (event.sessionId !== state.store.sessionId) clearQueuedMessages()
+  }
+  props.bus.on("session-reset", clearQueuedMessages)
   props.bus.on("session-switch", clearQueueOnSessionChange)
-  props.bus.on("worktree-switched", clearQueueOnSessionChange)
+  props.bus.on("worktree-switched", clearQueuedMessages)
   onCleanup(() => {
-    props.bus.off("session-reset", clearQueueOnSessionChange)
+    props.bus.off("session-reset", clearQueuedMessages)
     props.bus.off("session-switch", clearQueueOnSessionChange)
-    props.bus.off("worktree-switched", clearQueueOnSessionChange)
+    props.bus.off("worktree-switched", clearQueuedMessages)
   })
 
   // File cache (loaded lazily on first @ mention)

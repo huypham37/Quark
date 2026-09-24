@@ -2,7 +2,7 @@
 // Entry point, exports public API
 
 // Session management
-export { createSession, getSession, defaultSessionStore } from "./session/session"
+export { createSession, getSession, defaultSessionStore, createJsonlSessionStore } from "./session/session"
 export type { Session, SessionKind } from "./session/session"
 // Session persistence contract (instance-scoped via createRunner)
 export { MemorySessionStore } from "./session/store"

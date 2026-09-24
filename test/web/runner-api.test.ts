@@ -11,11 +11,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { WebBackend } from "../../web/backend"
+import { WebBackend, runnerSessionsRoot } from "../../web/backend"
 import { createRunner, type Runner, type RunnerExecute } from "../../packages/runner/src/runner"
 import { defineAgent } from "../../packages/runner/src/agent"
-import { createSession } from "../../packages/runner/src/session/session"
+import { createJsonlSessionStore, createSession, defaultSessionStore } from "../../packages/runner/src/session/session"
 import { loadMessages, toModelMessages } from "../../packages/runner/src/session/message"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
 import type { StreamFn } from "../../packages/runner/src/session/processor"
 import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
 import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
@@ -23,15 +24,18 @@ import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalo
 // Keep agent/config resolution off the real home directory; only the
 // POST /api/runners test resolves an agent, and it uses the built-in "coder".
 const configDir = fs.mkdtempSync(path.join(os.tmpdir(), "quark-web-runner-"))
+const sessionRoot = path.join(configDir, "session")
 const originalConfigDir = process.env.QUARK_CONFIG_DIR
 
 beforeAll(() => {
   process.env.QUARK_CONFIG_DIR = configDir
+  setSessionStorageRoot(sessionRoot)
 })
 
 afterAll(() => {
   if (originalConfigDir === undefined) delete process.env.QUARK_CONFIG_DIR
   else process.env.QUARK_CONFIG_DIR = originalConfigDir
+  setSessionStorageRoot(undefined)
   fs.rmSync(configDir, { recursive: true, force: true })
 })
 
@@ -68,32 +72,62 @@ function testAgent() {
   return defineAgent({ id: "web-test", instructions: "test", tools: [], model: MODEL })
 }
 
-/** A runner whose real prompt path runs against a fake stream (no network). */
-function streamRunner(): Runner {
-  const stream: StreamFn = () => ({
+/** A fake provider stream that finishes immediately (no network). */
+function fakeStream(): StreamFn {
+  return () => ({
     fullStream: (async function* () {
       yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0 } }
       yield { type: "finish" }
     })(),
   })
-  return createRunner({ agent: testAgent(), stream, resolve: { providers: {}, catalog: catalog() } })
+}
+
+/** A runner whose real prompt path runs against a fake stream (no network). */
+function streamRunner(): Runner {
+  return createRunner({ agent: testAgent(), stream: fakeStream(), resolve: { providers: {}, catalog: catalog() } })
 }
 
 /** A runner that stays in-flight until cancelled, so 409/cancel are testable. */
-function hangingRunner(): Runner {
-  const execute: RunnerExecute = (input, ctx) =>
+function hangExecute(): RunnerExecute {
+  return (input, ctx) =>
     new Promise((resolve) => {
       const done = () => resolve({ sessionId: input.sessionId ?? "generated" })
       if (ctx.signal.aborted) done()
       else ctx.signal.addEventListener("abort", done, { once: true })
     })
-  return createRunner({ agent: testAgent(), execute })
+}
+
+function hangingRunner(): Runner {
+  return createRunner({ agent: testAgent(), execute: hangExecute() })
+}
+
+/**
+ * A runner wired like WebBackend.runnerCreate: sessions go to the one shared
+ * on-disk namespace, but execution is a fake (no network).
+ */
+function diskRunner(): Runner {
+  return createRunner({
+    agent: testAgent(),
+    stream: fakeStream(),
+    store: createJsonlSessionStore(runnerSessionsRoot()),
+    resolve: { providers: {}, catalog: catalog() },
+  })
+}
+
+/** A hanging runner on the shared namespace (cross-runner 409/cancel tests). */
+function hangingDiskRunner(): Runner {
+  return createRunner({
+    agent: testAgent(),
+    execute: hangExecute(),
+    store: createJsonlSessionStore(runnerSessionsRoot()),
+  })
 }
 
 /** Prototype-only backend: just the fields the runner routes touch. */
 function backend(): any {
   const instance: any = Object.create(WebBackend.prototype)
   instance.runners = new Map<string, Runner>()
+  instance.activeSessions = new Map<string, Runner>()
   instance.catalog = { catalog: { getModel: () => null } }
   return instance
 }
@@ -161,7 +195,7 @@ describe("POST /api/runners", () => {
 
 describe("unknown runner", () => {
   for (const [method, url, body] of [
-    ["POST", "/api/runners/ghost/messages", { text: "x" }],
+    ["POST", "/api/runners/ghost/session/prompt", { text: "x" }],
     ["GET", "/api/runners/ghost/sessions/s1", undefined],
     ["GET", "/api/runners/ghost/sessions/s1/events", undefined],
     ["POST", "/api/runners/ghost/sessions/s1/cancel", undefined],
@@ -175,13 +209,13 @@ describe("unknown runner", () => {
   }
 })
 
-describe("POST /api/runners/:id/messages", () => {
+describe("POST /api/runners/:id/session/prompt", () => {
   test("accepts a message, returns { runnerId, sessionId }, and persists it", async () => {
     const api = backend()
     const runner = streamRunner()
     api.runners.set("r1", runner)
 
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", { text: "hello runner" }))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", { text: "hello runner" }))
     expect(res.status).toBe(202)
     const body = await res.json()
     expect(body.runnerId).toBe("r1")
@@ -202,7 +236,7 @@ describe("POST /api/runners/:id/messages", () => {
   test("returns the 202 contract status", async () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", { text: "hi" }))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", { text: "hi" }))
     expect(res.status).toBe(202)
   })
 
@@ -211,11 +245,11 @@ describe("POST /api/runners/:id/messages", () => {
     const runner = streamRunner()
     api.runners.set("r1", runner)
 
-    await api.fetch(request("POST", "/api/runners/r1/messages", { sessionId: "resume-me", text: "one" }))
+    await api.fetch(request("POST", "/api/runners/r1/session/prompt", { sessionId: "resume-me", text: "one" }))
     // A second send while the first turn is active is a 409, so wait for it to
     // finish before resuming the same session.
     await waitFor(() => !runner.isActive("resume-me"))
-    await api.fetch(request("POST", "/api/runners/r1/messages", { sessionId: "resume-me", text: "two" }))
+    await api.fetch(request("POST", "/api/runners/r1/session/prompt", { sessionId: "resume-me", text: "two" }))
     await waitFor(() => !runner.isActive("resume-me"))
 
     const saved = loadMessages("resume-me", runner.store)
@@ -226,14 +260,14 @@ describe("POST /api/runners/:id/messages", () => {
   test("rejects malformed JSON with 400", async () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", "{not json"))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", "{not json"))
     expect(res.status).toBe(400)
   })
 
   test("rejects missing text with 400", async () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", {}))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", {}))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe("Message text is required")
   })
@@ -242,7 +276,7 @@ describe("POST /api/runners/:id/messages", () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
     const body = { text: "x", images: [{ mime: "image/svg+xml", data: "AAAA" }] }
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", body))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", body))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toContain("images[0]")
   })
@@ -251,7 +285,7 @@ describe("POST /api/runners/:id/messages", () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
     const res = await api.fetch(
-      request("POST", "/api/runners/r1/messages", "{", { "content-length": String(20 * 1024 * 1024) }),
+      request("POST", "/api/runners/r1/session/prompt", "{", { "content-length": String(20 * 1024 * 1024) }),
     )
     expect(res.status).toBe(413)
   })
@@ -259,7 +293,7 @@ describe("POST /api/runners/:id/messages", () => {
   test("rejects a blank sessionId with 400", async () => {
     const api = backend()
     api.runners.set("r1", streamRunner())
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", { sessionId: "   ", text: "x" }))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", { sessionId: "   ", text: "x" }))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe("sessionId must be a non-empty string")
   })
@@ -272,7 +306,7 @@ describe("POST /api/runners/:id/messages", () => {
     const first = runner.prompt({ sessionId: "busy", parts: [{ type: "text", text: "first" }] })
     await waitFor(() => runner.isActive("busy"))
 
-    const res = await api.fetch(request("POST", "/api/runners/dup/messages", { sessionId: "busy", text: "again" }))
+    const res = await api.fetch(request("POST", "/api/runners/dup/session/prompt", { sessionId: "busy", text: "again" }))
     expect(res.status).toBe(409)
     expect((await res.json()).error).toBe("This session is already running")
 
@@ -285,11 +319,11 @@ describe("POST /api/runners/:id/messages", () => {
     const runner = hangingRunner()
     api.runners.set("dup", runner)
 
-    const first = await api.fetch(request("POST", "/api/runners/dup/messages", { sessionId: "busy", text: "first" }))
+    const first = await api.fetch(request("POST", "/api/runners/dup/session/prompt", { sessionId: "busy", text: "first" }))
     expect(first.status).toBe(202)
     expect(runner.isActive("busy")).toBe(true)
 
-    const res = await api.fetch(request("POST", "/api/runners/dup/messages", { sessionId: "busy", text: "again" }))
+    const res = await api.fetch(request("POST", "/api/runners/dup/session/prompt", { sessionId: "busy", text: "again" }))
     expect(res.status).toBe(409)
     expect((await res.json()).error).toBe("This session is already running")
 
@@ -305,7 +339,7 @@ describe("image attachments", () => {
     api.runners.set("r1", runner)
 
     const image = { mime: "image/png", data: "iVBORw0KGgo=" }
-    const res = await api.fetch(request("POST", "/api/runners/r1/messages", { text: "see this", images: [image] }))
+    const res = await api.fetch(request("POST", "/api/runners/r1/session/prompt", { text: "see this", images: [image] }))
     expect(res.status).toBe(202)
     const { sessionId } = await res.json()
     await waitFor(() => !runner.isActive(sessionId))
@@ -321,32 +355,135 @@ describe("image attachments", () => {
   })
 })
 
-describe("session isolation", () => {
-  test("two runners reuse the same explicit sessionId without sharing history", async () => {
+describe("shared runner sessions", () => {
+  test("a new runner resumes a session created by another runner", async () => {
     const api = backend()
-    const a = streamRunner()
-    const b = streamRunner()
+    const a = diskRunner()
+    const b = diskRunner()
     api.runners.set("a", a)
     api.runners.set("b", b)
-    const shared = "shared-session-id"
+    const shared = "shared-resume"
 
-    await api.fetch(request("POST", "/api/runners/a/messages", { sessionId: shared, text: "alpha one" }))
-    await api.fetch(request("POST", "/api/runners/b/messages", { sessionId: shared, text: "bravo one" }))
-    await waitFor(() => !a.isActive(shared) && !b.isActive(shared))
+    await api.fetch(request("POST", "/api/runners/a/session/prompt", { sessionId: shared, text: "alpha" }))
+    await waitFor(() => !a.isActive(shared))
+    await api.fetch(request("POST", "/api/runners/b/session/prompt", { sessionId: shared, text: "bravo" }))
+    await waitFor(() => !b.isActive(shared))
 
-    expect(a.store).not.toBe(b.store)
-    expect(loadMessages(shared, a.store).messages.filter((message) => message.role === "user")).toHaveLength(1)
-    expect(loadMessages(shared, b.store).messages.filter((message) => message.role === "user")).toHaveLength(1)
+    // b continues the history a started rather than beginning an empty one.
+    const texts = loadMessages(shared, b.store).parts.filter((p) => p.type === "text").map((p) => JSON.parse(p.data).text)
+    expect(texts).toEqual(["alpha", "bravo"])
+  })
 
-    const aView = await (await api.fetch(request("GET", `/api/runners/a/sessions/${shared}`))).json()
-    const bView = await (await api.fetch(request("GET", `/api/runners/b/sessions/${shared}`))).json()
-    const aText = partsOf(aView).filter((part) => part.type === "text").map((part) => part.text)
-    const bText = partsOf(bView).filter((part) => part.type === "text").map((part) => part.text)
+  test("concurrent runs on one session across runners are refused with 409", async () => {
+    const api = backend()
+    const a = hangingDiskRunner()
+    const b = diskRunner()
+    api.runners.set("a", a)
+    api.runners.set("b", b)
+    const shared = "shared-busy"
 
-    expect(aText).toContain("alpha one")
-    expect(aText).not.toContain("bravo one")
-    expect(bText).toContain("bravo one")
-    expect(bText).not.toContain("alpha one")
+    const first = await api.fetch(request("POST", "/api/runners/a/session/prompt", { sessionId: shared, text: "one" }))
+    expect(first.status).toBe(202)
+    await waitFor(() => a.isActive(shared))
+
+    // b shares the session namespace, so it must not start a second turn.
+    const conflict = await api.fetch(request("POST", "/api/runners/b/session/prompt", { sessionId: shared, text: "two" }))
+    expect(conflict.status).toBe(409)
+    expect((await conflict.json()).error).toBe("This session is already running")
+
+    // Cancelling through b still reaches the runner actually running the turn.
+    const cancel = await api.fetch(request("POST", `/api/runners/b/sessions/${shared}/cancel`))
+    expect(cancel.status).toBe(200)
+    await waitFor(() => !a.isActive(shared))
+
+    // The run was aborted cleanly, so b can now resume the same session.
+    const after = await api.fetch(request("POST", "/api/runners/b/session/prompt", { sessionId: shared, text: "three" }))
+    expect(after.status).toBe(202)
+    await waitFor(() => !b.isActive(shared))
+    const view = await (await api.fetch(request("GET", `/api/runners/b/sessions/${shared}`))).json()
+    expect(partsOf(view).some((part) => part.type === "text" && part.text === "three")).toBe(true)
+  })
+
+  test("reports running:true through a runner that does not own the active turn", async () => {
+    const api = backend()
+    const a = hangingDiskRunner()
+    const b = diskRunner()
+    api.runners.set("a", a)
+    api.runners.set("b", b)
+    const shared = "shared-running"
+
+    const first = await api.fetch(request("POST", "/api/runners/a/session/prompt", { sessionId: shared, text: "one" }))
+    expect(first.status).toBe(202)
+    await waitFor(() => a.isActive(shared))
+
+    // b shares the namespace but owns no turn: the session is still running, so
+    // its view must agree with what cancel/events would address on b's path.
+    const view = await (await api.fetch(request("GET", `/api/runners/b/sessions/${shared}`))).json()
+    expect(view.session.running).toBe(true)
+
+    await api.fetch(request("POST", `/api/runners/b/sessions/${shared}/cancel`))
+    await waitFor(() => !a.isActive(shared))
+
+    const after = await (await api.fetch(request("GET", `/api/runners/b/sessions/${shared}`))).json()
+    expect(after.session.running).toBe(false)
+  })
+})
+
+describe("persistent runner sessions", () => {
+  test("persists under the shared namespace, off the legacy store", async () => {
+    const api = backend()
+    const runner = diskRunner()
+    api.runners.set("disk-a", runner)
+
+    const res = await api.fetch(request("POST", "/api/runners/disk-a/session/prompt", { sessionId: "disk-sess", text: "persist me" }))
+    expect(res.status).toBe(202)
+    await waitFor(() => !runner.isActive("disk-sess"))
+
+    expect(fs.existsSync(path.join(runnerSessionsRoot(), "disk-sess", "session.jsonl"))).toBe(true)
+    // The legacy /api/sessions store never sees a remote runner's session.
+    expect(defaultSessionStore.get("disk-sess")).toBeNull()
+  })
+
+  test("deleting a runner keeps its sessions for the next runner", async () => {
+    const api = backend()
+    const first = diskRunner()
+    api.runners.set("disk-del", first)
+
+    await api.fetch(request("POST", "/api/runners/disk-del/session/prompt", { sessionId: "kept", text: "one" }))
+    await waitFor(() => !first.isActive("kept"))
+    expect(fs.existsSync(path.join(runnerSessionsRoot(), "kept", "session.jsonl"))).toBe(true)
+
+    const del = await api.fetch(request("DELETE", "/api/runners/disk-del"))
+    expect(del.status).toBe(200)
+    // Delete drops the execution handle, not the history.
+    expect(fs.existsSync(path.join(runnerSessionsRoot(), "kept", "session.jsonl"))).toBe(true)
+
+    // A brand-new runner (as after a restart) resumes the same session.
+    const second = diskRunner()
+    api.runners.set("disk-new", second)
+    await api.fetch(request("POST", "/api/runners/disk-new/session/prompt", { sessionId: "kept", text: "two" }))
+    await waitFor(() => !second.isActive("kept"))
+
+    const texts = loadMessages("kept", second.store).parts.filter((p) => p.type === "text").map((p) => JSON.parse(p.data).text)
+    expect(texts).toEqual(["one", "two"])
+  })
+})
+
+describe("session id path safety", () => {
+  test("rejects a traversal session id in the prompt body with 400", async () => {
+    const api = backend()
+    api.runners.set("safe", streamRunner())
+    const res = await api.fetch(request("POST", "/api/runners/safe/session/prompt", { sessionId: "../escape", text: "x" }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("sessionId")
+  })
+
+  test("rejects a traversal session id in the session path with 400", async () => {
+    const api = backend()
+    api.runners.set("safe", streamRunner())
+    const res = await api.fetch(request("GET", "/api/runners/safe/sessions/..%2Fescape"))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe("Invalid session id")
   })
 })
 
@@ -357,7 +494,7 @@ describe("POST /api/runners/:id/sessions/:sessionId/cancel", () => {
     api.runners.set("c", runner)
     const sessionId = createSession(undefined, runner.store).id
 
-    const send = api.fetch(request("POST", "/api/runners/c/messages", { sessionId, text: "stop me" }))
+    const send = api.fetch(request("POST", "/api/runners/c/session/prompt", { sessionId, text: "stop me" }))
     await waitFor(() => runner.isActive(sessionId))
 
     const res = await api.fetch(request("POST", `/api/runners/c/sessions/${sessionId}/cancel`))
@@ -418,7 +555,7 @@ describe("DELETE /api/runners/:id", () => {
     const runner = hangingRunner()
     api.runners.set("busy", runner)
 
-    const send = await api.fetch(request("POST", "/api/runners/busy/messages", { text: "long" }))
+    const send = await api.fetch(request("POST", "/api/runners/busy/session/prompt", { text: "long" }))
     expect(send.status).toBe(202)
     const { sessionId } = await send.json()
 

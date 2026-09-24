@@ -22,6 +22,9 @@ import type { AgentDefinition } from "@quark/runner/agent"
 import { discoverSkills, loadSkill } from "@quark/runner/skill/skill"
 import { materializeAgent, resolveAgent, listAgents } from "../agent/agent"
 import { createQuarkRuntime, type QuarkRuntime } from "../runtime"
+import { useRunnerSessionRoot } from "../session-root"
+import { reserveLiveTurn, isLiveTurn } from "@quark/runner/session/live-turn"
+import { followSession } from "./live-viewer"
 import { startSessionApi } from "../session-api"
 import { dbToTuiMessages } from "./state"
 import { loadConfig, parseModelSpec, resetConfigCache, configPath } from "../config/config"
@@ -86,6 +89,7 @@ const activatedSkillNames = new Set<string>()
 // Initialize the portable runtime: storage root, then one instance runner
 // bound to the materialized definition. The app shares a single bus across
 // runner generations (rebinds), so UI subscriptions never leak or go stale.
+useRunnerSessionRoot()
 ensureStorageRoot()
 const runtime: QuarkRuntime = await createQuarkRuntime({ agent: activeAgent, bus })
 
@@ -94,6 +98,7 @@ const runtime: QuarkRuntime = await createQuarkRuntime({ agent: activeAgent, bus
 const sessionArg = parseArg("--session")
 let currentSession: { id: string } | null = null
 let initialMessages: ReturnType<typeof dbToTuiMessages> = []
+let externalBusy = sessionArg ? isLiveTurn(sessionArg) : false
 if (sessionArg) {
   const session = getSession(sessionArg)
   currentSession = { id: session.id }
@@ -227,6 +232,12 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
   }
   parts.push({ type: "text", text })
 
+  if (sid && isLiveTurn(sid)) {
+    notifyInfo("Session busy", "The runner is working; wait for this turn to finish", 4000)
+    return
+  }
+  const release = sid ? reserveLiveTurn(sid, undefined, runtime.bus) : null
+  if (sid && !release) return
   runtime.prompt({
     sessionId: sid,
     parts,
@@ -236,10 +247,14 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
     catalog: catalogModels.catalog,
   }).catch((err) => {
     bus.emit("error", { sessionId: sid ?? "unknown", error: err })
-  })
+  }).finally(() => release?.())
 }
 
 function handleCancel(sessionId: string) {
+  if (isLiveTurn(sessionId) && !runtime.isBusy()) {
+    notifyInfo("Runner is working", "Cancel this turn through the runner API", 4000)
+    return
+  }
   ghosttyTitle.markStopped(sessionId)
   runtime.cancel(sessionId)
 }
@@ -870,6 +885,12 @@ if (themeArg === "light" || themeArg === "dark") {
 // the persisted values (the store falls back to defaults until this runs).
 syncSettingsFromConfig()
 
+// Follow the REST executor from the first frame, including turns already underway.
+// The cursor/snapshot handshake is inside followSession so startup cannot miss events.
+if (sessionArg) {
+  setImmediate(() => followSession(sessionArg, runtime.bus, (busy) => { externalBusy = busy }, () => runtime.isBusy()))
+}
+
 render(() => (
   <App
     bus={runtime.bus}
@@ -891,6 +912,7 @@ render(() => (
     }}
     onProviderConnected={() => catalogModels.refreshAuthentication()}
     initialSessionId={currentSession?.id}
+    initialExternalBusy={externalBusy}
     initialMessages={initialMessages}
     initialModelName={modelName}
     initialSkillCount={skills.length}

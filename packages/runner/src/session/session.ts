@@ -72,24 +72,30 @@ export type SessionPatch = Partial<Pick<
  * Adapts the existing JSONL + ephemeral storage to the {@link SessionStore}
  * contract. Behavior is identical to the pre-store implementation; the public
  * functions below simply delegate here.
+ *
+ * `root` scopes the store to a namespace directory (defaults to the global
+ * session root). A namespaced store never consults the process-global ephemeral
+ * map, so it can never observe another store's ephemeral sessions.
  */
 class JsonlSessionStore implements SessionStore {
   readonly createOnMissing = false
 
+  constructor(private readonly root?: string) {}
+
   create(session: Session): void {
-    if (session.kind === "ephemeral") {
+    if (this.root === undefined && session.kind === "ephemeral") {
       ephemeralStore.set(session.id, session)
       return
     }
-    createSessionLog(session)
+    createSessionLog(session, this.root)
   }
 
   get(id: string): Session | null {
-    const ephemeral = ephemeralStore.get(id)
+    const ephemeral = this.root === undefined ? ephemeralStore.get(id) : undefined
     if (ephemeral) return ephemeral
-    const meta = readSessionMeta(id)
+    const meta = readSessionMeta(id, this.root)
     if (meta) return meta
-    const { session } = replaySessionFile(id)
+    const { session } = replaySessionFile(id, this.root)
     return session ?? null
   }
 
@@ -97,7 +103,7 @@ class JsonlSessionStore implements SessionStore {
     const now = Date.now()
     const fullPatch: SessionPatch = { ...patch, timeUpdated: patch.timeUpdated ?? now }
 
-    const ephemeral = ephemeralStore.get(id)
+    const ephemeral = this.root === undefined ? ephemeralStore.get(id) : undefined
     if (ephemeral) {
       Object.assign(ephemeral, fullPatch)
       return
@@ -110,29 +116,38 @@ class JsonlSessionStore implements SessionStore {
       type: "session-update",
       patch: fullPatch,
     }
-    appendEvents(id, [event], fullPatch)
+    appendEvents(id, [event], fullPatch, this.root)
   }
 
   append(sessionId: string, events: SessionLogEvent[], metaPatch?: Partial<Session>): void {
-    appendEvents(sessionId, events, metaPatch)
+    appendEvents(sessionId, events, metaPatch, this.root)
   }
 
   replay(sessionId: string) {
-    return replaySessionFile(sessionId)
+    return replaySessionFile(sessionId, this.root)
   }
 
   list(): Session[] {
-    return scanSessionMetas()
+    return scanSessionMetas(this.root)
   }
 
   delete(id: string): void {
-    ephemeralStore.delete(id)
-    deleteSessionLog(id)
+    if (this.root === undefined) ephemeralStore.delete(id)
+    deleteSessionLog(id, this.root)
   }
 }
 
 /** The process-global legacy store. Public CRUD defaults to this. */
 export const defaultSessionStore: SessionStore = new JsonlSessionStore()
+
+/**
+ * A disk-backed store scoped to `root`. Pass the directory a caller owns
+ * (e.g. a remote runner's namespace) so its sessions never share history with
+ * the global store or another namespaced store, even for the same session ID.
+ */
+export function createJsonlSessionStore(root?: string): SessionStore {
+  return new JsonlSessionStore(root)
+}
 
 /** Check if a session is ephemeral (in-memory only, never written to disk). */
 export function isEphemeral(id: string): boolean {

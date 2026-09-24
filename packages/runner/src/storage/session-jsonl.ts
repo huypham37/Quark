@@ -58,8 +58,8 @@ function normalizeSession(session: Session): Session {
  * session reads/writes so downstream `mkdirSync(dir, { recursive: true })`
  * calls have a parent to land under.
  */
-export function ensureStorageRoot(): void {
-  mkdirSync(getSessionStorageRoot(), { recursive: true })
+export function ensureStorageRoot(root: string = getSessionStorageRoot()): void {
+  mkdirSync(root, { recursive: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -76,8 +76,8 @@ export function ensureStorageRoot(): void {
  * Must be called exactly once per session before any `appendEvents()` calls.
  * Ephemeral sessions skip this entirely (they live only in `ephemeralEvents`).
  */
-export function createSessionLog(session: Session): void {
-  const dir = getSessionDir(session.id)
+export function createSessionLog(session: Session, root: string = getSessionStorageRoot()): void {
+  const dir = getSessionDir(session.id, root)
   mkdirSync(dir, { recursive: true })
 
   const event: SessionEvent = {
@@ -88,15 +88,15 @@ export function createSessionLog(session: Session): void {
     session,
   }
 
-  writeFileSync(getSessionLogPath(session.id), JSON.stringify(event) + "\n")
-  writeMetaAtomic(session.id, session)
-  updateSessionIndex(session)
+  writeFileSync(getSessionLogPath(session.id, root), JSON.stringify(event) + "\n")
+  writeMetaAtomic(session.id, session, root)
+  updateSessionIndex(session, root)
 }
 
-export function deleteSessionLog(sessionId: string): void {
+export function deleteSessionLog(sessionId: string, root: string = getSessionStorageRoot()): void {
   ephemeralEvents.delete(sessionId)
-  removeSessionFromIndex(sessionId)
-  rmSync(getSessionDir(sessionId), { recursive: true, force: true })
+  removeSessionFromIndex(sessionId, root)
+  rmSync(getSessionDir(sessionId, root), { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +126,7 @@ export function appendEvents(
   sessionId: string,
   events: SessionLogEvent[],
   metaPatch?: Partial<Session>,
+  root: string = getSessionStorageRoot(),
 ): void {
   if (events.length === 0) return
 
@@ -138,15 +139,15 @@ export function appendEvents(
   }
 
   const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n"
-  appendFileSync(getSessionLogPath(sessionId), lines)
+  appendFileSync(getSessionLogPath(sessionId, root), lines)
 
   if (metaPatch) {
     // Read current meta, apply patch, rewrite
-    const current = readSessionMeta(sessionId)
+    const current = readSessionMeta(sessionId, root)
     if (current) {
       const updated = { ...current, ...metaPatch }
-      writeMetaAtomic(sessionId, updated)
-      updateSessionIndex(updated)
+      writeMetaAtomic(sessionId, updated, root)
+      updateSessionIndex(updated, root)
     }
   }
 }
@@ -166,8 +167,8 @@ export function appendEvents(
  * or carries a different schema version. Callers can fall back to
  * `rebuildSessionMeta()` to regenerate it from the JSONL.
  */
-export function readSessionMeta(sessionId: string): Session | null {
-  const path = getSessionMetaPath(sessionId)
+export function readSessionMeta(sessionId: string, root: string = getSessionStorageRoot()): Session | null {
+  const path = getSessionMetaPath(sessionId, root)
   try {
     const raw = readFileSync(path, "utf-8")
     const parsed = JSON.parse(raw) as SessionMetaFile
@@ -193,11 +194,10 @@ export function readSessionMeta(sessionId: string): Session | null {
  * trigger `rebuildSessionMeta()` to recover them. Returns an empty array
  * if the storage root doesn't exist yet (fresh install).
  */
-export function scanSessionMetas(): Session[] {
-  const indexed = readSessionIndex()
+export function scanSessionMetas(root: string = getSessionStorageRoot()): Session[] {
+  const indexed = readSessionIndex(root)
   if (indexed) return indexed
 
-  const root = getSessionStorageRoot()
   let entries: string[]
   try {
     entries = readdirSync(root)
@@ -220,7 +220,7 @@ export function scanSessionMetas(): Session[] {
     }
   }
 
-  writeSessionIndex(sessions)
+  writeSessionIndex(sessions, root)
   return sessions
 }
 
@@ -229,9 +229,9 @@ interface SessionIndexFile {
   sessions: Session[]
 }
 
-function readSessionIndex(): Session[] | null {
+function readSessionIndex(root: string): Session[] | null {
   try {
-    const parsed = JSON.parse(readFileSync(getSessionIndexPath(), "utf-8")) as SessionIndexFile
+    const parsed = JSON.parse(readFileSync(getSessionIndexPath(root), "utf-8")) as SessionIndexFile
     if (parsed.v !== 1 || !Array.isArray(parsed.sessions)) return null
     if (!parsed.sessions.every((session) => session && typeof session.id === "string")) return null
     return parsed.sessions.map(normalizeSession)
@@ -240,32 +240,31 @@ function readSessionIndex(): Session[] | null {
   }
 }
 
-function writeSessionIndex(sessions: Session[]): void {
-  const path = getSessionIndexPath()
+function writeSessionIndex(sessions: Session[], root: string): void {
+  const path = getSessionIndexPath(root)
   const tmpPath = path + ".tmp"
   const index: SessionIndexFile = { v: 1, sessions }
   writeFileSync(tmpPath, JSON.stringify(index))
   renameSync(tmpPath, path)
 }
 
-function updateSessionIndex(session: Session): void {
-  const sessions = readSessionIndex() ?? scanSessionMetaFiles()
+function updateSessionIndex(session: Session, root: string): void {
+  const sessions = readSessionIndex(root) ?? scanSessionMetaFiles(root)
   const index = sessions.findIndex((current) => current.id === session.id)
   if (index >= 0) sessions[index] = session
   else sessions.push(session)
-  writeSessionIndex(sessions)
+  writeSessionIndex(sessions, root)
 }
 
-function removeSessionFromIndex(sessionId: string): void {
-  const sessions = readSessionIndex() ?? scanSessionMetaFiles()
+function removeSessionFromIndex(sessionId: string, root: string): void {
+  const sessions = readSessionIndex(root) ?? scanSessionMetaFiles(root)
   const filtered = sessions.filter((session) => session.id !== sessionId)
-  if (filtered.length !== sessions.length || !existsSync(getSessionIndexPath())) {
-    writeSessionIndex(filtered)
+  if (filtered.length !== sessions.length || !existsSync(getSessionIndexPath(root))) {
+    writeSessionIndex(filtered, root)
   }
 }
 
-function scanSessionMetaFiles(): Session[] {
-  const root = getSessionStorageRoot()
+function scanSessionMetaFiles(root: string): Session[] {
   let entries: string[]
   try {
     entries = readdirSync(root)
@@ -312,7 +311,7 @@ function scanSessionMetaFiles(): Session[] {
  * read in the system — `meta.json` exists precisely to avoid calling it
  * just to render a session list.
  */
-export function replaySessionFile(sessionId: string): {
+export function replaySessionFile(sessionId: string, root: string = getSessionStorageRoot()): {
   session: Session | null
   messages: MessageRow[]
   parts: PartRow[]
@@ -323,7 +322,7 @@ export function replaySessionFile(sessionId: string): {
     return replayEvents(memEvents ?? [])
   }
 
-  const logPath = getSessionLogPath(sessionId)
+  const logPath = getSessionLogPath(sessionId, root)
   let raw: string
   try {
     raw = readFileSync(logPath, "utf-8")
@@ -471,7 +470,7 @@ function filterEventsFromMessageId(
   return events.slice(0, idx)
 }
 
-export function rewriteJSONL(sessionId: string, fromMessageId: string): void {
+export function rewriteJSONL(sessionId: string, fromMessageId: string, root: string = getSessionStorageRoot()): void {
   // Ephemeral sessions: filter the in-memory event array
   const memEvents = ephemeralEvents.get(sessionId)
   if (isEphemeral(sessionId) || memEvents) {
@@ -480,7 +479,7 @@ export function rewriteJSONL(sessionId: string, fromMessageId: string): void {
     return
   }
 
-  const logPath = getSessionLogPath(sessionId)
+  const logPath = getSessionLogPath(sessionId, root)
   let raw: string
   try {
     raw = readFileSync(logPath, "utf-8")
@@ -530,11 +529,11 @@ export function rewriteJSONL(sessionId: string, fromMessageId: string): void {
  * Returns the rebuilt `Session`, or `null` if the JSONL has no
  * `SessionEvent` (which would mean the session never existed).
  */
-export function rebuildSessionMeta(sessionId: string): Session | null {
-  const { session } = replaySessionFile(sessionId)
+export function rebuildSessionMeta(sessionId: string, root: string = getSessionStorageRoot()): Session | null {
+  const { session } = replaySessionFile(sessionId, root)
   if (session) {
-    writeMetaAtomic(sessionId, session)
-    updateSessionIndex(session)
+    writeMetaAtomic(sessionId, session, root)
+    updateSessionIndex(session, root)
   }
   return session
 }
@@ -559,8 +558,8 @@ export function rebuildSessionMeta(sessionId: string): Session | null {
  * Internal helper — all callers go through `appendEvents` (with metaPatch),
  * `createSessionLog`, or `rebuildSessionMeta`.
  */
-function writeMetaAtomic(sessionId: string, session: Session): void {
-  const metaPath = getSessionMetaPath(sessionId)
+function writeMetaAtomic(sessionId: string, session: Session, root: string): void {
+  const metaPath = getSessionMetaPath(sessionId, root)
   const tmpPath = metaPath + ".tmp"
   const meta: SessionMetaFile = { v: 1, session }
   writeFileSync(tmpPath, JSON.stringify(meta, null, 2))

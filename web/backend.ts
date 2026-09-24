@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto"
+import { reserveLiveTurn, isLiveTurn } from "../packages/runner/src/session/live-turn"
+import { join } from "node:path"
 import { materializeAgent, resolveAgent, listAgents, type AgentDef } from "../packages/quark/src/agent/agent"
 import { loadConfig, parseModelSpec, resetConfigCache } from "../packages/quark/src/config/config"
 import { loadAmbientInstructions } from "../packages/quark/src/ambient"
 import { loadPlugins } from "../packages/quark/src/plugin-loader"
 import { ensureStorageRoot } from "../packages/runner/src/storage/session-jsonl"
+import { getSessionStorageRoot } from "../packages/runner/src/storage/session-path"
 import type { AgentDefinition } from "../packages/runner/src/agent"
 import { createRunner, type Runner } from "../packages/runner/src/runner"
 import { exportSessionToMarkdown } from "../packages/runner/src/commands/export"
@@ -16,7 +19,7 @@ import { cancel, isActive, prompt } from "../packages/runner/src/session/prompt"
 import { compactBranch, createSteerBranch } from "../packages/runner/src/session/branch"
 import { resolveModel } from "../packages/runner/src/provider/resolver"
 import { clearCache as clearSkillCache, discoverSkills, loadSkill } from "../packages/runner/src/skill/skill"
-import { createSession, getSession, listProjectSessions, type Session } from "../packages/runner/src/session/session"
+import { createJsonlSessionStore, createSession, getSession, listProjectSessions, type Session } from "../packages/runner/src/session/session"
 import { respondQuestion } from "../packages/runner/src/tool/question"
 import { getBranchFromPath } from "../packages/runner/src/worktree/worktree"
 import { CatalogModelRuntime } from "../packages/quark/src/tui/catalog-model-runtime"
@@ -90,6 +93,19 @@ export const SUPPORTED_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "i
  * the create is refused, so the registry can never grow without bound.
  */
 export const MAX_RUNNERS = 100
+
+/**
+ * On-disk namespace shared by *all* remote runners: one directory under the
+ * session storage root.
+ *
+ * Sessions outlive any single runner, so every runner's store points here and a
+ * newly minted runner resumes a prior session by ID. It is deliberately separate
+ * from the legacy `/api/sessions` store: a runner's history never shows up in
+ * (or gets mutated through) the main app.
+ */
+export function runnerSessionsRoot(): string {
+  return join(getSessionStorageRoot(), "runners")
+}
 
 /** An HTTP error the route layer should answer with its status. */
 export class HttpError extends Error {
@@ -216,14 +232,27 @@ function readAgentId(body: unknown): string | undefined {
   return value.trim()
 }
 
-/** `sessionId` from a runner message body; undefined asks the runner to create one. */
+/**
+ * Session IDs are used as single path segments under the shared runner
+ * namespace. Restrict them to the alphabet the engine generates (nanoid:
+ * `A-Za-z0-9_-`) so a caller can never traverse out of that namespace.
+ */
+export function isSafeSessionId(id: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(id)
+}
+
+/** `sessionId` from a runner prompt body; undefined asks the runner to create one. */
 function readSessionId(body: unknown): string | undefined {
   const value = (body as Record<string, unknown>).sessionId
   if (value === undefined || value === null) return undefined
   if (typeof value !== "string" || !value.trim()) {
     throw new HttpError(400, "sessionId must be a non-empty string")
   }
-  return value.trim()
+  const id = value.trim()
+  if (!isSafeSessionId(id)) {
+    throw new HttpError(400, "sessionId must match [A-Za-z0-9_-]+")
+  }
+  return id
 }
 
 function validateImages(input: unknown): MessageInput["images"] {
@@ -289,11 +318,31 @@ export class WebBackend {
   /**
    * Process-local registry of remote runner instances (POST /api/runners).
    *
-   * Each runner owns an isolated event bus, cancellation map, and in-memory
-   * session store, so runners never share history or listeners. Nothing is
-   * persisted: a runner lives until the process exits.
+   * A runner is an ephemeral execution handle: its own event bus, cancellation
+   * map, and hook registry, so runners never share listeners or abort state.
+   * Sessions are *not* owned by a runner — they are persistent, share one
+   * on-disk namespace ({@link runnerSessionsRoot}), and outlive the runner.
+   *
+   * The registry itself is in-memory: runner IDs are minted per process, so a
+   * server restart ends every runner. The session files remain on disk, so a
+   * newly minted runner resumes any prior session by ID.
    */
   private readonly runners = new Map<string, Runner>()
+
+  /**
+   * Session IDs with an in-flight turn, mapped to the runner that owns the run.
+   *
+   * All runners share one session namespace, so a session ID is a process-wide
+   * resource: this is the cross-runner guard that stops two runners from
+   * interleaving writes into the same history. The owner is recorded so
+   * cancel/events address the runner actually running the turn, whichever
+   * runner's path the caller used.
+   *
+   * ponytail: process-local. Two server processes sharing a session root could
+   * still race; move the guard to a file lock / advisory lock on the session
+   * dir if multi-process deployment is ever needed.
+   */
+  private readonly activeSessions = new Map<string, Runner>()
 
   private constructor(
     agentDef: AgentDef,
@@ -406,11 +455,13 @@ export class WebBackend {
   // -------------------------------------------------------------------------
   // Remote runner API
   //
-  // Runners are isolated engine instances: own bus, own in-memory store, own
-  // cancellation state. POST /api/runners mints one and returns its runnerId;
-  // the caller echoes that id (plus the sessionId it gets back from the first
-  // message) on every later call. Nothing here touches the legacy module-level
-  // prompt()/store/bus.
+  // Runners are isolated *execution* instances: own bus, own cancellation state,
+  // own hooks. Sessions are shared, persistent state in one disk namespace, so a
+  // runner never owns history — any runner can resume any session by ID.
+  // POST /api/runners mints a runner and returns its runnerId; the caller echoes
+  // that id (plus a sessionId) on later calls. Runners reuse the shared prompt
+  // implementation, but always against their own isolated runtime (own bus,
+  // store, hooks) — the process-global module-level singleton is never touched.
   // -------------------------------------------------------------------------
 
   private async runnerRoute(request: Request, segments: string[], pathname: string): Promise<Response> {
@@ -429,22 +480,28 @@ export class WebBackend {
       return this.runnerDelete(runnerId, runner)
     }
 
-    if (segments.length === 4 && segments[3] === "messages" && request.method === "POST") {
-      return this.runnerMessage(request, runnerId, runner)
+    if (segments.length === 5 && segments[3] === "session" && segments[4] === "prompt" && request.method === "POST") {
+      return this.runnerPrompt(request, runnerId, runner)
     }
 
     const sessionId = segments[3] === "sessions" && segments[4] ? decodeURIComponent(segments[4]) : null
+    if (sessionId && !isSafeSessionId(sessionId)) return json({ error: "Invalid session id" }, 400)
     if (sessionId) {
       if (segments.length === 5 && request.method === "GET") {
         return this.runnerSession(runnerId, runner, sessionId)
       }
       if (segments.length === 6 && segments[5] === "events" && request.method === "GET") {
         if (!runner.store.get(sessionId)) return json({ error: "Session not found" }, 404)
-        return this.events(request, sessionId, runner.bus)
+        // Sessions are shared: stream from whichever runner owns the active
+        // turn, falling back to the one addressed when nothing is running.
+        return this.events(request, sessionId, (this.activeSessions.get(sessionId) ?? runner).bus)
       }
       if (segments.length === 6 && segments[5] === "cancel" && request.method === "POST") {
         if (!runner.store.get(sessionId)) return json({ error: "Session not found" }, 404)
-        runner.cancel(sessionId)
+        // Cancel the runner actually running the turn, so a cancel issued
+        // through a different runner isn't a silent no-op.
+        const owner = this.activeSessions.get(sessionId) ?? runner
+        owner.cancel(sessionId)
         return json({ cancelled: true })
       }
     }
@@ -472,20 +529,23 @@ export class WebBackend {
     if (this.runners.size >= MAX_RUNNERS) {
       const idle = [...this.runners].find(([, candidate]) => !candidate.hasActiveRun())
       if (!idle) return json({ error: `Runner limit (${MAX_RUNNERS}) reached` }, 503)
-      this.runners.delete(idle[0])
+      this.dropRunner(idle[0])
     }
 
     const runnerId = randomUUID()
     this.runners.set(runnerId, createRunner({
       agent,
-      // Omit eventBus/store: the portable defaults are a fresh isolated bus and
-      // an in-memory store, so a remote run never writes under ~/.config/quark.
+      // Every runner's store points at the one shared namespace, so sessions
+      // outlive the runner: a new runner resumes a prior session by ID.
+      store: createJsonlSessionStore(runnerSessionsRoot()),
+      // Fresh isolated bus/hooks are the portable defaults; no eventBus passed.
       ambientInstructions: loadAmbientInstructions,
       policies: {
         maxSteps: config.maxSteps,
         branching: config.branching,
         smallModel: config.models.small,
-        // In-memory store: never write undo snapshots to the JSONL root.
+        // Undo snapshots use the *global* session root (not the runner
+        // namespace), so keep them off for remote runners.
         undo: false,
       },
       // Custom providers so the portable path resolves real models.
@@ -495,7 +555,19 @@ export class WebBackend {
   }
 
   /**
-   * Delete a runner and its in-memory session store.
+   * Drop an idle runner from the registry.
+   *
+   * Sessions are shared, persistent state that outlives the runner, so this
+   * never touches disk: another runner (now or after a restart) resumes any
+   * session by ID. Called on DELETE and on eviction at the {@link MAX_RUNNERS}
+   * cap.
+   */
+  private dropRunner(runnerId: string): void {
+    this.runners.delete(runnerId)
+  }
+
+  /**
+   * Delete a runner. Its sessions stay on disk.
    *
    * Refuses with 409 while a turn is in flight: removing a runner with an
    * active run would orphan its abort controller and leak the run (see
@@ -505,24 +577,25 @@ export class WebBackend {
     if (runner.hasActiveRun()) {
       return json({ error: "Runner has an active run; cancel it before deleting" }, 409)
     }
-    this.runners.delete(runnerId)
+    this.dropRunner(runnerId)
     return json({ deleted: true, runnerId })
   }
 
   /**
-   * Send a message to a runner.
+   * Run a prompt on a runner (`POST /api/runners/:id/session/prompt`).
    *
-   * The session is created in the runner's own store *synchronously*, before
-   * the turn starts, so the 202 always carries a final sessionId — even for a
-   * brand-new conversation — and the caller can address the session (subscribe,
-   * cancel) while the model runs. The turn is otherwise fire-and-forget; a
-   * failure surfaces on the runner's isolated bus as an `error` event.
+   * The session is created in the shared disk-backed store *synchronously*,
+   * before the turn starts, so the 202 always carries a final sessionId — even
+   * for a brand-new conversation — and the caller can address the session
+   * (subscribe, cancel) while the model runs. The turn is otherwise
+   * fire-and-forget; a failure surfaces on the runner's isolated bus as an
+   * `error` event.
    *
-   * Concurrent runs on one session are refused with 409 — including a repeat
-   * send while this endpoint's own turn is still in flight — so the caller can
-   * cancel the session it just started rather than wait for that turn.
+   * Concurrent runs on one session are refused with 409 *across all runners*
+   * (they share one namespace), so two turns can never interleave writes into
+   * the same history. Cancel the session, then prompt again.
    */
-  private async runnerMessage(request: Request, runnerId: string, runner: Runner): Promise<Response> {
+  private async runnerPrompt(request: Request, runnerId: string, runner: Runner): Promise<Response> {
     const body = await readJsonBody(request)
     const input = validateMessageInput(body)
     const requested = readSessionId(body)
@@ -534,19 +607,29 @@ export class WebBackend {
       ? requested
       : createSession(requested ? { id: requested } : undefined, runner.store).id
 
-    // One turn per session. The check and prompt() share one event-loop turn
-    // (no await between), and prompt() itself re-checks synchronously, so a
-    // racing duplicate cannot start a second run.
-    if (runner.isActive(sessionId)) return json({ error: "This session is already running" }, 409)
+    // One turn per session across all runners. `runner.isActive` covers a turn
+    // started directly on this runner; the global map covers one started
+    // through another runner. Both checks and the reservation share one
+    // event-loop turn (no await between), so a racing duplicate cannot slip in.
+    if (runner.isActive(sessionId) || this.activeSessions.has(sessionId)) {
+      return json({ error: "This session is already running" }, 409)
+    }
+    const release = reserveLiveTurn(sessionId, runnerSessionsRoot(), runner.bus)
+    if (!release) return json({ error: "This session is already running" }, 409)
+    this.activeSessions.set(sessionId, runner)
 
     runner
       .prompt({ sessionId, ...messagePromptInput(input) })
       .catch((error) => { runner.bus.emit("error", { sessionId, error }) })
+      .finally(() => {
+        if (this.activeSessions.get(sessionId) === runner) this.activeSessions.delete(sessionId)
+        release()
+      })
 
     return json({ runnerId, sessionId }, 202)
   }
 
-  /** Read a runner's session and conversation from its own store. */
+  /** Read a shared session and its conversation through a runner's store. */
   private runnerSession(runnerId: string, runner: Runner, sessionId: string): Response {
     const session = runner.store.get(sessionId)
     if (!session) return json({ error: "Session not found" }, 404)
@@ -555,7 +638,9 @@ export class WebBackend {
     const times = new Map(loaded.messages.map((message) => [message.id, message.timeCreated]))
     return json({
       runnerId,
-      session: sessionView(session, runner.isActive(sessionId)),
+      // Sessions are shared: a turn started through another runner still shows
+      // as running, so the flag matches what cancel/events would address.
+      session: sessionView(session, isLiveTurn(sessionId, runnerSessionsRoot()) || this.activeSessions.has(sessionId) || runner.isActive(sessionId)),
       messages: dbToConversationMessages(loaded.messages, loaded.parts).map((message) => ({
         ...message,
         timeCreated: times.get(message.id),

@@ -298,35 +298,48 @@ over the ceiling.
 ### Runner API
 
 The routes above run the server's *own* agent against the shared session store.
-For an isolated engine instance — its own event bus, cancellation state, and
-in-memory history — mint a runner first:
+For an isolated execution instance — its own event bus, cancellation state, and
+hooks — mint a runner first:
 
 ```bash
 RUNNER_ID=$(curl -s -X POST http://127.0.0.1:4173/api/runners \
   -H 'content-type: application/json' -d '{"agentId":"coder"}' | jq -r .runnerId)
 
-curl -X POST http://127.0.0.1:4173/api/runners/$RUNNER_ID/messages \
+curl -X POST http://127.0.0.1:4173/api/runners/$RUNNER_ID/session/prompt \
   -H 'content-type: application/json' \
   -d '{"text":"what is wrong here?","images":[{"mime":"image/png","data":"<base64>"}]}'
 # → 202 {"runnerId":"...","sessionId":"..."}
 ```
 
 Echo `runnerId` on every later call, and `sessionId` to continue that
-conversation (omit it to start a new one). Each runner is independent: two
-runners reusing a `sessionId` never share history.
+conversation (omit it to start a new one). Sessions are shared, persistent state:
+any runner can resume a session by `sessionId`, including one minted after a
+server restart.
 
 | Route | Behavior |
 | -- | -- |
 | `POST /api/runners` | `{agentId?}` (default agent when omitted) → `201 {runnerId}`. `404` unknown agent, `503` at the 100-runner cap. |
-| `POST /api/runners/:id/messages` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running. |
+| `POST /api/runners/:id/session/prompt` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running (across all runners). |
 | `GET /api/runners/:id/sessions/:sessionId` | `{session,messages,tokensUsed}`; `404` unknown runner or session. |
-| `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from that runner's own bus (same event shapes as `/api/sessions/:id/events`). |
+| `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from the runner that owns the active turn (same event shapes as `/api/sessions/:id/events`). |
 | `POST /api/runners/:id/sessions/:sessionId/cancel` | Aborts the in-flight turn → `{cancelled:true}`. |
-| `DELETE /api/runners/:id` | Drops the runner and its in-memory history; `409` while a turn is in flight. |
+| `DELETE /api/runners/:id` | Drops the runner; sessions stay on disk. `409` while a turn is in flight. |
 
-Runners are process-local and in-memory: nothing is written under
-`~/.config/quark`, and they disappear when the server restarts. Tool definitions
-are materialized from disk — only `agentId` is accepted over HTTP.
+Sessions are persisted on disk in one namespace shared by REST runners and
+the CLI/TUI, `~/.config/quark/session/runners/<sessionId>/`. New CLI/TUI
+sessions use this location too, so `quark --session <sessionId>` can resume a
+REST runner session. Older sessions under `~/.config/quark/session/<sessionId>/`
+are not found by the CLI/TUI. Session IDs are restricted to `[A-Za-z0-9_-]+` (the ID alphabet the
+engine generates) so a caller cannot escape that namespace.
+
+The runner *registry* is process-local: runner IDs are minted per process, so a
+server restart ends every runner. Sessions survive — mint a new runner and
+resume a `sessionId` to continue its history. Deleting a runner (or evicting the
+oldest idle runner at the 100-runner cap) only drops the execution handle; it
+never deletes session files. Because all runners share one namespace, two
+concurrent turns on the same `sessionId` are refused with `409` rather than
+interleaving writes. Tool definitions are materialized from disk; only `agentId`
+is accepted over HTTP.
 
 The server binds `127.0.0.1` by default. This API has no authentication and can
 run tools on this machine, so set `QUARK_WEB_HOST=0.0.0.0` (or a specific

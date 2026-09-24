@@ -40,28 +40,31 @@ export function setSessionStorageRoot(root: string | undefined): void {
 /**
  * Get the directory for a specific session.
  * e.g. ~/.config/quark/session/abc123/
+ *
+ * `root` defaults to the global storage root; pass one to scope a store to a
+ * namespace (e.g. a remote runner's own directory).
  */
-export function getSessionDir(sessionId: string): string {
-  return join(storageRoot, sessionId)
+export function getSessionDir(sessionId: string, root: string = storageRoot): string {
+  return join(root, sessionId)
 }
 
 /**
  * Get the path to a session's JSONL log file.
  * e.g. ~/.config/quark/session/abc123/session.jsonl
  */
-export function getSessionLogPath(sessionId: string): string {
-  return join(storageRoot, sessionId, "session.jsonl")
+export function getSessionLogPath(sessionId: string, root: string = storageRoot): string {
+  return join(root, sessionId, "session.jsonl")
 }
 
 /**
  * Get the path to a session's meta.json file.
  * e.g. ~/.config/quark/session/abc123/meta.json
  */
-export function getSessionMetaPath(sessionId: string): string {
-  return join(storageRoot, sessionId, "meta.json")
+export function getSessionMetaPath(sessionId: string, root: string = storageRoot): string {
+  return join(root, sessionId, "meta.json")
 }
 
 /** Get the aggregate session metadata index path. */
-export function getSessionIndexPath(): string {
-  return join(storageRoot, "index.json")
+export function getSessionIndexPath(root: string = storageRoot): string {
+  return join(root, "index.json")
 }
