@@ -1,14 +1,16 @@
+import { randomUUID } from "node:crypto"
 import { materializeAgent, resolveAgent, listAgents, type AgentDef } from "../packages/quark/src/agent/agent"
 import { loadConfig, parseModelSpec, resetConfigCache } from "../packages/quark/src/config/config"
 import { loadAmbientInstructions } from "../packages/quark/src/ambient"
 import { loadPlugins } from "../packages/quark/src/plugin-loader"
 import { ensureStorageRoot } from "../packages/runner/src/storage/session-jsonl"
 import type { AgentDefinition } from "../packages/runner/src/agent"
+import { createRunner, type Runner } from "../packages/runner/src/runner"
 import { exportSessionToMarkdown } from "../packages/runner/src/commands/export"
 import { undoLatest } from "../packages/runner/src/commands/undo"
 import { dbToConversationMessages } from "../packages/runner/src/shared/conversation-view"
 import { getLastInputTokens } from "../packages/runner/src/session/context"
-import { bus, type BusEventName } from "../packages/runner/src/session/events"
+import { bus, type BusEventName, type TypedBus } from "../packages/runner/src/session/events"
 import { loadMessages } from "../packages/runner/src/session/message"
 import { cancel, isActive, prompt } from "../packages/runner/src/session/prompt"
 import { compactBranch, createSteerBranch } from "../packages/runner/src/session/branch"
@@ -81,6 +83,13 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MiB decoded (reachable withi
 
 /** MIME types the engine's image pipeline supports (see runner tool/look.ts). */
 export const SUPPORTED_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const
+
+/**
+ * Ceiling on concurrently registered remote runners. At the cap an *idle*
+ * runner (no in-flight turn) is evicted oldest-first; if every runner is busy
+ * the create is refused, so the registry can never grow without bound.
+ */
+export const MAX_RUNNERS = 100
 
 /** An HTTP error the route layer should answer with its status. */
 export class HttpError extends Error {
@@ -194,6 +203,29 @@ export function messagePromptInput(input: MessageInput): {
   }
 }
 
+/** `agentId` from a POST /api/runners body; undefined selects the configured default. */
+function readAgentId(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpError(400, "Request body must be a JSON object")
+  }
+  const value = (body as Record<string, unknown>).agentId
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "agentId must be a non-empty string")
+  }
+  return value.trim()
+}
+
+/** `sessionId` from a runner message body; undefined asks the runner to create one. */
+function readSessionId(body: unknown): string | undefined {
+  const value = (body as Record<string, unknown>).sessionId
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "sessionId must be a non-empty string")
+  }
+  return value.trim()
+}
+
 function validateImages(input: unknown): MessageInput["images"] {
   if (input == null) return []
   if (!Array.isArray(input)) throw new HttpError(400, "images must be an array")
@@ -224,14 +256,14 @@ function validateImages(input: unknown): MessageInput["images"] {
   })
 }
 
-function sessionView(session: Session) {
+function sessionView(session: Session, running = isActive(session.id)) {
   return {
     id: session.id,
     title: session.title ?? "New session",
     directory: session.directory,
     pinned: session.pinned,
     timeUpdated: session.timeUpdated,
-    running: isActive(session.id),
+    running,
   }
 }
 
@@ -254,6 +286,14 @@ export class WebBackend {
   private thinkingOverride: string | null = null
   private pendingSkillContext: string[] = []
   private activatedSkills = new Set<string>()
+  /**
+   * Process-local registry of remote runner instances (POST /api/runners).
+   *
+   * Each runner owns an isolated event bus, cancellation map, and in-memory
+   * session store, so runners never share history or listeners. Nothing is
+   * persisted: a runner lives until the process exits.
+   */
+  private readonly runners = new Map<string, Runner>()
 
   private constructor(
     agentDef: AgentDef,
@@ -305,6 +345,10 @@ export class WebBackend {
       if (control) return control
     }
 
+    if (segments[0] === "api" && segments[1] === "runners") {
+      return this.runnerRoute(request, segments, url.pathname)
+    }
+
     if (segments[0] === "api" && segments[1] === "sessions" && segments[2]) {
       const sessionId = decodeURIComponent(segments[2])
       getSession(sessionId)
@@ -313,36 +357,38 @@ export class WebBackend {
         return json({ session: sessionView(getSession(sessionId)), ...sessionData(sessionId) })
       }
 
-      if (request.method === "GET" && segments[3] === "events") {
+      // Each verb is matched at exactly one segment, so trailing junk
+      // (/api/sessions/:id/messages/extra) is a 404, not a second entry point.
+      if (request.method === "GET" && segments.length === 4 && segments[3] === "events") {
         return this.events(request, sessionId)
       }
 
-      if (request.method === "POST" && segments[3] === "messages") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "messages") {
         return this.send(request, sessionId)
       }
 
-      if (request.method === "POST" && segments[3] === "cancel") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "cancel") {
         cancel(sessionId)
         return json({ cancelled: true })
       }
 
-      if (request.method === "POST" && segments[3] === "undo") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "undo") {
         const result = await undoLatest(sessionId)
         return json(result
           ? { undone: true, restored: result.restored, deleted: result.deleted }
           : { undone: false, restored: [], deleted: [] })
       }
 
-      if (request.method === "POST" && segments[3] === "export") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "export") {
         return json(exportSessionToMarkdown(sessionId))
       }
 
-      if (request.method === "POST" && segments[3] === "steer") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "steer") {
         const body = await request.json() as { goal?: string }
         return this.branch("steer", sessionId, body.goal?.trim() ?? "")
       }
 
-      if (request.method === "POST" && segments[3] === "compact") {
+      if (request.method === "POST" && segments.length === 4 && segments[3] === "compact") {
         const body = await request.json() as { goal?: string }
         return this.branch("compact", sessionId, body.goal?.trim() ?? "")
       }
@@ -355,6 +401,167 @@ export class WebBackend {
     }
 
     return json({ error: "Not found" }, 404)
+  }
+
+  // -------------------------------------------------------------------------
+  // Remote runner API
+  //
+  // Runners are isolated engine instances: own bus, own in-memory store, own
+  // cancellation state. POST /api/runners mints one and returns its runnerId;
+  // the caller echoes that id (plus the sessionId it gets back from the first
+  // message) on every later call. Nothing here touches the legacy module-level
+  // prompt()/store/bus.
+  // -------------------------------------------------------------------------
+
+  private async runnerRoute(request: Request, segments: string[], pathname: string): Promise<Response> {
+    const runnerId = segments[2] ? decodeURIComponent(segments[2]) : null
+    if (!runnerId) {
+      // Only the exact collection path mints a runner: a trailing slash
+      // (/api/runners/) is a 404, not a second entry point.
+      if (pathname === "/api/runners" && request.method === "POST") return this.runnerCreate(request)
+      return json({ error: "Not found" }, 404)
+    }
+
+    const runner = this.runners.get(runnerId)
+    if (!runner) return json({ error: `Unknown runner: ${runnerId}` }, 404)
+
+    if (segments.length === 3 && request.method === "DELETE") {
+      return this.runnerDelete(runnerId, runner)
+    }
+
+    if (segments.length === 4 && segments[3] === "messages" && request.method === "POST") {
+      return this.runnerMessage(request, runnerId, runner)
+    }
+
+    const sessionId = segments[3] === "sessions" && segments[4] ? decodeURIComponent(segments[4]) : null
+    if (sessionId) {
+      if (segments.length === 5 && request.method === "GET") {
+        return this.runnerSession(runnerId, runner, sessionId)
+      }
+      if (segments.length === 6 && segments[5] === "events" && request.method === "GET") {
+        if (!runner.store.get(sessionId)) return json({ error: "Session not found" }, 404)
+        return this.events(request, sessionId, runner.bus)
+      }
+      if (segments.length === 6 && segments[5] === "cancel" && request.method === "POST") {
+        if (!runner.store.get(sessionId)) return json({ error: "Session not found" }, 404)
+        runner.cancel(sessionId)
+        return json({ cancelled: true })
+      }
+    }
+
+    return json({ error: "Not found" }, 404)
+  }
+
+  /**
+   * Create a runner bound to a configured agent. Only an agent id is accepted:
+   * tool definitions are materialized from disk, never supplied over HTTP.
+   */
+  private async runnerCreate(request: Request): Promise<Response> {
+    const agentId = readAgentId(request.body ? await readJsonBody(request) : {})
+    if (agentId && !listAgents().includes(agentId)) {
+      throw new HttpError(404, `Agent "${agentId}" not found. Available: ${listAgents().join(", ")}`)
+    }
+
+    const agent = await materializeAgent(resolveAgent(agentId))
+    const config = loadConfig()
+
+    // Bound the registry before the (synchronous) insert: evict the oldest idle
+    // runner, or refuse when every runner has a turn in flight. Because the
+    // check and the set share one event-loop turn, concurrent creates cannot
+    // race past the cap.
+    if (this.runners.size >= MAX_RUNNERS) {
+      const idle = [...this.runners].find(([, candidate]) => !candidate.hasActiveRun())
+      if (!idle) return json({ error: `Runner limit (${MAX_RUNNERS}) reached` }, 503)
+      this.runners.delete(idle[0])
+    }
+
+    const runnerId = randomUUID()
+    this.runners.set(runnerId, createRunner({
+      agent,
+      // Omit eventBus/store: the portable defaults are a fresh isolated bus and
+      // an in-memory store, so a remote run never writes under ~/.config/quark.
+      ambientInstructions: loadAmbientInstructions,
+      policies: {
+        maxSteps: config.maxSteps,
+        branching: config.branching,
+        smallModel: config.models.small,
+        // In-memory store: never write undo snapshots to the JSONL root.
+        undo: false,
+      },
+      // Custom providers so the portable path resolves real models.
+      resolve: { providers: config.providers, catalog: this.catalog.catalog },
+    }))
+    return json({ runnerId }, 201)
+  }
+
+  /**
+   * Delete a runner and its in-memory session store.
+   *
+   * Refuses with 409 while a turn is in flight: removing a runner with an
+   * active run would orphan its abort controller and leak the run (see
+   * {@link Runner.hasActiveRun}). Cancel the session(s) first, then delete.
+   */
+  private runnerDelete(runnerId: string, runner: Runner): Response {
+    if (runner.hasActiveRun()) {
+      return json({ error: "Runner has an active run; cancel it before deleting" }, 409)
+    }
+    this.runners.delete(runnerId)
+    return json({ deleted: true, runnerId })
+  }
+
+  /**
+   * Send a message to a runner.
+   *
+   * The session is created in the runner's own store *synchronously*, before
+   * the turn starts, so the 202 always carries a final sessionId — even for a
+   * brand-new conversation — and the caller can address the session (subscribe,
+   * cancel) while the model runs. The turn is otherwise fire-and-forget; a
+   * failure surfaces on the runner's isolated bus as an `error` event.
+   *
+   * Concurrent runs on one session are refused with 409 — including a repeat
+   * send while this endpoint's own turn is still in flight — so the caller can
+   * cancel the session it just started rather than wait for that turn.
+   */
+  private async runnerMessage(request: Request, runnerId: string, runner: Runner): Promise<Response> {
+    const body = await readJsonBody(request)
+    const input = validateMessageInput(body)
+    const requested = readSessionId(body)
+
+    // Reuse an existing session; otherwise mint one now (matching the store's
+    // createOnMissing semantics). The store guard avoids clobbering a session
+    // created by an overlapping request.
+    const sessionId = requested && runner.store.get(requested)
+      ? requested
+      : createSession(requested ? { id: requested } : undefined, runner.store).id
+
+    // One turn per session. The check and prompt() share one event-loop turn
+    // (no await between), and prompt() itself re-checks synchronously, so a
+    // racing duplicate cannot start a second run.
+    if (runner.isActive(sessionId)) return json({ error: "This session is already running" }, 409)
+
+    runner
+      .prompt({ sessionId, ...messagePromptInput(input) })
+      .catch((error) => { runner.bus.emit("error", { sessionId, error }) })
+
+    return json({ runnerId, sessionId }, 202)
+  }
+
+  /** Read a runner's session and conversation from its own store. */
+  private runnerSession(runnerId: string, runner: Runner, sessionId: string): Response {
+    const session = runner.store.get(sessionId)
+    if (!session) return json({ error: "Session not found" }, 404)
+
+    const loaded = loadMessages(sessionId, runner.store)
+    const times = new Map(loaded.messages.map((message) => [message.id, message.timeCreated]))
+    return json({
+      runnerId,
+      session: sessionView(session, runner.isActive(sessionId)),
+      messages: dbToConversationMessages(loaded.messages, loaded.parts).map((message) => ({
+        ...message,
+        timeCreated: times.get(message.id),
+      })),
+      tokensUsed: getLastInputTokens(loaded.parts),
+    })
   }
 
   /** Model, agent, skill, and config control routes. Returns null when the path is not one of ours. */
@@ -564,7 +771,7 @@ export class WebBackend {
     const data = session ? sessionData(session.id) : { messages: [], tokensUsed: 0 }
     return {
       session: session ? sessionView(session) : null,
-      sessions: sessions.map(sessionView),
+      sessions: sessions.map((session) => sessionView(session)),
       ...data,
       status: this.status(),
     }
@@ -592,7 +799,7 @@ export class WebBackend {
     return json({ sessionId }, 202)
   }
 
-  private events(request: Request, sessionId: string): Response {
+  private events(request: Request, sessionId: string, source: TypedBus = bus): Response {
     const encoder = new TextEncoder()
     const listeners: Array<{ event: BusEventName; handler: (data: any) => void }> = []
     let heartbeat: ReturnType<typeof setInterval>
@@ -604,7 +811,7 @@ export class WebBackend {
         }
         const cleanup = () => {
           clearInterval(heartbeat)
-          for (const { event, handler } of listeners) bus.off(event as any, handler)
+          for (const { event, handler } of listeners) source.off(event as any, handler)
           try { controller.close() } catch {}
         }
 
@@ -616,7 +823,7 @@ export class WebBackend {
             write(event, data)
           }
           listeners.push({ event, handler })
-          bus.on(event as any, handler)
+          source.on(event as any, handler)
         }
 
         heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keepalive\n\n")), 15_000)
@@ -625,7 +832,7 @@ export class WebBackend {
       },
       cancel: () => {
         clearInterval(heartbeat)
-        for (const { event, handler } of listeners) bus.off(event as any, handler)
+        for (const { event, handler } of listeners) source.off(event as any, handler)
       },
     })
 

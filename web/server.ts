@@ -19,8 +19,14 @@ async function serve(request: Request): Promise<Response> {
   return await index.exists() ? new Response(index) : new Response("Run bun run web:build first", { status: 503 })
 }
 
+// Loopback by default. This API has no authentication and can start agent turns
+// and run tools on this machine, so binding 0.0.0.0 exposes that to the whole
+// network (and to CSRF from any page the user merely visits). Set
+// QUARK_WEB_HOST=0.0.0.0 (or a specific interface) to opt into a remote bind.
+const hostname = Bun.env.QUARK_WEB_HOST?.trim() || "127.0.0.1"
+
 const server = Bun.serve({
-  hostname: "0.0.0.0",
+  hostname,
   port: Number(Bun.env.PORT ?? 4173),
   fetch: serve,
 })
