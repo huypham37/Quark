@@ -169,6 +169,40 @@ describe("processStream routes every event family through the injected bus", () 
     expect(seenLegacy).toEqual([])
   })
 
+  test("abort ends a stalled stream without waiting for its iterator", async () => {
+    const session = createSession()
+    const message = createAssistantMessage({ sessionId: session.id })
+    const eventBus = new TypedBus()
+    const seen = watch(eventBus)
+    const controller = new AbortController()
+    let started!: () => void
+    const waiting = new Promise<void>((resolve) => { started = resolve })
+    const stalled: StreamFn = () => ({
+      fullStream: {
+        [Symbol.asyncIterator]() {
+          return {
+            next() {
+              started()
+              return new Promise<IteratorResult<any>>(() => {})
+            },
+            return() { return new Promise<IteratorResult<any>>(() => {}) },
+          }
+        },
+      },
+    })
+    const run = processStream({
+      model: {} as any,
+      resolvedModel: fakeResolvedModel(),
+      system: [], messages: [], tools: {}, abort: controller.signal,
+      msg: message, sessionId: session.id, userMessageId: "user-message",
+      bus: eventBus, stream: stalled,
+    })
+    await waiting
+    controller.abort()
+    expect(await Promise.race([run, new Promise((_, reject) => setTimeout(() => reject(new Error("abort stalled")), 500))])).toBe("stop")
+    expect(seen.find((event) => event.name === "assistant-message-end")?.data.finish).toBe("aborted")
+  })
+
   test("retryable errors emit retry on the injected bus, not the singleton", async () => {
     const session = createSession()
     const message = createAssistantMessage({ sessionId: session.id })
@@ -393,6 +427,34 @@ describe("createRunner default executor routes the real loop through its bus", (
     expect(seenA.every((event) => event.data?.sessionId === sessionA)).toBe(true)
     expect(seenB.every((event) => event.data?.sessionId === sessionB)).toBe(true)
     expect(seenLegacy).toEqual([])
+  })
+
+  test("canceling a stream stuck in next() emits loop-end so the UI can dequeue", async () => {
+    const catalog = catalogWithTestModel()
+    const sessionId = titledSession()
+    let wake!: () => void
+    const entered = new Promise<void>((resolve) => { wake = resolve })
+    const runner = createRunner({ agent: offlineAgent("stalled"), stream: () => ({
+      fullStream: {
+        [Symbol.asyncIterator]() {
+          return {
+            next() {
+              wake()
+              return new Promise<IteratorResult<any>>(() => {})
+            },
+            return() { return new Promise<IteratorResult<any>>(() => {}) },
+          }
+        },
+      },
+    }) })
+    const seen = watch(runner.bus)
+    const run = runner.prompt({ sessionId, parts: [{ type: "text", text: "first" }], catalog })
+    await entered
+    runner.cancel(sessionId)
+    await Promise.race([run, new Promise((_, reject) => setTimeout(() => reject(new Error("loop-end stalled")), 500))])
+    expect(seen.map((event) => event.name)).toContain("loop-end")
+    expect(seen.find((event) => event.name === "user-message-status")?.data.status).toBe("aborted")
+    expect(runner.hasActiveRun()).toBe(false)
   })
 
   test("cancel() only aborts the runner's own run", async () => {

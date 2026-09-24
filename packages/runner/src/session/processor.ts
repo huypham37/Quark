@@ -99,6 +99,33 @@ export interface ProcessInput {
 /** The slice of a streaming primitive that {@link processStream} consumes. */
 export type StreamFn = (options: any) => { fullStream: AsyncIterable<any> }
 
+// Some providers do not settle their stream iterator after abort. Do not let a
+// stalled next() keep the turn (and the TUI's loop-end) alive indefinitely.
+async function* abortableStream(stream: AsyncIterable<any>, signal: AbortSignal): AsyncGenerator<any> {
+  const iterator = stream[Symbol.asyncIterator]()
+  let onAbort: (() => void) | undefined
+  let completed = false
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(new DOMException("This operation was aborted", "AbortError"))
+    signal.addEventListener("abort", onAbort, { once: true })
+    if (signal.aborted) onAbort()
+  })
+  try {
+    while (true) {
+      const next = await Promise.race([iterator.next(), aborted])
+      if (next.done) {
+        completed = true
+        return
+      }
+      yield next.value
+    }
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort)
+    // Never await return(): an uncooperative iterator can stall there too.
+    if (!completed && iterator.return) void Promise.resolve().then(() => iterator.return!()).catch(() => {})
+  }
+}
+
 export async function processStream(input: ProcessInput): Promise<"stop" | "continue" | "branch"> {
   // Track tool parts by callId so we can update them as events arrive
   const toolParts = new Map<string, { partId: string; data: ToolPartData }>()
@@ -136,7 +163,7 @@ export async function processStream(input: ProcessInput): Promise<"stop" | "cont
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
       })
 
-      for await (const event of result.fullStream) {
+      for await (const event of abortableStream(result.fullStream, input.abort)) {
         input.abort.throwIfAborted()
 
         if (dlog.enabled) {
