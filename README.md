@@ -11,6 +11,10 @@ best experience for both writing code and doing research.
 > **Agent = Model + Harness.** The model provides intelligence. The harness
 > makes that intelligence useful.
 
+**Docs:** <http://quark-doc.home.arpa> — HTTP API reference, plus CLI and SDK
+sections. Homelab-only; the site is a separate Docusaurus repo deployed to k3s,
+not built from this one.
+
 ---
 
 ## Highlights
@@ -290,6 +294,43 @@ Responses: `202` accepted (turn runs asynchronously — subscribe to
 `GET /api/sessions/:id/events`), `400` malformed body/text/image (the message
 names the offending `images[index]`), `409` session already running, `413` body
 over the ceiling.
+
+### Runner API
+
+The routes above run the server's *own* agent against the shared session store.
+For an isolated engine instance — its own event bus, cancellation state, and
+in-memory history — mint a runner first:
+
+```bash
+RUNNER_ID=$(curl -s -X POST http://127.0.0.1:4173/api/runners \
+  -H 'content-type: application/json' -d '{"agentId":"coder"}' | jq -r .runnerId)
+
+curl -X POST http://127.0.0.1:4173/api/runners/$RUNNER_ID/messages \
+  -H 'content-type: application/json' \
+  -d '{"text":"what is wrong here?","images":[{"mime":"image/png","data":"<base64>"}]}'
+# → 202 {"runnerId":"...","sessionId":"..."}
+```
+
+Echo `runnerId` on every later call, and `sessionId` to continue that
+conversation (omit it to start a new one). Each runner is independent: two
+runners reusing a `sessionId` never share history.
+
+| Route | Behavior |
+| -- | -- |
+| `POST /api/runners` | `{agentId?}` (default agent when omitted) → `201 {runnerId}`. `404` unknown agent, `503` at the 100-runner cap. |
+| `POST /api/runners/:id/messages` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running. |
+| `GET /api/runners/:id/sessions/:sessionId` | `{session,messages,tokensUsed}`; `404` unknown runner or session. |
+| `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from that runner's own bus (same event shapes as `/api/sessions/:id/events`). |
+| `POST /api/runners/:id/sessions/:sessionId/cancel` | Aborts the in-flight turn → `{cancelled:true}`. |
+| `DELETE /api/runners/:id` | Drops the runner and its in-memory history; `409` while a turn is in flight. |
+
+Runners are process-local and in-memory: nothing is written under
+`~/.config/quark`, and they disappear when the server restarts. Tool definitions
+are materialized from disk — only `agentId` is accepted over HTTP.
+
+The server binds `127.0.0.1` by default. This API has no authentication and can
+run tools on this machine, so set `QUARK_WEB_HOST=0.0.0.0` (or a specific
+interface) only behind auth or a reverse proxy.
 
 ---
 
