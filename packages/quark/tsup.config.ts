@@ -16,6 +16,9 @@ export default defineConfig({
     // Bundling it here would ship a second copy alongside the one Bun loads
     // for the TUI, splitting singleton state (event bus, config cache, ...).
     /^@quark\/runner(\/|$)/,
+    // The ACP server is a separate package served by `quark acp`, resolved at
+    // runtime only when that subcommand runs.
+    /^@quark\/acp(\/|$)/,
   ],
   treeshake: true,
   splitting: false,

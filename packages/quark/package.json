@@ -23,6 +23,7 @@
   "dependencies": {
     "@opentui/core": "0.1.86",
     "@opentui/solid": "0.1.86",
+    "@quark/acp": "0.1.0",
     "@quark/runner": "0.1.0",
     "ai": "^6.0.116",
     "marked": "^17.0.6",

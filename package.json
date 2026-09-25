@@ -9,8 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --cwd packages/runner build && bun run --cwd packages/quark build",
-    "typecheck": "bun run --cwd packages/runner typecheck && bun run --cwd packages/quark typecheck && tsc --project tsconfig.web.json --noEmit",
+    "build": "bun run --cwd packages/runner build && bun run --cwd packages/acp build && bun run --cwd packages/quark build",
+    "typecheck": "bun run --cwd packages/runner typecheck && bun run --cwd packages/acp typecheck && bun run --cwd packages/quark typecheck && tsc --project tsconfig.web.json --noEmit",
     "test": "bun test",
     "dev": "bun --preload ./packages/quark/preload.ts packages/quark/src/tui/index.tsx",
     "cli": "bun --preload ./packages/quark/preload.ts packages/quark/src/cli.ts",

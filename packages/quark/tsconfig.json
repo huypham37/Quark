@@ -11,7 +11,8 @@
     // these paths never affect the bundle).
     "paths": {
       "@quark/runner": ["../runner/src/index.ts"],
-      "@quark/runner/*": ["../runner/src/*.ts"]
+      "@quark/runner/*": ["../runner/src/*.ts"],
+      "@quark/acp": ["../acp/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],

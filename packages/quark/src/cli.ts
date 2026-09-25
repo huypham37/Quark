@@ -36,6 +36,7 @@ function printHelp() {
   console.log(`
 Usage: quark [options] [message]
        quark auth <login|status|logout> [provider]
+       quark acp [--agent <name>]     Serve ACP (Agent Client Protocol) over stdio
 
 Options:
   -a, --agent <name>            Agent to use (default: from config)
@@ -123,6 +124,19 @@ async function main() {
     try {
       const { runAuthCommand } = await import("./auth-cli")
       process.exit(await runAuthCommand(process.argv.slice(3)))
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      process.exit(1)
+    }
+  }
+
+  // `quark acp` — long-lived NDJSON agent over stdio. Dispatched before argument
+  // parsing so "acp" is never treated as a positional message. stdout is the
+  // protocol channel; this branch must never write diagnostics there.
+  if (process.argv[2] === "acp") {
+    try {
+      const { runAcpCommand } = await import("./acp-host")
+      process.exit(await runAcpCommand(process.argv.slice(3)))
     } catch (error) {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
       process.exit(1)

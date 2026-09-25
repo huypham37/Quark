@@ -123,7 +123,7 @@ function toAITool(
 
       const beforeArgs = await hooks.fire(
         "tool.execute.before",
-        { tool: def.id, args: validatedArgs },
+        { tool: def.id, args: validatedArgs, sessionId, callId },
         { args: validatedArgs },
       )
       const toolResult = await Promise.race([
