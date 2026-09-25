@@ -100,11 +100,11 @@ export function reserveLiveTurn(id: string, root = getSessionStorageRoot(), bus?
         }
 
         // `text-delta`/`reasoning-delta` carry the new chunk in `delta` but the
-        // whole accumulated message in `text`. The TUI applies `text` as a SET
-        // (packages/quark/src/tui/state.ts), so writing every chunk re-serialises
-        // the entire message each time — quadratic log growth. Keep only the
-        // latest full text per part and flush on a timer. `delta` is accumulated
-        // as well so an append-only consumer still reconstructs the same string.
+        // whole accumulated message in `text`. Writing `text` would make the log
+        // grow with how LONG a message streams (quadratic), so write only the
+        // chunk: one line per part per flush window, O(content). The viewer
+        // rebuilds the full text from these and emits it as `text` for the TUI,
+        // which applies `text` as a SET (packages/quark/src/tui/state.ts).
         const pending = new Map<string, { name: BusEventName; data: Record<string, unknown>; delta: string }>()
         let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -112,7 +112,7 @@ export function reserveLiveTurn(id: string, root = getSessionStorageRoot(), bus?
           if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
           if (pending.size === 0) return
           for (const entry of pending.values()) {
-            append(entry.name, { ...entry.data, delta: entry.delta, text: entry.data.text })
+            append(entry.name, { ...entry.data, delta: entry.delta, text: undefined })
           }
           pending.clear()
         }

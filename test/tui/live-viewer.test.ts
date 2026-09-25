@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createSession, createJsonlSessionStore } from "../../packages/runner/src/session/session"
 import { reserveLiveTurn, isLiveTurn, reapStaleTurns } from "../../packages/runner/src/session/live-turn"
-import { saveUserMessage } from "../../packages/runner/src/session/message"
+import { addPart, createAssistantMessage, saveUserMessage } from "../../packages/runner/src/session/message"
 import { TypedBus } from "../../packages/runner/src/session/events"
 import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
 import { followSession } from "../../packages/quark/src/tui/live-viewer"
@@ -58,10 +58,59 @@ describe("cross-process session viewer", () => {
     const lines = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line))
     const deltas = lines.filter((line) => line.name === "text-delta")
     expect(deltas).toHaveLength(1)
-    expect(deltas[0].data.text).toBe(text)
+    expect(deltas[0].data.text).toBeUndefined()
     expect(deltas[0].data.delta).toBe(text)
     expect(lines.at(-1).name).toBe("text-end")
     release()
+  })
+
+  test("log size is flat in stream duration, not quadratic in message length", async () => {
+    setSessionStorageRoot(root)
+    const store = createJsonlSessionStore(root)
+    const chunks = Array.from({ length: 8 }, () => "0123456789".repeat(25)) // 250 chars each
+    const content = chunks.join("")
+    const stream = async (gapMs: number): Promise<number> => {
+      const session = createSession(undefined, store)
+      const writer = new TypedBus()
+      const release = reserveLiveTurn(session.id, root, writer)!
+      const log = join(root, session.id, "live-events.jsonl")
+      let text = ""
+      for (const chunk of chunks) {
+        text += chunk
+        writer.emit("text-delta", { sessionId: session.id, messageId: "m", partId: "p", delta: chunk, text })
+        if (gapMs > 0) await Bun.sleep(gapMs)
+      }
+      writer.emit("text-end", { sessionId: session.id, messageId: "m", partId: "p", text })
+      const bytes = statSync(log).size
+      release()
+      return bytes
+    }
+    const burst = await stream(0)
+    const slow = await stream(250)
+    // A long stream must not write the accumulated text once per flush window.
+    expect(slow / burst).toBeLessThan(1.8)
+    expect(slow).toBeLessThan(content.length * 5)
+  })
+
+  test("mid-turn attach seeds reconstruction from persisted partial text", async () => {
+    setSessionStorageRoot(root)
+    const store = createJsonlSessionStore(root)
+    const session = createSession(undefined, store)
+    const message = createAssistantMessage({ sessionId: session.id, store })
+    const partId = addPart({ messageId: message.id, sessionId: session.id, type: "text", data: { text: "AAA" }, store })
+
+    const viewer = new TypedBus()
+    const texts: string[] = []
+    viewer.on("text-delta", (event) => texts.push(event.text))
+    const stop = followSession(session.id, viewer, () => {})
+
+    const writer = new TypedBus()
+    const release = reserveLiveTurn(session.id, root, writer)!
+    writer.emit("text-delta", { sessionId: session.id, messageId: message.id, partId, delta: "BBB", text: "AAABBB" })
+    await Bun.sleep(350)
+    expect(texts).toEqual(["AAABBB"])
+    release()
+    stop()
   })
 
   test("reapStaleTurns drops dead logs but keeps history", () => {

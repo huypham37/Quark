@@ -2,7 +2,7 @@ import { closeSync, openSync, readSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { getSessionDir, getSessionStorageRoot } from "@quark/runner/storage/session-path"
 import { isLiveTurn } from "@quark/runner/session/live-turn"
-import { loadMessages } from "@quark/runner/session/message"
+import { loadMessages, type PartRow } from "@quark/runner/session/message"
 import type { TypedBus, BusEventName } from "@quark/runner/session/events"
 import { dbToTuiMessages } from "./state"
 
@@ -41,6 +41,24 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
   let wasLocal = false
   const seen = new Set<string>()
   const seenTools = new Set<string>()
+  // Reconstruct each part's full text from delta-only log lines. `text` is a
+  // SET in the TUI reducer, so a delta must be spliced onto the part's existing
+  // text. Seed from persisted history: a viewer attaching mid-turn has the
+  // part's prefix in session.jsonl while the deltas that produced it sit behind
+  // its cursor, so without seeding the first replayed delta wipes that prefix.
+  const accumulated = new Map<string, string>()
+  const seeded = new Map<string, string>()
+  const seedParts = (parts: PartRow[]) => {
+    accumulated.clear()
+    seeded.clear()
+    for (const part of parts) {
+      if (part.type !== "text" && part.type !== "summary" && part.type !== "reasoning") continue
+      try {
+        const data = JSON.parse(part.data) as { text?: string }
+        if (data.text) seeded.set(part.id, data.text)
+      } catch { /* corrupt part: leave it unseeded */ }
+    }
+  }
   const size = (path: string) => { try { return statSync(path).size } catch { return 0 } }
   const refresh = () => {
     if (isLocalBusy()) { wasLocal = true; return }
@@ -62,6 +80,7 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
     if (lastHistorySize < 0) {
       cursor = length
       const { messages, parts } = loadMessages(id)
+      seedParts(parts)
       seen.clear()
       seenTools.clear()
       for (const message of messages) seen.add(message.id)
@@ -92,7 +111,22 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
             if (callId && seenTools.has(callId)) continue
             if (callId) seenTools.add(callId)
           }
-          bus.emit(event.name, event.data as any)
+          // The log stores only the new chunk for deltas; splice it onto the
+          // part's prefix so the SET-style reducer receives full text again.
+          const deltaData = event.data as { partId?: string; delta?: string }
+          let outgoing = event.data
+          if ((event.name === "text-delta" || event.name === "reasoning-delta") && deltaData.partId) {
+            const base = accumulated.get(deltaData.partId) ?? seeded.get(deltaData.partId) ?? ""
+            const full = base + (deltaData.delta ?? "")
+            accumulated.set(deltaData.partId, full)
+            outgoing = { ...event.data, text: full } as typeof event.data
+          } else if ((event.name === "text-end" || event.name === "reasoning-end") && deltaData.partId) {
+            // The end event carries the authoritative (trimmed) text; drop the
+            // reconstruction state so a reused part id cannot leak stale text.
+            accumulated.delete(deltaData.partId)
+            seeded.delete(deltaData.partId)
+          }
+          bus.emit(event.name, outgoing as any)
         } catch { /* incomplete or corrupt event: reconcile on next snapshot */ }
       }
     }
@@ -101,6 +135,7 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
       onBusy(active)
       if (!active) {
         const { messages, parts } = loadMessages(id)
+        seedParts(parts)
         const snapshot = dbToTuiMessages(messages, parts)
         seen.clear()
         seenTools.clear()
