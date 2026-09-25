@@ -3,7 +3,16 @@
   "compilerOptions": {
     "types": ["node", "bun"],
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid"
+    "jsxImportSource": "@opentui/solid",
+    // Typecheck-only: resolve the engine's subpath exports back to source so a
+    // clean checkout type-checks without building @quark/runner first (its
+    // `exports` point at dist, which only exists after a build). Keep this in
+    // sync with the list in ./tsup.config.ts (runner stays external there, so
+    // these paths never affect the bundle).
+    "paths": {
+      "@quark/runner": ["../runner/src/index.ts"],
+      "@quark/runner/*": ["../runner/src/*.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": [
