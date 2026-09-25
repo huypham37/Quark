@@ -4,8 +4,8 @@
 
 import { beforeEach, describe, test, expect } from "bun:test"
 import { RGBA } from "@opentui/core"
-import { applyTheme, colors, setTerminalBg } from "../../src/tui/theme"
-import { darkTheme } from "../../src/tui/themes/dark"
+import { applyTheme, colors, setTerminalBg } from "../../packages/quark/src/tui/theme"
+import { darkTheme } from "../../packages/quark/src/tui/themes/dark"
 
 describe("notification background", () => {
   beforeEach(() => {

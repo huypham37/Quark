@@ -1,8 +1,9 @@
 {
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": ["packages/runner/src/index.ts"],
+  "tsconfig": "packages/runner/tsconfig.json",
   "out": "docs/api",
   "plugin": ["typedoc-plugin-markdown"],
-  "name": "@quark/sdk",
+  "name": "@quark/runner",
   "readme": "none",
   "excludePrivate": true,
   "excludeInternal": true,

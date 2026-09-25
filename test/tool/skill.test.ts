@@ -5,7 +5,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
 
-import { discoverSkills, loadSkill, clearCache } from "../../src/skill/skill"
+import { discoverSkills, loadSkill, clearCache } from "../../packages/runner/src/skill/skill"
 
 let tmpDir: string
 

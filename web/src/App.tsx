@@ -9,13 +9,13 @@ import { CommandPalette, type PaletteEntry } from "./components/CommandPalette"
 import { FolderIcon, BranchIcon } from "./icons"
 import { findSlashCommand, slashCommands, slashParts } from "./slash"
 
-export type PaletteMode = "commands" | "sessions" | "models" | "profiles" | "skills"
+export type PaletteMode = "commands" | "sessions" | "models" | "agents" | "skills"
 
 const PALETTE_TITLES: Record<PaletteMode, { title: string; placeholder: string }> = {
   commands: { title: "Commands", placeholder: "Search commands" },
   sessions: { title: "Sessions", placeholder: "Search sessions" },
   models: { title: "Models", placeholder: "Search models" },
-  profiles: { title: "Profiles", placeholder: "Search profiles" },
+  agents: { title: "Agents", placeholder: "Search agents" },
   skills: { title: "Skills", placeholder: "Search skills" },
 }
 
@@ -58,13 +58,13 @@ export function App() {
           detail: model.detail ?? model.id,
           run: () => void app.setModel(model.id),
         }))
-      case "profiles":
-        return app.state.profiles.map((profile) => ({
-          id: profile,
+      case "agents":
+        return app.state.agents.map((agent) => ({
+          id: agent,
           icon: "P",
-          label: profile,
-          detail: profile === app.state.status.profile ? "Active profile" : "Switch profile",
-          run: () => void app.setProfile(profile),
+          label: agent,
+          detail: agent === app.state.status.agent ? "Active agent" : "Switch agent",
+          run: () => void app.setAgent(agent),
         }))
       case "skills":
         return app.state.skills.map((skill) => ({
@@ -79,7 +79,7 @@ export function App() {
           { id: "new", icon: "+", label: "New session", detail: "Start with a clean conversation", shortcut: "⌘ N", run: () => void app.newSession() },
           { id: "sessions", icon: "S", label: "Sessions", detail: "Open a recent conversation", run: () => openPalette("sessions") },
           { id: "models", icon: "M", label: "Models", detail: "Switch the active model", run: () => openPalette("models") },
-          { id: "profiles", icon: "P", label: "Profiles", detail: "Switch profile", run: () => openPalette("profiles") },
+          { id: "agents", icon: "A", label: "Agents", detail: "Switch agent", run: () => openPalette("agents") },
           { id: "skills", icon: "K", label: "Skills", detail: "Add a skill to the next turn", run: () => openPalette("skills") },
         ]
     }
@@ -92,14 +92,13 @@ export function App() {
       case "help":
         return app.showNotice(`Commands: ${slashCommands.map((item) => `/${item.id}`).join("   ")}`)
       case "new":
-      case "clear":
         return void app.newSession()
       case "sessions":
         return openPalette("sessions")
       case "model":
         return args ? void app.setModel(args) : openPalette("models")
-      case "profile":
-        return args ? void app.setProfile(args) : openPalette("profiles")
+      case "agent":
+        return args ? void app.setAgent(args) : openPalette("agents")
       case "skills":
         return args ? void app.activateSkill(args) : openPalette("skills")
       case "compact":
@@ -171,7 +170,7 @@ export function App() {
             />
             <div class="context-row">
               <span class="context-chip" title={app.state.status.cwd}><FolderIcon />{folder()}</span>
-              <span class="context-chip">{app.state.status.profile}</span>
+              <span class="context-chip">{app.state.status.agent}</span>
               <span class="context-chip branch" title="Git branch"><BranchIcon />{app.state.status.branch ?? "no branch"}</span>
             </div>
           </section>

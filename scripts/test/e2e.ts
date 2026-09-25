@@ -4,20 +4,20 @@
 // Usage: bun scripts/test/e2e.ts "your prompt here" [--model gpt-5-mini]
 // Requires: a valid Copilot token (run `bun scripts/auth/copilot-login.ts` first)
 
-import { bootstrap } from "../src/bootstrap"
-import { prompt } from "../src/session/prompt"
-import { loadMessages } from "../src/session/message"
-import { parseModelSpec } from "../src/config/config"
-import type { AgentConfig } from "../src/agent"
+import { bootstrap } from "../packages/quark/src/bootstrap"
+import { prompt } from "../packages/runner/src/session/prompt"
+import { loadMessages } from "../packages/runner/src/session/message"
+import { defineAgent } from "../packages/runner/src/agent"
+import { readTool } from "../packages/runner/src/tool/read"
 
 // Minimal agent — only built-in tools, no profile tools needed
-const testAgent: AgentConfig = {
+const testAgent = defineAgent({
   id: "test",
   name: "Test",
-  prompt: "You are a helpful assistant.",
-  tools: ["read", "skill"],
+  instructions: "You are a helpful assistant.",
+  tools: [readTool],
   skills: [],
-}
+})
 
 async function main() {
   const args = process.argv.slice(2)
@@ -44,9 +44,7 @@ async function main() {
   const result = await prompt({
     parts: [{ type: "text", text: input }],
     agent: testAgent,
-    model: modelId
-      ? (() => { const p = parseModelSpec(modelId); return { provider: p.provider ?? "copilot", model: p.model } })()
-      : undefined,
+    model: modelId,
   })
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1)

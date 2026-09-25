@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { toModelMessages } from "../../src/session/message";
-import type { MessageRow, PartRow } from "../../src/session/message";
+import { toModelMessages } from "../../packages/runner/src/session/message";
+import type { MessageRow, PartRow } from "../../packages/runner/src/session/message";
 
 describe("model-only user context", () => {
   test("keeps hidden context before visible user text in model history", () => {

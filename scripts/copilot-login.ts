@@ -20,8 +20,8 @@ import {
   pollForToken,
   normalizeDomain,
   saveToken,
-} from "../src/provider/copilot-auth"
-import { createCopilotFetch } from "../src/provider/copilot-fetch"
+} from "../packages/runner/src/provider/copilot-auth"
+import { createCopilotFetch } from "../packages/runner/src/provider/copilot-fetch"
 
 // ---------------------------------------------------------------------------
 // Parse args

@@ -5,7 +5,7 @@ import {
   preservePaletteSelectionIndex,
   searchPaletteEntries,
   type PaletteEntry,
-} from "../../src/tui/palette-index"
+} from "../../packages/quark/src/tui/palette-index"
 
 const sources = {
   commands: [{ id: "model", description: "Choose a model", usage: "/model <id>", aliases: ["models"] }],

@@ -21,7 +21,7 @@ import {
   LEFT_WIDTH_IDLE,
   formatDuration,
   durationWidth,
-} from "../../src/tui/components/footer-bar-fit"
+} from "../../packages/quark/src/tui/components/footer-bar-fit"
 
 // ---------------------------------------------------------------------------
 // pathCandidates

@@ -12,12 +12,12 @@ import * as os from "os"
 import {
   CodexTokenStore,
   type CodexToken,
-} from "../../src/provider/codex-auth"
-import { resolveModel } from "../../src/provider/resolver"
-import type { CredentialStore } from "../../src/provider/credential-store"
-import type { Credential } from "../../src/provider/credentials"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
-import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
+} from "../../packages/runner/src/provider/codex-auth"
+import { resolveModel } from "../../packages/runner/src/provider/resolver"
+import type { CredentialStore } from "../../packages/runner/src/provider/credential-store"
+import type { Credential } from "../../packages/runner/src/provider/credentials"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
 
 class MemoryCredentialStore implements CredentialStore {
   value: Credential | null = null

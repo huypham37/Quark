@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test"
-import { toModelMessages } from "../../src/session/message"
-import type { MessageRow, PartRow } from "../../src/session/message"
+import { toModelMessages } from "../../packages/runner/src/session/message"
+import type { MessageRow, PartRow } from "../../packages/runner/src/session/message"
 
 // ---------------------------------------------------------------------------
 // Helpers

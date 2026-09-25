@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildEditorArgv, displayFileTarget, parseFileUri, resolveEditor } from "../../src/tui/editor"
+import { buildEditorArgv, displayFileTarget, parseFileUri, resolveEditor } from "../../packages/quark/src/tui/editor"
 
 describe("file-link editor helpers", () => {
   test("parses local file URIs and source locations", () => {

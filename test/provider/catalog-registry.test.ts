@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
-import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
 
 function model(id: string, name = id) {
   return {

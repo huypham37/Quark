@@ -30,7 +30,7 @@ jobs:
         run: bun run build
 
       - name: Smoke test (CLI boots)
-        run: node dist/cli.js --help
+        run: node packages/quark/dist/cli.js --help
 
       # NOTE: `bun test` is intentionally not run yet — the suite is currently
       # order-dependent (shared HOME/env/config-cache state) and one test hits

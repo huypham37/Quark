@@ -3,11 +3,11 @@
 // Tests the snapshot engine, tracker persistence, and undo execution
 // in a real filesystem with temp directories.
 
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { setSessionStorageRoot, getSessionStorageRoot } from "../../src/storage/session-path";
+import { setSessionStorageRoot, getSessionStorageRoot } from "../../packages/runner/src/storage/session-path";
 import {
   setCurrentTurn,
   preTurnSnapshot,
@@ -17,7 +17,7 @@ import {
   clearHistory,
   extractFilePath,
   toolPreExecute,
-} from "../../src/commands/undo";
+} from "../../packages/runner/src/commands/undo";
 
 let workspace: string;
 let storageRoot: string;
@@ -25,21 +25,24 @@ const sessionId = "test-session-undo";
 const turn1Id = "turn-msg-1";
 const turn2Id = "turn-msg-2";
 
+// Bun ignores a cleanup function returned from beforeEach, so the cwd/storage
+// override below would leak into every later test file. Restore in afterEach.
+const realCwd = process.cwd;
+
 beforeEach(() => {
   workspace = mkdtempSync(join(tmpdir(), "quark-undo-workspace-"));
   storageRoot = mkdtempSync(join(tmpdir(), "quark-undo-storage-"));
   setSessionStorageRoot(storageRoot);
 
   // Change cwd to the temp workspace (restored after test)
-  const origCwd = process.cwd;
   process.cwd = () => workspace;
+});
 
-  // Clean up after test
-  return () => {
-    process.cwd = origCwd;
-    rmSync(workspace, { recursive: true, force: true });
-    rmSync(storageRoot, { recursive: true, force: true });
-  };
+afterEach(() => {
+  process.cwd = realCwd;
+  setSessionStorageRoot(undefined);
+  rmSync(workspace, { recursive: true, force: true });
+  rmSync(storageRoot, { recursive: true, force: true });
 });
 
 // Helper to create a file in the workspace

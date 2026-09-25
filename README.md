@@ -1,6 +1,6 @@
 # Quark
 
-**An ergonomic, tool-first AI agent for coding _and_ research.**
+**An ergonomic, tool-first AI agent for coding _and_ research workflows.**
 
 Quark is a harness — it owns everything around the model: tool execution,
 memory, context management, state persistence, and guardrails. The model is a
@@ -10,6 +10,10 @@ best experience for both writing code and doing research.
 
 > **Agent = Model + Harness.** The model provides intelligence. The harness
 > makes that intelligence useful.
+
+**Docs:** <http://quark-doc.home.arpa> — HTTP API reference, plus CLI and SDK
+sections. Homelab-only; the site is a separate Docusaurus repo deployed to k3s,
+not built from this one.
 
 ---
 
@@ -55,7 +59,7 @@ Or build and use the CLI directly:
 
 ```bash
 bun run build
-node dist/cli.js --help
+node packages/quark/dist/cli.js --help
 ```
 
 To install `quark` globally from this checkout:
@@ -227,12 +231,119 @@ See [`docs/data-model.md`](docs/data-model.md) for the persistence schema and
 
 ## Using Quark as an SDK
 
-Quark also ships as the `@quark/sdk` package, exposing its session, tool, and
+Quark also ships as the `@quark/runner` package, exposing its session, tool, and
 agent primitives:
 
 ```ts
-import { bootstrap, createSession, prompt } from "@quark/sdk"
+import { createSession, prompt } from "@quark/runner"
 ```
+
+---
+
+## Session discovery API
+
+An external process — an orchestrator, a dashboard — can learn which session a
+running TUI is on. Start the TUI with a port, then read the single endpoint:
+
+```bash
+QUARK_API_PORT=47831 quark
+curl http://127.0.0.1:47831/api/session/current
+```
+
+```json
+{ "sessionId": "PRCglgkAzWjgDWhK", "pid": 46695 }
+```
+
+It answers `204 No Content` until the first message creates a session, and
+follows `/new`, session switches, and branches. Read-only, bound to `127.0.0.1`
+only, off unless `QUARK_API_PORT` is set. `@quark/runner` is deliberately not
+involved: it holds many sessions and cannot know which one the user is on.
+
+---
+
+## Web API
+
+The full reference lives at <http://quark-doc.home.arpa> (`docs/api`).
+
+`bun run web:serve` starts the web backend (`web/server.ts`, Bun, default port
+`4173`, override with `PORT`) and serves both the UI and a JSON API under
+`/api/`. External processes can send a message — including image attachments —
+with a single POST:
+
+```bash
+curl -X POST http://127.0.0.1:4173/api/sessions/$SESSION_ID/messages \
+  -H 'content-type: application/json' \
+  -d '{
+    "text": "what is wrong here?",
+    "images": [{ "mime": "image/png", "data": "<base64>" }]
+  }'
+```
+
+`text` is required; `images` is optional and omitted or empty behaves exactly as
+before. Images are base64-encoded (a ~33% wire tax) and validated before the
+engine sees them:
+
+| Limit | Value |
+| -- | -- |
+| Request body | 10 MiB |
+| Images per message | 8 |
+| Decoded size per image | 5 MiB |
+| Supported `mime` | `image/png`, `image/jpeg`, `image/gif`, `image/webp` |
+
+Responses: `202` accepted (turn runs asynchronously — subscribe to
+`GET /api/sessions/:id/events`), `400` malformed body/text/image (the message
+names the offending `images[index]`), `409` session already running, `413` body
+over the ceiling.
+
+### Runner API
+
+The routes above run the server's *own* agent against the shared session store.
+For an isolated execution instance — its own event bus, cancellation state, and
+hooks — mint a runner first:
+
+```bash
+RUNNER_ID=$(curl -s -X POST http://127.0.0.1:4173/api/runners \
+  -H 'content-type: application/json' -d '{"agentId":"coder"}' | jq -r .runnerId)
+
+curl -X POST http://127.0.0.1:4173/api/runners/$RUNNER_ID/session/prompt \
+  -H 'content-type: application/json' \
+  -d '{"text":"what is wrong here?","images":[{"mime":"image/png","data":"<base64>"}]}'
+# → 202 {"runnerId":"...","sessionId":"..."}
+```
+
+Echo `runnerId` on every later call, and `sessionId` to continue that
+conversation (omit it to start a new one). Sessions are shared, persistent state:
+any runner can resume a session by `sessionId`, including one minted after a
+server restart.
+
+| Route | Behavior |
+| -- | -- |
+| `POST /api/runners` | `{agentId?}` (default agent when omitted) → `201 {runnerId}`. `404` unknown agent, `503` at the 100-runner cap. |
+| `POST /api/runners/:id/session/prompt` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running (across all runners). |
+| `GET /api/runners/:id/sessions/:sessionId` | `{session,messages,tokensUsed}`; `404` unknown runner or session. |
+| `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from the runner that owns the active turn (same event shapes as `/api/sessions/:id/events`). |
+| `POST /api/runners/:id/sessions/:sessionId/cancel` | Aborts the in-flight turn → `{cancelled:true}`. |
+| `DELETE /api/runners/:id` | Drops the runner; sessions stay on disk. `409` while a turn is in flight. |
+
+Sessions are persisted on disk in one namespace shared by REST runners and
+the CLI/TUI, `~/.config/quark/session/runners/<sessionId>/`. New CLI/TUI
+sessions use this location too, so `quark --session <sessionId>` can resume a
+REST runner session. Older sessions under `~/.config/quark/session/<sessionId>/`
+are not found by the CLI/TUI. Session IDs are restricted to `[A-Za-z0-9_-]+` (the ID alphabet the
+engine generates) so a caller cannot escape that namespace.
+
+The runner *registry* is process-local: runner IDs are minted per process, so a
+server restart ends every runner. Sessions survive — mint a new runner and
+resume a `sessionId` to continue its history. Deleting a runner (or evicting the
+oldest idle runner at the 100-runner cap) only drops the execution handle; it
+never deletes session files. Because all runners share one namespace, two
+concurrent turns on the same `sessionId` are refused with `409` rather than
+interleaving writes. Tool definitions are materialized from disk; only `agentId`
+is accepted over HTTP.
+
+The server binds `127.0.0.1` by default. This API has no authentication and can
+run tools on this machine, so set `QUARK_WEB_HOST=0.0.0.0` (or a specific
+interface) only behind auth or a reverse proxy.
 
 ---
 
@@ -260,4 +371,4 @@ the surface area to change.
 
 ## License
 
-No license has been published yet.
+[MIT](LICENSE).

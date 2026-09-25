@@ -2,17 +2,17 @@ import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:tes
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
-import { createSession, getSession, listSessions, updateSession } from "../../src/session/session"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
+import { createSession, getSession, listSessions, updateSession } from "../../packages/runner/src/session/session"
 import {
   addPart,
   createAssistantMessage,
   finishMessage,
   loadMessages,
   saveUserMessage,
-} from "../../src/session/message"
-import { buildCompactionPrompt } from "../../src/prompts/compaction"
+} from "../../packages/runner/src/session/message"
+import { buildCompactionPrompt } from "../../packages/runner/src/prompts/compaction"
 import {
   buildLineageContext,
   compactBranch,
@@ -21,7 +21,7 @@ import {
   extractLastUserText,
   getSessionLineage,
   shouldBranchWithRealTokens,
-} from "../../src/session/branch"
+} from "../../packages/runner/src/session/branch"
 let sessionDir: string
 
 beforeAll(() => {

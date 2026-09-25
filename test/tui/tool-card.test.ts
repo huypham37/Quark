@@ -11,10 +11,10 @@ import { readFileSync } from "fs"
 import { existsSync } from "fs"
 import { resolve } from "path"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
+import { createAppState, dispatch } from "../../packages/quark/src/tui/state"
 
-const TOOL_CARD_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/tool-card.tsx"), "utf8")
-const MESSAGE_ITEM_SRC = readFileSync(resolve(import.meta.dir, "../../src/tui/components/message-item.tsx"), "utf8")
+const TOOL_CARD_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-card.tsx"), "utf8")
+const MESSAGE_ITEM_SRC = readFileSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/message-item.tsx"), "utf8")
 
 function withRoot<T>(fn: () => T): T {
   let result!: T
@@ -35,11 +35,11 @@ describe("ToolCard migration (ToolResultView + ToolInvocationBlock → ToolCard)
   })
 
   test("old ToolResultView file is deleted", () => {
-    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-result.tsx"))).toBe(false)
+    expect(existsSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-result.tsx"))).toBe(false)
   })
 
   test("old ToolInvocationBlock file is deleted", () => {
-    expect(existsSync(resolve(import.meta.dir, "../../src/tui/components/tool-invocation.tsx"))).toBe(false)
+    expect(existsSync(resolve(import.meta.dir, "../../packages/quark/src/tui/components/tool-invocation.tsx"))).toBe(false)
   })
 
   test("message-item.tsx imports grouped tool activities instead of old components", () => {
@@ -324,5 +324,71 @@ describe("skill tool rendering", () => {
       expect(part.tool).toBe("skill")
       expect(part.input).toEqual({ skill: "code-review" })
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Result gating (`showResult`)
+//
+// The summary detail level decides at runtime; ToolCard stays dumb and only
+// honours the flag. Absent flag = no results, so a forgotten prop can never
+// dump a diff into a quiet transcript.
+// ---------------------------------------------------------------------------
+describe("ToolCard result gating", () => {
+  test("showResult defaults to off", () => {
+    expect(TOOL_CARD_SRC).toContain("const showResult = () => props.showResult === true")
+  })
+
+  test("every result body is behind showResult", () => {
+    // Everything after the flag's definition, so the definition itself is excluded.
+    const gates = (TOOL_CARD_SRC.split("const showResult")[1] ?? "")
+      .split("=== true")[1]!
+      .split("</>")[0] ?? ""
+    expect((gates.match(/showResult/g) ?? [])).toHaveLength(3) // WriteStreamView, DiffView, ScrollableOutput
+  })
+
+  async function render(toolCardProps: Record<string, unknown>): Promise<string> {
+    const script = `
+      import { testRender } from "@opentui/solid";
+      import { createComponent } from "solid-js";
+      import { ToolCard } from "./packages/quark/src/tui/components/tool-card.tsx";
+      const setup = await testRender(
+        () => createComponent(ToolCard, ${JSON.stringify(toolCardProps)}),
+        { width: 80, height: 12, useConsole: false },
+      );
+      await setup.renderOnce();
+      const frame = setup.captureCharFrame();
+      setup.renderer.destroy();
+      console.log(JSON.stringify(frame));
+    `
+    const proc = Bun.spawnSync({
+      cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
+      cwd: resolve(import.meta.dir, "../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    if (!proc.success) throw new Error(proc.stderr.toString())
+    return JSON.parse(proc.stdout.toString()) as string
+  }
+
+  const diff = ["@@ -1,1 +1,1 @@", "-old", "+new"].join("\n")
+
+  test("header renders and the diff stays hidden without showResult", async () => {
+    const frame = await render({ tool: "edit", status: "completed", input: { filePath: "/src/a.ts" }, diff })
+    expect(frame).toContain("Edit /src/a.ts")
+    expect(frame).not.toContain("└──")
+  })
+
+  test("showResult reveals the diff", async () => {
+    const frame = await render({ tool: "edit", status: "completed", input: { filePath: "/src/a.ts" }, diff, showResult: true })
+    expect(frame).toContain("Edit /src/a.ts")
+    expect(frame).toContain("└── +1 -1")
+    expect(frame).toContain("new")
+  })
+
+  test("showResult reveals command output", async () => {
+    const frame = await render({ tool: "bash", status: "completed", input: { command: "bun test" }, output: "12 pass", showResult: true })
+    expect(frame).toContain("Bash bun test")
+    expect(frame).toContain("12 pass")
   })
 })

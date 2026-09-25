@@ -2,13 +2,12 @@
 // startup error instead of an unhandled exception.
 //
 // These tests spawn the CLI binary as a subprocess with a temp project
-// directory that contains an invalid .quark/config.yaml and verify:
-//   1. stderr contains a clear error message (not a stack trace)
-//   2. Exit code is non-zero (1)
-//   3. The agent does NOT proceed to generate output
-//
-// These are TDD failing tests — they will FAIL until the production fix
-// is applied to wrap resolveProfile() in proper error handling.
+// directory containing `.quark/agents/<id>/agent.yaml` manifests, and verify
+// that agent thinking config is validated against the exact catalog:
+//   1. an unsupported effort for a known model is reported clearly
+//   2. a model missing from the catalog is reported clearly
+//   3. a valid agent does not produce a spurious thinking-config error
+//   4. an inactive agent's invalid config never fails the active run
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs"
@@ -21,7 +20,7 @@ import { tmpdir } from "node:os"
 const PROJECT_ROOT = resolve(import.meta.dir, "../..")
 
 // ---------------------------------------------------------------------------
-// Temp project directory for isolated .quark/config.yaml
+// Temp project directory for isolated project agents
 // ---------------------------------------------------------------------------
 let tempProjectDir: string
 
@@ -37,11 +36,11 @@ afterAll(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Write a .quark/config.yaml inside the temp project dir. */
-function writeProjectConfig(yaml: string) {
-  const quarkDir = join(tempProjectDir, ".quark")
-  mkdirSync(quarkDir, { recursive: true })
-  writeFileSync(join(quarkDir, "config.yaml"), yaml, "utf-8")
+/** Write a project-level agent manifest at .quark/agents/<id>/agent.yaml. */
+function writeAgent(id: string, yaml: string) {
+  const dir = join(tempProjectDir, ".quark", "agents", id)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, "agent.yaml"), yaml, "utf-8")
 }
 
 /** Spawn the CLI entry point with given args, cwd = temp project dir. */
@@ -50,8 +49,8 @@ function runCli(args: string[]) {
     cmd: [
       "bun",
       "--preload",
-      join(PROJECT_ROOT, "preload.ts"),
-      join(PROJECT_ROOT, "src", "cli.ts"),
+      join(PROJECT_ROOT, "packages", "quark", "preload.ts"),
+      join(PROJECT_ROOT, "packages", "quark", "src", "cli.ts"),
       ...args,
     ],
     cwd: tempProjectDir,
@@ -70,32 +69,31 @@ function runCli(args: string[]) {
 // ---------------------------------------------------------------------------
 
 describe("CLI with invalid thinking config (issue #166)", () => {
-  test("reports exact-catalog validation when profile has unsupported thinking effort", () => {
-    writeProjectConfig(`
-profiles:
-  finder:
-    model: opencode/deepseek-v4-flash
-    thinking_effort: xhigh
+  test("reports unsupported thinking effort for a known model", () => {
+    // deepseek-v4-flash supports low/high/max — xhigh is not in the catalog.
+    writeAgent("finder", `
+name: Finder
+model: opencode/deepseek-v4-flash
+thinking_effort: xhigh
+tools: [read]
 `)
 
-    const result = runCli(["--profile", "finder", "--message", "hello"])
-
+    const result = runCli(["--agent", "finder", "--message", "hello"])
     const stderr = result.stderr.toString()
 
     expect(result.exitCode).not.toBe(0)
-    expect(stderr).toContain("not present in the exact catalog")
+    expect(stderr).toContain('Invalid reasoning effort "xhigh"')
   })
 
-  test("reports exact-catalog validation when profile model does not support thinking", () => {
-    writeProjectConfig(`
-profiles:
-  bad:
-    model: copilot/gpt-4o
-    thinking_effort: high
+  test("reports a model that is not present in the exact catalog", () => {
+    writeAgent("bad", `
+name: Bad
+model: copilot/gpt-4o
+thinking_effort: high
+tools: [read]
 `)
 
-    const result = runCli(["--profile", "bad", "--message", "hello"])
-
+    const result = runCli(["--agent", "bad", "--message", "hello"])
     const stderr = result.stderr.toString()
 
     expect(result.exitCode).not.toBe(0)
@@ -103,38 +101,39 @@ profiles:
   })
 
   test("valid thinking config does NOT cause a spurious error", () => {
-    // deepseek-v4-pro supports: none, high, max
-    writeProjectConfig(`
-profiles:
-  finder:
-    model: opencode/deepseek-v4-pro
-    thinking_effort: high
+    // deepseek-v4-pro supports: high, max
+    writeAgent("good", `
+name: Good
+model: opencode/deepseek-v4-pro
+thinking_effort: high
+tools: [read]
 `)
 
-    const result = runCli(["--profile", "finder", "--message", "hello"])
-
+    const result = runCli(["--agent", "good", "--message", "hello"])
     const stderr = result.stderr.toString()
 
-    // This test may fail for other reasons (no API key configured), but
-    // it must NOT fail with a thinking-config error.
+    // This test may fail for other reasons (no API key configured), but it
+    // must NOT fail with a thinking-config error.
     expect(stderr).not.toContain("Invalid thinking effort")
+    expect(stderr).not.toContain("Invalid reasoning effort")
     expect(stderr).not.toContain("Thinking is not supported")
     expect(stderr).not.toContain("at profile validation")
   })
 
-  test("does not eagerly validate inactive profile thinking", () => {
-    writeProjectConfig(`
-profiles:
-  badprofile:
-    model: opencode/deepseek-v4-flash
-    thinking_effort: xhigh
+  test("does not eagerly validate an inactive agent's thinking config", () => {
+    writeAgent("badagent", `
+name: Bad Agent
+model: opencode/deepseek-v4-flash
+thinking_effort: xhigh
+tools: [read]
 `)
 
-    const result = runCli(["--profile", "coder", "--message", "hello"])
-
+    const result = runCli(["--agent", "coder", "--message", "hello"])
     const stderr = result.stderr.toString()
 
-    expect(result.exitCode).not.toBe(0)
-    expect(stderr).toContain("not present in the exact catalog")
+    // The active agent is the built-in coder: the broken manifest of another
+    // agent must never be validated on its behalf.
+    expect(stderr).not.toContain('Invalid reasoning effort "xhigh"')
+    expect(stderr).not.toContain("not present in the exact catalog")
   })
 })

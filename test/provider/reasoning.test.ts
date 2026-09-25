@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { BUNDLED_PROVIDER_DEFINITIONS } from "../../src/provider/definitions"
-import { encodeCatalogReasoning } from "../../src/provider/reasoning"
-import type { CatalogModel } from "../../src/provider/catalog-snapshot"
+import { BUNDLED_PROVIDER_DEFINITIONS } from "../../packages/runner/src/provider/definitions"
+import { encodeCatalogReasoning } from "../../packages/runner/src/provider/reasoning"
+import type { CatalogModel } from "../../packages/runner/src/provider/catalog-snapshot"
 
 function model(
   reasoning_options: CatalogModel["reasoning_options"],

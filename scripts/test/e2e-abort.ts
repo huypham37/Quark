@@ -4,10 +4,10 @@
 // Usage: bun scripts/test/e2e-abort.ts
 // Requires: a valid Copilot token (run `bun scripts/auth/copilot-login.ts` first)
 
-import { bootstrap } from "../../src/bootstrap"
-import { prompt, cancel } from "../../src/session/prompt"
-import { loadMessages, toModelMessages } from "../../src/session/message"
-import { bus } from "../../src/session/events"
+import { bootstrap } from "../../packages/quark/src/bootstrap"
+import { prompt, cancel } from "../../packages/runner/src/session/prompt"
+import { loadMessages, toModelMessages } from "../../packages/runner/src/session/message"
+import { bus } from "../../packages/runner/src/session/events"
 
 const MODEL = "opencode/deepseek-v4-flash"
 const ABORT_AFTER_MS = 3000

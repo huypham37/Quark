@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // End-to-end test: verify thinking events flow through @ai-sdk/anthropic + Copilot
 // Run: bun --preload ./preload.ts scripts/test-thinking-e2e.ts
-import { createCopilotAnthropicProvider, setCopilotThinking, getCopilotThinkingBudget } from "../src/provider/provider"
-import { loadToken } from "../src/provider/copilot-auth"
+import { createCopilotAnthropicProvider, setCopilotThinking, getCopilotThinkingBudget } from "../packages/runner/src/provider/provider"
+import { loadToken } from "../packages/runner/src/provider/copilot-auth"
 import { streamText } from "ai"
 
 // Ensure token is available

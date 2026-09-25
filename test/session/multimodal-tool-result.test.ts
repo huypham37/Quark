@@ -12,15 +12,15 @@
 // Run:  bun test test/session/multimodal-tool-result.test.ts
 
 import { describe, it, expect } from "bun:test"
-import { toModelMessages } from "../../src/session/message"
-import type { MessageRow, PartRow, ToolPartData } from "../../src/session/message"
+import { toModelMessages } from "../../packages/runner/src/session/message"
+import type { MessageRow, PartRow, ToolPartData } from "../../packages/runner/src/session/message"
 
 // ---------------------------------------------------------------------------
 // Import the new type — this MUST fail compilation until the type is added
 // to src/tool/tool.ts and re-exported from src/session/message.ts
 // ---------------------------------------------------------------------------
 
-import type { ToolResultContentPart } from "../../src/tool/tool"
+import type { ToolResultContentPart } from "../../packages/runner/src/tool/tool"
 
 // ---------------------------------------------------------------------------
 // Helpers — mirror the pattern from toModelMessages-anchor.test.ts

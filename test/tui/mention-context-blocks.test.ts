@@ -3,7 +3,7 @@
 // into the model context.
 
 import { describe, test, expect } from "bun:test"
-import { parseContextBlocks } from "../../src/tui/components/mention-context"
+import { parseContextBlocks } from "../../packages/quark/src/tui/components/mention-context"
 
 describe("parseContextBlocks — path-only file mentions", () => {
   test("parses self-closing <file> block as a path-only item with no content", () => {

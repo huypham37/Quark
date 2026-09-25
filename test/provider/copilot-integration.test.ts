@@ -16,7 +16,7 @@
  */
 
 import { describe, test, expect } from "bun:test"
-import { createCopilotFetch } from "../../src/provider/copilot-fetch"
+import { createCopilotFetch } from "../../packages/runner/src/provider/copilot-fetch"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 
 const ENABLED = process.env.COPILOT_TEST === "1"
@@ -124,7 +124,7 @@ describe.skipIf(skip)("integration: provider with AI SDK", () => {
 // ---------------------------------------------------------------------------
 describe.skipIf(skip)("integration: oauth device flow", () => {
   test("can request a device code from GitHub", async () => {
-    const { requestDeviceCode } = await import("../../src/provider/copilot-auth")
+    const { requestDeviceCode } = await import("../../packages/runner/src/provider/copilot-auth")
 
     const device = await requestDeviceCode({ domain: "github.com" })
 

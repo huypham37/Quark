@@ -8,17 +8,17 @@
 //   bun scripts/debug-system-prompt.ts finder
 
 import { encode } from "gpt-tokenizer"
-import { buildSystem } from "../src/session/system"
-import { agentFromProfile } from "../src/agent"
-import { resolveProfile, readPromptFile } from "../src/profile/profile"
+import { buildSystem } from "../packages/runner/src/session/system"
+import { materializeAgent } from "../packages/quark/src/agent-compat"
+import { resolveProfile, readPromptFile } from "../packages/quark/src/profile/profile"
 
 const profileId = process.argv[2] ?? "coder"
 
-let agent: ReturnType<typeof agentFromProfile>
+let agent
 try {
   const profile = resolveProfile(profileId)
   const promptContent = readPromptFile(profile)
-  agent = agentFromProfile(profile, promptContent)
+  agent = await materializeAgent(profile, promptContent.content)
 } catch (e) {
   console.error(`Failed to load profile "${profileId}": ${e}`)
   process.exit(1)

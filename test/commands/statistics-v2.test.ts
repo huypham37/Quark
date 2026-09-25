@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { createSession } from "../../src/session/session"
-import { addPart, createAssistantMessage, finishMessage } from "../../src/session/message"
-import { buildAggregate, extractSessionDigest } from "../../src/commands/statistics"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
+import { createSession } from "../../packages/runner/src/session/session"
+import { addPart, createAssistantMessage, finishMessage } from "../../packages/runner/src/session/message"
+import { buildAggregate, extractSessionDigest } from "../../packages/runner/src/commands/statistics"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
 
 let root: string
 beforeAll(() => {

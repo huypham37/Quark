@@ -11,11 +11,11 @@ import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { lookTool } from "../../src/tool/look"
-import { loadMessages } from "../../src/session/message"
-import { createSession } from "../../src/session/session"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
+import { lookTool } from "../../packages/runner/src/tool/look"
+import { loadMessages } from "../../packages/runner/src/session/message"
+import { createSession } from "../../packages/runner/src/session/session"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
 
 let tmpDir: string
 let sessionId: string
@@ -55,6 +55,7 @@ afterEach(() => {
 })
 
 afterAll(() => {
+  setSessionStorageRoot(undefined)
   rmSync(tmpDir, { recursive: true, force: true })
 })
 

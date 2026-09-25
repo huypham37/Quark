@@ -11,7 +11,7 @@ import { describe, test, expect } from "bun:test"
 // Interfaces — define the contract that src/tui/worktree-picker.ts must export
 // ---------------------------------------------------------------------------
 
-import type { WorktreeInfo } from "../../src/worktree/worktree"
+import type { WorktreeInfo } from "../../packages/runner/src/worktree/worktree"
 
 /** A single row in the worktree picker */
 export type WorktreePickerRow =
@@ -28,7 +28,7 @@ import {
   buildWorktreeRows,
   firstSelectableWorktreeRow,
   moveWorktreeRowSelection,
-} from "../../src/tui/worktree-picker"
+} from "../../packages/quark/src/tui/worktree-picker"
 
 // ---------------------------------------------------------------------------
 // Test helpers

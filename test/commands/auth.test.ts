@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import type { CredentialStore } from "../../src/provider/credential-store"
-import type { Credential } from "../../src/provider/credentials"
-import { DefaultCredentialResolver } from "../../src/provider/credentials"
-import { BUNDLED_PROVIDER_DEFINITIONS } from "../../src/provider/definitions"
+import type { CredentialStore } from "../../packages/runner/src/provider/credential-store"
+import type { Credential } from "../../packages/runner/src/provider/credentials"
+import { DefaultCredentialResolver } from "../../packages/runner/src/provider/credentials"
+import { BUNDLED_PROVIDER_DEFINITIONS } from "../../packages/runner/src/provider/definitions"
 import {
   authStatus,
   clearSessionCredentials,
   loginApiKey,
   loginOAuth,
   logoutProvider,
-} from "../../src/commands/auth"
+} from "../../packages/runner/src/commands/auth"
 
 class MemoryStore implements CredentialStore {
   values = new Map<string, Credential>()

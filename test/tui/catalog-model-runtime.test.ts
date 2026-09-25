@@ -3,20 +3,20 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import type { LanguageModel } from "ai"
-import { ActiveProviderSet } from "../../src/provider/active-providers"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
+import { ActiveProviderSet } from "../../packages/runner/src/provider/active-providers"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
 import {
   CatalogSnapshotStore,
   createCatalogSnapshot,
   writeCatalogSnapshotAtomic,
-} from "../../src/provider/catalog-snapshot"
-import type { CredentialStore } from "../../src/provider/credential-store"
-import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../src/provider/definitions"
-import { ProviderRegistry, type ProviderAdapter } from "../../src/provider/registry"
-import { bus } from "../../src/session/events"
-import { CatalogModelRuntime } from "../../src/tui/catalog-model-runtime"
-import { buildModelPickerOptions } from "../../src/tui/model-picker"
-import { retainPaletteSelectionIndex } from "../../src/tui/palette-index"
+} from "../../packages/runner/src/provider/catalog-snapshot"
+import type { CredentialStore } from "../../packages/runner/src/provider/credential-store"
+import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../packages/runner/src/provider/definitions"
+import { ProviderRegistry, type ProviderAdapter } from "../../packages/runner/src/provider/registry"
+import { bus } from "../../packages/runner/src/session/events"
+import { CatalogModelRuntime } from "../../packages/quark/src/tui/catalog-model-runtime"
+import { buildModelPickerOptions } from "../../packages/quark/src/tui/model-picker"
+import { retainPaletteSelectionIndex } from "../../packages/quark/src/tui/palette-index"
 
 const temporaryDirectories: string[] = []
 

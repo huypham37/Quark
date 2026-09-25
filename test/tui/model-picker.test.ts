@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { ActiveProviderSet } from "../../src/provider/active-providers"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
-import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
-import type { ProviderAuthStatus } from "../../src/provider/credentials"
-import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../src/provider/definitions"
+import { ActiveProviderSet } from "../../packages/runner/src/provider/active-providers"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
+import type { ProviderAuthStatus } from "../../packages/runner/src/provider/credentials"
+import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../packages/runner/src/provider/definitions"
 import type { LanguageModel } from "ai"
-import { ProviderRegistry, type ProviderAdapter } from "../../src/provider/registry"
-import { buildModelPickerOptions } from "../../src/tui/model-picker"
-import { buildPickerItems } from "../../src/tui/picker-items"
-import { getNextModel, getPrevModel } from "../../src/tui/model-cycle"
+import { ProviderRegistry, type ProviderAdapter } from "../../packages/runner/src/provider/registry"
+import { buildModelPickerOptions } from "../../packages/quark/src/tui/model-picker"
+import { buildPickerItems } from "../../packages/quark/src/tui/picker-items"
+import { getNextModel, getPrevModel } from "../../packages/quark/src/tui/model-cycle"
 
 function model(id: string, name: string, description: string) {
   return {

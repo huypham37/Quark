@@ -5,11 +5,11 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { createRoot } from "solid-js"
-import { createAppState, dispatch } from "../../src/tui/state"
-import { wireEvents } from "../../src/tui/events"
-import { bus } from "../../src/session/events"
-import { getActive, dismiss } from "../../src/notification/notification"
-import { READ_ONLY_TOOLS } from "../../src/tool/tool"
+import { createAppState, dispatch } from "../../packages/quark/src/tui/state"
+import { wireEvents } from "../../packages/quark/src/tui/events"
+import { bus } from "../../packages/runner/src/session/events"
+import { getActive, dismiss } from "../../packages/runner/src/notification/notification"
+import { READ_ONLY_TOOLS } from "../../packages/runner/src/tool/tool"
 
 // Run each test in a reactive root that we dispose after
 let dispose: (() => void) | null = null
@@ -26,7 +26,7 @@ function setup(sessionId: string | null = "s1") {
   createRoot((d) => {
     dispose = d
     state = createAppState({ sessionId, modelName: "smart", skillCount: 2 })
-    wireEvents(state)
+    wireEvents(state, bus)
   })
   return state
 }
@@ -469,7 +469,7 @@ describe("wireEvents: lazy session creation", () => {
     expect(s.store.messages.length).toBe(1)
     expect(s.store.running).toBe(true)
 
-    // /clear — no new session created yet
+    // worktree switch — no new session created yet
     bus.emit("session-reset", { sessionId: null })
 
     expect(s.store.sessionId).toBeNull()
@@ -490,7 +490,7 @@ describe("wireEvents: lazy session creation", () => {
     bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
     expect(s.store.messages.length).toBe(1)
 
-    // /clear
+    // worktree switch
     bus.emit("session-reset", { sessionId: null })
     expect(s.store.sessionId).toBeNull()
     expect(s.store.messages).toEqual([])
@@ -597,87 +597,5 @@ describe("wireEvents: model-switched", () => {
     bus.emit("model-switched", { modelSpec: "gpt-4o", thinkingEffort: "none" })
     expect(s.store.status.modelName).toBe("gpt-4o")
     expect(s.store.thinkingEffort).toBe("none")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Async panel side-session event routing
-// ---------------------------------------------------------------------------
-
-describe("wireEvents: async-panel side-session routing", () => {
-  test("side-session events are routed to asyncPanel, not main messages", () => {
-    const s = setup("s1")
-    // Open async panel with a side session (do NOT emit session-created for side-1
-    // because that would switch the main session)
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    // Side session assistant starts
-    bus.emit("assistant-message-start", { sessionId: "side-1", messageId: "a1" })
-    expect(s.store.asyncPanel!.messages.length).toBe(1)
-    expect(s.store.asyncPanel!.messages[0]!.role).toBe("assistant")
-    // Main session untouched
-    expect(s.store.messages.length).toBe(0)
-  })
-
-  test("side-session text-delta updates panel text, not main chat", () => {
-    const s = setup("s1")
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    bus.emit("assistant-message-start", { sessionId: "side-1", messageId: "a1" })
-    bus.emit("text-start", { sessionId: "side-1", messageId: "a1", partId: "p1" })
-    bus.emit("text-delta", { sessionId: "side-1", messageId: "a1", partId: "p1", delta: "hi", text: "hi" })
-
-    expect((s.store.asyncPanel!.messages[0]!.parts[0] as any).text).toBe("hi")
-    expect(s.store.messages.length).toBe(0)
-  })
-
-  test("side-session loop-start/end updates panel running flag", () => {
-    const s = setup("s1")
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    bus.emit("loop-start", { sessionId: "side-1" })
-    expect(s.store.asyncPanel!.running).toBe(true)
-    expect(s.store.running).toBe(false) // main not affected
-
-    bus.emit("loop-end", { sessionId: "side-1" })
-    expect(s.store.asyncPanel!.running).toBe(false)
-  })
-
-  test("side-session tool-start increments panel toolsUsed, does not create main part", () => {
-    const s = setup("s1")
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    bus.emit("assistant-message-start", { sessionId: "side-1", messageId: "a1" })
-    bus.emit("tool-start", { sessionId: "side-1", messageId: "a1", partId: "p1", tool: "read", callId: "c1" })
-
-    expect(s.store.asyncPanel!.toolsUsed).toBe(1)
-    // Main session should not have any new messages or parts
-    expect(s.store.messages.length).toBe(0)
-  })
-
-  test("assistant-message-end on side session sets panel done", () => {
-    const s = setup("s1")
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    bus.emit("assistant-message-start", { sessionId: "side-1", messageId: "a1" })
-    bus.emit("assistant-message-end", { sessionId: "side-1", messageId: "a1", userMessageId: "u1", finish: "stop" })
-
-    expect(s.store.asyncPanel!.done).toBe(true)
-    expect(s.store.asyncPanel!.running).toBe(false)
-  })
-
-  test("main session events still work when async panel is open", () => {
-    const s = setup("s1")
-    dispatch(s, { type: "open-async-panel", sessionId: "side-1", title: "bug-report" })
-
-    // Main session activity
-    bus.emit("assistant-message-start", { sessionId: "s1", messageId: "m1" })
-    bus.emit("text-start", { sessionId: "s1", messageId: "m1", partId: "p1" })
-    bus.emit("text-delta", { sessionId: "s1", messageId: "m1", partId: "p1", delta: "main", text: "main" })
-
-    expect(s.store.messages.length).toBe(1)
-    expect((s.store.messages[0]!.parts[0] as any).text).toBe("main")
-    // Panel unaffected by main session events
-    expect(s.store.asyncPanel!.messages.length).toBe(0)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { getCustomFetch, setForceAgent } from "../../src/provider/custom-fetch"
+import { getCustomFetch, setForceAgent } from "../../packages/runner/src/provider/custom-fetch"
 
 describe("getCustomFetch", () => {
   test("returns a fetch function for copilot with getToken", () => {

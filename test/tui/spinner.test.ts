@@ -1,7 +1,7 @@
 // Tests for braille spinner frames used in footer-bar animation
 
 import { describe, test, expect } from "bun:test"
-import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../src/tui/spinner"
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../packages/quark/src/tui/spinner"
 
 describe("braille spinner", () => {
   test("has at least 4 frames for smooth animation", () => {

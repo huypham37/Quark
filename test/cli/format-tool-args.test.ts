@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { formatArgs, formatValue } from "../../src/debug/format-tool-args"
+import { formatArgs, formatValue } from "../../packages/runner/src/debug/format-tool-args"
 
 describe("formatValue", () => {
   test("primitives", () => {

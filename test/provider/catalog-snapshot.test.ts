@@ -8,7 +8,7 @@ import {
   parseCatalogSnapshot,
   parseModelsDevCatalog,
   writeCatalogSnapshotAtomic,
-} from "../../src/provider/catalog-snapshot"
+} from "../../packages/runner/src/provider/catalog-snapshot"
 
 function validCatalog() {
   return {

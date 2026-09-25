@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildConnectProviderRows, safeConnectError, searchConnectProviderRows } from "../../src/tui/connect-provider"
+import { buildConnectProviderRows, safeConnectError, searchConnectProviderRows } from "../../packages/quark/src/tui/connect-provider"
 
 describe("connect provider display data", () => {
   test("classifies all bundled providers from their definitions", () => {
@@ -21,7 +21,7 @@ describe("connect provider display data", () => {
     const rows = buildConnectProviderRows([
       { providerId: "deepseek", state: "authenticated", origin: "environment" },
     ], {
-      deepseek: { base_url: "https://api.deepseek.com", api_key_env: "DEEPSEEK_API_KEY", billing: "metered" },
+      deepseek: { base_url: "https://api.deepseek.com", api_key: "env:DEEPSEEK_API_KEY" },
     })
     expect(rows.filter((row) => row.id === "deepseek")).toEqual([expect.objectContaining({
       name: "DeepSeek",
@@ -33,13 +33,20 @@ describe("connect provider display data", () => {
 
   test("shows custom providers as read-only environment instructions", () => {
     const rows = buildConnectProviderRows([], {
-      private: { base_url: "https://example.test/v1", api_key_env: "PRIVATE_API_KEY", billing: "unknown" },
+      private: { base_url: "https://example.test/v1", api_key: "env:PRIVATE_API_KEY" },
+      inline: { base_url: "https://inline.test/v1", api_key: "sk-inline" },
     })
-    expect(rows.at(-1)).toMatchObject({
+    expect(rows.at(-2)).toMatchObject({
       id: "private",
       kind: "custom",
       detail: "Set PRIVATE_API_KEY",
       environmentVariable: "PRIVATE_API_KEY",
+    })
+    expect(rows.at(-1)).toMatchObject({
+      id: "inline",
+      kind: "custom",
+      detail: "API key configured",
+      environmentVariable: undefined,
     })
   })
 

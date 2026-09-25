@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { MarkdownRenderable, SyntaxStyle } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
-import { darkTheme } from "../../src/tui/themes/dark"
-import { lightTheme } from "../../src/tui/themes/light"
+import { darkTheme } from "../../packages/quark/src/tui/themes/dark"
+import { lightTheme } from "../../packages/quark/src/tui/themes/light"
 
 describe("markdown theme scopes", () => {
   test("registers OpenTUI block heading scopes", () => {
@@ -23,7 +23,7 @@ describe("markdown theme scopes", () => {
   })
 
   test("assistant messages use markdown renderable", () => {
-    const source = readFileSync("src/tui/components/assistant-message.tsx", "utf8")
+    const source = readFileSync("packages/quark/src/tui/components/assistant-message.tsx", "utf8")
 
     expect(source).toContain("<markdown")
     expect(source).toContain("conceal={true}")

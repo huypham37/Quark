@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { streamText, tool } from "ai"
-import { resolveModel } from "../src/session/prompt"
+import { resolveModel } from "../packages/runner/src/session/prompt"
 import { z } from "zod"
 
 const model = await resolveModel(undefined, "main")

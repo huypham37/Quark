@@ -1,7 +1,7 @@
 // Tests for filterCommands — slash command filtering logic
 
 import { describe, test, expect } from "bun:test"
-import { filterCommands, commands } from "../../src/tui/commands"
+import { filterCommands, commands } from "../../packages/quark/src/tui/commands"
 
 describe("filterCommands", () => {
   test("returns all commands when query is empty", () => {
@@ -32,9 +32,9 @@ describe("filterCommands", () => {
     expect(result[0]!.id).toBe("model")
   })
 
-  test("c prefix matches clear, compact, and connect", () => {
+  test("c prefix matches configs and compact and connect", () => {
     const result = filterCommands("c")
-    expect(result.map((command) => command.id)).toEqual(["clear", "compact", "connect"])
+    expect(result.map((command) => command.id)).toEqual(["configs", "compact", "connect"])
   })
 
   test("connect command opens provider authentication", () => {
@@ -79,10 +79,10 @@ describe("filterCommands", () => {
     expect(result[0]!.usage).toBe("<model-name>")
   })
 
-  test("profile command has usage hint", () => {
-    const result = filterCommands("profile")
+  test("agent command has usage hint", () => {
+    const result = filterCommands("agent")
     expect(result.length).toBe(1)
-    expect(result[0]!.usage).toBe("<profile-name>")
+    expect(result[0]!.usage).toBe("<agent-name>")
   })
 
   test("help command has no usage hint", () => {
@@ -98,6 +98,18 @@ describe("filterCommands", () => {
     expect(result.map((c) => c.id)).toContain("skills")
     expect(result.map((c) => c.id)).toContain("steer")
     expect(result.map((c) => c.id)).toContain("statistics")
+  })
+
+  test("settings command describes the native settings palette", () => {
+    const cmd = commands.find((c) => c.id === "settings")!
+    expect(cmd.description).toMatch(/settings/i)
+    expect(cmd.description).not.toMatch(/editor/i)
+  })
+
+  test("configs command replaces the editor-opening settings command", () => {
+    const cmd = filterCommands("configs", 1)[0]!
+    expect(cmd.id).toBe("configs")
+    expect(cmd.description).toMatch(/editor/i)
   })
 
   test("r prefix matches reload-config only", () => {
@@ -158,34 +170,6 @@ describe("filterCommands", () => {
 
   test("skills command does not require a usage hint", () => {
     const result = filterCommands("skills")
-    expect(result.length).toBe(1)
-    expect(result[0]!.usage).toBeUndefined()
-  })
-})
-
-// --- /async-msg slash command ---
-
-describe("async-msg command", () => {
-  test("async-msg command exists in commands list", () => {
-    const cmd = commands.find((c) => c.id === "async-msg")
-    expect(cmd).toBeDefined()
-    expect(cmd!.description).toMatch(/side|parallel|panel/i)
-  })
-
-  test("a prefix matches async-msg", () => {
-    const result = filterCommands("a")
-    const ids = result.map((c) => c.id)
-    expect(ids).toContain("async-msg")
-  })
-
-  test("async prefix matches async-msg exclusively", () => {
-    const result = filterCommands("async")
-    expect(result.length).toBe(1)
-    expect(result[0]!.id).toBe("async-msg")
-  })
-
-  test("async-msg has no usage hint", () => {
-    const result = filterCommands("async-msg")
     expect(result.length).toBe(1)
     expect(result[0]!.usage).toBeUndefined()
   })

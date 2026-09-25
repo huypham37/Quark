@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { BoxRenderable, TextRenderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
-import { lightTheme } from "../../src/tui/themes/light"
+import { lightTheme } from "../../packages/quark/src/tui/themes/light"
 
 test("light surface fades background content while the palette stays opaque", async () => {
   const { renderer, renderOnce, captureSpans } = await createTestRenderer({ width: 20, height: 2 })

@@ -15,18 +15,18 @@ import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test
 import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
-import { prompt } from "../../src/session/prompt"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
+import { prompt } from "../../packages/runner/src/session/prompt"
 import {
   createSession,
   getSession,
   listSessions,
   listAllSessions,
-} from "../../src/session/session"
-import { bus } from "../../src/session/events"
-import { bootstrap, resetBootstrap } from "../../src/bootstrap"
-import { getSessionDir } from "../../src/storage/session-path"
+} from "../../packages/runner/src/session/session"
+import { bus } from "../../packages/runner/src/session/events"
+import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
+import { getSessionDir } from "../../packages/runner/src/storage/session-path"
 
 let tmpDir: string
 
@@ -198,9 +198,15 @@ describe("ephemeral session: prompt()", () => {
     }).catch(() => {})
 
     expect(capturedId).not.toBeNull()
-    
+
+    // Undo tracking/snapshot writes are fire-and-forget; give them a tick so a
+    // regression can't pass by racing the assertion.
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
     const sessionDir = getSessionDir(capturedId!)
     expect(existsSync(sessionDir)).toBe(false)
+    expect(existsSync(join(sessionDir, "undo"))).toBe(false)
+    expect(existsSync(join(sessionDir, "session.jsonl"))).toBe(false)
   })
 
   test("prompt() without ephemeral flag creates persistent session", async () => {

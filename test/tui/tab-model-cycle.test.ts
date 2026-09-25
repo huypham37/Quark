@@ -6,7 +6,7 @@
 
 import { describe, test, expect } from "bun:test"
 
-import { getNextModel, getPrevModel } from "../../src/tui/model-cycle"
+import { getNextModel, getPrevModel } from "../../packages/quark/src/tui/model-cycle"
 
 describe("getNextModel: Tab key model cycling logic", () => {
   test("cycles from first model to second model", () => {

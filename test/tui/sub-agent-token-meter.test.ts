@@ -7,7 +7,7 @@ function renderMeter(tokensUsed: number, tokenLimit: number, width = 80, height 
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { SubAgentTokenMeter } from "./src/tui/components/sub-agent-token-meter.tsx";
+    import { SubAgentTokenMeter } from "./packages/quark/src/tui/components/sub-agent-token-meter.tsx";
 
     const setup = await testRender(
       () => createComponent(SubAgentTokenMeter, {
@@ -22,7 +22,7 @@ function renderMeter(tokensUsed: number, tokenLimit: number, width = 80, height 
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

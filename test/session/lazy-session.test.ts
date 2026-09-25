@@ -13,12 +13,12 @@ import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { setSessionStorageRoot } from "../../src/storage/session-path"
-import { ensureStorageRoot } from "../../src/storage/session-jsonl"
-import { prompt } from "../../src/session/prompt"
-import { createSession, listSessions } from "../../src/session/session"
-import { bus } from "../../src/session/events"
-import { bootstrap, resetBootstrap } from "../../src/bootstrap"
+import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
+import { prompt } from "../../packages/runner/src/session/prompt"
+import { createSession, listSessions } from "../../packages/runner/src/session/session"
+import { bus } from "../../packages/runner/src/session/events"
+import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
 
 let tmpDir: string
 

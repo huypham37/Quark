@@ -2,9 +2,9 @@
 
 import { describe, test, expect } from "bun:test"
 import { createRoot } from "solid-js"
-import { createAppState, dbToTuiMessages, dispatch } from "../../src/tui/state"
-import { dbToConversationMessages } from "../../src/shared/conversation-view"
-import type { MessageRow, PartRow } from "../../src/session/message"
+import { createAppState, dbToTuiMessages, dispatch } from "../../packages/quark/src/tui/state"
+import { dbToConversationMessages } from "../../packages/runner/src/shared/conversation-view"
+import type { MessageRow, PartRow } from "../../packages/runner/src/session/message"
 
 function withRoot<T>(fn: () => T): T {
   let result!: T

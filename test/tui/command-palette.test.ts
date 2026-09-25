@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
-import { searchPaletteEntries } from "../../src/tui/palette-index"
+import { searchPaletteEntries } from "../../packages/quark/src/tui/palette-index"
 
 const ROOT = resolve(import.meta.dir, "../..")
 
@@ -10,7 +10,7 @@ async function renderPalette(
   selectedIndex = 0,
   width = 80,
   height = 24,
-  mode: import("../../src/tui/components/command-palette").PaletteMode = "search",
+  mode: import("../../packages/quark/src/tui/components/command-palette").PaletteMode = "search",
   sessionRows: unknown[] = [],
   connect?: unknown,
   worktreeRows: unknown[] = [],
@@ -19,7 +19,7 @@ async function renderPalette(
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { CommandPalette } from "./src/tui/components/command-palette.tsx";
+    import { CommandPalette } from "./packages/quark/src/tui/components/command-palette.tsx";
     const setup = await testRender(() => createComponent(CommandPalette, {
       active: true,
       query: ${JSON.stringify(query)},
@@ -38,7 +38,7 @@ async function renderPalette(
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

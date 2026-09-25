@@ -8,7 +8,7 @@ import {
   normalizeDomain,
   type DeviceCodeResponse,
   type FetchFn,
-} from "../../src/provider/copilot-auth"
+} from "../../packages/runner/src/provider/copilot-auth"
 
 // ---------------------------------------------------------------------------
 // normalizeDomain — strips protocol and trailing slashes from URLs

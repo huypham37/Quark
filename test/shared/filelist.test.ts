@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { mkdirSync, writeFileSync, rmSync } from "fs"
 import { $ } from "bun"
-import { getFiles, clearFileCache, fuzzyFilter } from "../../src/shared/filelist"
+import { getFiles, clearFileCache, fuzzyFilter } from "../../packages/runner/src/shared/filelist"
 
 describe("filelist", () => {
   let tmpDir: string

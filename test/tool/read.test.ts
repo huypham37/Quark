@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { readTool } from "../../src/tool/read"
+import { readTool } from "../../packages/runner/src/tool/read"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"

@@ -15,7 +15,7 @@ function renderUserMessage(status: Status, text = "lifecycle fixture", width = 6
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { UserMessage } from "./src/tui/components/user-message.tsx";
+    import { UserMessage } from "./packages/quark/src/tui/components/user-message.tsx";
 
     const setup = await testRender(
       () => createComponent(UserMessage, {
@@ -31,7 +31,7 @@ function renderUserMessage(status: Status, text = "lifecycle fixture", width = 6
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

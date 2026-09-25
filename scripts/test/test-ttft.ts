@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // Profile time-to-first-token (TTFT) for streaming models
 
-import { loadToken } from "../src/provider/copilot-auth"
-import { createCopilotFetch } from "../src/provider/copilot-fetch"
+import { loadToken } from "../packages/runner/src/provider/copilot-auth"
+import { createCopilotFetch } from "../packages/runner/src/provider/copilot-fetch"
 
 const MODEL = process.argv[2] || "gpt-5-mini"
 const RUNS = parseInt(process.argv[3] || "5", 10)

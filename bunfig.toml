@@ -1,5 +1,11 @@
 conditions = ["browser"]
 
+[install]
+# Match the pre-workspace flat node_modules layout: the root-level tests import
+# a transitively-provided package (@ai-sdk/provider) without declaring it.
+# Package runtime deps are declared; this only serves the test harness.
+linker = "hoisted"
+
 [test]
 root = "./test/"
-preload = ["./src/tui/preload-solid-browser.ts"]
+preload = ["./packages/quark/src/tui/preload-solid-browser.ts"]

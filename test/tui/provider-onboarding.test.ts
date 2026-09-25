@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { firstRunAuthMessage, formatAuthStatuses } from "../../src/tui/auth-status"
+import { firstRunAuthMessage, formatAuthStatuses } from "../../packages/quark/src/tui/auth-status"
 
 describe("auth onboarding presentation", () => {
   test("shows origin and expiry without credentials", () => {

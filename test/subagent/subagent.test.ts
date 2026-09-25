@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { bus } from "../../src/session/events"
-import { SUBAGENT_EVENT_PREFIX, parseChildEventLine } from "../../src/subagent/protocol"
-import { runSubagent, SubagentExecutionError } from "../../src/subagent/supervisor"
-import type { ToolContext } from "../../src/tool/tool"
+import { bus } from "../../packages/runner/src/session/events"
+import { SUBAGENT_EVENT_PREFIX, parseChildEventLine } from "../../packages/runner/src/subagent/protocol"
+import { runSubagent, SubagentExecutionError } from "../../packages/runner/src/subagent/supervisor"
+import type { ToolContext } from "../../packages/runner/src/tool/tool"
 
 const originalExecutable = process.env.QUARK_SUBAGENT_EXECUTABLE
 const tempDirs: string[] = []

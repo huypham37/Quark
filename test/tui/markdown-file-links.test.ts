@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { splitMarkdownFileLinks } from "../../src/tui/markdown-file-links"
+import { splitMarkdownFileLinks } from "../../packages/quark/src/tui/markdown-file-links"
 
 describe("inline markdown file links", () => {
   test("recognizes plain text file references", () => {

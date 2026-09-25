@@ -12,8 +12,8 @@ import { describe, test, expect } from "bun:test"
 import {
   createCodexConsumer,
   parseCodexSSE,
-} from "../../src/provider/codex-consumer"
-import type { FetchFn } from "../../src/provider/codex-auth"
+} from "../../packages/runner/src/provider/codex-consumer"
+import type { FetchFn } from "../../packages/runner/src/provider/codex-auth"
 import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,

@@ -6,7 +6,7 @@ import {
   createCopilotFetch,
   inferInitiator,
   hasVisionContent,
-} from "../../src/provider/copilot-fetch"
+} from "../../packages/runner/src/provider/copilot-fetch"
 
 // ---------------------------------------------------------------------------
 // inferInitiator — decides "user" vs "agent" from the request body

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { LanguageModel } from "ai"
-import { clearHooks, registerHook } from "../../src/plugin/registry"
-import { BUNDLED_PROVIDER_DEFINITIONS } from "../../src/provider/definitions"
-import { ProviderRegistry, type ProviderAdapter } from "../../src/provider/registry"
-import { resolveModelRuntime } from "../../src/provider/resolver"
-import { CatalogRegistry } from "../../src/provider/catalog-registry"
-import { createCatalogSnapshot } from "../../src/provider/catalog-snapshot"
+import { clearHooks, registerHook } from "../../packages/runner/src/plugin/registry"
+import { BUNDLED_PROVIDER_DEFINITIONS } from "../../packages/runner/src/provider/definitions"
+import { ProviderRegistry, type ProviderAdapter } from "../../packages/runner/src/provider/registry"
+import { resolveModelRuntime } from "../../packages/runner/src/provider/resolver"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
 
 function adapter(definition: typeof BUNDLED_PROVIDER_DEFINITIONS.openai): ProviderAdapter {
   return {

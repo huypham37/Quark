@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildPickerItems, pickerModeForCommand } from "../../src/tui/picker-items"
+import { buildPickerItems, pickerModeForCommand } from "../../packages/quark/src/tui/picker-items"
 
 describe("buildPickerItems", () => {
   test("sorts current item first and marks it", () => {
@@ -34,8 +34,8 @@ describe("buildPickerItems", () => {
 })
 
 describe("pickerModeForCommand", () => {
-  test("opens the profile picker", () => {
-    expect(pickerModeForCommand("profile")).toBe("profiles")
+  test("opens the agent picker", () => {
+    expect(pickerModeForCommand("agent")).toBe("agents")
   })
 
   test("ignores non-picker commands", () => {
@@ -43,6 +43,5 @@ describe("pickerModeForCommand", () => {
     expect(pickerModeForCommand("model")).toBeNull()
     expect(pickerModeForCommand("skills")).toBeNull()
     expect(pickerModeForCommand("new")).toBeNull()
-    expect(pickerModeForCommand("clear")).toBeNull()
   })
 })

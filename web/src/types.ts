@@ -68,7 +68,7 @@ export interface AppStatus {
   tokenLimit: number
   cwd: string
   branch: string | null
-  profile: string
+  agent: string
 }
 
 export interface StatusResponse {
@@ -83,8 +83,8 @@ export interface CatalogModel {
 }
 
 export interface CatalogResponse {
-  profiles: string[]
-  profile: string
+  agents: string[]
+  agent: string
   skills: string[]
   activeSkills: string[]
 }

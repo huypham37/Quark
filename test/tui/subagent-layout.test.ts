@@ -35,8 +35,8 @@ function renderSubAgent(
   const script = `
     import { testRender } from "@opentui/solid";
     import { createComponent } from "solid-js";
-    import { SubAgentView } from "./src/tui/components/sub-agent-view.tsx";
-    import { MessageItem } from "./src/tui/components/message-item.tsx";
+    import { SubAgentView } from "./packages/quark/src/tui/components/sub-agent-view.tsx";
+    import { MessageItem } from "./packages/quark/src/tui/components/message-item.tsx";
 
     const subAgent = ${JSON.stringify(subAgent)};
     const view = ${JSON.stringify(wrapped)}
@@ -69,7 +69,7 @@ function renderSubAgent(
     setup.renderer.destroy();
   `
   const proc = Bun.spawnSync({
-    cmd: ["bun", "--preload", "./preload.ts", "-e", script],
+    cmd: ["bun", "--preload", "./packages/quark/preload.ts", "-e", script],
     cwd: ROOT,
     stdout: "pipe",
     stderr: "pipe",

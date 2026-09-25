@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 const source = readFileSync(
-  resolve(import.meta.dir, "../../src/tui/components/steer-divider.tsx"),
+  resolve(import.meta.dir, "../../packages/quark/src/tui/components/steer-divider.tsx"),
   "utf8",
 )
 const appSource = readFileSync(
-  resolve(import.meta.dir, "../../src/tui/components/App.tsx"),
+  resolve(import.meta.dir, "../../packages/quark/src/tui/components/App.tsx"),
   "utf8",
 )
 
