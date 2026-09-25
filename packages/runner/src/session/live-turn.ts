@@ -105,6 +105,8 @@ export function reserveLiveTurn(id: string, root = getSessionStorageRoot(), bus?
         // chunk: one line per part per flush window, O(content). The viewer
         // rebuilds the full text from these and emits it as `text` for the TUI,
         // which applies `text` as a SET (packages/quark/src/tui/state.ts).
+        // `subagent-text-delta` follows the same contract, keyed per sub-agent
+        // call instead of per part (it has no partId).
         const pending = new Map<string, { name: BusEventName; data: Record<string, unknown>; delta: string }>()
         let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -119,12 +121,14 @@ export function reserveLiveTurn(id: string, root = getSessionStorageRoot(), bus?
 
         const names: BusEventName[] = ["user-message", "assistant-message-start", "text-start", "text-delta", "text-end", "tool-start", "tool-input", "tool-running", "tool-end", "assistant-message-end", "user-message-status", "loop-start", "loop-end", "error", "retry", "step-finish", "reasoning-start", "reasoning-delta", "reasoning-end", "subagent-tool-start", "subagent-tool-input", "subagent-tool-running", "subagent-tool-end", "subagent-step-finish", "subagent-text-delta", "subagent-done", "subagent-error"]
         for (const name of names) {
-          const listener = (data: { sessionId: string; partId?: string; delta?: string; error?: unknown }) => {
+          const listener = (data: { sessionId: string; partId?: string; parentCallId?: string; delta?: string; error?: unknown }) => {
             if (data.sessionId !== id) return
-            if (name === "text-delta" || name === "reasoning-delta") {
-              const partId = data.partId ?? ""
-              const prior = pending.get(partId)
-              pending.set(partId, {
+            if (name === "text-delta" || name === "reasoning-delta" || name === "subagent-text-delta") {
+              const key = name === "subagent-text-delta"
+                ? `subagent:${data.parentCallId ?? ""}`
+                : data.partId ?? ""
+              const prior = pending.get(key)
+              pending.set(key, {
                 name,
                 data: data as Record<string, unknown>,
                 delta: (prior?.delta ?? "") + (data.delta ?? ""),
@@ -134,7 +138,8 @@ export function reserveLiveTurn(id: string, root = getSessionStorageRoot(), bus?
             }
             // `text-end` carries the trimmed final text and must be the last
             // event for its part, so publish any buffered delta before it.
-            if (name === "text-end" || name === "reasoning-end" || name === "loop-end") flush()
+            // Likewise a sub-agent's terminal event must not overtake its text.
+            if (name === "text-end" || name === "reasoning-end" || name === "loop-end" || name === "subagent-done" || name === "subagent-error") flush()
             const payload = name === "error" || name === "retry"
               ? { ...data, error: String(data.error) }
               : data

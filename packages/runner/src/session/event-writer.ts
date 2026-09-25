@@ -110,7 +110,11 @@ export function startEventWriter(options?: { resolvedModel?: string; tokenLimit?
   }
 
   on("text-delta", (data) => {
-    pendingText = data.text // send full accumulated text, not just delta
+    // Send only the new chunk. Sending the full accumulated text (data.text)
+    // makes any downstream log grow with how LONG a message streams, i.e.
+    // quadratic in message length: the parent appends one line per flush and
+    // each line repeats the whole prefix. `d` is the honest delta.
+    pendingText += data.delta
     if (!textTimer) {
       textTimer = setTimeout(flushText, 200)
     }

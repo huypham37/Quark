@@ -113,6 +113,67 @@ describe("cross-process session viewer", () => {
     stop()
   })
 
+  test("subagent text log stays flat in stream duration, not quadratic", async () => {
+    setSessionStorageRoot(root)
+    const store = createJsonlSessionStore(root)
+    const chunks = Array.from({ length: 8 }, () => "abcdefghij".repeat(25)) // 250 chars each
+    const content = chunks.join("")
+    const stream = async (gapMs: number): Promise<{ bytes: number; deltas: string[] }> => {
+      const session = createSession(undefined, store)
+      const writer = new TypedBus()
+      const release = reserveLiveTurn(session.id, root, writer)!
+      const log = join(root, session.id, "live-events.jsonl")
+      let text = ""
+      for (const chunk of chunks) {
+        text += chunk
+        // The supervisor forwards both the running text (for the in-process
+        // TUI) and the raw chunk. Only `delta` must reach the log.
+        writer.emit("subagent-text-delta", {
+          sessionId: session.id, messageId: "m", parentCallId: "call", profile: "p", text, delta: chunk,
+        })
+        if (gapMs > 0) await Bun.sleep(gapMs)
+      }
+      // The run ending is the flush point for any still-buffered delta.
+      writer.emit("subagent-done", { sessionId: session.id, messageId: "m", parentCallId: "call", profile: "p" })
+      const bytes = statSync(log).size
+      const lines = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      const deltas = lines.filter((line) => line.name === "subagent-text-delta")
+      // Never store accumulated text.
+      for (const line of deltas) expect(line.data.text).toBeUndefined()
+      release()
+      return { bytes, deltas: deltas.map((line) => line.data.delta as string) }
+    }
+    const burst = await stream(0)
+    const slow = await stream(250)
+    // A long stream must not write the accumulated text once per flush window.
+    expect(slow.bytes / burst.bytes).toBeLessThan(1.8)
+    expect(slow.bytes).toBeLessThan(content.length * 5)
+    // And the delta-only lines still reconstruct the whole content.
+    expect(slow.deltas.join("")).toBe(content)
+  })
+
+  test("subagent deltas are spliced into full text for a follower", async () => {
+    setSessionStorageRoot(root)
+    const store = createJsonlSessionStore(root)
+    const session = createSession(undefined, store)
+    const viewer = new TypedBus()
+    const texts: string[] = []
+    viewer.on("subagent-text-delta", (event) => texts.push(event.text))
+    const stop = followSession(session.id, viewer, () => {})
+
+    const writer = new TypedBus()
+    const release = reserveLiveTurn(session.id, root, writer)!
+    writer.emit("subagent-text-delta", { sessionId: session.id, messageId: "m", parentCallId: "call", profile: "p", text: "Hel", delta: "Hel" })
+    await Bun.sleep(350)
+    writer.emit("subagent-text-delta", { sessionId: session.id, messageId: "m", parentCallId: "call", profile: "p", text: "Hello", delta: "lo" })
+    await Bun.sleep(350)
+    // Each replayed event carries the full text rebuilt from the deltas, so the
+    // TUI's tail-preview keeps working across process boundaries.
+    expect(texts).toEqual(["Hel", "Hello"])
+    release()
+    stop()
+  })
+
   test("reapStaleTurns drops dead logs but keeps history", () => {
     const reapRoot = mkdtempSync(join(tmpdir(), "quark-reap-"))
     try {

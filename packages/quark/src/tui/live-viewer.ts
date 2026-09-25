@@ -120,11 +120,27 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
             const full = base + (deltaData.delta ?? "")
             accumulated.set(deltaData.partId, full)
             outgoing = { ...event.data, text: full } as typeof event.data
-          } else if ((event.name === "text-end" || event.name === "reasoning-end") && deltaData.partId) {
+          } else if (event.name === "text-end" || event.name === "reasoning-end") {
             // The end event carries the authoritative (trimmed) text; drop the
             // reconstruction state so a reused part id cannot leak stale text.
-            accumulated.delete(deltaData.partId)
-            seeded.delete(deltaData.partId)
+            if (deltaData.partId) {
+              accumulated.delete(deltaData.partId)
+              seeded.delete(deltaData.partId)
+            }
+          } else if (event.name === "subagent-text-delta") {
+            // Same delta-only contract, but a sub-agent stream has no partId;
+            // its `parentCallId` is the stable key for the run.
+            const callId = (event.data as { parentCallId?: string }).parentCallId
+            if (callId) {
+              const key = `subagent:${callId}`
+              const full = (accumulated.get(key) ?? "") + (deltaData.delta ?? "")
+              accumulated.set(key, full)
+              outgoing = { ...event.data, text: full } as typeof event.data
+            }
+          } else if (event.name === "subagent-done" || event.name === "subagent-error") {
+            // The run is over; its reconstruction state can never be reused.
+            const callId = (event.data as { parentCallId?: string }).parentCallId
+            if (callId) accumulated.delete(`subagent:${callId}`)
           }
           bus.emit(event.name, outgoing as any)
         } catch { /* incomplete or corrupt event: reconcile on next snapshot */ }
