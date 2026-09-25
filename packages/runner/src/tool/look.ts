@@ -37,7 +37,7 @@ export const lookTool = defineTool({
     path: z.string().describe("Absolute or relative path to an image file"),
   }),
   async execute(args, ctx) {
-    const filePath = path.resolve(args.path)
+    const filePath = path.resolve(ctx.workspace ?? process.cwd(), args.path)
 
     if (!fs.existsSync(filePath)) {
       return {

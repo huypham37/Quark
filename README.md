@@ -316,10 +316,19 @@ conversation (omit it to start a new one). Sessions are shared, persistent state
 any runner can resume a session by `sessionId`, including one minted after a
 server restart.
 
+A runner is one process serving many sessions, so its cwd is the server's, not
+any one task's. Name the directory a turn must execute in with the optional
+`targetWorkspace` — an absolute, existing directory. It drives the system
+prompt's environment block, `AGENTS.md` reads, and every tool's relative-path
+resolution (and subagent cwd), so the agent runs where the caller says without a
+process-wide `chdir`. On creation it is stored as the session's `directory`; on
+resume the stored directory is authoritative, and naming a different one is a
+`409`. Omit it to keep the server's process cwd.
+
 | Route | Behavior |
 | -- | -- |
 | `POST /api/runners` | `{agentId?}` (default agent when omitted) → `201 {runnerId}`. `404` unknown agent, `503` at the 100-runner cap. |
-| `POST /api/runners/:id/session/prompt` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running (across all runners). |
+| `POST /api/runners/:id/session/prompt` | `{sessionId?,text,images?,targetWorkspace?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `400` bad workspace (not absolute, missing, or not a directory), `409` session already running (across all runners) or already bound to another workspace. |
 | `GET /api/runners/:id/sessions/:sessionId` | `{session,messages,tokensUsed}`; `404` unknown runner or session. |
 | `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from the runner that owns the active turn (same event shapes as `/api/sessions/:id/events`). |
 | `POST /api/runners/:id/sessions/:sessionId/cancel` | Aborts the in-flight turn → `{cancelled:true}`. |

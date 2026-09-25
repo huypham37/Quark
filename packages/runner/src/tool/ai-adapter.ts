@@ -28,8 +28,12 @@ export function resolveToolSet(
   abort: AbortSignal,
   eventBus: TypedBus = bus,
   hooks: HookRegistry = globalHooks,
-  /** Run policy — portable runs disable undo snapshots (`undo: false`). */
-  policy?: { undo?: boolean },
+  /**
+   * Run policy — portable runs disable undo snapshots (`undo: false`), and the
+   * `workspace` is threaded into every tool's context so relative paths resolve
+   * against the session's directory, not the server process cwd.
+   */
+  policy?: { undo?: boolean; workspace?: string },
 ): ToolSet {
   const defs: ToolDef[] = [...(input.tools ?? [])]
   if (input.skills && input.skills.length > 0 && !defs.some((d) => d.id === "skill")) {
@@ -39,7 +43,7 @@ export function resolveToolSet(
   const undo = policy?.undo !== false
 
   for (const def of defs) {
-    result[def.id] = toAITool(def, sessionId, messageId, abort, eventBus, hooks, undo)
+    result[def.id] = toAITool(def, sessionId, messageId, abort, eventBus, hooks, undo, policy?.workspace)
   }
 
   return result
@@ -72,6 +76,7 @@ function toAITool(
   eventBus: TypedBus,
   hooks: HookRegistry,
   undo: boolean,
+  workspace?: string,
 ) {
   const schema = z.toJSONSchema(def.parameters)
 
@@ -113,6 +118,7 @@ function toAITool(
         callId,
         abort: abortSig,
         bus: eventBus,
+        workspace,
       }
 
       const beforeArgs = await hooks.fire(

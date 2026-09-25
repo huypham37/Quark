@@ -14,9 +14,11 @@ export function emitSessionSwitch(
   eventBus: TypedBus = bus,
   /** Same ambient contract as buildSystem: omit / `null` for none. */
   ambient?: AmbientInstructions | null,
+  /** Absolute workspace root for the same environment block buildSystem emits. */
+  workspace?: string,
 ): void {
   const { messages, parts } = loadMessages(sessionId)
-  const system = buildSystem(agent, ambient)
+  const system = buildSystem(agent, ambient, workspace)
   const modelMessages = toModelMessages(messages, parts)
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const conversationMessages = dbToConversationMessages(messages, parts)

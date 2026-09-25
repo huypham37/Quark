@@ -8,9 +8,15 @@ import * as fs from "node:fs"
 import * as path from "node:path"
 import { configDir } from "./config/config"
 
-/** Read the global `<config-dir>/AGENTS.md` plus the project `./AGENTS.md`. */
-export function loadAmbientInstructions(): string[] {
-  return [loadGlobalAgentInstructions(), loadProjectAgentInstructions()].filter(
+/**
+ * Read the global `<config-dir>/AGENTS.md` plus the workspace `AGENTS.md`.
+ *
+ * The workspace is passed by the engine (a remote runner serves many sessions
+ * from one process, so `process.cwd()` is the server's, not the session's);
+ * callers that omit it keep the process-cwd behavior.
+ */
+export function loadAmbientInstructions(workspace?: string): string[] {
+  return [loadGlobalAgentInstructions(), loadProjectAgentInstructions(workspace)].filter(
     (block): block is string => block !== null,
   )
 }
@@ -26,8 +32,8 @@ function loadGlobalAgentInstructions(): string | null {
   }
 }
 
-function loadProjectAgentInstructions(): string | null {
-  const projectPath = path.resolve(process.cwd(), "AGENTS.md")
+function loadProjectAgentInstructions(workspace?: string): string | null {
+  const projectPath = path.resolve(workspace ?? process.cwd(), "AGENTS.md")
   try {
     const content = fs.readFileSync(projectPath, "utf-8").trim()
     if (!content) return null

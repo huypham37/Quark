@@ -36,6 +36,14 @@ export interface RunnerPromptInput {
   modelOnlyText?: string
   model?: string
   catalog?: CatalogRegistry
+  /**
+   * Absolute workspace root this turn runs in: tools, system prompt, ambient
+   * reads, and subagents. Stored as the session's `directory` on creation; on
+   * resume the session's stored directory is authoritative. Defaults to
+   * `process.cwd()` (the process' own directory), which is only correct for a
+   * runner that owns the whole process — a remote runner must pass this.
+   */
+  targetWorkspace?: string
   /** Per-call execution policy overrides. */
   policies?: Partial<RunPolicies>
   /** Model-resolution dependencies for this call (wins over runner options). */
@@ -67,6 +75,8 @@ export interface RunnerSeedInput {
   userText: string
   model?: string
   catalog?: CatalogRegistry
+  /** Fallback workspace when the session carries no stored directory. */
+  targetWorkspace?: string
   /** Per-call execution policy overrides. */
   policies?: Partial<RunPolicies>
   /** Model-resolution dependencies for this call (wins over runner options). */
@@ -272,6 +282,7 @@ export function createRunner(options: RunnerOptions): Runner {
           agent: ctx.agent,
           controller: ctx.controller,
           ...(input.catalog ? { catalog: input.catalog } : {}),
+          ...(input.targetWorkspace ? { targetWorkspace: input.targetWorkspace } : {}),
           ambientInstructions: ambient,
           policies,
           resolve,

@@ -30,6 +30,14 @@ export interface ToolContext {
    * omitted (legacy/direct tool execution) tools fall back to the singleton.
    */
   bus?: TypedBus
+  /**
+   * Absolute workspace root this run executes in. Tools MUST resolve relative
+   * paths against it rather than `process.cwd()`: a remote runner serves many
+   * sessions from one process, so the process cwd is not the session's.
+   *
+   * Omitted only by legacy/direct execution, where `process.cwd()` is correct.
+   */
+  workspace?: string
 }
 
 /**

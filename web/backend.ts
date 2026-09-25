@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
+import { statSync } from "node:fs"
 import { reserveLiveTurn, isLiveTurn } from "../packages/runner/src/session/live-turn"
-import { join } from "node:path"
+import { isAbsolute, join, resolve } from "node:path"
 import { materializeAgent, resolveAgent, listAgents, type AgentDef } from "../packages/quark/src/agent/agent"
 import { loadConfig, parseModelSpec, resetConfigCache } from "../packages/quark/src/config/config"
 import { loadAmbientInstructions } from "../packages/quark/src/ambient"
@@ -253,6 +254,37 @@ function readSessionId(body: unknown): string | undefined {
     throw new HttpError(400, "sessionId must match [A-Za-z0-9_-]+")
   }
   return id
+}
+
+/**
+ * `targetWorkspace` from a runner prompt body.
+ *
+ * A runner serves many sessions from one process, so the process cwd is not the
+ * session's; the caller names the absolute directory the turn must execute in.
+ * It is validated here at the trust boundary — absolute and an existing
+ * directory — before it can be stored as the session's `directory` or handed to
+ * the engine's tools. Returns a normalized absolute path, or undefined.
+ */
+export function readTargetWorkspace(body: unknown): string | undefined {
+  const value = (body as Record<string, unknown>).targetWorkspace
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "targetWorkspace must be a non-empty string")
+  }
+  const dir = value.trim()
+  if (!isAbsolute(dir)) {
+    throw new HttpError(400, `targetWorkspace must be an absolute path: ${dir}`)
+  }
+  let isDirectory = false
+  try {
+    isDirectory = statSync(dir).isDirectory()
+  } catch {
+    throw new HttpError(400, `targetWorkspace does not exist: ${dir}`)
+  }
+  if (!isDirectory) {
+    throw new HttpError(400, `targetWorkspace is not a directory: ${dir}`)
+  }
+  return resolve(dir)
 }
 
 function validateImages(input: unknown): MessageInput["images"] {
@@ -539,7 +571,12 @@ export class WebBackend {
       // outlive the runner: a new runner resumes a prior session by ID.
       store: createJsonlSessionStore(runnerSessionsRoot()),
       // Fresh isolated bus/hooks are the portable defaults; no eventBus passed.
+      // The builder is workspace-aware: the engine calls it with the session's
+      // targetWorkspace, so AGENTS.md follows the turn, not the server cwd.
       ambientInstructions: loadAmbientInstructions,
+      // ponytail: skills and plugin context are still resolved against the
+      // server's cwd at runner-create time. Thread targetWorkspace into
+      // materialization if a workspace's `.quark/skills` must reach a runner.
       policies: {
         maxSteps: config.maxSteps,
         branching: config.branching,
@@ -599,13 +636,32 @@ export class WebBackend {
     const body = await readJsonBody(request)
     const input = validateMessageInput(body)
     const requested = readSessionId(body)
+    const targetWorkspace = readTargetWorkspace(body)
 
     // Reuse an existing session; otherwise mint one now (matching the store's
     // createOnMissing semantics). The store guard avoids clobbering a session
     // created by an overlapping request.
-    const sessionId = requested && runner.store.get(requested)
-      ? requested
-      : createSession(requested ? { id: requested } : undefined, runner.store).id
+    const existing = requested ? runner.store.get(requested) : null
+
+    // A session is permanently bound to the workspace it was created in, so the
+    // stored directory is authoritative on resume. A caller that names a
+    // different workspace for an existing session is asking to move a
+    // conversation that already ran somewhere else: refuse rather than silently
+    // pick one.
+    if (targetWorkspace && existing?.directory && resolve(existing.directory) !== targetWorkspace) {
+      return json(
+        { error: `Session ${requested} is already bound to workspace ${existing.directory}` },
+        409,
+      )
+    }
+    const workspace = existing?.directory ?? targetWorkspace ?? process.cwd()
+
+    const sessionId = existing
+      ? requested!
+      : createSession(
+          requested ? { id: requested, directory: workspace } : { directory: workspace },
+          runner.store,
+        ).id
 
     // One turn per session across all runners. `runner.isActive` covers a turn
     // started directly on this runner; the global map covers one started
@@ -619,7 +675,7 @@ export class WebBackend {
     this.activeSessions.set(sessionId, runner)
 
     runner
-      .prompt({ sessionId, ...messagePromptInput(input) })
+      .prompt({ sessionId, targetWorkspace: workspace, ...messagePromptInput(input) })
       .catch((error) => { runner.bus.emit("error", { sessionId, error }) })
       .finally(() => {
         if (this.activeSessions.get(sessionId) === runner) this.activeSessions.delete(sessionId)

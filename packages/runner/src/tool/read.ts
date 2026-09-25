@@ -24,7 +24,7 @@ export const readTool = defineTool({
       .optional()
       .describe(`Maximum number of lines to read (default ${DEFAULT_LIMIT})`),
   }),
-  async execute(args, _ctx) {
+  async execute(args, ctx) {
     if (typeof args.path !== "string" || args.path.trim() === "") {
       return {
         title: "Read error",
@@ -33,7 +33,7 @@ export const readTool = defineTool({
       }
     }
 
-    const filePath = path.resolve(args.path)
+    const filePath = path.resolve(ctx.workspace ?? process.cwd(), args.path)
 
     if (!fs.existsSync(filePath)) {
       return {

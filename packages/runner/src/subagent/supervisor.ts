@@ -53,7 +53,7 @@ export async function runSubagent(
     let proc: ChildProcessWithoutNullStreams
     try {
       proc = spawn(runtime.command, childArgs, {
-        cwd: process.cwd(),
+        cwd: ctx.workspace ?? process.cwd(),
         env: {
           ...process.env,
           QUARK_PARENT_SESSION_ID: ctx.sessionId,

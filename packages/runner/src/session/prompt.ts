@@ -134,6 +134,13 @@ export async function prompt(input: {
   model?: string;
   agent: AgentDefinition;
   catalog?: CatalogRegistry;
+  /**
+   * Absolute workspace root this turn runs in (tools, system prompt, ambient
+   * reads, subagents). Stored as the session's `directory` when a session is
+   * created; on resume the stored directory wins, so a session never silently
+   * moves. Defaults to `process.cwd()`.
+   */
+  targetWorkspace?: string;
   /** Explicit execution policies. Defaults to PORTABLE_POLICIES. */
   policies?: Partial<RunPolicies>;
   /** Model-resolution dependencies (registry/catalog/providers). */
@@ -158,18 +165,25 @@ export async function prompt(input: {
   // Resolve or create session (lazy — only created on first message)
   const store = runtime.store;
   let sessionId: string;
+  let workspace: string;
   let created = false;
   if (input.sessionId) {
     const existing = store.get(input.sessionId);
     if (existing) {
       sessionId = input.sessionId;
+      // A session is permanently bound to its workspace: the stored directory
+      // is authoritative on resume, so two callers cannot disagree about where
+      // the same conversation runs.
+      workspace = existing.directory ?? input.targetWorkspace ?? process.cwd();
     } else if (store.createOnMissing) {
       // Portable stores treat an unknown ID as a new namespace. Two runners
       // can reuse the same ID and never see each other's history. A supplied
       // ID that creates a session is announced exactly like a generated one.
+      workspace = input.targetWorkspace ?? process.cwd();
       sessionId = createSession(
         {
           id: input.sessionId,
+          directory: workspace,
           ...(input.ephemeral ? { ephemeral: true } : {}),
           ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
         },
@@ -180,12 +194,13 @@ export async function prompt(input: {
       throw new Error(`Session not found: ${input.sessionId}`);
     }
   } else {
+    workspace = input.targetWorkspace ?? process.cwd();
     const sess = createSession(
       input.ephemeral
-        ? { ephemeral: true, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
+        ? { ephemeral: true, directory: workspace, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
         : input.parentSessionId
-          ? { parentSessionId: input.parentSessionId, kind: "subagent" }
-          : undefined,
+          ? { parentSessionId: input.parentSessionId, kind: "subagent", directory: workspace }
+          : { directory: workspace },
       store,
     );
     sessionId = sess.id;
@@ -217,6 +232,7 @@ export async function prompt(input: {
     policies,
     resolveOptions,
     ambient: input.ambientInstructions,
+    workspace,
     controller: input.controller,
     stream: input.stream,
   }, runtime);
@@ -239,12 +255,14 @@ export async function runSeededSession(input: {
   resolve?: ResolveModelOptions
   /** Ambient/project instruction context; see {@link prompt}. */
   ambientInstructions?: AmbientInstructions | null
+  /** Fallback workspace when the session has no stored directory. */
+  targetWorkspace?: string
   /** @internal Pre-created abort controller, supplied by instance runners. */
   controller?: AbortController
   /** @internal Streaming primitive override, supplied by instance runners/tests. */
   stream?: StreamFn
 }, runtime: PromptRuntime = defaultRuntime) {
-  getSession(input.sessionId, runtime.store)
+  const session = getSession(input.sessionId, runtime.store)
   const agent = input.agent
   return runTurn({
     sessionId: input.sessionId,
@@ -254,6 +272,9 @@ export async function runSeededSession(input: {
     agent,
     policies: resolveRunPolicies(input.policies),
     ambient: input.ambientInstructions,
+    // A seeded turn belongs to an existing session, so its bound directory is
+    // authoritative; the caller's fallback only covers pre-directory sessions.
+    workspace: session.directory ?? input.targetWorkspace ?? process.cwd(),
     resolveOptions: {
       ...input.resolve,
       ...(input.catalog ? { catalog: input.catalog } : {}),
@@ -273,6 +294,8 @@ async function runTurn(input: {
   policies: RunPolicies
   resolveOptions?: ResolveModelOptions
   ambient?: AmbientInstructions | null
+  /** Absolute workspace root for this turn; drives system prompt + tools. */
+  workspace: string
   controller?: AbortController
   stream?: StreamFn
 }, runtime: PromptRuntime) {
@@ -339,6 +362,7 @@ async function runTurn(input: {
       policies,
       input.stream,
       input.ambient,
+      input.workspace,
       undoEnabled,
     )
   } catch (err) {
@@ -431,11 +455,14 @@ async function loop(
   policies: RunPolicies = PORTABLE_POLICIES,
   stream?: StreamFn,
   ambient?: AmbientInstructions | null,
+  /** Absolute workspace root for this run; defaults to the process cwd. */
+  workspace?: string,
   /** Whether file snapshots are tracked for this turn (ephemeral/policy off). */
   undoEnabled = true,
 ): Promise<string> {
   const maxSteps = policies.maxSteps;
   const branching = policies.branching;
+  const runWorkspace = workspace ?? process.cwd();
   // Instance runners disable auto-branching: it persists through the global
   // JSONL store and flips the process-global custom-fetch force-agent. The
   // app passes its config-derived branching in, but instance runs stay off
@@ -493,7 +520,7 @@ async function loop(
     }
 
     // 2. Build system prompt
-    const system = buildSystem(agent, ambient);
+    const system = buildSystem(agent, ambient, runWorkspace);
 
     // 3. Check if branching is needed BEFORE the model call
     if (
@@ -521,7 +548,7 @@ async function loop(
           turnMessageIds.set(currentSessionId, currentUserMessageId)
         }
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient, runWorkspace);
 
         // Re-load after branching so the model sees the task lineage context.
         continue;
@@ -557,7 +584,7 @@ async function loop(
       abort,
       runtime.bus,
       runtime.hooks,
-      { undo: undoEnabled },
+      { undo: undoEnabled, workspace: runWorkspace },
     );
 
     // 6. Stream + process
@@ -636,7 +663,7 @@ async function loop(
           turnMessageIds.set(currentSessionId, currentUserMessageId)
         }
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient, runWorkspace);
 
         continue;
       } catch (err) {
