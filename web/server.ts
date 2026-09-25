@@ -1,7 +1,13 @@
-import { WebBackend } from "./backend"
+import { WebBackend, runnerSessionsRoot } from "./backend"
+import { reapStaleTurns } from "../packages/runner/src/session/live-turn"
 import * as path from "path"
 
 const backend = await WebBackend.create()
+
+// Reclaim live-event logs and abandoned locks from turns that died without
+// releasing; history (session.jsonl) is untouched. Live turns in other
+// processes are protected by the lease check inside reapStaleTurns.
+setImmediate(() => reapStaleTurns(runnerSessionsRoot()))
 const publicDir = path.resolve(import.meta.dir, "dist")
 
 async function serve(request: Request): Promise<Response> {

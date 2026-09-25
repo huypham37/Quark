@@ -23,7 +23,7 @@ import { discoverSkills, loadSkill } from "@quark/runner/skill/skill"
 import { materializeAgent, resolveAgent, listAgents } from "../agent/agent"
 import { createQuarkRuntime, type QuarkRuntime } from "../runtime"
 import { useRunnerSessionRoot } from "../session-root"
-import { reserveLiveTurn, isLiveTurn } from "@quark/runner/session/live-turn"
+import { reserveLiveTurn, isLiveTurn, reapStaleTurns } from "@quark/runner/session/live-turn"
 import { followSession } from "./live-viewer"
 import { startSessionApi } from "../session-api"
 import { dbToTuiMessages } from "./state"
@@ -91,6 +91,10 @@ const activatedSkillNames = new Set<string>()
 // runner generations (rebinds), so UI subscriptions never leak or go stale.
 useRunnerSessionRoot()
 ensureStorageRoot()
+// Reclaim logs and abandoned locks from turns that died without releasing.
+// Deferred so the scan never delays the first frame; isLiveTurn keeps running
+// turns (including in other processes) safe.
+setImmediate(() => reapStaleTurns())
 const runtime: QuarkRuntime = await createQuarkRuntime({ agent: activeAgent, bus })
 
 // Session starts null — created lazily on first message by prompt(), unless

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createSession, createJsonlSessionStore } from "../../packages/runner/src/session/session"
-import { reserveLiveTurn, isLiveTurn } from "../../packages/runner/src/session/live-turn"
+import { reserveLiveTurn, isLiveTurn, reapStaleTurns } from "../../packages/runner/src/session/live-turn"
 import { saveUserMessage } from "../../packages/runner/src/session/message"
 import { TypedBus } from "../../packages/runner/src/session/events"
 import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
@@ -40,5 +40,43 @@ describe("cross-process session viewer", () => {
     expect(switches.at(-1)?.messages.filter((m) => m.id === user.id)).toHaveLength(1)
     expect(isLiveTurn(session.id, root)).toBe(false)
     stop()
+  })
+
+  test("coalesces deltas and flushes full text before text-end", () => {
+    setSessionStorageRoot(root)
+    const store = createJsonlSessionStore(root)
+    const session = createSession(undefined, store)
+    const writer = new TypedBus()
+    const release = reserveLiveTurn(session.id, root, writer)!
+    const log = join(root, session.id, "live-events.jsonl")
+    let text = ""
+    for (let i = 0; i < 500; i++) {
+      text += "x"
+      writer.emit("text-delta", { sessionId: session.id, messageId: "m", partId: "p", delta: "x", text })
+    }
+    writer.emit("text-end", { sessionId: session.id, messageId: "m", partId: "p", text })
+    const lines = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+    const deltas = lines.filter((line) => line.name === "text-delta")
+    expect(deltas).toHaveLength(1)
+    expect(deltas[0].data.text).toBe(text)
+    expect(deltas[0].data.delta).toBe(text)
+    expect(lines.at(-1).name).toBe("text-end")
+    release()
+  })
+
+  test("reapStaleTurns drops dead logs but keeps history", () => {
+    const reapRoot = mkdtempSync(join(tmpdir(), "quark-reap-"))
+    try {
+      setSessionStorageRoot(reapRoot)
+      const store = createJsonlSessionStore(reapRoot)
+      const session = createSession(undefined, store)
+      const log = join(reapRoot, session.id, "live-events.jsonl")
+      writeFileSync(log, "{}\n")
+      expect(reapStaleTurns(reapRoot)).toBeGreaterThanOrEqual(1)
+      expect(existsSync(log)).toBe(false)
+      expect(existsSync(join(reapRoot, session.id, "session.jsonl"))).toBe(true)
+    } finally {
+      rmSync(reapRoot, { recursive: true, force: true })
+    }
   })
 })

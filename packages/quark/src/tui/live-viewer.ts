@@ -1,10 +1,33 @@
-import { readFileSync, statSync } from "node:fs"
+import { closeSync, openSync, readSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { getSessionDir, getSessionStorageRoot } from "@quark/runner/storage/session-path"
 import { isLiveTurn } from "@quark/runner/session/live-turn"
 import { loadMessages } from "@quark/runner/session/message"
 import type { TypedBus, BusEventName } from "@quark/runner/session/events"
 import { dbToTuiMessages } from "./state"
+
+/**
+ * Read exactly `count` bytes at `offset`.
+ *
+ * The live log can reach hundreds of MB, so advancing the cursor must not read
+ * the whole file: only the unseen tail. Short reads return what was available
+ * and the caller advances by that much, re-reading on the next tick.
+ */
+function readAt(path: string, offset: number, count: number): Buffer {
+  const buffer = Buffer.allocUnsafe(count)
+  const fd = openSync(path, "r")
+  try {
+    let read = 0
+    while (read < count) {
+      const n = readSync(fd, buffer, read, count - read, offset + read)
+      if (n <= 0) break
+      read += n
+    }
+    return read === count ? buffer : buffer.subarray(0, read)
+  } finally {
+    closeSync(fd)
+  }
+}
 
 /** Follow an executor's event log, reconciling against durable history on attach/reconnect. */
 export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean) => void, isLocalBusy: () => boolean = () => false): () => void {
@@ -50,9 +73,9 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
       lastHistorySize = size(history)
     }
     if (length > cursor) {
-      const buffer = readFileSync(log)
-      const chunk = remainder + buffer.subarray(cursor).toString("utf8")
-      cursor = buffer.length
+      const buffer = readAt(log, cursor, length - cursor)
+      const chunk = remainder + buffer.toString("utf8")
+      cursor += buffer.length
       const lines = chunk.split("\n")
       remainder = lines.pop() ?? ""
       for (const line of lines) {
