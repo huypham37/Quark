@@ -53,8 +53,8 @@ relative to the repository root. Add `bin/` to your `PATH` after building.
 # Interactive TUI
 quark
 
-# One-off message with a profile
-quark --profile coder --message "fix the bug in main.ts"
+# One-off message with an agent
+quark --agent coder --message "fix the bug in main.ts"
 
 # Pick a specific model for a single run
 quark --model copilot/claude-sonnet-4.5 "use this model for this run"
@@ -71,14 +71,23 @@ quark --session <id>
 
 | Flag | Description |
 |------|-------------|
-| `-p, --profile <name>` | Profile to use (default: from config) |
+| `-a, --agent <name>` | Agent to use (default: from config) |
 | `-m, --message <text>` | Message text (alternative to a positional arg) |
 | `-s, --session <id>` | Resume an existing session |
 | `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
 | `--no-store` | Run an ephemeral session — never written to disk |
 | `--verbose` | Print every tool call + result to stderr |
-| `-l, --list-profiles` | List available profiles |
+| `-l, --list-agents` | List available agents |
 | `-h, --help` | Show help |
+
+Breaking changes: `--profile`, `-p`, `--list-profiles`, and ACP's
+`--profile`/`-p` are removed; use `--agent`, `-a`, or `--list-agents`.
+In the TUI, use `/agent` instead of `/profile`. `QUARK_VERBOSE` no longer
+activates debug output; use `QUARK_DEBUG=*` for engine logs or `--verbose`
+for tool calls. Filesystem-defined `write` and `edit` tools use `filePath`;
+custom tools with those IDs may use `path`, but must provide one unambiguous
+target when undo tracking is enabled. Missing/conflicting targets or failed
+snapshots now stop the tool before it modifies a file.
 
 ---
 

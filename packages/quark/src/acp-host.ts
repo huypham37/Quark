@@ -101,18 +101,20 @@ async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[
  * exit code; the caller exits with it.
  */
 export async function runAcpCommand(argv: string[]): Promise<number> {
+  if (argv.some((arg) => arg === "--profile" || arg.startsWith("--profile=") || arg === "-p")) {
+    throw new Error("ACP --profile/-p is removed; use --agent/-a")
+  }
   let agentId: string | undefined
   try {
     const { values } = parseArgs({
       args: argv,
       options: {
         agent: { type: "string", short: "a" },
-        profile: { type: "string", short: "p" }, // compatibility alias
       },
       allowPositionals: true,
       strict: false,
     })
-    agentId = (values.agent ?? values.profile) as string | undefined
+    agentId = values.agent as string | undefined
   } catch {
     // Unknown flags are ignored: the ACP client, not the user, owns this argv.
   }

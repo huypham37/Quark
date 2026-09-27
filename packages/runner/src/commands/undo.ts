@@ -255,8 +255,8 @@ export async function preTurnSnapshot(
       : join(process.cwd(), storedPath);
     const key = isAbsolute(storedPath) ? snapshotKey(storedPath) : storedPath;
     if (!snapshottedThisTurn.has(key)) {
-      snapshottedThisTurn.add(key);
       await snapshotFile(sessionId, messageId, absPath);
+      snapshottedThisTurn.add(key);
     }
   }
 }
@@ -322,27 +322,22 @@ const FILE_TOOLS = new Set(["write", "edit"]);
 
 /**
  * Extract the canonical, resolved absolute file path from a tool call's arguments.
- * Returns an absolute path, or null if the tool doesn't modify files or no path is present.
+ * Returns null only for non-file tools. Write/edit tools must supply a target.
  *
- * Accepts both `path` (reference tool convention) and `filePath` (legacy convention).
- * When both are present, `path` takes precedence.
+ * Installed filesystem tools use `filePath`; custom write/edit tools may use
+ * `path`. Reject ambiguous or missing targets rather than losing undo history.
  * Relative paths are resolved against the workspace root.
  */
 export function extractFilePath(toolId: string, args: Record<string, unknown>): string | null {
   if (!FILE_TOOLS.has(toolId)) return null;
 
-  const pathArg = args.path;
-  const filePathArg = args.filePath;
-
-  const raw = typeof pathArg === "string" && pathArg.length > 0
-    ? pathArg
-    : typeof filePathArg === "string" && filePathArg.length > 0
-      ? filePathArg
-      : null;
-
-  if (!raw) return null;
-
-  return resolve(process.cwd(), raw);
+  const targets = [args.path, args.filePath].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  if (targets.length === 0 || (targets.length === 2 && resolve(process.cwd(), targets[0]!) !== resolve(process.cwd(), targets[1]!))) {
+    throw new Error(`Tool "${toolId}" requires one unambiguous path or filePath for undo tracking`);
+  }
+  return resolve(process.cwd(), targets[0]!);
 }
 
 /**
@@ -368,8 +363,8 @@ export async function toolPreExecute(
   // Lazy snapshot — use the snapshot key (not stored path) for dedup
   const key = snapshotKey(filePath);
   if (!snapshottedThisTurn.has(key)) {
-    snapshottedThisTurn.add(key);
     await snapshotFile(sessionId, currentTurnMsgId, filePath);
+    snapshottedThisTurn.add(key);
   }
 }
 

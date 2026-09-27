@@ -3,7 +3,6 @@
 //
 // Usage: bun src/tui/index.tsx
 // Usage: bun src/tui/index.tsx --agent researcher
-// `--profile` is accepted as an alias for `--agent`.
 
 import { render } from "@opentui/solid"
 import { createCliRenderer, RGBA } from "@opentui/core"
@@ -65,10 +64,10 @@ const themeArg = parseArg("--theme")
 const modelArg = parseArg("--model")
 
 // ---------------------------------------------------------------------------
-// Parse --agent (alias: --profile) from CLI args
+// Parse --agent from CLI args
 // ---------------------------------------------------------------------------
 function parseAgentArg(): string | undefined {
-  return parseArg("--agent") ?? parseArg("--profile")
+  return parseArg("--agent")
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +379,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
-  // /model, /agent, and /profile work even without an active session
+  // /model and /agent work even without an active session
   if (command === "model") {
     if (!args) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("Use /model to open the model picker") })
@@ -392,8 +391,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     return { handled: true }
   }
 
-  // `/agent` is canonical; `/profile` is a compatibility alias.
-  if (command === "agent" || command === "profile") {
+  if (command === "agent") {
     if (!args) {
       const available = listAgents()
       const current = activeAgent.id

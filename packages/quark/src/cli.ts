@@ -36,19 +36,18 @@ Usage: quark [options] [message]
 
 Options:
   -a, --agent <name>            Agent to use (default: from config)
-  -p, --profile <name>          Alias for --agent
   -m, --message <text>          Message text (alternative to positional)
   -s, --session <id>            Resume an existing session
       --model <id>              Model to use for this run (e.g. copilot/claude-sonnet-4.5)
       --no-store                Run an ephemeral session — never written to disk
       --verbose                 Print every tool call + result to stderr.
                                 For engine internals use QUARK_DEBUG=* (see README).
-  -l, --list-agents             List available agents (alias: --list-profiles)
+  -l, --list-agents             List available agents
   -h, --help                    Show this help message
 
 Examples:
-  quark --profile coder --message "fix the bug in main.ts"
-  quark -p coder "fix the bug in main.ts"
+  quark --agent coder --message "fix the bug in main.ts"
+  quark -a coder "fix the bug in main.ts"
   quark "quick question"
   quark --model copilot/claude-sonnet-4.5 "use a specific model for this run"
   quark --no-store "quick one-off question that should not be saved"
@@ -71,15 +70,12 @@ function parseArguments(): ParsedArgs {
     const { values, positionals } = parseArgs({
       options: {
         agent: { type: "string", short: "a" },
-        // Compatibility alias for the pre-agent flag name.
-        profile: { type: "string", short: "p" },
         message: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
         model: { type: "string" },
         "no-store": { type: "boolean" },
         verbose: { type: "boolean" },
         "list-agents": { type: "boolean", short: "l" },
-        "list-profiles": { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -96,13 +92,13 @@ function parseArguments(): ParsedArgs {
     }
 
     return {
-      agent: values.agent ?? values.profile,
+      agent: values.agent,
       message,
       sessionId: values.session,
       model: values.model,
       noStore: values["no-store"],
       verbose: values.verbose,
-      listAgents: values["list-agents"] || values["list-profiles"],
+      listAgents: values["list-agents"],
       help: values.help,
     }
   } catch (err: any) {

@@ -44,7 +44,7 @@ export async function runSubagent(
   const runtime = resolveSubagentCommand()
   const childArgs = [
     ...runtime.args,
-    "--profile", input.profile,
+    "--agent", input.profile,
     "--message", input.prompt,
     "--no-store",
   ]

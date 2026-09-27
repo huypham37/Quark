@@ -101,15 +101,6 @@ function toAITool(
       }
       const validatedArgs = parseResult.data as Record<string, unknown>
 
-      try {
-        if (undo) {
-          const fp = extractFilePath(def.id, validatedArgs)
-          if (fp) await toolPreExecute(sessionId, fp)
-        }
-      } catch {
-        // Snapshot failure is best-effort.
-      }
-
       eventBus.emit("tool-running", { sessionId, messageId, callId })
 
       const ctx = {
@@ -126,6 +117,12 @@ function toAITool(
         { tool: def.id, args: validatedArgs, sessionId, callId },
         { args: validatedArgs },
       )
+      // Hooks can change arguments; snapshot the actual target before executing.
+      // If tracking fails, do not allow an untracked filesystem mutation.
+      if (undo) {
+        const fp = extractFilePath(def.id, beforeArgs.args as Record<string, unknown>)
+        if (fp) await toolPreExecute(sessionId, fp)
+      }
       const toolResult = await Promise.race([
         def.execute(beforeArgs.args as any, ctx),
         abortSignalToPromise(abortSig),

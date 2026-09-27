@@ -1128,7 +1128,7 @@ export const App: Component<AppProps> = (props) => {
         if (s.items.length > 0) {
           const selected = s.items[s.selectedIndex]
           if (selected) {
-            // /model and /profile → transition to picker (Tab or Enter)
+            // /agent → transition to picker (Tab or Enter)
             const pickerMode = pickerModeForCommand(selected.id)
             if (pickerMode && (isReturn || isTab) && openChoicePicker(pickerMode)) {
               return true

@@ -48,6 +48,18 @@ describe("subagent protocol", () => {
 })
 
 describe("runSubagent", () => {
+  test("passes the canonical agent flag and prompt to the child", async () => {
+    process.env.QUARK_SUBAGENT_EXECUTABLE = fixture(`
+const args = process.argv.slice(2)
+if (JSON.stringify(args) !== JSON.stringify(["--agent", "finder", "--message", "hello", "--no-store"])) {
+  console.error("Unexpected child args: " + JSON.stringify(args))
+  process.exit(2)
+}
+console.error("${SUBAGENT_EVENT_PREFIX}" + JSON.stringify({ e: "loop-end" }))
+console.log("args accepted")
+`)
+    await expect(runSubagent({ profile: "finder", prompt: "hello" }, context())).resolves.toMatchObject({ output: "args accepted" })
+  })
   test("forwards normal lifecycle events and returns child output without stdin control", async () => {
     process.env.QUARK_SUBAGENT_EXECUTABLE = fixture(`
 const p = "${SUBAGENT_EVENT_PREFIX}"

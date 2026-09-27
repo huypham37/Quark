@@ -77,9 +77,8 @@ describe("extractFilePath", () => {
     expect(result).toBe("/tmp/foo.ts");
   });
 
-  test("prefers path over filePath when both present", () => {
-    const result = extractFilePath("write", { path: "/tmp/a.ts", filePath: "/tmp/b.ts" });
-    expect(result).toBe("/tmp/a.ts");
+  test("rejects conflicting targets rather than silently tracking the wrong file", () => {
+    expect(() => extractFilePath("write", { path: "/tmp/a.ts", filePath: "/tmp/b.ts" })).toThrow(/unambiguous/);
   });
 
   test("resolves relative paths against cwd", () => {
@@ -92,10 +91,13 @@ describe("extractFilePath", () => {
     expect(extractFilePath("bash", { command: "echo hi" })).toBeNull();
   });
 
-  test("returns null for missing path", () => {
-    expect(extractFilePath("write", {})).toBeNull();
-    expect(extractFilePath("write", { path: "" })).toBeNull();
-    expect(extractFilePath("write", { filePath: "" })).toBeNull();
+  test("rejects missing targets for both filesystem tools", () => {
+    for (const id of ["write", "edit"]) {
+      expect(() => extractFilePath(id, {})).toThrow(/requires one unambiguous/);
+      expect(() => extractFilePath(id, { path: "" })).toThrow(/requires one unambiguous/);
+      expect(extractFilePath(id, { filePath: "src/app.ts" })).toBe(resolve(workspace, "src/app.ts"));
+      expect(extractFilePath(id, { path: "src/app.ts" })).toBe(resolve(workspace, "src/app.ts"));
+    }
   });
 });
 
@@ -249,6 +251,18 @@ describe("chained undo", () => {
 // ---------------------------------------------------------------------------
 
 describe("toolPreExecute", () => {
+  for (const id of ["write", "edit"]) {
+    for (const key of ["path", "filePath"]) {
+      test(`${id} with ${key} snapshots before mutation and restores on undo`, async () => {
+        createFile(`${id}-${key}.txt`, "before");
+        setCurrentTurn(sessionId, turn1Id);
+        await toolPreExecute(sessionId, extractFilePath(id, { [key]: `${id}-${key}.txt` })!);
+        writeFileSync(join(workspace, `${id}-${key}.txt`), "after");
+        expect((await undoLatest(sessionId))?.restored).toEqual([`${id}-${key}.txt`]);
+        expect(readFile(`${id}-${key}.txt`)).toBe("before");
+      });
+    }
+  }
   test("snapshots and tracks a file lazily", async () => {
     createFile("lazy.ts", "lazy-original");
 
