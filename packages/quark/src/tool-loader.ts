@@ -39,7 +39,7 @@ export interface LoadResult {
  * Load tools declared in an agent's tools[] array.
  * Each tool is loaded from <config>/tools/{id}.ts
  * Engine-owned tools (read, look, skill, question) are skipped — they come
- * from `@quark/runner` and are materialized by `agent-compat.ts`.
+ * from `@quark/runner` and are materialized by `agent/agent.ts`.
  *
  * @param opts.register - When `false`, return concrete definitions in
  *   {@link LoadResult.defs} without registering them globally. Used by the
