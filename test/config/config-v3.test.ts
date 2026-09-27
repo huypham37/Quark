@@ -4,11 +4,11 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { parse } from "yaml"
 import {
-  parseConfigV2,
+  parseConfig,
   parseCustomProviders,
   providerCredentialSource,
   serializeConfig,
-  writeConfigV2,
+  writeConfig,
 } from "../../packages/quark/src/config/config"
 import { BUNDLED_PROVIDER_IDS } from "../../packages/runner/src/provider/definitions"
 
@@ -18,7 +18,7 @@ afterAll(() => fs.rmSync(directory, { recursive: true, force: true }))
 
 function representativeConfig() {
   return {
-    version: 2,
+    version: 3,
     models: {
       small: "openai/gpt-5-mini",
     },
@@ -31,9 +31,9 @@ function representativeConfig() {
   }
 }
 
-describe("Config V2", () => {
+describe("Config V3", () => {
   test("parses and serializes a custom provider", () => {
-    const loaded = parseConfigV2(representativeConfig())
+    const loaded = parseConfig(representativeConfig())
     expect(loaded.providers["quark-go"]).toEqual({
       base_url: "https://api.quark-go.example/v1",
       api_key: "env:QUARK_GO_API_KEY",
@@ -69,7 +69,7 @@ describe("Config V2", () => {
   test("ignores obsolete favorites", () => {
     const raw = representativeConfig() as Record<string, any>
     raw.models.favorites = ["openai/old-model"]
-    const config = parseConfigV2(raw)
+    const config = parseConfig(raw)
     expect(config.models).toEqual({ small: "openai/gpt-5-mini" })
     expect((config.models as Record<string, unknown>).favorites).toBeUndefined()
     expect(serializeConfig(config)).not.toContain("favorites:")
@@ -78,19 +78,13 @@ describe("Config V2", () => {
   test("preserves an optional editor setting", () => {
     const raw = representativeConfig() as Record<string, unknown>
     raw.editor = "code"
-    const config = parseConfigV2(raw)
+    const config = parseConfig(raw)
     expect(config.editor).toBe("code")
     expect(serializeConfig(config)).toContain("editor: code")
   })
 
-  test("round-trips profiles and default_profile during unrelated writes", () => {
-    const raw = representativeConfig() as Record<string, any>
-    raw.default_profile = "general"
-    raw.profiles = { general: { name: "General", model: "openai/gpt-5.6-terra", thinking_effort: "high" } }
-    const config = parseConfigV2(raw)
-    const reparsed = parse(serializeConfig(config)) as Record<string, any>
-    expect(reparsed.default_profile).toBe("general")
-    expect(reparsed.profiles.general.thinking_effort).toBe("high")
+  test("refuses inline profiles even if labeled V3", () => {
+    expect(() => parseConfig({ ...representativeConfig(), profiles: { general: {} } })).toThrow(/still has a "profiles" block/)
   })
 
   test("rejects provider secret fields without echoing their values", () => {
@@ -98,7 +92,7 @@ describe("Config V2", () => {
     const raw = representativeConfig() as any
     raw.providers["quark-go"].apiKey = secret
     let message = ""
-    try { parseConfigV2(raw) } catch (error) { message = String(error) }
+    try { parseConfig(raw) } catch (error) { message = String(error) }
     expect(message).toContain("forbidden")
     expect(message).not.toContain(secret)
   })
@@ -162,8 +156,8 @@ describe("Config V2", () => {
     })).toThrow(/compaction.*reserved/)
   })
 
-  test("atomic V2 writer leaves no temporary file", () => {
-    writeConfigV2(parseConfigV2(representativeConfig()), file)
+  test("atomic V3 writer leaves no temporary file", () => {
+    writeConfig(parseConfig(representativeConfig()), file)
     expect(fs.readdirSync(directory).filter((name) => name.includes(".tmp."))).toEqual([])
   })
 })

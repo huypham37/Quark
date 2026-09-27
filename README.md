@@ -113,20 +113,17 @@ quark --session <id>
 
 ## Configuration
 
-Config lives at `~/.config/quark/config.yaml`. Missing files and fields fall
-back to sensible defaults. Models are always written as `provider/model`. Changes
-made through `/settings` apply automatically when the editor closes successfully.
+Config lives at `~/.config/quark/config.yaml`. A missing file uses defaults;
+invalid YAML or V2 config fails with migration instructions. Models use
+`provider/model`. Changes made through `/settings` apply when the editor closes.
 
 ```yaml
-version: 2
+version: 3
 
 models:
-  main: openrouter/anthropic/claude-sonnet-4.6
   small: openai/gpt-5-mini
-  favorites:
-    - openrouter/anthropic/claude-sonnet-4.6
-    - openai/gpt-5
-    - copilot/claude-sonnet-4.6
+
+default_agent: coder
 
 max_steps: 100
 
@@ -140,17 +137,13 @@ branching:
 # Only endpoints Quark does not bundle belong here.
 providers:
   quark-go:
-    protocol: openai-compatible
-    endpoint: https://api.quark-go.example/v1
-    credential:
-      source: environment
-      variable: QUARK_GO_API_KEY
-    billing: subscription
+    base_url: https://api.quark-go.example/v1
+    api_key: env:QUARK_GO_API_KEY
 ```
 
 Standard providers require no `providers:` entry. Authenticate interactively with
 `quark auth login openrouter`, or set a user-managed environment variable for
-headless use. API-key values are never accepted in V2 configuration.
+headless use. Prefer `api_key: env:NAME` over literal secrets in config.
 
 OpenCode Go is bundled as `opencode-go`. After subscribing and copying your key,
 run `quark auth login opencode-go` (or set `OPENCODE_API_KEY`) and select a model
@@ -162,11 +155,10 @@ Some models support an additional reasoning mode. For those models—currently
 the GPT-5.6 family—set `thinking_mode: pro` alongside `thinking_effort`. Quark
 warns and ignores the setting when the selected model does not support modes.
 
-Older profile configs using `model: { id, thinking: { effort, mode } }` are
-still accepted for migration. New and updated profile settings are written in
-the flat form shown above.
-
-Per-project overrides go in `.quark/config.yaml` at the repo root.
+Older inline profiles using `model: { id, thinking: { effort, mode } }` are
+supported by the offline migration only. New single-file profiles use nested
+`model.id`, `model.thinking_effort`, and optional `model.thinking_mode`.
+Profiles are global; project-local agent/profile directories are not loaded.
 
 Set provider API keys through `quark auth login`, or use provider-standard
 environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
@@ -195,10 +187,13 @@ prompt: |
 ```
 
 Use `quark --list-agents` and `quark --agent researcher --message "..."`.
-Existing `agents/<name>/agent.yaml` plus `instructions.md` installations can
-be converted with `bun scripts/migrate-agents-to-profile.ts --dry-run`, then
-run again without `--dry-run`. The source directories are retained as backups.
-V2 inline profiles require the separate V2→V3 migration (QUA-255).
+Profiles live in `~/.config/quark/profile/<name>.yaml`. Existing installations
+must convert older `agents/<name>/agent.yaml` and `instructions.md` files before
+upgrading; keep the originals as backups until the profiles are verified.
+V2 inline profiles require `bun scripts/migrate-config-v2-to-v3.ts --dry-run`
+followed by `bun scripts/migrate-config-v2-to-v3.ts`. The script preflights all
+profiles, writes `profile/<name>.yaml`, and retains a backup of `config.yaml`.
+Resolve missing prompts or destination conflicts before rerunning.
 
 ---
 

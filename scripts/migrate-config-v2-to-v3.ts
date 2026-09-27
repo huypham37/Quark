@@ -1,294 +1,170 @@
-// Migrate a Quark V2 config.yaml to V3.
-//
-// V2 kept agents inline under `profiles:`; V3 keeps app settings in config.yaml
-// and moves each agent to `agents/<id>/agent.yaml` + `instructions.md`.
-//
-// Safety:
-//   - `--dry-run` prints the plan and writes nothing.
-//   - The original config is backed up to `config.yaml.v2.<timestamp>.bak` and
-//     verified before the new config is written (atomically).
-//   - Existing agent directories are left untouched unless `--force`.
-//
-// Usage:
-//   bun scripts/migrate-config-v2-to-v3.ts [--dry-run] [--force] \
-//       [--config <path>] [--agents-dir <path>]
-
+// Offline V2 inline profiles -> V3 single-file profile/<id>.yaml migration.
+// Usage: bun scripts/migrate-config-v2-to-v3.ts [--dry-run] [--config <path>]
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { parse as parseYAML, stringify as stringifyYAML } from "yaml"
+import { parse, stringify } from "yaml"
+import { parseProfile } from "../packages/quark/src/agent/agent"
+import { parseConfig } from "../packages/quark/src/config/config"
 
 export interface MigrateOptions {
   configPath: string
-  agentsDir: string
   dryRun?: boolean
-  force?: boolean
 }
-
-export interface AgentPlan {
-  id: string
-  manifestPath: string
-  instructionsPath?: string
-  action: "create" | "overwrite" | "skip"
-}
-
 export interface MigrateReport {
-  configPath: string
-  agentsDir: string
-  dryRun: boolean
   changed: boolean
-  wroteConfig: boolean
-  fromVersion: number
+  dryRun: boolean
   defaultAgent: string
+  profiles: string[]
   backupPath?: string
-  agents: AgentPlan[]
-  warnings: string[]
 }
 
-export function defaultConfigPath(): string {
-  const dir = process.env.QUARK_CONFIG_DIR ?? path.join(os.homedir(), ".config", "quark")
-  return path.join(dir, "config.yaml")
+const ID = /^[a-z0-9][a-z0-9._-]*$/
+function validId(id: string): boolean {
+  return ID.test(id) && id !== "." && id !== ".." && !id.endsWith(".")
 }
-
-const AGENT_ID = /^[a-z0-9][a-z0-9._-]*$/
-
-function asStringArray(value: unknown): string[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? (value as string[])
-    : undefined
+function mapping(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be a mapping.`)
+  return value as Record<string, unknown>
 }
-
-function stringField(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+function text(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a non-empty string.`)
+  return value
 }
-
-/** Flatten a V2 profile (including the deprecated nested model) into a V3 manifest. */
-export function profileToManifest(profile: Record<string, unknown>): Record<string, unknown> {
-  const legacyModel = profile.model && typeof profile.model === "object" && !Array.isArray(profile.model)
-    ? profile.model as Record<string, unknown>
-    : undefined
-  const legacyThinking = legacyModel?.thinking && typeof legacyModel.thinking === "object"
-    ? legacyModel.thinking as Record<string, unknown>
-    : undefined
-
-  const model = stringField(profile.model) ?? stringField(legacyModel?.id)
-  const effort = stringField(profile.thinking_effort) ?? stringField(legacyThinking?.effort)
-  const mode = stringField(profile.thinking_mode)
-    ?? (effort ? stringField(legacyThinking?.mode) : undefined)
-
-  const manifest: Record<string, unknown> = {}
-  const name = stringField(profile.name)
-  const description = stringField(profile.description)
-  if (name) manifest.name = name
-  if (description) manifest.description = description
-  if (model) manifest.model = model
-  if (effort) manifest.thinking_effort = effort
-  if (mode) manifest.thinking_mode = mode
-  manifest.tools = asStringArray(profile.tools) ?? []
-  manifest.skills = asStringArray(profile.skills) ?? []
-  const subAgents = asStringArray(profile.sub_agents)
-  if (subAgents) manifest.sub_agents = subAgents
-  return manifest
+function oneValue(label: string, ...values: unknown[]): string | undefined {
+  const supplied = values.filter(value => value !== undefined).map(value => text(value, label)!)
+  if (new Set(supplied).size > 1) throw new Error(`Conflicting ${label} values; resolve before migrating.`)
+  return supplied[0]
 }
-
-function applyOverrides(
-  manifest: Record<string, unknown>,
-  override: Record<string, unknown> | undefined,
-  warnings: string[],
-  id: string,
-): void {
-  if (!override) return
-  const skillsAdd = asStringArray(override.skills_add)
-  const toolsAdd = asStringArray(override.tools_add)
-  if (skillsAdd) {
-    manifest.skills = [...new Set([...(manifest.skills as string[]), ...skillsAdd])]
-    warnings.push(`agents/${id}: applied profile_overrides.skills_add (${skillsAdd.join(", ")})`)
-  }
-  if (toolsAdd) {
-    manifest.tools = [...new Set([...(manifest.tools as string[]), ...toolsAdd])]
-    warnings.push(`agents/${id}: applied profile_overrides.tools_add (${toolsAdd.join(", ")})`)
+function list(value: unknown, label: string): string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.some(v => typeof v !== "string")) throw new Error(`${label} must be an array of strings.`)
+  return value
+}
+function absent(file: string): boolean {
+  try { fs.lstatSync(file); return false } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true
+    throw error
   }
 }
 
-function readProfileInstructions(
-  profile: Record<string, unknown>,
-  configDir: string,
-  warnings: string[],
-  id: string,
-): string | undefined {
-  const promptFile = stringField(profile.prompt_file)
-  if (!promptFile) return undefined
-  const resolved = path.isAbsolute(promptFile) ? promptFile : path.resolve(configDir, promptFile)
-  try {
-    return fs.readFileSync(resolved, "utf-8")
-  } catch {
-    warnings.push(`agents/${id}: prompt_file not found (${resolved}); no instructions.md written`)
-    return undefined
-  }
-}
-
-/** Plan and (unless dry-run) perform the migration. Pure planning is side-effect free. */
+/** All source reads, validation and collision checks happen before the first write. */
 export function migrateConfigV2ToV3(options: MigrateOptions): MigrateReport {
-  const { configPath, agentsDir } = options
-  const dryRun = options.dryRun ?? false
-  const force = options.force ?? false
-
-  if (!fs.existsSync(configPath)) throw new Error(`No config file at ${configPath}`)
-  const original = fs.readFileSync(configPath, "utf-8")
-  const raw = parseYAML(original) as unknown
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${configPath} is not a YAML mapping.`)
+  const configPath = path.resolve(options.configPath)
+  const profileDir = path.join(path.dirname(configPath), "profile")
+  const original = fs.readFileSync(configPath, "utf8")
+  const config = mapping(parse(original), configPath)
+  if (config.version === 3) {
+    parseConfig(config)
+    return { changed: false, dryRun: !!options.dryRun, defaultAgent: String(config.default_agent ?? "coder"), profiles: [] }
   }
-  const config = raw as Record<string, unknown>
-  const fromVersion = typeof config.version === "number" ? config.version : 0
-
-  if (fromVersion === 3) {
-    return {
-      configPath, agentsDir, dryRun, changed: false, wroteConfig: false,
-      fromVersion, defaultAgent: stringField(config.default_agent) ?? "coder",
-      agents: [], warnings: ["config is already version 3; nothing to migrate"],
-    }
+  if (config.version !== 2) throw new Error(`Expected version: 2; found ${String(config.version)}.`)
+  const profiles = config.profiles === undefined ? {} : mapping(config.profiles, "profiles")
+  const overrides = config.profile_overrides === undefined ? {} : mapping(config.profile_overrides, "profile_overrides")
+  const allowedConfig = new Set(["version", "models", "max_steps", "branching", "providers", "hide_readonly_tools", "editor", "summary_detail", "profiles", "default_profile", "profile_overrides"])
+  for (const key of Object.keys(config)) if (!allowedConfig.has(key)) throw new Error(`Unknown config field: ${key}; refusing to discard data.`)
+  if (config.default_agent !== undefined) throw new Error("Conflicting default_agent and default_profile; resolve manually.")
+  const defaultAgent = text(config.default_profile, "default_profile") ?? "coder"
+  if (!validId(defaultAgent)) throw new Error(`Invalid default agent ID: ${defaultAgent}`)
+  if (defaultAgent !== "coder" && !Object.hasOwn(profiles, defaultAgent)) {
+    // An existing V3 profile can also satisfy the default, checked below.
+    const existing = path.join(profileDir, `${defaultAgent}.yaml`)
+    if (absent(existing)) throw new Error(`Default agent ${defaultAgent} has no profile.`)
+    if (!fs.lstatSync(existing).isFile()) throw new Error(`Default agent profile is not a regular file: ${existing}`)
+    parseProfile(parse(fs.readFileSync(existing, "utf8")), defaultAgent)
   }
-  if (fromVersion !== 2) {
-    throw new Error(`Unsupported config version "${String(config.version)}". Only V2 configs can be migrated.`)
-  }
-
-  const warnings: string[] = []
+  if (!absent(profileDir) && !fs.lstatSync(profileDir).isDirectory()) throw new Error(`${profileDir} is not a regular directory.`)
+  const outputs: { file: string; content: string }[] = []
   const configDir = path.dirname(configPath)
-  const profiles = config.profiles && typeof config.profiles === "object" && !Array.isArray(config.profiles)
-    ? config.profiles as Record<string, unknown>
-    : {}
-  const overrides = config.profile_overrides && typeof config.profile_overrides === "object" && !Array.isArray(config.profile_overrides)
-    ? config.profile_overrides as Record<string, unknown>
-    : {}
-
-  const agents: AgentPlan[] = []
-  for (const [id, value] of Object.entries(profiles)) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      warnings.push(`profile "${id}" is not a mapping; skipped`)
-      continue
+  for (const [id, raw] of Object.entries(profiles)) {
+    if (!validId(id)) throw new Error(`Invalid profile ID: ${id}`)
+    const profile = mapping(raw, `profiles.${id}`)
+    const allowed = new Set(["name", "description", "model", "thinking_effort", "thinking_mode", "tools", "skills", "sub_agents", "subagents", "prompt", "prompt_file"])
+    for (const key of Object.keys(profile)) if (!allowed.has(key)) throw new Error(`Unknown profiles.${id}.${key}; refusing to discard data.`)
+    const legacyModel = typeof profile.model === "object" && profile.model !== null ? mapping(profile.model, `profiles.${id}.model`) : undefined
+    if (legacyModel) for (const key of Object.keys(legacyModel)) if (!["id", "thinking", "thinking_effort", "thinking_mode"].includes(key)) throw new Error(`Unknown profiles.${id}.model.${key}`)
+    const thinking = legacyModel?.thinking === undefined ? undefined : mapping(legacyModel.thinking, `profiles.${id}.model.thinking`)
+    if (thinking) for (const key of Object.keys(thinking)) if (!["effort", "mode"].includes(key)) throw new Error(`Unknown thinking field: ${key}`)
+    const modelId = text(legacyModel ? legacyModel.id : profile.model, `profiles.${id}.model`)
+    const effort = oneValue(`profiles.${id}.thinking_effort`, profile.thinking_effort, legacyModel?.thinking_effort, thinking?.effort)
+    const mode = oneValue(`profiles.${id}.thinking_mode`, profile.thinking_mode, legacyModel?.thinking_mode, thinking?.mode)
+    if (profile.sub_agents !== undefined && profile.subagents !== undefined) throw new Error(`Conflicting sub-agent fields for ${id}`)
+    if (profile.prompt !== undefined && profile.prompt_file !== undefined) throw new Error(`Conflicting prompt and prompt_file for ${id}`)
+    const promptFile = text(profile.prompt_file, `profiles.${id}.prompt_file`)
+    const promptPath = promptFile ? path.resolve(configDir, promptFile) : undefined
+    if (promptPath && (absent(promptPath) || !fs.lstatSync(promptPath).isFile())) throw new Error(`Prompt is missing or not a regular file: ${promptPath}`)
+    const prompt = promptPath ? fs.readFileSync(promptPath, "utf8") : text(profile.prompt, `profiles.${id}.prompt`)
+    if (prompt !== undefined && !prompt.trim()) throw new Error(`profiles.${id}.prompt must not be empty; resolve before migrating.`)
+    const override = overrides[id] === undefined ? {} : mapping(overrides[id], `profile_overrides.${id}`)
+    for (const key of Object.keys(override)) if (!["skills_add", "tools_add"].includes(key)) throw new Error(`Unknown profile_overrides.${id}.${key}`)
+    const tools = list(profile.tools, `profiles.${id}.tools`) ?? []
+    const skills = list(profile.skills, `profiles.${id}.skills`) ?? []
+    const yaml = {
+      name: text(profile.name, `profiles.${id}.name`) ?? id,
+      ...(text(profile.description, `profiles.${id}.description`) ? { description: profile.description } : {}),
+      ...(modelId || effort || mode ? { model: { ...(modelId ? { id: modelId } : {}), ...(effort ? { thinking_effort: effort } : {}), ...(mode ? { thinking_mode: mode } : {}) } } : {}),
+      tools: [...new Set([...tools, ...(list(override.tools_add, `profile_overrides.${id}.tools_add`) ?? [])])],
+      skills: [...new Set([...skills, ...(list(override.skills_add, `profile_overrides.${id}.skills_add`) ?? [])])],
+      ...(profile.sub_agents !== undefined || profile.subagents !== undefined ? { subagents: list(profile.sub_agents ?? profile.subagents, `profiles.${id}.sub_agents`) } : {}),
+      ...(prompt !== undefined ? { prompt } : {}),
     }
-    if (!AGENT_ID.test(id)) {
-      warnings.push(`profile "${id}" is not a valid agent id (lowercase letters, digits, . _ -); skipped`)
-      continue
-    }
-
-    const dir = path.join(agentsDir, id)
-    const manifestPath = path.join(dir, "agent.yaml")
-    const exists = fs.existsSync(manifestPath)
-    const action: AgentPlan["action"] = exists ? (force ? "overwrite" : "skip") : "create"
-    if (exists && !force) warnings.push(`agents/${id}/agent.yaml already exists; skipped (use --force to overwrite)`)
-
-    const manifest = profileToManifest(value as Record<string, unknown>)
-    applyOverrides(manifest, overrides[id] as Record<string, unknown> | undefined, warnings, id)
-    const instructions = readProfileInstructions(value as Record<string, unknown>, configDir, warnings, id)
-    const instructionsPath = instructions === undefined ? undefined : path.join(dir, "instructions.md")
-
-    if (!dryRun && action !== "skip") {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-      fs.writeFileSync(manifestPath, stringifyYAML(manifest), { encoding: "utf8", mode: 0o600 })
-      if (instructionsPath && instructions !== undefined) {
-        fs.writeFileSync(instructionsPath, instructions, { encoding: "utf8", mode: 0o600 })
-      }
-    }
-
-    agents.push({ id, manifestPath, ...(instructionsPath ? { instructionsPath } : {}), action })
+    parseProfile(yaml, id)
+    const file = path.join(profileDir, `${id}.yaml`)
+    if (!absent(file)) throw new Error(`Destination already exists: ${file}. Resolve the conflict before migrating.`)
+    outputs.push({ file, content: stringify(yaml) })
   }
+  for (const id of Object.keys(overrides)) if (!Object.hasOwn(profiles, id)) throw new Error(`Orphan profile_overrides.${id}`)
+  const migrated = { ...config, version: 3, default_agent: defaultAgent }
+  delete migrated.profiles
+  delete migrated.default_profile
+  delete migrated.profile_overrides
+  const content = stringify(migrated)
+  parseConfig(mapping(parse(content), "migrated config"))
+  const report: MigrateReport = { changed: true, dryRun: !!options.dryRun, defaultAgent, profiles: outputs.map(o => o.file) }
+  if (options.dryRun) return report
 
-  for (const id of Object.keys(overrides)) {
-    if (!(id in profiles)) warnings.push(`profile_overrides.${id} has no matching profile; ignored`)
-  }
-
-  const defaultAgent = stringField(config.default_profile) ?? "coder"
-  const v3: Record<string, unknown> = { version: 3, default_agent: defaultAgent }
-  for (const key of ["models", "max_steps", "branching", "providers", "hide_readonly_tools", "editor"]) {
-    if (config[key] !== undefined) v3[key] = config[key]
-  }
-
-  const report: MigrateReport = {
-    configPath, agentsDir, dryRun, changed: true, wroteConfig: false,
-    fromVersion, defaultAgent, agents, warnings,
-  }
-  if (dryRun) return report
-
-  // Backup first, verify it round-trips, then write the new config atomically.
-  if (original.length > 0) {
-    const backupPath = `${configPath}.v2.${Date.now()}.bak`
-    fs.writeFileSync(backupPath, original, { encoding: "utf8", mode: 0o600 })
-    if (fs.readFileSync(backupPath, "utf-8") !== original) {
-      throw new Error(`Backup verification failed for ${backupPath}; config left untouched.`)
-    }
-    report.backupPath = backupPath
-  }
-
-  const content = stringifyYAML(v3)
-  parseYAML(content) // sanity-check before clobbering the original
-  const temporary = `${configPath}.tmp.${process.pid}.${Date.now()}`
+  // Keep an exclusive, verified backup. Roll back every created output on failure.
+  const backupPath = `${configPath}.v2.${Date.now()}.${process.pid}.bak`
+  const temp = `${configPath}.tmp.${process.pid}.${Date.now()}`
+  const created: string[] = []
+  let committed = false
   try {
-    fs.writeFileSync(temporary, content, { encoding: "utf8", mode: 0o600 })
-    fs.renameSync(temporary, configPath)
+    fs.writeFileSync(backupPath, original, { flag: "wx", mode: 0o600 })
+    if (fs.readFileSync(backupPath, "utf8") !== original) throw new Error("Backup verification failed.")
+    fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 })
+    for (const output of outputs) {
+      const fd = fs.openSync(output.file, "wx", 0o600)
+      created.push(output.file)
+      try { fs.writeFileSync(fd, output.content) } finally { fs.closeSync(fd) }
+    }
+    fs.writeFileSync(temp, content, { flag: "wx", mode: 0o600 })
+    fs.renameSync(temp, configPath)
+    committed = true
+  } catch (error) {
+    if (!committed) for (const file of created) fs.rmSync(file, { force: true })
+    throw error
   } finally {
-    try { fs.rmSync(temporary, { force: true }) } catch {}
+    fs.rmSync(temp, { force: true })
   }
-  report.wroteConfig = true
-
+  report.backupPath = backupPath
   return report
 }
 
-// ---------------------------------------------------------------------------
-// CLI
-// ---------------------------------------------------------------------------
-
-function parseCliArgs(argv: string[]): { options: MigrateOptions; help: boolean } {
-  let configPath = defaultConfigPath()
-  let agentsDir: string | undefined
-  let dryRun = false
-  let force = false
-  let help = false
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]
-    if (arg === "--dry-run") dryRun = true
-    else if (arg === "--force") force = true
-    else if (arg === "--help" || arg === "-h") help = true
-    else if (arg === "--config") configPath = argv[++i] ?? configPath
-    else if (arg === "--agents-dir") agentsDir = argv[++i]
-    else throw new Error(`Unknown argument: ${arg}`)
-  }
-
-  return {
-    options: { configPath, agentsDir: agentsDir ?? path.join(path.dirname(configPath), "agents"), dryRun, force },
-    help,
-  }
-}
-
-function printReport(report: MigrateReport): void {
-  const prefix = report.dryRun ? "[dry-run] " : ""
-  console.log(`${prefix}config: ${report.configPath}`)
-  console.log(`${prefix}agents: ${report.agentsDir}`)
-  if (!report.changed) {
-    console.log(`${prefix}already version 3 — nothing to do`)
-    return
-  }
-  console.log(`${prefix}default_agent: ${report.defaultAgent}`)
-  for (const agent of report.agents) {
-    console.log(`${prefix}  ${agent.action.padEnd(9)} agents/${agent.id}/agent.yaml`)
-  }
-  for (const warning of report.warnings) console.log(`${prefix}  ! ${warning}`)
-  if (report.backupPath) console.log(`${prefix}backup: ${report.backupPath}`)
-  if (report.dryRun) console.log(`${prefix}no files written`)
-}
-
 if (import.meta.main) {
-  const { options, help } = parseCliArgs(process.argv.slice(2))
-  if (help) {
-    console.log("Usage: bun scripts/migrate-config-v2-to-v3.ts [--dry-run] [--force] [--config <path>] [--agents-dir <path>]")
-  } else {
-    try {
-      printReport(migrateConfigV2ToV3(options))
-    } catch (error) {
-      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-      process.exit(1)
+  try {
+    const args = process.argv.slice(2)
+    let configPath = path.join(process.env.QUARK_CONFIG_DIR ?? path.join(os.homedir(), ".config", "quark"), "config.yaml")
+    let dryRun = false
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--dry-run") dryRun = true
+      else if (args[i] === "--config" && args[i + 1]) configPath = args[++i]!
+      else throw new Error(`Unknown or incomplete argument: ${args[i]}`)
     }
+    const report = migrateConfigV2ToV3({ configPath, dryRun })
+    console.log(report.changed ? `${dryRun ? "[dry-run] " : ""}Migrated ${report.profiles.length} profiles; default: ${report.defaultAgent}; backup: ${report.backupPath ?? "not written"}` : "Already V3; no changes.")
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
   }
 }
