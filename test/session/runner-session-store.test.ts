@@ -95,6 +95,36 @@ function portable(id: string) {
 }
 
 describe("createRunner — instance-scoped session history", () => {
+  test("auto-branch uses the runner store and emits the child history", async () => {
+    const smallCatalog = new CatalogRegistry(createCatalogSnapshot({
+      ollama: {
+        id: "ollama", name: "Ollama", npm: "@ollama/ai", env: ["OLLAMA_API_KEY"],
+        doc: "https://ollama.example/docs",
+        models: {
+          "test-model": {
+            id: "test-model", name: "Test Model", description: "offline", attachment: false,
+            reasoning: false, tool_call: true, release_date: "2025-01-01", last_updated: "2025-01-01",
+            modalities: { input: ["text"], output: ["text"] }, open_weights: false,
+            limit: { context: 10, output: 1 },
+          },
+        },
+      },
+    }, { fetchedAt: 1 }))
+    const runner = createRunner({
+      agent: portable("branch-agent"), stream: captureStream().stream,
+      policies: { maxSteps: 1, branching: { auto: true, threshold: 0.5 } },
+    })
+    const switches: string[] = []
+    runner.bus.on("session-switch", (event) => switches.push(event.sessionId))
+    const result = await runner.prompt({ parts: [{ type: "text", text: "branch this request" }], catalog: smallCatalog })
+    expect(switches).toContain(result.sessionId)
+    const child = runner.store.get(result.sessionId)
+    expect(child?.parentSessionId).toBeDefined()
+    expect(runner.store.get(child!.parentSessionId!)?.summary).toBeNull()
+    expect(loadMessages(child!.id, runner.store).messages.length).toBeGreaterThan(0)
+    expect(defaultSessionStore.get(child!.id)).toBeNull()
+    expect(existsSync(storageRoot)).toBe(false)
+  })
   test("two runners with the same session ID keep different histories", async () => {
     const a = captureStream()
     const b = captureStream()

@@ -7,9 +7,7 @@
 //   quark --model claude-sonnet-4.5 "one-off with a specific model"
 
 import { parseArgs } from "util"
-import { prompt as legacyPrompt } from "@quark/runner/session/prompt"
 import { ensureStorageRoot } from "@quark/runner/storage/session-jsonl"
-import { loadPlugins } from "./plugin-loader"
 import { materializeAgent, resolveAgent, listAgents } from "./agent/agent"
 import { bus, type TypedBus } from "@quark/runner/session/events"
 import { startEventWriter } from "@quark/runner/session/event-writer"
@@ -17,8 +15,6 @@ import { setVerbose, debug } from "@quark/runner/debug"
 import { formatArgs } from "@quark/runner/debug/format-tool-args"
 import { createQuarkRuntime } from "./runtime"
 import { useRunnerSessionRoot } from "./session-root"
-import { loadConfig } from "./config/config"
-import { loadAmbientInstructions } from "./ambient"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -206,32 +202,21 @@ async function main() {
   const parentSessionId = process.env.QUARK_PARENT_SESSION_ID
   const modelOverride = args.model ?? undefined
 
-  // Sub-agent child: keep the legacy singleton path. Instance runners are
-  // intentionally isolated from process-global turn state, so they never flip
-  // the custom-fetch force-agent flag a sub-agent session needs.
   if (parentSessionId) {
-    await loadPlugins()
+    const runtime = await createQuarkRuntime({ agent, bus })
     const cleanupEventWriter = startEventWriter({
       resolvedModel: args.model ?? agentDef.model,
       profile: agentDef.id,
+      eventBus: runtime.bus,
     })
-    wireCliBus(bus)
+    wireCliBus(runtime.bus)
     try {
-      const config = loadConfig()
-      const result = await legacyPrompt({
+      const result = await runtime.prompt({
         sessionId: args.sessionId,
         parentSessionId,
         ephemeral: args.noStore,
         parts: [{ type: "text", text: args.message }],
         model: modelOverride,
-        agent,
-        ambientInstructions: loadAmbientInstructions,
-        policies: {
-          maxSteps: config.maxSteps,
-          branching: config.branching,
-          smallModel: modelOverride ?? config.models.small,
-          undo: true,
-        },
       })
       dlog(`session: ${result.sessionId}`)
       cleanupEventWriter()

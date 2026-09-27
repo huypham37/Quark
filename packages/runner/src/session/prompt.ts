@@ -26,7 +26,6 @@ import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
 import { generateSessionTitle } from "./title";
 import { resolveToolSet } from "../tool/ai-adapter";
-import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel, resolveModelRuntime, type ResolveModelOptions } from "../provider/resolver";
 import type { CatalogRegistry } from "../provider/catalog-registry";
 import type { AgentDefinition } from "../agent";
@@ -67,9 +66,7 @@ export interface PromptRuntime {
   store: SessionStore;
   /**
    * When true this runtime owns all of its turn state and must not touch
-   * process-global state: `QUARK_SESSION_ID`, the custom-fetch force-agent
-   * flag, or auto-branching (which persists through the global JSONL store and
-   * flips that same flag). Instance runners created by `createRunner()` set
+   * process-global state such as `QUARK_SESSION_ID`. Instance runners created by `createRunner()` set
    * this; the legacy singleton runtime leaves it `false` so CLI/TUI behavior
    * is unchanged.
    */
@@ -228,7 +225,7 @@ export async function prompt(input: {
     userText: text,
     model: input.model,
     agent,
-    forceAgent: !!input.parentSessionId,
+    initiator: input.parentSessionId ? "agent" : undefined,
     policies,
     resolveOptions,
     ambient: input.ambientInstructions,
@@ -290,7 +287,7 @@ async function runTurn(input: {
   userText: string
   model?: string
   agent: AgentDefinition
-  forceAgent?: boolean
+  initiator?: "user" | "agent"
   policies: RunPolicies
   resolveOptions?: ResolveModelOptions
   ambient?: AmbientInstructions | null
@@ -305,6 +302,7 @@ async function runTurn(input: {
   // hooks are instance-scoped for runners (and global for the legacy runtime).
   const resolveOptions: ResolveModelOptions = {
     ...(input.resolveOptions ?? {}),
+    ...(input.initiator ? { initiator: input.initiator } : {}),
     hooks: runtime.hooks,
     // Instance runners thread their own session ID so concurrent runs never
     // share a provider-side conversation (OpenCode Go `x-opencode-session`).
@@ -319,6 +317,7 @@ async function runTurn(input: {
   touchSession(sessionId, store)
 
   const session = getSession(sessionId, store)
+  if (session.kind === "subagent") resolveOptions.initiator = "agent"
   // Undo writes file snapshots + a .touched.json tracker under the session
   // storage root. Portable policies disable that path entirely, and ephemeral
   // sessions must never touch disk — skip both for them.
@@ -328,9 +327,6 @@ async function runTurn(input: {
     preTurnSnapshot(sessionId, userMessageId).catch(() => {})
   }
 
-  // Process-global custom-fetch force-agent is only for the legacy path
-  // (sub-agent/compaction). Instance runners never flip it.
-  if (input.forceAgent && !runtime.isolated) setForceAgent(true)
   const controller = input.controller ?? new AbortController()
   runtime.active.set(sessionId, controller)
   runtime.bus.emit("loop-start", { sessionId })
@@ -392,7 +388,6 @@ async function runTurn(input: {
         status: "aborted",
       })
     }
-    if (input.forceAgent && !runtime.isolated) setForceAgent(false)
     for (const [id, activeController] of runtime.active) {
       if (activeController === controller) runtime.active.delete(id)
     }
@@ -463,11 +458,6 @@ async function loop(
   const maxSteps = policies.maxSteps;
   const branching = policies.branching;
   const runWorkspace = workspace ?? process.cwd();
-  // Instance runners disable auto-branching: it persists through the global
-  // JSONL store and flips the process-global custom-fetch force-agent. The
-  // app passes its config-derived branching in, but instance runs stay off
-  // global state. Advanced branching is out of scope for the instance API.
-  const autoBranching = runtime.isolated ? { ...branching, auto: false } : branching;
 
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -475,9 +465,22 @@ async function loop(
   const agentModelSpec = agent.model;
   const modelSpec = modelOpt ?? agentModelSpec;
   const usingAgentModel = modelOpt === undefined || modelOpt === agentModelSpec;
-  const resolvedModel = await resolveModelRuntime(modelSpec, "main", resolveOptions);
-  const model = resolvedModel.languageModel;
-  const modelLimit = resolvedModel.catalogModel.limit;
+  let resolvedModel = await resolveModelRuntime(modelSpec, "main", resolveOptions);
+  // Summary requests are separate model resolutions so their fetch closure has
+  // an agent initiator without changing the active turn's provider state.
+  const summaryModel = async (sessionId: string) => (await resolveModelRuntime(modelSpec, "main", {
+    ...resolveOptions, ...(runtime.isolated ? { sessionId } : {}), initiator: "agent",
+  })).languageModel;
+  let model = resolvedModel.languageModel;
+  let modelLimit = resolvedModel.catalogModel.limit;
+  const moveToBranch = async (nextSessionId: string) => {
+    if (runtime.isolated) {
+      // OpenCode Go binds its conversation header at model creation.
+      resolvedModel = await resolveModelRuntime(modelSpec, "main", { ...resolveOptions, sessionId: nextSessionId });
+      model = resolvedModel.languageModel;
+      modelLimit = resolvedModel.catalogModel.limit;
+    }
+  };
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
@@ -529,26 +532,26 @@ async function loop(
         modelMessages,
         modelLimit,
         parts,
-      }, autoBranching)
+      }, branching)
     ) {
       try {
         const branchResult = await createAutoBranch({
           sessionId: currentSessionId,
           messages,
           parts,
-          model,
+          model: await summaryModel(currentSessionId),
           profile: agent.id,
           abort,
+          store: runtime.store,
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
-        if (replayedUserMessageId) {
-          currentUserMessageId = replayedUserMessageId
-          turnMessageIds.set(currentSessionId, currentUserMessageId)
-        }
+        if (replayedUserMessageId) currentUserMessageId = replayedUserMessageId
+        turnMessageIds.set(currentSessionId, currentUserMessageId)
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient, runWorkspace);
+        await moveToBranch(currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient, runWorkspace, runtime.store);
 
         // Re-load after branching so the model sees the task lineage context.
         continue;
@@ -609,7 +612,7 @@ async function loop(
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       bus: runtime.bus,
-      branching: autoBranching,
+      branching,
       hooks: runtime.hooks,
       store: runtime.store,
       ...(stream ? { stream } : {}),
@@ -640,9 +643,6 @@ async function loop(
     // 7. Decide next action
     if (result === "continue") continue;
     if (result === "branch") {
-      // Instance runners never auto-branch (see autoBranching above); the
-      // context-too-long path would otherwise flip the global force-agent.
-      if (runtime.isolated) break;
       // Provider returned context-too-long or mid-stream pressure exceeded.
       try {
         const { messages: curMsgs, parts: curParts } =
@@ -651,19 +651,19 @@ async function loop(
           sessionId: currentSessionId,
           messages: curMsgs,
           parts: curParts,
-          model,
+          model: await summaryModel(currentSessionId),
           profile: agent.id,
           abort,
+          store: runtime.store,
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
-        if (replayedUserMessageId) {
-          currentUserMessageId = replayedUserMessageId
-          turnMessageIds.set(currentSessionId, currentUserMessageId)
-        }
+        if (replayedUserMessageId) currentUserMessageId = replayedUserMessageId
+        turnMessageIds.set(currentSessionId, currentUserMessageId)
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient, runWorkspace);
+        await moveToBranch(currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient, runWorkspace, runtime.store);
 
         continue;
       } catch (err) {

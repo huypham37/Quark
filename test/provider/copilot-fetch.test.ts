@@ -320,34 +320,25 @@ describe("createCopilotFetch", () => {
     expect(captured.headers?.["x-api-key"]).toBeUndefined()
   })
 
-  test("setForceAgent forces x-initiator to 'agent' regardless of body", async () => {
-    const captured: { headers?: Record<string, string> } = {}
-    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      captured.headers = Object.fromEntries(
-        new Headers(init?.headers as HeadersInit).entries(),
-      )
-      return new Response("{}", { status: 200 })
+  test("concurrent child and user requests keep independent initiators, even after an error", async () => {
+    const seen: string[] = []
+    const capture = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("x-initiator") ?? "missing")
+      return new Response("{}")
     }
-
-    const copilotFetch = createCopilotFetch({
-      getToken: async () => "tok",
-      fetch: mockFetch as typeof fetch,
-    })
-
-    // Even though last message is user, forceAgent should override
-    copilotFetch.setForceAgent(true)
-    await copilotFetch("https://api.githubcopilot.com/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
-    })
-    expect(captured.headers?.["x-initiator"]).toBe("agent")
-
-    // Turning it off restores normal behavior
-    copilotFetch.setForceAgent(false)
-    await copilotFetch("https://api.githubcopilot.com/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
-    })
-    expect(captured.headers?.["x-initiator"]).toBe("user")
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const agent = createCopilotFetch({ getToken: async () => { await gate; return "tok" }, fetch: capture as typeof fetch, initiator: "agent" })
+    const user = createCopilotFetch({ getToken: async () => "tok", fetch: capture as typeof fetch })
+    const request = { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }) }
+    const child = agent("https://api.githubcopilot.com/chat/completions", request)
+    await user("https://api.githubcopilot.com/chat/completions", request)
+    release()
+    await child
+    expect(seen).toEqual(["user", "agent"])
+    const failing = createCopilotFetch({ getToken: async () => { throw new Error("aborted") }, initiator: "agent" })
+    await expect(failing("https://api.githubcopilot.com/chat/completions", request)).rejects.toThrow("aborted")
+    await user("https://api.githubcopilot.com/chat/completions", request)
+    expect(seen.at(-1)).toBe("user")
   })
 })

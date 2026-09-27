@@ -71,6 +71,8 @@ export interface ResolveModelOptions {
    * (legacy CLI/TUI), preserving existing behavior.
    */
   sessionId?: string
+  /** Explicit Copilot request initiator for this model resolution. */
+  initiator?: "user" | "agent"
 }
 
 const EMPTY_CATALOG = createCatalogSnapshot({}, { fetchedAt: 0 })
@@ -94,6 +96,7 @@ function buildRegistry(options: ResolveModelOptions): ProviderRegistry {
     refreshCodexToken: options.refreshCodexToken,
     credentialStore: options.credentialStore,
     sessionId: options.sessionId,
+    initiator: options.initiator,
     onCodexRefresh: options.codexTokenStore
       ? (token) => options.codexTokenStore!.save(token)
       : undefined,

@@ -13,6 +13,7 @@ import {
   saveUserMessage,
 } from "../../packages/runner/src/session/message"
 import { buildCompactionPrompt } from "../../packages/runner/src/prompts/compaction"
+import { MemorySessionStore } from "../../packages/runner/src/session/store"
 import {
   buildLineageContext,
   compactBranch,
@@ -42,6 +43,23 @@ afterAll(() => {
 })
 
 describe("session branching", () => {
+  test("isolated branches replay into their own store, not the global session root", () => {
+    const store = new MemorySessionStore()
+    const parent = createSession({ directory: "/workspace" }, store)
+    const user = saveUserMessage({ sessionId: parent.id, text: "first", store })
+    const branch = createBranch({
+      sessionId: parent.id, summary: "first task", profile: "coder",
+      recentMessages: loadMessages(parent.id, store).messages,
+      recentParts: loadMessages(parent.id, store).parts,
+      store,
+    })
+    expect(getSession(branch.sessionId, store).parentSessionId).toBe(parent.id)
+    expect(getSession(parent.id, store).summary).toBe("first task")
+    expect(loadMessages(branch.sessionId, store).messages.length).toBeGreaterThan(0)
+    expect(branch.replayedMessageIds?.[user.id]).toBeDefined()
+    expect(buildLineageContext(branch.sessionId, store)).toContain("first task")
+    expect(listSessions().map((session) => session.id)).not.toContain(branch.sessionId)
+  })
   test("builds a compaction prompt from the source and transcript", () => {
     const prompt = buildCompactionPrompt("user: Continue the refactor")
 

@@ -7,7 +7,7 @@
 //
 // Activated by the internal subagent supervisor via QUARK_EMIT_EVENTS=1.
 
-import { bus } from "./events"
+import { bus, type TypedBus } from "./events"
 import type { SubagentErrorKind } from "../subagent/protocol"
 
 // Compact event shapes — keep wire size small
@@ -42,7 +42,8 @@ export function emitSubagentError(kind: SubagentErrorKind, message: string): voi
  * @param resolvedModel - The actual model string being used (resolved from CLI flag > profile > config), used for display in the parent TUI.
  * Returns a cleanup function to unsubscribe.
  */
-export function startEventWriter(options?: { resolvedModel?: string; tokenLimit?: number; profile?: string }): () => void {
+export function startEventWriter(options?: { resolvedModel?: string; tokenLimit?: number; profile?: string; eventBus?: TypedBus }): () => void {
+  const eventBus = options?.eventBus ?? bus
   const unsubs: (() => void)[] = []
 
   // Resolve the model once at startup — use the passed model if provided
@@ -58,8 +59,8 @@ export function startEventWriter(options?: { resolvedModel?: string; tokenLimit?
     event: K,
     handler: (data: import("./events").BusEvents[K]) => void,
   ) {
-    bus.on(event, handler)
-    unsubs.push(() => bus.off(event, handler))
+    eventBus.on(event, handler)
+    unsubs.push(() => eventBus.off(event, handler))
   }
 
   on("tool-start", (data) => {
