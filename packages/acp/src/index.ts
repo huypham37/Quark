@@ -32,6 +32,7 @@ import { registerLifecycle, type SessionLifecycle } from "./lifecycle"
 import { registerCancellation } from "./cancellation"
 import { createUpdateBridge } from "./updates"
 import { createPermissionBridge } from "./permissions"
+import { buildConfigOptions, registerConfigOptions, type ModelOption } from "./config-options"
 
 export { AGENT_NAME, AGENT_VERSION } from "./initialization"
 export { createUpdateBridge } from "./updates"
@@ -42,6 +43,8 @@ export { createPermissionBridge } from "./permissions"
 export type { PermissionBridge, PermissionBridgeOptions } from "./permissions"
 export { connectMcpServer, connectStdioServers, requireStdio } from "./mcp"
 export type { McpConnection, McpConnectOptions } from "./mcp"
+export { buildConfigOptions, registerConfigOptions } from "./config-options"
+export type { ModelOption, ConfigOptionsContext } from "./config-options"
 
 export interface AcpAgentOptions {
   /**
@@ -78,6 +81,21 @@ export interface AcpAgentOptions {
    * through and lets the provider surface its own error.
    */
   imageSupport?: boolean
+  /**
+   * Available models for the ACP `configOptions` model-picker. When provided,
+   * `session/new` responses include a `configOptions` array with
+   * `category: "model"` so the client (Zed) can render a model selector.
+   * `session/set_config_option` updates the per-session model override.
+   * Omit or pass `[]` to suppress the model config option.
+   */
+  models?: ModelOption[]
+  /**
+   * The agent's default model spec (e.g. `"openai/gpt-5.6-luna"`). Used as
+   * the initial `currentValue` in the model config option. Must match one of
+   * the `models[].id` values when `models` is provided. Omit when `models`
+   * is empty.
+   */
+  defaultModel?: string
   /** Diagnostics sink. Defaults to stderr — stdout is reserved for NDJSON. */
   log?: (message: string) => void
 }
@@ -115,6 +133,12 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // QUA-245: gate every non-read-only tool before it executes. Denied tools
   // throw out of the engine's pre-execution hook, so they never run.
   const permissions = createPermissionBridge({ log: options.log })
+  // Model config options: when the host provides available models, the session
+  // bridge returns `configOptions` in `session/new` so the client renders a
+  // model picker, and the `session/set_config_option` handler updates the
+  // per-session override threaded into `runner.prompt({ model })`.
+  const models = options.models ?? []
+  const defaultModel = options.defaultModel ?? ""
   const sessions = registerSessions(app, {
     createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
     images: options.images === true,
@@ -125,7 +149,13 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
       else updates.onTurnStart(turn)
       permissions.onTurnStart(turn)
     },
+    buildConfigOptions:
+      models.length > 0 ? () => buildConfigOptions(models, defaultModel) : undefined,
   })
+  // Register session/set_config_option when models are advertised.
+  if (models.length > 0) {
+    registerConfigOptions(app, { models, defaultModel, sessions })
+  }
   // QUA-247: lifecycle over the SAME store the runners use.
   const lifecycle = registerLifecycle(app, sessions, { store, log: options.log })
   Object.assign(capabilities, lifecycle.capabilities)

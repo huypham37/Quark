@@ -42,6 +42,7 @@ import type {
   PromptRequest,
   PromptResponse,
   ResourceLink,
+  SessionConfigOption,
 } from "@agentclientprotocol/sdk"
 import { isAbsolute } from "node:path"
 import type { Runner, ToolDef } from "@quark/runner"
@@ -66,6 +67,8 @@ interface SessionState {
   mcp: McpConnection[]
   /** Tools discovered from `mcp`; injected into the lazy runner. */
   mcpTools: ToolDef[]
+  /** Per-session model override; null means use the agent's default. */
+  modelOverride: string | null
 }
 
 /** Context handed to `onTurnStart`, once per turn, before the runner runs. */
@@ -110,6 +113,13 @@ export interface SessionBridgeOptions {
    * pass images through and let the provider surface its own error.
    */
   imageSupport?: boolean
+  /**
+   * Build the initial `configOptions` for a new session (e.g. model picker).
+   * Called once per `session/new`; the returned array is included in the
+   * response so the client can render config UI immediately. Omit or return
+   * an empty array to suppress config options.
+   */
+  buildConfigOptions?(): SessionConfigOption[]
   /** Diagnostics sink for MCP connect/teardown. Defaults to no-op (stderr in prod). */
   log?(message: string): void
 }
@@ -158,6 +168,10 @@ export interface SessionBridge {
   dispose(): void
   /** Runner session ID for an ACP session; for diagnostics and tests. */
   runnerSessionId(acpSessionId: string): string | null
+  /** Set the model override for a session (used by `session/set_config_option`). */
+  setModelOverride(acpSessionId: string, model: string): void
+  /** Get the model override for a session; null means the agent default. */
+  getModelOverride(acpSessionId: string): string | null
 }
 
 /**
@@ -194,8 +208,13 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       unsubscribe: null,
       mcp,
       mcpTools: mcp.flatMap((connection) => connection.tools),
+      modelOverride: null,
     })
-    return { sessionId: acpSessionId }
+    const configOptions = options.buildConfigOptions?.()
+    return {
+      sessionId: acpSessionId,
+      ...(configOptions?.length ? { configOptions } : {}),
+    }
   }
 
   /** Kill a state's MCP children without awaiting (teardown is best-effort). */
@@ -280,6 +299,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
           ...(state.runnerSessionId ? { sessionId: state.runnerSessionId } : {}),
           parts,
           ...(images.length > 0 ? { images } : {}),
+          ...(state.modelOverride ? { model: state.modelOverride } : {}),
           targetWorkspace: state.cwd,
         })
         state.runnerSessionId = result.sessionId
@@ -341,6 +361,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         unsubscribe: null,
         mcp,
         mcpTools: mcp.flatMap((connection) => connection.tools),
+        modelOverride: null,
       })
     },
 
@@ -382,6 +403,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
     runnerSessionId(acpSessionId) {
       return sessions.get(acpSessionId)?.runnerSessionId ?? null
+    },
+
+    setModelOverride(acpSessionId, model) {
+      const state = requireSession(acpSessionId)
+      state.modelOverride = model
+    },
+
+    getModelOverride(acpSessionId) {
+      return sessions.get(acpSessionId)?.modelOverride ?? null
     },
   }
 }

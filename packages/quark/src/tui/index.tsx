@@ -38,6 +38,7 @@ import { buildPaletteEntries } from "./palette-index"
 import { commands } from "./commands"
 import { syncSettingsFromConfig } from "./settings-store"
 import { dismiss, getActive, info as notifyInfo } from "@quark/runner/notification/notification"
+import { cancelExternalTurn, runnerCancelAttemptUrl } from "./cancel"
 import { undoLatest } from "@quark/runner/commands/undo"
 import { exportSessionToMarkdown } from "@quark/runner/commands/export"
 import { authStatus } from "@quark/runner/commands/auth"
@@ -254,13 +255,27 @@ function handleSubmit(text: string, sessionId: string | null, images?: { mime: s
   }).finally(() => release?.())
 }
 
-function handleCancel(sessionId: string) {
-  if (isLiveTurn(sessionId) && !runtime.isBusy()) {
-    notifyInfo("Runner is working", "Cancel this turn through the runner API", 4000)
-    return
+function handleCancel(sessionId: string): boolean {
+  // A local turn must be cancelled synchronously so the UI and runner stop
+  // together. A live turn that is not local belongs to another process; use
+  // the REST endpoint so that process can abort its own controller.
+  if (runtime.isBusy()) {
+    ghosttyTitle.markStopped(sessionId)
+    runtime.cancel(sessionId)
+    return true
   }
+
+  if (isLiveTurn(sessionId)) {
+    let attemptedUrl = runnerCancelAttemptUrl(sessionId)
+    void cancelExternalTurn(sessionId, undefined, globalThis.fetch, (url) => { attemptedUrl = url }).catch(() => {
+      notifyInfo("Runner is working", `Cancel failed; tried ${attemptedUrl}`, 4000)
+    })
+    return false
+  }
+
   ghosttyTitle.markStopped(sessionId)
   runtime.cancel(sessionId)
+  return true
 }
 
 function handleThinkingEffortChange(thinkingEffort: string) {
