@@ -177,14 +177,28 @@ but never edits shell startup files.
 
 ## Profiles
 
-A profile is a baked-in agent identity declared in YAML — `prompt_file`,
-`tools[]`, `skills[]`, and an optional `model`. Activate one deterministically
-with `--profile <name>`:
+Profiles live only in `~/.config/quark/profile/<name>.yaml` (or under
+`QUARK_CONFIG_DIR/profile/` when configured). Each profile holds its prompt
+and settings in one file:
 
-```bash
-quark --list-profiles
-quark --profile researcher --message "..."
+```yaml
+name: Researcher
+description: Investigates code
+model:
+  id: openai/gpt-5
+  thinking_effort: high
+tools: [read, skill]
+skills: [focus]
+subagents: [coder]
+prompt: |
+  Investigate the question and report evidence.
 ```
+
+Use `quark --list-agents` and `quark --agent researcher --message "..."`.
+Existing `agents/<name>/agent.yaml` plus `instructions.md` installations can
+be converted with `bun scripts/migrate-agents-to-profile.ts --dry-run`, then
+run again without `--dry-run`. The source directories are retained as backups.
+V2 inline profiles require the separate V2→V3 migration (QUA-255).
 
 ---
 

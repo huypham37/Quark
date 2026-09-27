@@ -59,7 +59,7 @@ export function isSummaryDetail(value: unknown): value is SummaryDetail {
 export interface QuarkConfig {
   /**
    * V2 keeps agents inline under `profiles:`.
-   * V3 moves them to `agents/<id>/agent.yaml` and keeps only app settings here.
+   * V3 moves them to `profile/<id>.yaml` and keeps only app settings here.
    * A V2 config is still readable; it is written back as V2 so an unmigrated
    * user never silently loses their inline profiles.
    */
@@ -213,7 +213,7 @@ export function parseConfigV2(raw: Record<string, unknown>): QuarkConfig {
   }
   if (version === 3 && raw.profiles !== undefined) {
     throw new Error(
-      "config.yaml is version 3 but still has a \"profiles\" block. Agents now live in agents/<id>/agent.yaml; remove \"profiles\" and \"default_profile\" (run the V2 to V3 migration) so agents have a single source of truth.",
+      "config.yaml is version 3 but still has a \"profiles\" block. Agents now live in profile/<id>.yaml; remove \"profiles\" and \"default_profile\" (run the V2 to V3 migration) so agents have a single source of truth.",
     )
   }
   if (!raw.models || typeof raw.models !== "object" || Array.isArray(raw.models)) {
@@ -257,7 +257,7 @@ export function loadConfig(): QuarkConfig {
  *
  * The version follows the data: a config that still carries inline `profiles`
  * is written back as V2 so those profiles survive. Once they are migrated to
- * `agents/<id>/agent.yaml` the config is V3 and uses `default_agent`.
+ * `profile/<id>.yaml` the config is V3 and uses `default_agent`.
  */
 export function serializeConfig(config: QuarkConfig): string {
   const providers = Object.fromEntries(Object.entries(config.providers).map(([id, provider]) => [id, {
