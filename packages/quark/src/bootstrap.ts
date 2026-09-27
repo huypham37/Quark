@@ -14,7 +14,7 @@ import { readTool } from "@quark/runner/tool/read";
 import { lookTool } from "@quark/runner/tool/look";
 import { buildSkillTool } from "@quark/runner/tool/skill";
 import { ensureStorageRoot } from "@quark/runner/storage/session-jsonl";
-import { loadProfileTools } from "./tool-loader";
+import { loadTools } from "./tool-loader";
 import { loadPlugins } from "./plugin-loader";
 
 let initialized = false;
@@ -67,7 +67,7 @@ export async function bootstrap(opts?: BootstrapOptions): Promise<void> {
   // Load profile-declared tools from ~/.config/quark/tools/
   // Missing or invalid tools are shown as notifications (non-blocking)
   if (opts?.profileTools && opts.profileTools.length > 0) {
-    await loadProfileTools(opts.profileTools);
+    await loadTools(opts.profileTools);
   }
 
   // Load plugins from ~/.config/quark/plugins/*.ts (non-blocking, errors notified)
