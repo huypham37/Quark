@@ -9,7 +9,7 @@ import { render } from "@opentui/solid"
 import { createCliRenderer, RGBA } from "@opentui/core"
 import { App, type CommandResult } from "./components/App"
 import { resolveModel } from "@quark/runner/provider/resolver"
-import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned, defaultSessionStore } from "@quark/runner/session/session"
+import { createSession, listProjectSessions, getSession, setSessionTitle, setSessionPinned } from "@quark/runner/session/session"
 import { loadMessages, toModelMessages } from "@quark/runner/session/message"
 import { buildSystem } from "@quark/runner/session/system"
 import { ensureStorageRoot } from "@quark/runner/storage/session-jsonl"
@@ -105,10 +105,11 @@ let currentSession: { id: string } | null = null
 let initialMessages: ReturnType<typeof dbToTuiMessages> = []
 let externalBusy = sessionArg ? isLiveTurn(sessionArg) : false
 if (sessionArg) {
-  const session = getSession(sessionArg)
+  // getSession defaults to the global store; use the active runner's store to resume its sessions.
+  const session = getSession(sessionArg, runtime.store)
   currentSession = { id: session.id }
   process.env.QUARK_SESSION_ID = session.id
-  const { messages, parts } = loadMessages(session.id)
+  const { messages, parts } = loadMessages(session.id, runtime.store)
   initialMessages = dbToTuiMessages(messages, parts)
 }
 
@@ -286,7 +287,7 @@ function handleThinkingEffortChange(thinkingEffort: string) {
 function activateBranch(branch: BranchResult, goal: string, label: string, retainTranscript = false): void {
   currentSession = { id: branch.sessionId }
   process.env.QUARK_SESSION_ID = branch.sessionId
-  const child = loadMessages(branch.sessionId)
+  const child = loadMessages(branch.sessionId, runtime.store)
   const tuiMessages = dbToTuiMessages(child.messages, child.parts)
   const visibleMessages = branch.promptMessageId
     ? tuiMessages.filter((message) => message.id === branch.promptMessageId)
@@ -371,7 +372,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
   // /new works even without an active session
   if (command === "new") {
-    const newSession = createSession()
+    const newSession = createSession(undefined, runtime.store)
     currentSession = { id: newSession.id }
     process.env.QUARK_SESSION_ID = newSession.id
     bus.emit("session-reset", { sessionId: newSession.id })
@@ -482,9 +483,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     try {
       const input = JSON.parse(args) as { id?: string; title?: string }
       const title = input.title?.trim()
-      const session = listProjectSessions().find((item) => item.id === input.id)
+      const session = listProjectSessions(undefined, runtime.store).find((item) => item.id === input.id)
       if (!session || !title) throw new Error("Invalid session rename")
-      setSessionTitle(session.id, title, defaultSessionStore, runtime.bus)
+      setSessionTitle(session.id, title, runtime.store, runtime.bus)
       notifyInfo("Session", `Renamed to: ${title}`, 2000)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -496,9 +497,9 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   if (command === "pin-session") {
     try {
       const input = JSON.parse(args) as { id?: string; pinned?: boolean }
-      const session = listProjectSessions().find((item) => item.id === input.id)
+      const session = listProjectSessions(undefined, runtime.store).find((item) => item.id === input.id)
       if (!session || typeof input.pinned !== "boolean") throw new Error("Session not found")
-      setSessionPinned(session.id, input.pinned)
+      setSessionPinned(session.id, input.pinned, runtime.store)
       notifyInfo("Session", input.pinned ? "Session pinned" : "Session unpinned", 1500)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -510,7 +511,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   // /sessions works even without an active session (picker can be opened any time)
   if (command === "sessions") {
     if (!args) {
-      const sessions = listProjectSessions()
+      const sessions = listProjectSessions(undefined, runtime.store)
       if (sessions.length === 0) {
         bus.emit("error", { sessionId: sid ?? "unknown", error: new Error("No sessions found") })
         return { handled: true }
@@ -533,7 +534,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     }
 
     // Match against the same worktree-scoped list rendered by the session picker.
-    const sessions = listProjectSessions()
+    const sessions = listProjectSessions(undefined, runtime.store)
     const match = sessions.find((s) => s.id.startsWith(args))
     if (!match) {
       bus.emit("error", { sessionId: sid ?? "unknown", error: new Error(`No session matching "${args}"`) })
@@ -556,7 +557,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
 
     currentSession = match
     process.env.QUARK_SESSION_ID = match.id
-    const { messages, parts } = loadMessages(match.id)
+    const { messages, parts } = loadMessages(match.id, runtime.store)
     const tuiMessages = dbToTuiMessages(messages, parts)
     // Prefer real API token count from DB; fall back to chars/4 heuristic
     const lastReal = getLastInputTokens(parts)
@@ -599,7 +600,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
   switch (command) {
     case "export": {
       try {
-        const result = exportSessionToMarkdown(sid)
+        const result = exportSessionToMarkdown(sid, { store: runtime.store })
         notifyInfo("Export", `Saved ${result.messageCount} message(s) to ${result.filePath}`, 5000)
       } catch (err) {
         bus.emit("error", {
@@ -611,7 +612,15 @@ async function handleCommand(command: string, args: string, sessionId: string | 
     }
 
     case "undo": {
-      const result = await undoLatest(sid)
+      // Undo owns a global JSONL tracker; unsupported stores fail before any
+      // files are restored or rewritten.
+      let result: Awaited<ReturnType<typeof undoLatest>>
+      try {
+        result = await undoLatest(sid, runtime.store)
+      } catch (error) {
+        bus.emit("error", { sessionId: sid, error: error instanceof Error ? error : new Error(String(error)) })
+        return { handled: true }
+      }
       if (!result) {
         notifyInfo("Undo", "Nothing to undo — no tracked file changes", 3000)
         return { handled: true }
@@ -625,7 +634,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
         parts.push(`${result.deleted.length} file(s) deleted`)
       }
 
-      const { parts: remainingParts } = loadMessages(sid)
+      const { parts: remainingParts } = loadMessages(sid, runtime.store)
       bus.emit("undo-applied", {
         sessionId: sid,
         keepMessagesUpTo: result.messageId,
@@ -643,7 +652,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       let branchReady = false
       try {
         const goal = args.trim()
-        const { messages, parts } = loadMessages(sid)
+        const { messages, parts } = loadMessages(sid, runtime.store)
         const model = await resolveModel(loadConfig().models.small, "small", { catalog: catalogModels.catalog })
         const branch = await compactBranch({
           sessionId: sid,
@@ -651,6 +660,7 @@ async function handleCommand(command: string, args: string, sessionId: string | 
           parts,
           model,
           profile: activeAgent.id,
+          store: runtime.store,
           prompt: goal || undefined,
         })
 
@@ -675,11 +685,12 @@ async function handleCommand(command: string, args: string, sessionId: string | 
       bus.emit("steer-start", { sessionId: sid })
       let steeringEnded = false
       try {
-        const { messages, parts } = loadMessages(sid)
+        const { messages, parts } = loadMessages(sid, runtime.store)
         const branch = createSteerBranch({
           sessionId: sid,
           prompt: goal || undefined,
           profile: activeAgent.id,
+          store: runtime.store,
           messages,
           parts,
         })
@@ -774,7 +785,7 @@ function getProjectWorktrees() {
 }
 
 function handleGetSessions() {
-  return listProjectSessions().map((session) => ({
+  return listProjectSessions(undefined, runtime.store).map((session) => ({
     ...session,
     running: runtime.isActive(session.id),
   }))
@@ -785,7 +796,7 @@ function handleGetWorktrees() {
   return getProjectWorktrees()
     .filter((wt) => !wt.prunable)
     .map((wt) => {
-      const sessions = listProjectSessions(wt.path)
+      const sessions = listProjectSessions(wt.path, runtime.store)
       return {
         id: wt.id,
         path: wt.path,
@@ -865,7 +876,7 @@ const renderer = await createCliRenderer({
 const ghosttyTitle = createGhosttyTitleController({
   bus: runtime.bus,
   renderer,
-  getSession,
+  getSession: (id) => getSession(id, runtime.store),
   initialSessionId: currentSession?.id,
   enabled: isGhostty(),
 })
@@ -907,7 +918,7 @@ syncSettingsFromConfig()
 // Follow the REST executor from the first frame, including turns already underway.
 // The cursor/snapshot handshake is inside followSession so startup cannot miss events.
 if (sessionArg) {
-  setImmediate(() => followSession(sessionArg, runtime.bus, (busy) => { externalBusy = busy }, () => runtime.isBusy()))
+  setImmediate(() => followSession(sessionArg, runtime.bus, (busy) => { externalBusy = busy }, () => runtime.isBusy(), runtime.store))
 }
 
 render(() => (

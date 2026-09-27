@@ -54,6 +54,8 @@ export interface QuarkRuntime {
   readonly agent: AgentDefinition
   /** The current runner generation. Replaced on {@link rebind}. */
   readonly runner: Runner
+  /** Active session store, stable across agent rebinds. */
+  readonly store: SessionStore
   prompt(input: RunnerPromptInput): Promise<{ sessionId: string }>
   /** Run a `/steer`-style turn whose user message is already persisted. */
   seed(input: RunnerSeedInput): Promise<{ sessionId: string }>
@@ -79,14 +81,15 @@ export interface QuarkRuntime {
 }
 
 /** Config-derived execution policies, preserving the legacy implicit config read. */
-function configPolicies(): Partial<RunPolicies> {
+function configPolicies(store: SessionStore): Partial<RunPolicies> {
   const config = loadConfig()
   return {
     maxSteps: config.maxSteps,
     branching: config.branching,
     smallModel: config.models.small,
-    // Legacy CLI/TUI tracks turns for /undo. Portable policies default this off.
-    undo: true,
+    // The legacy JSONL tracker is only safe for the global store. Other stores
+    // must not write undo snapshots under the process-global session root.
+    undo: store === defaultSessionStore,
   }
 }
 
@@ -106,7 +109,7 @@ export async function createQuarkRuntime(options: QuarkRuntimeOptions): Promise<
       eventBus: bus,
       store,
       ambientInstructions: loadAmbientInstructions,
-      policies: configPolicies(),
+      policies: configPolicies(store),
       // Custom providers otherwise resolve against {} on the portable path.
       resolve: { providers: loadConfig().providers },
       plugins,
@@ -131,6 +134,7 @@ export async function createQuarkRuntime(options: QuarkRuntimeOptions): Promise<
 
   return {
     bus,
+    store,
     get agent() {
       return agent
     },

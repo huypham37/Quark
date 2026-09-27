@@ -1,0 +1,16 @@
+# QUA-257 runner API inventory
+
+Canonical execution API: `createRunner({ agent, store, eventBus?, plugins? })`; each runner owns its bus, hooks, cancellation map, and (by default) memory store. App hosts pass a JSONL store explicitly. Session CRUD helpers in `session/session.ts` accept a `SessionStore`; use the active runner's store for create/get/list/title/pin/delete and pass that store to message replay, branching, and export. The JSONL session root and event format are unchanged.
+
+| Export / singleton | Current repository consumer | Decision |
+| --- | --- | --- |
+| `prompt`, `cancel`, `isActive` (`session/prompt.ts`) | `web/backend.ts` still runs its local legacy routes through these | Removed from package-root `runner/index.ts`; retain the internal subpath until local web routes migrate to a host-owned runner. **External API break:** replace `@quark/runner` singleton calls with `createRunner({ agent }).prompt/cancel/isActive`. |
+| `defaultSessionStore`, defaulted CRUD arguments (`session/session.ts`) | CLI/TUI/ACP default persistent hosts, web local routes, legacy tests | Retain for on-disk compatibility. TUI session operations now explicitly use `runtime.store`. Removing the default arguments is an external API break and needs a separate caller migration. |
+| `bus` (`session/events.ts`) | CLI/TUI stable event subscriptions, web local routes and tests | Removed from package-root exports; internal subpath stays until host migration. **External API break:** instantiate `TypedBus` and pass `eventBus` to `createRunner`, or use `runner.bus`. |
+| `globalHooks`, `register`, `listTools` (plugin/tool subpaths) | global plugin/tool loaders, web local routes and compatibility tests | Removed from package-root exports; internal subpaths remain until those consumers migrate. **External API break:** pass `plugins`/`hooks` and agent `tools` to `createRunner` rather than registering globals. |
+| `createRunner`, `MemorySessionStore`, `createJsonlSessionStore`, `TypedBus` | CLI/TUI/ACP/remote web and tests | Canonical, retain. |
+| `bootstrap`, `resetBootstrap` (`quark/src/bootstrap.ts`) | only E2E scripts and session fixtures | Removed; callers now build an agent, runner, store and plugin functions explicitly. **Breaking change** for any direct import of `quark/src/bootstrap`: instantiate `createRunner` with an explicit `AgentDefinition` and store instead. |
+
+Package-root singleton exports are removed; the subpath implementations remain because web local mode still consumes them. That is the explicit boundary of this change, not a claim that singleton infrastructure is gone. Migrating web local mode is required before removing those internal implementations. Provider request context is already request-scoped in the runner; do not reintroduce process-global forced-agent state.
+
+Undo boundary: only `defaultSessionStore` enables undo tracking in the app/runtime and prompt loop. `undoLatest(sessionId, store)` rejects non-global stores **before** touching the tracker, files, or JSONL. TUI passes `runtime.store` and displays that error. The global JSONL tracker remains process-global; full per-runner undo support requires a separate tracker/store refactor. No custom-store undo is claimed.

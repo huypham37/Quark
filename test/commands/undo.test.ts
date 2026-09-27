@@ -8,6 +8,9 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, readdirSyn
 import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setSessionStorageRoot, getSessionStorageRoot } from "../../packages/runner/src/storage/session-path";
+import { MemorySessionStore } from "../../packages/runner/src/session/store";
+import { createSession, defaultSessionStore } from "../../packages/runner/src/session/session";
+import { saveUserMessage, loadMessages } from "../../packages/runner/src/session/message";
 import {
   setCurrentTurn,
   preTurnSnapshot,
@@ -101,6 +104,25 @@ describe("extractFilePath", () => {
 // ---------------------------------------------------------------------------
 
 describe("undo flow", () => {
+  test("custom store undo refuses before changing files or global JSONL", async () => {
+    const custom = new MemorySessionStore();
+    const id = `undo-isolation-${Date.now()}`;
+    const global = createSession({ id }, defaultSessionStore);
+    createSession({ id }, custom);
+    const globalMessage = saveUserMessage({ sessionId: global.id, text: "global", store: defaultSessionStore });
+    saveUserMessage({ sessionId: id, text: "custom", store: custom });
+    createFile("protected.ts", "original");
+    setCurrentTurn(id, globalMessage.id);
+    await trackFile(id, "protected.ts");
+    await takeSnapshot(id, globalMessage.id, ["protected.ts"]);
+    writeFileSync(join(workspace, "protected.ts"), "changed");
+
+    await expect(undoLatest(id, custom)).rejects.toThrow("Undo is unavailable for this session store");
+    expect(readFile("protected.ts")).toBe("changed");
+    expect(loadMessages(id, defaultSessionStore).messages).toHaveLength(1);
+    expect(loadMessages(id, custom).messages).toHaveLength(1);
+    clearHistory(id);
+  });
   test("snapshot, modify, undo restores file content", async () => {
     createFile("src/app.ts", "original content");
 

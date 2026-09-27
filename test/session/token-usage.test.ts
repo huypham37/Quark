@@ -17,7 +17,6 @@ import { tmpdir } from "node:os"
 import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
 import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
 import { createSession } from "../../packages/runner/src/session/session"
-import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
 
 // ---------------------------------------------------------------------------
 // Test Setup & Helpers
@@ -29,8 +28,6 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "quark-test-token-"))
   setSessionStorageRoot(tmpDir)
   ensureStorageRoot()
-  resetBootstrap()
-  await bootstrap()
 })
 
 afterAll(() => {

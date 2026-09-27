@@ -4,6 +4,8 @@ import { getSessionDir, getSessionStorageRoot } from "@quark/runner/storage/sess
 import { isLiveTurn } from "@quark/runner/session/live-turn"
 import { loadMessages, type PartRow } from "@quark/runner/session/message"
 import type { TypedBus, BusEventName } from "@quark/runner/session/events"
+import type { SessionStore } from "@quark/runner/session/store"
+import { defaultSessionStore } from "@quark/runner/session/session"
 import { dbToTuiMessages } from "./state"
 
 /**
@@ -30,7 +32,7 @@ function readAt(path: string, offset: number, count: number): Buffer {
 }
 
 /** Follow an executor's event log, reconciling against durable history on attach/reconnect. */
-export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean) => void, isLocalBusy: () => boolean = () => false): () => void {
+export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean) => void, isLocalBusy: () => boolean = () => false, store: SessionStore = defaultSessionStore): () => void {
   const dir = getSessionDir(id, getSessionStorageRoot())
   const log = join(dir, "live-events.jsonl")
   const history = join(dir, "session.jsonl")
@@ -79,7 +81,7 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
     // Taking the cursor before loading ensures events emitted during replay are followed.
     if (lastHistorySize < 0) {
       cursor = length
-      const { messages, parts } = loadMessages(id)
+      const { messages, parts } = loadMessages(id, store)
       seedParts(parts)
       seen.clear()
       seenTools.clear()
@@ -150,7 +152,7 @@ export function followSession(id: string, bus: TypedBus, onBusy: (busy: boolean)
       busy = active
       onBusy(active)
       if (!active) {
-        const { messages, parts } = loadMessages(id)
+        const { messages, parts } = loadMessages(id, store)
         seedParts(parts)
         const snapshot = dbToTuiMessages(messages, parts)
         seen.clear()

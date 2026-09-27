@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { getSession } from "../session/session"
 import { loadMessages, type MessageRow, type PartRow } from "../session/message"
+import type { SessionStore } from "../session/store"
 
 export interface ExportResult {
   filePath: string
@@ -10,10 +11,10 @@ export interface ExportResult {
 
 export function exportSessionToMarkdown(
   sessionId: string,
-  opts?: { cwd?: string },
+  opts?: { cwd?: string; store?: SessionStore },
 ): ExportResult {
-  const session = getSession(sessionId)
-  const { messages, parts } = loadMessages(sessionId)
+  const session = getSession(sessionId, opts?.store)
+  const { messages, parts } = loadMessages(sessionId, opts?.store)
   const entries = buildMarkdownEntries(messages, parts)
 
   const exportDir = join(opts?.cwd ?? process.cwd(), ".quark", "export")

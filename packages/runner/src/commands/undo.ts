@@ -17,6 +17,8 @@ import { existsSync } from "node:fs";
 import { join, dirname, relative, isAbsolute, resolve } from "node:path";
 import { getSessionStorageRoot } from "../storage/session-path";
 import { rewriteJSONL } from "../storage/session-jsonl";
+import { defaultSessionStore } from "../session/session";
+import type { SessionStore } from "../session/store";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -382,7 +384,13 @@ export async function toolPreExecute(
  */
 export async function undoLatest(
   sessionId: string,
+  store: SessionStore = defaultSessionStore,
 ): Promise<{ restored: string[]; deleted: string[]; messageId: string } | null> {
+  // The tracker and snapshots are tied to the global JSONL root. Refuse
+  // before reading the tracker or restoring files for another runtime store.
+  if (store !== defaultSessionStore) {
+    throw new Error("Undo is unavailable for this session store");
+  }
   const tracker = loadTracker(sessionId);
   const lastTurn = tracker.turns.at(-1);
   if (!lastTurn) return null;

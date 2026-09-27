@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- CLI/TUI session actions now use the active runtime's store for resume, listing, rename, pin, branching, replay, and export. Existing JSONL session paths and format are unchanged by this refactor.
+- `/undo` is supported only with the app's default JSONL store. Custom stores fail before restoring files or rewriting session history; their runs do not write global undo snapshots.
+- **Breaking (SDK):** `@quark/runner` no longer exports the singleton `prompt`, `cancel`, `isActive`, `bus`, `globalHooks`, `register`, or `listTools`. Use `createRunner({ agent, store?, plugins?, hooks? })`, then `runner.prompt()`, `runner.cancel()`, `runner.bus`, and `runner.store`. The internal singleton subpaths still exist for the web backend's local routes; they are not removed by this change.
+- **Breaking (direct source imports):** `packages/quark/src/bootstrap.ts` and `resetBootstrap` were removed. Set up the agent, runner, store, and plugins explicitly instead.
 - **Breaking:** the runner prompt route moved from `POST /api/runners/:id/messages` to `POST /api/runners/:id/session/prompt`. The old path now falls through to `404`.
 - **Breaking:** runner sessions are no longer in-memory. Every runner shares one disk-backed namespace, `~/.config/quark/session/runners/<sessionId>/`, so history outlives the runner: a new runner (including one minted after a server restart) resumes any session by id. `DELETE /api/runners/:id` and eviction at the 100-runner cap drop only the execution handle — never session files.
 - **Breaking:** the CLI/TUI now store sessions in that same shared namespace, so `quark --session <sessionId>` resumes a session created over REST. Sessions created under the old `~/.config/quark/session/<sessionId>/` path are no longer found by the CLI/TUI.

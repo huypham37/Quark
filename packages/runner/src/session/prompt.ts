@@ -319,9 +319,9 @@ async function runTurn(input: {
   const session = getSession(sessionId, store)
   if (session.kind === "subagent") resolveOptions.initiator = "agent"
   // Undo writes file snapshots + a .touched.json tracker under the session
-  // storage root. Portable policies disable that path entirely, and ephemeral
-  // sessions must never touch disk — skip both for them.
-  const undoEnabled = policies.undo !== false && session.kind !== "ephemeral"
+  // storage root. Only the global JSONL store supports that tracker; custom
+  // stores and ephemeral sessions must never touch its files.
+  const undoEnabled = policies.undo !== false && store === defaultSessionStore && session.kind !== "ephemeral"
   if (undoEnabled) {
     setCurrentTurn(sessionId, userMessageId)
     preTurnSnapshot(sessionId, userMessageId).catch(() => {})

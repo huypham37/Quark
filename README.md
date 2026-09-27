@@ -172,7 +172,7 @@ Resolve missing prompts or destination conflicts before rerunning.
 
 Tools are the product — research-backed and test-backed.
 
-**Built-in tools** are registered by the harness at bootstrap: `read`, `skill`,
+**Built-in tools** are selected when the agent is materialized: `read`, `skill`,
 and `read_session`.
 
 **Profile-declared tools** are loaded by ID from `~/.config/quark/tools/{id}.ts`
@@ -211,12 +211,42 @@ See [`docs/data-model.md`](docs/data-model.md) for the persistence schema and
 
 ## Using Quark as an SDK
 
-Quark also ships as the `@quark/runner` package, exposing its session, tool, and
-agent primitives:
+Quark also ships as the `@quark/runner` package. Execution belongs to a runner
+instance: its session store, event bus, hooks, and cancellation state are not
+shared with other runners by default.
 
 ```ts
-import { createSession, prompt } from "@quark/runner"
+import { createRunner, defineAgent, createSession } from "@quark/runner"
+
+const agent = defineAgent({
+  id: "assistant",
+  instructions: "You are a helpful assistant.",
+  tools: [],
+  model: "openai/gpt-5-mini",
+})
+const runner = createRunner({ agent }) // isolated in-memory store by default
+runner.bus.on("session-created", ({ sessionId }) => console.log(sessionId))
+const session = createSession(undefined, runner.store)
+await runner.prompt({ sessionId: session.id, parts: [{ type: "text", text: "Hello" }] })
 ```
+
+For persistent sessions, pass `store: createJsonlSessionStore(root)` to
+`createRunner`. Use `runner.store` for session CRUD and message replay; an omitted
+store on those helpers uses the process-global JSONL store, **not** the runner's
+store. App hosts can pass `eventBus: new TypedBus()` to reuse subscriptions across
+runner replacements. Session storage paths and JSONL format are unchanged.
+
+**SDK migration:** The package root no longer exports singleton `prompt`,
+`cancel`, `isActive`, `bus`, `globalHooks`, `register`, or `listTools`. Replace
+singleton calls with runner methods, subscribe through `runner.bus`, and provide
+agent tools or runner plugins/hooks explicitly. The old singleton implementations
+remain on internal subpaths for the web backend's local routes; this is not a
+promise of continued public support. Direct imports of Quark's `bootstrap` and
+`resetBootstrap` must likewise move to explicit runner setup.
+
+**Undo limit:** `/undo` works with the app's default JSONL store only. A custom
+store is rejected without changing files or history; it cannot use `/undo` until
+snapshot tracking is made store-owned.
 
 ---
 

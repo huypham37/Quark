@@ -7,8 +7,8 @@ export type { Session, SessionKind } from "./session/session"
 // Session persistence contract (instance-scoped via createRunner)
 export { MemorySessionStore } from "./session/store"
 export type { SessionStore } from "./session/store"
-// Core operations
-export { prompt, cancel, isActive } from "./session/prompt"
+// Execution is instance-owned via createRunner; the legacy singleton is not
+// exported from the package root.
 export { PORTABLE_POLICIES, type RunPolicies } from "./session/policies"
 export type { AmbientInstructions, AmbientPromptBuilder } from "./session/system"
 
@@ -39,12 +39,11 @@ export {
 } from "./session/branch"
 
 // Tool system
-export { register, validateTool, list as listTools, type ToolValidationError } from "./tool/registry"
+export { validateTool, type ToolValidationError } from "./tool/registry"
 export { defineTool } from "./tool/tool"
 export type { ToolDef, ToolContext, ToolResult, ToolResultContentPart } from "./tool/tool"
 
-// Events
-export { bus } from "./session/events"
+// Events (subscribe to runner.bus or an explicit host-owned TypedBus)
 export type { BusEvents, BusEventName } from "./session/events"
 
 // Question tool
@@ -61,4 +60,4 @@ export type { SkillDefinition } from "./skill/skill"
 export type { PluginFn, PluginContext, PluginHooks, HookHandlers } from "./plugin/plugin"
 
 // Hook registry — instance-scoped collections passed to createRunner
-export { createHookRegistry, globalHooks, type HookRegistry } from "./plugin/registry"
+export { createHookRegistry, type HookRegistry } from "./plugin/registry"

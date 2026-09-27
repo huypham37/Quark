@@ -10,7 +10,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import { pathToFileURL } from "url"
-import { register, validateTool } from "@quark/runner"
+import { register, validateTool } from "@quark/runner/tool/registry"
 import { configDir } from "./config/config"
 import { error as notifyError, warn as notifyWarn } from "@quark/runner/notification/notification"
 import type { ToolDef } from "@quark/runner/tool/tool"
