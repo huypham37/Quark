@@ -1,40 +1,11 @@
 # Quark
 
-**An ergonomic, tool-first AI agent for coding _and_ research workflows.**
-
-Quark is a harness — it owns everything around the model: tool execution,
-memory, context management, state persistence, and guardrails. The model is a
-pluggable component; the harness is the product. The differentiator is a small
-set of premade, well-designed, well-tested tools and subagents that give the
-best experience for both writing code and doing research.
-
-> **Agent = Model + Harness.** The model provides intelligence. The harness
-> makes that intelligence useful.
+Modern agent harness stack with beautiful TUI and detach runner. Designed for cloud deployment. 
 
 **Docs:** <http://quark-doc.home.arpa> — HTTP API reference, plus CLI and SDK
 sections. Homelab-only; the site is a separate Docusaurus repo deployed to k3s,
 not built from this one.
 
----
-
-## Highlights
-
-- **The agent loop** — the model reasons, calls a tool, observes the result, and
-  repeats until the task is done, with configurable `minSteps` / `maxSteps`
-  guardrails.
-- **Multi-provider** — Anthropic (Claude), OpenAI (GPT / o-series), GitHub
-  Copilot, and any OpenAI-compatible endpoint (Ollama, local models, etc.).
-- **Streaming TUI** — a full terminal UI with real-time token streaming, live
-  tool progress, model switching, and inline sub-agent observability.
-- **Deterministic, named subagents** — subagents are invoked through
-  purpose-built tools, each with its own typed contract. No generic `task` /
-  `delegate` verb.
-- **Progressive-disclosure skills** — three-level loading (metadata →
-  instructions → resources) keeps the context window lean.
-- **Session persistence** — per-session JSONL storage with resume, ephemeral
-  (`--no-store`) runs, and parent–child session linking for subagents.
-
----
 
 ## Requirements
 
