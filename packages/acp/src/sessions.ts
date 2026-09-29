@@ -8,8 +8,11 @@
 //                    tools discovered above), translate blocks, run one turn,
 //                    remember the runner-created session ID
 //
-// ACP IDs and runner IDs are distinct: ACP owns the former, the runner mints
-// its own on the first prompt (see SessionState.runnerSessionId).
+// ACP IDs and persisted IDs converge: `session/new` mints an ACP id that
+// becomes the persisted session id on the first prompt (see
+// SessionState.runnerSessionId), so the id the client stores as its thread id
+// is the one `session/load`/`session/resume` finds after a restart. Adopted
+// sessions arrive with the two already equal.
 //
 // MCP (QUA-245): ACP v1 requires stdio MCP servers to be accepted. Nonempty
 // `mcpServers` is validated (stdio only, absolute command) and the servers are
@@ -27,8 +30,9 @@
 // `adopt` seeds the ACP→runner mapping with a store session ID so the next
 // prompt resumes that history (no replay), `close` cancels and forgets an
 // attachment, and `isActive` lets `session/delete` refuse to remove history a
-// live turn is still writing. The store itself is owned by the composition
-// root and passed to every runner; this module never reads it.
+// live turn is still writing. The store supports every runner; it is owned by
+// the composition root and threaded here, where this module reads it to
+// resolve/create the persisted record behind a new ACP session.
 
 import { methods, RequestError } from "@agentclientprotocol/sdk"
 import type {
@@ -45,7 +49,7 @@ import type {
   SessionConfigOption,
 } from "@agentclientprotocol/sdk"
 import { isAbsolute } from "node:path"
-import type { Runner, ToolDef } from "@quark/runner"
+import { createSession, type Runner, type SessionStore, type ToolDef } from "@quark/runner"
 import { connectStdioServers, requireStdio, type McpConnection } from "./mcp"
 
 /** One ACP session's registry entry. */
@@ -55,7 +59,11 @@ interface SessionState {
   cwd: string
   /** Created lazily on first prompt — a session/new must stay cheap. */
   runner: Runner | null
-  /** Runner-generated ID; null until the first turn creates it. */
+  /**
+   * Persisted session id. Null until the first prompt, which persists
+   * `acpSessionId` and adopts it here (the two then stay equal). Adopted
+   * sessions enter with the store id already set.
+   */
   runnerSessionId: string | null
   /** One active turn per session. */
   active: boolean
@@ -74,7 +82,7 @@ interface SessionState {
 /** Context handed to `onTurnStart`, once per turn, before the runner runs. */
 export interface SessionTurn {
   acpSessionId: string
-  /** Runner session ID; null only if this is the very first turn. */
+  /** Persisted session ID; persisted before the turn runs, so never null here. */
   runnerSessionId: string | null
   /** The session's isolated runner, for QUA-244 to subscribe to `runner.bus`. */
   runner: Runner
@@ -85,6 +93,14 @@ export interface SessionTurn {
 }
 
 export interface SessionBridgeOptions {
+  /**
+   * Persistence shared with every session runner. The ACP id minted by
+   * `session/new` becomes the persisted session id on the first prompt, so the
+   * client's stored thread id round-trips through `session/load`/`resume`.
+   * Must be the SAME store each runner is created with: a mismatch would
+   * orphan the history the client is naming, so it is refused on first prompt.
+   */
+  store: SessionStore
   /**
    * Create the runner for a session. Called once per ACP session, lazily on
    * first prompt, so a session/new cannot fail on provider/agent setup.
@@ -179,7 +195,8 @@ export interface SessionBridge {
  *
  * @example
  * ```ts
- * const sessions = createSessionHandlers({ createRunner: (cwd) => createRunner({ agent }) })
+ * const store = new MemorySessionStore()
+ * const sessions = createSessionHandlers({ store, createRunner: (cwd) => createRunner({ agent, store }) })
  * const { sessionId } = sessions.newSession({ cwd, mcpServers: [] })
  * ```
  */
@@ -197,7 +214,12 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
   /** Register a new session with its (already connected) MCP servers. */
   function registerSession(cwd: string, mcp: McpConnection[]): NewSessionResponse {
-    const acpSessionId = crypto.randomUUID()
+    // The ACP id becomes the persisted id on the first prompt, so it must not
+    // shadow an existing session: re-mint until it is free.
+    let acpSessionId: string
+    do {
+      acpSessionId = crypto.randomUUID()
+    } while (options.store.get(acpSessionId))
     sessions.set(acpSessionId, {
       acpSessionId,
       cwd,
@@ -286,8 +308,29 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       }
       state.active = true
       state.cancelled = false
+      let createdForTurn = false
       try {
         const runner = runnerFor(state)
+        // The persisted record must live in the same store the runner reads;
+        // otherwise this writes a session the runner can never resume.
+        if (runner.store !== options.store) {
+          throw new Error(
+            "session bridge store mismatch: the runner must be created with the bridge's store",
+          )
+        }
+        // First prompt: persist the ACP id so the client's thread id names a
+        // real session. Done before onTurnStart/runner.prompt so a failure
+        // cannot strand a turn against a nonexistent record.
+        if (state.runnerSessionId === null) {
+          const existing = options.store.get(state.acpSessionId)
+          if (!existing) {
+            createSession({ id: state.acpSessionId, directory: state.cwd }, options.store)
+            createdForTurn = true
+          } else if (existing.kind !== "main" || existing.directory !== state.cwd) {
+            throw new Error(`ACP session id collision: ${state.acpSessionId}`)
+          }
+          state.runnerSessionId = state.acpSessionId
+        }
         options.onTurnStart?.({
           acpSessionId: state.acpSessionId,
           runnerSessionId: state.runnerSessionId,
@@ -296,7 +339,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
           client: ctx.client,
         })
         const result = await runner.prompt({
-          ...(state.runnerSessionId ? { sessionId: state.runnerSessionId } : {}),
+          sessionId: state.runnerSessionId,
           parts,
           ...(images.length > 0 ? { images } : {}),
           ...(state.modelOverride ? { model: state.modelOverride } : {}),
@@ -305,6 +348,17 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         state.runnerSessionId = result.sessionId
         return { stopReason: state.cancelled ? "cancelled" : "end_turn" }
       } catch (error) {
+        // A turn that failed before writing its user message leaves an empty
+        // envelope behind. Remove it so the id can be retried cleanly; never
+        // swallow the failure.
+        if (
+          createdForTurn &&
+          state.runnerSessionId === state.acpSessionId &&
+          options.store.replay(state.acpSessionId).messages.length === 0
+        ) {
+          options.store.delete(state.acpSessionId)
+          state.runnerSessionId = null
+        }
         // ACP: an aborted operation must not surface as an error response.
         // runner.cancel() aborts the run, so prompt() rejects with an
         // AbortError; report `cancelled` instead (also for teardown cancels,

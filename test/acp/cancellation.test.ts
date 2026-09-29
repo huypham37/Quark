@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test"
 import * as acp from "@agentclientprotocol/sdk"
-import type { Runner } from "@quark/runner"
+import { MemorySessionStore, type Runner, type SessionStore } from "@quark/runner"
 import { createAcpAgent } from "../../packages/acp/src/index"
 import { createSessionHandlers } from "../../packages/acp/src/sessions"
 import { registerCancellation } from "../../packages/acp/src/cancellation"
@@ -20,14 +20,14 @@ type Listener = (data: any) => void
  * pending prompt with an AbortError. After one cancellation, later prompts
  * resolve immediately so a follow-up turn can be exercised.
  */
-function makeFakeRunner() {
+function makeFakeRunner(store?: SessionStore) {
   const listeners = new Map<string, Set<Listener>>()
   let markEntered!: () => void
   const entered = new Promise<void>((resolve) => (markEntered = resolve))
   let rejectPrompt: ((error: unknown) => void) | null = null
   let active = false
   let wasCancelled = false
-  const runnerSessionId = "runner-session-1"
+  let runnerSessionId = "runner-session-1"
 
   const emit = (name: string, data: any) => {
     for (const fn of listeners.get(name) ?? []) fn(data)
@@ -45,7 +45,10 @@ function makeFakeRunner() {
       },
       emit,
     },
-    prompt() {
+    store,
+    prompt(input?: { sessionId?: string }) {
+      // Honor a supplied persisted id instead of minting a competing one.
+      runnerSessionId = input?.sessionId ?? runnerSessionId
       emit("session-created", { sessionId: runnerSessionId })
       active = true
       markEntered()
@@ -99,8 +102,10 @@ describe("registerCancellation", () => {
 
 describe("cancellation", () => {
   test("session/cancel returns cancelled when the runner throws AbortError, updates first", async () => {
-    const runner = makeFakeRunner()
+    const store = new MemorySessionStore()
+    const runner = makeFakeRunner(store)
     const agent = createAcpAgent({
+      store,
       createRunner: () => asRunner(runner),
       onTurnStart: (turn) => {
         // Stand-in for QUA-244: forward the runner's final aborted event as a
@@ -143,10 +148,11 @@ describe("cancellation", () => {
   })
 
   test("late updates are flushed before the cancelled response (default bridge)", async () => {
-    const runner = makeFakeRunner()
+    const store = new MemorySessionStore()
+    const runner = makeFakeRunner(store)
     // No onTurnStart override: use the real QUA-244 update bridge, which flushes
     // its queued notifications before runner.prompt() settles.
-    const agent = createAcpAgent({ createRunner: () => asRunner(runner) })
+    const agent = createAcpAgent({ store, createRunner: () => asRunner(runner) })
 
     await acp.client({ name: "cancel-order" }).connectWith(agent.app, async (ctx) => {
       const session = await ctx.buildSession("/workspace").start()
@@ -168,8 +174,9 @@ describe("cancellation", () => {
   })
 
   test("a prompt after a cancelled turn still works", async () => {
-    const runner = makeFakeRunner()
-    const agent = createAcpAgent({ createRunner: () => asRunner(runner) })
+    const store = new MemorySessionStore()
+    const runner = makeFakeRunner(store)
+    const agent = createAcpAgent({ store, createRunner: () => asRunner(runner) })
 
     await acp.client({ name: "cancel-test" }).connectWith(agent.app, async (ctx) => {
       const session = await ctx.buildSession("/workspace").start()
@@ -184,8 +191,9 @@ describe("cancellation", () => {
   })
 
   test("dispose cancels an active runner; an AbortError still yields cancelled", async () => {
-    const runner = makeFakeRunner()
-    const bridge = createSessionHandlers({ createRunner: () => asRunner(runner) })
+    const store = new MemorySessionStore()
+    const runner = makeFakeRunner(store)
+    const bridge = createSessionHandlers({ store, createRunner: () => asRunner(runner) })
     const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as any)
 
     const running = bridge.prompt(

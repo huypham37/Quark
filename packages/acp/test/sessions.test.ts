@@ -6,6 +6,7 @@
 // `bus` and a controllable `prompt`.
 
 import { expect, mock, test } from "bun:test"
+import { MemorySessionStore, createSession, type SessionStore } from "@quark/runner"
 
 mock.module("@agentclientprotocol/sdk", () => ({
   methods: {
@@ -36,11 +37,14 @@ const { createSessionHandlers, registerSessions } = await import("../src/session
 
 type Wire = { sessionId: string; prompt: Array<Record<string, unknown>> }
 
-function makeRunner(options: { sessionId?: string; manual?: boolean } = {}) {
+function makeRunner(
+  options: { sessionId?: string; manual?: boolean; store?: SessionStore; failFirst?: boolean } = {},
+) {
   const calls: Record<string, any>[] = []
   const cancelled: string[] = []
   const listeners = new Map<string, Set<(data: any) => void>>()
   const gates: Array<() => void> = []
+  let failed = false
 
   const runner: Record<string, any> = {
     bus: {
@@ -56,8 +60,13 @@ function makeRunner(options: { sessionId?: string; manual?: boolean } = {}) {
         for (const fn of listeners.get(name) ?? []) fn(data)
       },
     },
+    store: options.store,
     prompt(input: Record<string, any>) {
       calls.push(input)
+      if (options.failFirst && !failed) {
+        failed = true
+        throw new Error("runner setup failed")
+      }
       const sessionId = (input.sessionId as string | undefined) ?? options.sessionId ?? "runner-1"
       // The real engine announces creation synchronously, before awaiting.
       runner.bus.emit("session-created", { sessionId })
@@ -82,30 +91,34 @@ const newSessionParams = (over: Record<string, unknown> = {}) => ({ cwd: "/works
 
 test("session/new allocates unique ids and defers runner creation", () => {
   const created: string[] = []
-  const { runner } = makeRunner()
-  const bridge = createSessionHandlers({ createRunner: (cwd) => (created.push(cwd), runner as any) })
+  const store = new MemorySessionStore()
+  const { runner } = makeRunner({ store })
+  const bridge = createSessionHandlers({ store, createRunner: (cwd) => (created.push(cwd), runner as any) })
 
   const a = bridge.newSession(newSessionParams())
   const b = bridge.newSession(newSessionParams({ cwd: "/other" }))
   expect(a.sessionId).not.toBe(b.sessionId)
   expect(created).toEqual([])
+  // The id is a promise, not a record: nothing is persisted until a prompt.
+  expect(store.list()).toEqual([])
 })
 
 test("session/new rejects MCP servers and additional directories explicitly", () => {
-  const bridge = createSessionHandlers({ createRunner: () => makeRunner().runner as any })
+  const store = new MemorySessionStore()
+  const bridge = createSessionHandlers({ store, createRunner: () => makeRunner({ store }).runner as any })
   expect(() => bridge.newSession(newSessionParams({ mcpServers: [{ name: "x" }] }))).toThrow(/MCP/)
   expect(() => bridge.newSession(newSessionParams({ additionalDirectories: ["/x"] }))).toThrow(
     /additionalDirectories/,
   )
 })
 
-test("prompt maps ACP id to runner id, passes cwd, and supports multiple turns", async () => {
-  const { runner, calls } = makeRunner({ sessionId: "runner-42" })
-  const bridge = createSessionHandlers({ createRunner: () => runner as any })
+test("the ACP id becomes the persisted session id on the first prompt", async () => {
+  const store = new MemorySessionStore()
+  const { runner, calls } = makeRunner({ store })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const { sessionId } = bridge.newSession(newSessionParams())
-  const ctx = callCtx()
 
-  const first = await bridge.prompt(
+  await bridge.prompt(
     {
       sessionId,
       prompt: [
@@ -113,22 +126,90 @@ test("prompt maps ACP id to runner id, passes cwd, and supports multiple turns",
         { type: "resource_link", name: "a.ts", uri: "file:///a.ts" },
       ],
     } as any,
-    ctx,
+    callCtx(),
   )
-  expect(first.stopReason).toBe("end_turn")
+
+  // The client's thread id names a real persisted session.
+  expect(store.get(sessionId)?.directory).toBe("/workspace")
+  expect(bridge.runnerSessionId(sessionId)).toBe(sessionId)
+  expect(calls[0]!.sessionId).toBe(sessionId)
   expect(calls[0]!.targetWorkspace).toBe("/workspace")
-  expect(calls[0]!.sessionId).toBeUndefined()
   expect(calls[0]!.parts[0]).toEqual({ type: "text", text: "hello" })
   expect(calls[0]!.parts[1].text).toContain("file:///a.ts")
+})
 
+test("prompt resumes the persisted id on later turns", async () => {
+  const store = new MemorySessionStore()
+  const { runner, calls } = makeRunner({ sessionId: "runner-42", store })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
+  const { sessionId } = bridge.newSession(newSessionParams())
+  const ctx = callCtx()
+
+  await bridge.prompt({ sessionId, prompt: [{ type: "text", text: "one" }] } as any, ctx)
   await bridge.prompt({ sessionId, prompt: [{ type: "text", text: "again" }] } as any, ctx)
-  expect(calls[1]!.sessionId).toBe("runner-42")
-  expect(bridge.runnerSessionId(sessionId)).toBe("runner-42")
+
+  expect(calls[0]!.sessionId).toBe(sessionId)
+  expect(calls[1]!.sessionId).toBe(sessionId)
+  expect(bridge.runnerSessionId(sessionId)).toBe(sessionId)
+  expect(store.list().map((s) => s.id)).toEqual([sessionId])
+})
+
+test("a failed first prompt leaves no empty session and the id can be retried", async () => {
+  const store = new MemorySessionStore()
+  const { runner } = makeRunner({ store, failFirst: true })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
+  const { sessionId } = bridge.newSession(newSessionParams())
+  const ctx = callCtx()
+
+  await expect(bridge.prompt({ sessionId, prompt: [{ type: "text", text: "x" }] } as any, ctx)).rejects.toThrow(
+    /runner setup failed/,
+  )
+  expect(store.get(sessionId)).toBeNull()
+  expect(store.replay(sessionId).messages).toEqual([])
+  expect(bridge.runnerSessionId(sessionId)).toBeNull()
+
+  // The next prompt persists a fresh record and succeeds.
+  await expect(bridge.prompt({ sessionId, prompt: [{ type: "text", text: "y" }] } as any, ctx)).resolves.toEqual({
+    stopReason: "end_turn",
+  })
+  expect(store.get(sessionId)?.directory).toBe("/workspace")
+  expect(bridge.runnerSessionId(sessionId)).toBe(sessionId)
+})
+
+test("session/new re-mints when a UUID collides with a persisted session", () => {
+  const store = new MemorySessionStore()
+  createSession({ id: "collide-1", directory: "/elsewhere" }, store)
+  const real = crypto.randomUUID.bind(crypto)
+  let calls = 0
+  crypto.randomUUID = () => (++calls === 1 ? "collide-1" : real())
+  try {
+    const bridge = createSessionHandlers({ store, createRunner: () => makeRunner({ store }).runner as any })
+    const { sessionId } = bridge.newSession(newSessionParams())
+    expect(sessionId).not.toBe("collide-1")
+    // The pre-existing session is untouched, not reused.
+    expect(store.get("collide-1")?.directory).toBe("/elsewhere")
+  } finally {
+    crypto.randomUUID = real
+  }
+})
+
+test("a runner with a different store is refused on the first prompt", async () => {
+  const store = new MemorySessionStore()
+  const other = new MemorySessionStore()
+  const { runner } = makeRunner({ store: other })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
+  const { sessionId } = bridge.newSession(newSessionParams())
+
+  await expect(
+    bridge.prompt({ sessionId, prompt: [{ type: "text", text: "x" }] } as any, callCtx()),
+  ).rejects.toThrow(/store mismatch/)
+  expect(store.list()).toEqual([])
 })
 
 test("unknown session and unsupported prompt blocks are rejected", async () => {
-  const { runner, calls } = makeRunner()
-  const bridge = createSessionHandlers({ createRunner: () => runner as any })
+  const store = new MemorySessionStore()
+  const { runner, calls } = makeRunner({ store })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const ctx = callCtx()
   await expect(bridge.prompt({ sessionId: "nope", prompt: [{ type: "text", text: "x" }] } as any, ctx)).rejects.toThrow(
     /unknown session/,
@@ -142,8 +223,9 @@ test("unknown session and unsupported prompt blocks are rejected", async () => {
 })
 
 test("concurrent prompts on one session are rejected until the turn ends", async () => {
-  const { runner, release } = makeRunner({ manual: true })
-  const bridge = createSessionHandlers({ createRunner: () => runner as any })
+  const store = new MemorySessionStore()
+  const { runner, release } = makeRunner({ store, manual: true })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const { sessionId } = bridge.newSession(newSessionParams())
   const ctx = callCtx()
 
@@ -161,21 +243,24 @@ test("concurrent prompts on one session are rejected until the turn ends", async
 })
 
 test("cancel targets the runner session and reports a cancelled stop reason", async () => {
-  const { runner, cancelled, release } = makeRunner({ sessionId: "runner-7", manual: true })
-  const bridge = createSessionHandlers({ createRunner: () => runner as any })
+  const store = new MemorySessionStore()
+  const { runner, cancelled, release } = makeRunner({ sessionId: "runner-7", store, manual: true })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const { sessionId } = bridge.newSession(newSessionParams())
   const running = bridge.prompt({ sessionId, prompt: [{ type: "text", text: "stop me" }] } as any, callCtx())
 
   bridge.cancel({ sessionId })
-  expect(cancelled).toEqual(["runner-7"])
+  expect(cancelled).toEqual([sessionId])
   release()
   await expect(running).resolves.toEqual({ stopReason: "cancelled" })
 })
 
 test("onTurnStart receives the runner and ACP client context", async () => {
-  const { runner } = makeRunner()
+  const store = new MemorySessionStore()
+  const { runner } = makeRunner({ store })
   const turns: any[] = []
   const bridge = createSessionHandlers({
+    store,
     createRunner: () => runner as any,
     onTurnStart: (turn) => turns.push(turn),
   })
@@ -187,16 +272,18 @@ test("onTurnStart receives the runner and ACP client context", async () => {
   expect(turns[0]!.runner).toBe(runner)
   expect(turns[0]!.client).toBe(ctx.client)
   expect(turns[0]!.acpSessionId).toBe(sessionId)
+  expect(turns[0]!.runnerSessionId).toBe(sessionId)
 })
 
 test("dispose cancels active turns and is idempotent", async () => {
-  const { runner, cancelled, release } = makeRunner({ sessionId: "runner-9", manual: true })
-  const bridge = createSessionHandlers({ createRunner: () => runner as any })
+  const store = new MemorySessionStore()
+  const { runner, cancelled, release } = makeRunner({ sessionId: "runner-9", store, manual: true })
+  const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const { sessionId } = bridge.newSession(newSessionParams())
   const running = bridge.prompt({ sessionId, prompt: [{ type: "text", text: "x" }] } as any, callCtx())
 
   bridge.dispose()
-  expect(cancelled).toEqual(["runner-9"])
+  expect(cancelled).toEqual([sessionId])
   expect(bridge.runnerSessionId(sessionId)).toBeNull()
   release()
   await running
@@ -204,7 +291,8 @@ test("dispose cancels active turns and is idempotent", async () => {
 })
 
 test("registerSessions installs session/new and session/prompt on the app", async () => {
-  const { runner } = makeRunner()
+  const store = new MemorySessionStore()
+  const { runner } = makeRunner({ store })
   const handlers = new Map<string, (ctx: any) => Promise<any> | any>()
   const app = {
     onRequest(method: string, handler: (ctx: any) => Promise<any> | any) {
@@ -212,7 +300,7 @@ test("registerSessions installs session/new and session/prompt on the app", asyn
       return app
     },
   }
-  const bridge = registerSessions(app as any, { createRunner: () => runner as any })
+  const bridge = registerSessions(app as any, { store, createRunner: () => runner as any })
   expect([...handlers.keys()]).toEqual(["session/new", "session/prompt"])
 
   const created = await handlers.get("session/new")!({ params: newSessionParams() })
@@ -222,5 +310,5 @@ test("registerSessions installs session/new and session/prompt on the app", asyn
     client: {},
   })
   expect(response).toEqual({ stopReason: "end_turn" })
-  expect(bridge.runnerSessionId(created.sessionId)).toBe("runner-1")
+  expect(bridge.runnerSessionId(created.sessionId)).toBe(created.sessionId)
 })

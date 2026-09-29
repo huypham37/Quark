@@ -58,6 +58,12 @@ function makeFakeRunner(store: SessionStore, options: { manual?: boolean } = {})
       if (!store.get(sessionId)) {
         createSession({ id: sessionId, directory: input.targetWorkspace ?? "/workspace" }, store)
       }
+      // Mirror the engine: the user message lands in the store before the turn.
+      saveUserMessage({
+        sessionId,
+        text: (input.parts as Array<{ text: string }>).map((part) => part.text).join("\n"),
+        store,
+      })
       emit("session-created", { sessionId })
       enteredResolve()
       if (options.manual) await new Promise<void>((resolve) => (releaseGate = resolve))
@@ -75,23 +81,27 @@ function makeFakeRunner(store: SessionStore, options: { manual?: boolean } = {})
   return { runner: runner as unknown as Runner, prompts, cancelled, entered, release: () => releaseGate?.() }
 }
 
-test("a session survives a restart and resume continues the same runner session", async () => {
+test("a session survives a restart and resume/load continue the same persisted id", async () => {
   const store = new MemorySessionStore()
   const first = createAcpAgent({ store, createRunner: (_cwd, s) => makeFakeRunner(s).runner })
 
-  let listedId = ""
+  let returnedId = ""
   await acp.client({ name: "before-restart" }).connectWith(first.app, async (ctx) => {
     const session = await ctx.buildSession("/workspace").start()
+    returnedId = session.sessionId
     await session.prompt("hello")
     session.dispose()
 
+    // The id session/new returned is the one that got persisted, and the one
+    // session/list reports — no second, runner-minted session.
+    expect(store.get(returnedId)?.directory).toBe("/workspace")
     const listed = await ctx.request(acp.methods.agent.session.list, {})
-    expect(listed.sessions).toHaveLength(1)
-    listedId = listed.sessions[0]!.sessionId
+    expect(listed.sessions.map((s) => s.sessionId)).toEqual([returnedId])
     expect(listed.sessions[0]!.cwd).toBe("/workspace")
+    expect(store.replay(returnedId).messages).toHaveLength(1)
   })
   first.sessions.dispose()
-  expect(store.get(listedId)).not.toBeNull()
+  expect(store.get(returnedId)).not.toBeNull()
 
   // A fresh connection over the SAME store is the restart.
   const runners: Array<ReturnType<typeof makeFakeRunner>> = []
@@ -106,23 +116,32 @@ test("a session survives a restart and resume continues the same runner session"
 
   await acp.client({ name: "after-restart" }).connectWith(second.app, async (ctx) => {
     const listed = await ctx.request(acp.methods.agent.session.list, {})
-    expect(listed.sessions.map((s) => s.sessionId)).toEqual([listedId])
+    expect(listed.sessions.map((s) => s.sessionId)).toEqual([returnedId])
 
-    // Resume attaches without replaying anything...
+    // Load replays the stored history, resume attaches — both with the
+    // originally returned ACP id, never a runner-minted one.
+    await ctx.request(acp.methods.agent.session.load, {
+      sessionId: returnedId,
+      cwd: "/workspace",
+      mcpServers: [],
+    })
     expect(
-      await ctx.request(acp.methods.agent.session.resume, { sessionId: listedId, cwd: "/workspace" }),
+      await ctx.request(acp.methods.agent.session.resume, { sessionId: returnedId, cwd: "/workspace" }),
     ).toEqual({})
-    expect(second.sessions.runnerSessionId(listedId)).toBe(listedId)
+    expect(second.sessions.runnerSessionId(returnedId)).toBe(returnedId)
 
-    // ...and the next prompt is handed the persisted id, so the engine resumes
-    // the stored history instead of starting a new session.
+    // The next prompt is handed the persisted id, so the engine resumes the
+    // stored history instead of starting a new session.
     await ctx.request(acp.methods.agent.session.prompt, {
-      sessionId: listedId,
+      sessionId: returnedId,
       prompt: [{ type: "text", text: "again" }],
     })
     expect(runners).toHaveLength(1)
-    expect(runners[0]!.prompts[0]!.sessionId).toBe(listedId)
+    expect(runners[0]!.prompts[0]!.sessionId).toBe(returnedId)
     expect(runners[0]!.prompts[0]!.targetWorkspace).toBe("/workspace")
+    // History was appended to the same single session, not forked.
+    expect(store.list().map((s) => s.id)).toEqual([returnedId])
+    expect(store.replay(returnedId).messages).toHaveLength(2)
   })
 })
 

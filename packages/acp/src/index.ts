@@ -51,7 +51,9 @@ export interface AcpAgentOptions {
    * Shared persistence for this connection: every session runner is created
    * with it, and `session/list|resume|load|delete` read/write it. Defaults to
    * the process-global JSONL store, so ACP sessions survive a restart and are
-   * the same ones the CLI/TUI list. Pass an in-memory store in tests.
+   * the same ones the CLI/TUI list. A `session/new` id becomes the persisted
+   * session id on the first prompt, so the client's thread id is resumable.
+   * Pass an in-memory store in tests.
    */
   store?: SessionStore
   /**
@@ -140,6 +142,7 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   const models = options.models ?? []
   const defaultModel = options.defaultModel ?? ""
   const sessions = registerSessions(app, {
+    store,
     createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
     images: options.images === true,
     imageSupport: options.imageSupport,
