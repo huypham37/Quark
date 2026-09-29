@@ -7,10 +7,20 @@
 
 import { describe, expect, test } from "bun:test"
 import * as acp from "@agentclientprotocol/sdk"
-import { MemorySessionStore, type Runner, type SessionStore } from "@quark/runner"
+import {
+  MemorySessionStore,
+  createRunner,
+  defineAgent,
+  type Runner,
+  type SessionStore,
+} from "@quark/runner"
+import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
+import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
+import type { StreamFn } from "../../packages/runner/src/session/processor"
 import { createAcpAgent } from "../../packages/acp/src/index"
 import { createSessionHandlers } from "../../packages/acp/src/sessions"
 import { registerCancellation } from "../../packages/acp/src/cancellation"
+import { createPermissionBridge } from "../../packages/acp/src/permissions"
 
 type Listener = (data: any) => void
 
@@ -207,3 +217,299 @@ describe("cancellation", () => {
     await expect(running).resolves.toEqual({ stopReason: "cancelled" })
   })
 })
+
+// ---------------------------------------------------------------------------
+// QUA-264: one turn-level abort signal covering provider, tools, permission
+// and MCP. `session/cancel` is a notification, so it never touches ctx.signal;
+// it aborts the turn controller the runner and bridges share.
+// ---------------------------------------------------------------------------
+
+const MODEL = "ollama/test-model"
+
+function catalogWithTestModel(): CatalogRegistry {
+  return new CatalogRegistry(createCatalogSnapshot({
+    ollama: {
+      id: "ollama",
+      name: "Ollama",
+      npm: "@ollama/ai",
+      env: ["OLLAMA_API_KEY"],
+      doc: "https://ollama.example/docs",
+      models: {
+        "test-model": {
+          id: "test-model",
+          name: "Test Model",
+          description: "offline test model",
+          attachment: false,
+          reasoning: false,
+          tool_call: true,
+          release_date: "2026-01-01",
+          last_updated: "2026-01-01",
+          modalities: { input: ["text"], output: ["text"] },
+          open_weights: false,
+          limit: { context: 100_000, output: 4_000 },
+        },
+      },
+    },
+  }, { fetchedAt: 1 }))
+}
+
+function offlineAgent(id: string, tools: Parameters<typeof defineAgent>[0]["tools"] = []) {
+  return defineAgent({ id, name: id, instructions: `${id} instructions`, tools, model: MODEL })
+}
+
+const textPrompt = { prompt: [{ type: "text", text: "go" }] } as never
+const callCtx = (signal = new AbortController().signal, client: unknown = {}) =>
+  ({ signal, client } as never)
+
+/** A runner whose execute fires the permission seam (like a real tool call). */
+function permissionRunner(store: SessionStore) {
+  return createRunner({
+    agent: offlineAgent("perm"),
+    store,
+    execute: async (input, ctx) => {
+      const args = { filePath: "/x" }
+      try {
+        await ctx.hooks.fire(
+          "tool.execute.before",
+          { tool: "write", args, sessionId: input.sessionId!, callId: "call-1" },
+          { args },
+        )
+      } catch (error) {
+        // A denial is a tool error the model can react to; only a real abort
+        // ends the turn. Mirrors the engine's tool-error path.
+        if ((error as { name?: string }).name === "AbortError") throw error
+      }
+      return { sessionId: input.sessionId! }
+    },
+  })
+}
+
+describe("QUA-264: one turn-level abort signal", () => {
+  test("session/cancel while a permission request is pending ends the turn cancelled, no hang", async () => {
+    const store = new MemorySessionStore()
+    const bridge = createSessionHandlers({
+      store,
+      createRunner: () => permissionRunner(store),
+      onTurnStart: createPermissionBridge({ log: () => {} }).onTurnStart,
+    })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    let requested!: () => void
+    const pendingPermission = new Promise<void>((resolve) => (requested = resolve))
+    const client = {
+      request: () => {
+        requested()
+        return new Promise(() => {}) // the dialog never answers
+      },
+    }
+
+    const running = bridge.prompt({ sessionId, ...textPrompt } as never, callCtx(new AbortController().signal, client))
+    await pendingPermission
+    const started = Date.now()
+    bridge.cancel({ sessionId })
+
+    await expect(running).resolves.toEqual({ stopReason: "cancelled" })
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
+  test("a denied tool ends the turn as a tool error, never a cancellation", async () => {
+    const store = new MemorySessionStore()
+    let turnSignal: AbortSignal | undefined
+    const bridge = createSessionHandlers({
+      store,
+      createRunner: () => permissionRunner(store),
+      onTurnStart: (turn) => {
+        createPermissionBridge({ log: () => {} }).onTurnStart(turn)
+        turnSignal = turn.signal
+      },
+    })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    const client = {
+      request: async () => ({ outcome: { outcome: "selected", optionId: "reject_once" } }),
+    }
+    const result = await bridge.prompt(
+      { sessionId, ...textPrompt } as never,
+      { signal: new AbortController().signal, client } as never,
+    )
+    expect(result).toEqual({ stopReason: "end_turn" })
+    expect(turnSignal?.aborted).toBe(false)
+  })
+
+  test("cancel before the runner announces its session id aborts the turn", async () => {
+    const store = new MemorySessionStore()
+    let entered!: () => void
+    const enteredP = new Promise<void>((resolve) => (entered = resolve))
+    let observedAbort = false
+    let resolveValue!: (value: { sessionId: string }) => void
+
+    // Models the pre-announcement gap: the runner cannot target its own run
+    // yet (cancel is a no-op), so only the shared controller can stop it.
+    const runner = createRunner({
+      agent: offlineAgent("gap"),
+      store,
+      execute: (input, ctx) =>
+        new Promise((resolve) => {
+          ctx.signal.addEventListener(
+            "abort",
+            () => {
+              observedAbort = true
+              resolve({ sessionId: input.sessionId! })
+            },
+            { once: true },
+          )
+          entered()
+          resolveValue = resolve
+        }),
+    })
+    // A runner that has not registered the run yet: cancel() reaches nothing.
+    const noopCancel = { ...runner, cancel: () => {} } as Runner
+    const bridge = createSessionHandlers({ store, createRunner: () => noopCancel })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    const running = bridge.prompt({ sessionId, ...textPrompt } as never, callCtx())
+    await enteredP
+    bridge.cancel({ sessionId })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(observedAbort).toBe(true)
+
+    // A value returned after the abort must never be reported as end_turn.
+    resolveValue({ sessionId: "late" })
+    await expect(running).resolves.toEqual({ stopReason: "cancelled" })
+  })
+
+  test("an aborted ctx.signal (connection close) still cancels the turn", async () => {
+    const store = new MemorySessionStore()
+    let entered!: () => void
+    const enteredP = new Promise<void>((resolve) => (entered = resolve))
+    const runner = createRunner({
+      agent: offlineAgent("close"),
+      store,
+      execute: (_input, ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true })
+          entered()
+        }),
+    })
+    const bridge = createSessionHandlers({ store, createRunner: () => runner })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    const request = new AbortController()
+    const running = bridge.prompt({ sessionId, ...textPrompt } as never, callCtx(request.signal))
+    await enteredP
+    request.abort()
+    await expect(running).resolves.toEqual({ stopReason: "cancelled" })
+  })
+
+  test("SessionTurn.signal is not aborted on a normal end_turn", async () => {
+    const store = new MemorySessionStore()
+    let turnSignal: AbortSignal | undefined
+    const runner = createRunner({
+      agent: offlineAgent("ok"),
+      store,
+      execute: async (input) => ({ sessionId: input.sessionId! }),
+    })
+    const bridge = createSessionHandlers({
+      store,
+      createRunner: () => runner,
+      onTurnStart: (turn) => { turnSignal = turn.signal },
+    })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    await expect(bridge.prompt({ sessionId, ...textPrompt } as never, callCtx())).resolves.toEqual({ stopReason: "end_turn" })
+    expect(turnSignal?.aborted).toBe(false)
+  })
+
+  test("after a cancelled turn the next prompt succeeds with no leaked abort state", async () => {
+    const store = new MemorySessionStore()
+    let turns = 0
+    let firstEntered!: () => void
+    const firstEnteredP = new Promise<void>((resolve) => (firstEntered = resolve))
+    const runner = createRunner({
+      agent: offlineAgent("repeat"),
+      store,
+      execute: async (input, ctx) => {
+        turns++
+        if (turns === 1) {
+          firstEntered()
+          await new Promise<never>((_resolve, reject) => {
+            ctx.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true })
+          })
+        }
+        return { sessionId: input.sessionId! }
+      },
+    })
+    const bridge = createSessionHandlers({ store, createRunner: () => runner })
+    const { sessionId } = bridge.newSession({ cwd: "/workspace", mcpServers: [] } as never)
+
+    const first = bridge.prompt({ sessionId, ...textPrompt } as never, callCtx())
+    await firstEnteredP
+    bridge.cancel({ sessionId })
+    await expect(first).resolves.toEqual({ stopReason: "cancelled" })
+    await expect(bridge.prompt({ sessionId, ...textPrompt } as never, callCtx())).resolves.toEqual({ stopReason: "end_turn" })
+  })
+
+  test("session/cancel during an in-flight MCP call rejects it and ends cancelled", async () => {
+    const store = new MemorySessionStore()
+    const slowTool = "mcp__slow__slow"
+    let inFlight!: () => void
+    const inFlightP = new Promise<void>((resolve) => (inFlight = resolve))
+    const outcome: { state: "pending" | "resolved" | "rejected" } = { state: "pending" }
+
+    // Drives the tool loop's tool call the way the AI SDK would, honoring the
+    // turn's abortSignal — so this exercises toAITool -> ctx.abort -> MCP.
+    const stream: StreamFn = (options) => ({
+      fullStream: (async function* () {
+        yield { type: "tool-input-start", id: "call-1", toolName: slowTool }
+        yield { type: "tool-call", toolCallId: "call-1", toolName: slowTool, input: { text: "hi" } }
+        inFlight()
+        try {
+          const result = await options.tools[slowTool].execute(
+            { text: "hi" },
+            { toolCallId: "call-1", messages: [], abortSignal: options.abortSignal },
+          )
+          outcome.state = "resolved"
+          yield { type: "tool-result", toolCallId: "call-1", toolName: slowTool, input: { text: "hi" }, output: result }
+        } catch (error) {
+          outcome.state = "rejected"
+          throw error
+        }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0 } }
+        yield { type: "finish" }
+      })(),
+    })
+
+    const slowServer = {
+      name: "slow",
+      command: process.execPath,
+      args: [new URL("./fixtures/mcp-slow-server.mjs", import.meta.url).pathname],
+      env: [],
+    }
+    const bridge = createSessionHandlers({
+      store,
+      createRunner: (_cwd, mcpTools) =>
+        createRunner({
+          agent: offlineAgent("mcp", mcpTools),
+          store,
+          resolve: { catalog: catalogWithTestModel() },
+          stream,
+        }),
+    })
+    const { sessionId } = await bridge.newSession({ cwd: "/workspace", mcpServers: [slowServer] } as never)
+
+    const running = bridge.prompt({ sessionId, ...textPrompt } as never, callCtx())
+    await inFlightP
+    // Let the tool seam actually reach `callTool` before cancelling, so the
+    // abort races an in-flight request rather than pre-empting the call.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const started = Date.now()
+    bridge.cancel({ sessionId })
+
+    await expect(running).resolves.toEqual({ stopReason: "cancelled" })
+    expect(outcome.state).toBe("rejected")
+    // Promptly: well before the fixture's own 300ms answer.
+    expect(Date.now() - started).toBeLessThan(250)
+    bridge.close({ sessionId })
+  })
+})
+

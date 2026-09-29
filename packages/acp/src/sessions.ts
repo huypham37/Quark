@@ -69,6 +69,12 @@ interface SessionState {
   active: boolean
   /** Set when `cancel()` hit an active turn, so prompt() reports "cancelled". */
   cancelled: boolean
+  /**
+   * The active turn's abort controller, owned by `prompt()`. `cancel()`,
+   * `close()` and `dispose()` abort it so provider streaming, tool execution,
+   * a pending permission dialog, and MCP calls all stop together.
+   */
+  turnController: AbortController | null
   /** Removes the runner bus listener created with the runner. */
   unsubscribe: (() => void) | null
   /** Live stdio MCP servers for this session; killed on close/dispose. */
@@ -86,7 +92,11 @@ export interface SessionTurn {
   runnerSessionId: string | null
   /** The session's isolated runner, for QUA-244 to subscribe to `runner.bus`. */
   runner: Runner
-  /** Per-request signal; aborts when the ACP connection closes. */
+  /**
+   * The turn's abort signal. Aborted by `session/cancel`, `close`, `dispose`,
+   * or when the ACP connection closes — the same signal the runner and its
+   * tools (including MCP) observe, so a cancel stops all of them together.
+   */
   signal: AbortSignal
   /** ACP client context, for `notify(methods.client.session.update, ...)`. */
   client: AgentContext
@@ -227,6 +237,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       runnerSessionId: null,
       active: false,
       cancelled: false,
+      turnController: null,
       unsubscribe: null,
       mcp,
       mcpTools: mcp.flatMap((connection) => connection.tools),
@@ -308,6 +319,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       }
       state.active = true
       state.cancelled = false
+      // QUA-264: one controller per turn, shared by the permission/update
+      // bridges, the runner, its tools, and MCP. `session/cancel` is a
+      // notification, so it never touches `ctx.signal`; aborting this
+      // controller is what actually stops the turn.
+      const controller = new AbortController()
+      state.turnController = controller
+      const abortFromRequest = () => controller.abort()
+      if (ctx.signal.aborted) controller.abort()
+      else ctx.signal.addEventListener("abort", abortFromRequest, { once: true })
       let createdForTurn = false
       try {
         const runner = runnerFor(state)
@@ -335,11 +355,12 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
           acpSessionId: state.acpSessionId,
           runnerSessionId: state.runnerSessionId,
           runner,
-          signal: ctx.signal,
+          signal: controller.signal,
           client: ctx.client,
         })
         const result = await runner.prompt({
           sessionId: state.runnerSessionId,
+          controller,
           parts,
           ...(images.length > 0 ? { images } : {}),
           ...(state.modelOverride ? { model: state.modelOverride } : {}),
@@ -362,10 +383,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         // ACP: an aborted operation must not surface as an error response.
         // runner.cancel() aborts the run, so prompt() rejects with an
         // AbortError; report `cancelled` instead (also for teardown cancels,
-        // which call runner.cancel without setting `cancelled`).
-        if (state.cancelled || isAbortError(error)) return { stopReason: "cancelled" }
+        // which call runner.cancel without setting `cancelled`). The controller
+        // check covers a turn that stopped by observing the shared signal.
+        if (state.cancelled || controller.signal.aborted || isAbortError(error)) {
+          return { stopReason: "cancelled" }
+        }
         throw error
       } finally {
+        ctx.signal.removeEventListener("abort", abortFromRequest)
+        if (state.turnController === controller) state.turnController = null
         state.active = false
         state.cancelled = false
       }
@@ -377,12 +403,14 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       // next turn cancelled.
       if (!state?.active) return
       state.cancelled = true
+      // Abort the turn-level controller first: it reaches the permission
+      // bridge, provider streaming, tools and MCP even before the runner has
+      // announced a session ID. runner.cancel() stays for the runner's own
+      // active-run bookkeeping.
+      state.turnController?.abort()
       if (state.runner && state.runnerSessionId) {
         state.runner.cancel(state.runnerSessionId)
       }
-      // ponytail: a cancel landing before the runner announces its first
-      // session ID cannot abort that turn (no ID to target). The window is
-      // synchronous, so it is unreachable once the prompt request is underway.
     },
 
     adopt({ acpSessionId, cwd, runnerSessionId, mcp = [] }) {
@@ -412,6 +440,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         runnerSessionId,
         active: false,
         cancelled: false,
+        turnController: null,
         unsubscribe: null,
         mcp,
         mcpTools: mcp.flatMap((connection) => connection.tools),
@@ -425,9 +454,10 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       // running against the now-detached state and resolves through its abort.
       for (const [key, state] of sessions) {
         if (state.acpSessionId !== sessionId && state.runnerSessionId !== sessionId) continue
-        if (state.active && state.runner && state.runnerSessionId) {
+        if (state.active) {
           state.cancelled = true
-          state.runner.cancel(state.runnerSessionId)
+          state.turnController?.abort()
+          if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
         }
         state.unsubscribe?.()
         disposeMcp(state)
@@ -446,8 +476,9 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
     dispose() {
       for (const state of sessions.values()) {
-        if (state.active && state.runner && state.runnerSessionId) {
-          state.runner.cancel(state.runnerSessionId)
+        if (state.active) {
+          state.turnController?.abort()
+          if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
         }
         state.unsubscribe?.()
         disposeMcp(state)

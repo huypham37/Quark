@@ -48,6 +48,12 @@ export interface RunnerPromptInput {
   policies?: Partial<RunPolicies>
   /** Model-resolution dependencies for this call (wins over runner options). */
   resolve?: ResolveModelOptions
+  /**
+   * Caller-owned abort controller for this turn. When supplied, the runner uses
+   * it as the turn signal instead of minting its own, so the caller can abort
+   * provider streaming, tools, and MCP with a single controller.
+   */
+  controller?: AbortController
 }
 
 /** Context handed to a runner's execution function. */
@@ -293,7 +299,7 @@ export function createRunner(options: RunnerOptions): Runner {
     })
 
   async function prompt(input: RunnerPromptInput): Promise<{ sessionId: string }> {
-    const controller = new AbortController()
+    const controller = input.controller ?? new AbortController()
     // Key the run immediately when the caller already knows the session, so
     // isActive()/cancel() work before the execute function registers it.
     // Must stay synchronous (before the first await) for that guarantee.
