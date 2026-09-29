@@ -36,6 +36,7 @@ import type {
 } from "@agentclientprotocol/sdk"
 import type { Runner } from "@quark/runner"
 import type { SessionTurn } from "./sessions"
+import { createToolCallIds, type ToolCallIdScope } from "./tool-call-ids"
 
 /** Tools that never need authorization: they cannot change the workspace. */
 const SAFE_TOOLS = new Set([
@@ -81,12 +82,22 @@ interface SessionPermissionState {
   /** Tools the client granted with `allow_always` for this session. */
   always: Set<string>
   /** The turn currently running, or null between turns. */
-  current: { client: AgentContext; acpSessionId: string; signal: AbortSignal } | null
+  current: {
+    client: AgentContext
+    acpSessionId: string
+    signal: AbortSignal
+    /** QUA-265: maps a raw provider call id to the ACP card id for this turn. */
+    callIds: ToolCallIdScope
+  } | null
 }
 
 export interface PermissionBridge {
-  /** Capture the turn's client/signal and install the gate on the runner (once). */
-  onTurnStart(turn: SessionTurn): void
+  /**
+   * Capture the turn's client/signal and install the gate on the runner (once).
+   * `callIds` (QUA-265) is the SAME per-turn scope the update bridge used, so
+   * the permission card attaches to the `tool_call` card already created.
+   */
+  onTurnStart(turn: SessionTurn, callIds?: ToolCallIdScope): void
 }
 
 export interface PermissionBridgeOptions {
@@ -102,6 +113,8 @@ export function createPermissionBridge(options: PermissionBridgeOptions = {}): P
   const log = options.log ?? (() => {})
   const states = new WeakMap<object, SessionPermissionState>()
   const installed = new WeakSet<object>()
+  // Fallback for direct callers/tests that don't pass a connection-scoped scope.
+  const fallbackCallIds = createToolCallIds()
 
   function stateFor(runner: object): SessionPermissionState {
     let state = states.get(runner)
@@ -135,7 +148,7 @@ export function createPermissionBridge(options: PermissionBridgeOptions = {}): P
         state!,
         input.tool,
         input.args,
-        input.callId ?? crypto.randomUUID(),
+        current.callIds.forRaw(input.callId ?? crypto.randomUUID()),
         log,
       )
       if (!allowed) throw new Error(`permission denied by the client for tool "${input.tool}"`)
@@ -143,7 +156,7 @@ export function createPermissionBridge(options: PermissionBridgeOptions = {}): P
   }
 
   return {
-    onTurnStart(turn) {
+    onTurnStart(turn, callIds) {
       const runner = turn.runner as Runner | undefined
       // Test doubles and any host that builds a runner without a hook registry
       // cannot be gated. The real engine always has one; log loudly if not.
@@ -156,6 +169,7 @@ export function createPermissionBridge(options: PermissionBridgeOptions = {}): P
         client: turn.client,
         acpSessionId: turn.acpSessionId,
         signal: turn.signal,
+        callIds: callIds ?? fallbackCallIds.startTurn(),
       }
     },
   }

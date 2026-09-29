@@ -32,6 +32,7 @@ import { registerLifecycle, type SessionLifecycle } from "./lifecycle"
 import { registerCancellation } from "./cancellation"
 import { createUpdateBridge } from "./updates"
 import { createPermissionBridge } from "./permissions"
+import { createToolCallIds } from "./tool-call-ids"
 import { buildConfigOptions, registerConfigOptions, type ModelOption } from "./config-options"
 
 export { AGENT_NAME, AGENT_VERSION } from "./initialization"
@@ -43,6 +44,8 @@ export { createPermissionBridge } from "./permissions"
 export type { PermissionBridge, PermissionBridgeOptions } from "./permissions"
 export { connectMcpServer, connectStdioServers, requireStdio } from "./mcp"
 export type { McpConnection, McpConnectOptions } from "./mcp"
+export { createToolCallIds } from "./tool-call-ids"
+export type { ToolCallIds, ToolCallIdScope } from "./tool-call-ids"
 export { buildConfigOptions, registerConfigOptions } from "./config-options"
 export type { ModelOption, ConfigOptionsContext } from "./config-options"
 
@@ -141,6 +144,10 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // per-session override threaded into `runner.prompt({ model })`.
   const models = options.models ?? []
   const defaultModel = options.defaultModel ?? ""
+  // QUA-265: one registry per connection. Live turns map raw provider ids to
+  // unique ACP ids; replay mints fresh ones, so a replay id can never collide
+  // with a later live id.
+  const toolCallIds = createToolCallIds()
   const sessions = registerSessions(app, {
     store,
     createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
@@ -148,9 +155,12 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
     imageSupport: options.imageSupport,
     log: options.log,
     onTurnStart: (turn) => {
+      // The SAME per-turn scope feeds the update bridge and the permission
+      // bridge, so a permission card attaches to the tool card already created.
+      const scope = toolCallIds.startTurn()
       if (options.onTurnStart) options.onTurnStart(turn)
-      else updates.onTurnStart(turn)
-      permissions.onTurnStart(turn)
+      else updates.onTurnStart(turn, scope)
+      permissions.onTurnStart(turn, scope)
     },
     // QUA-267: flush the update bridge's queued notifications before the
     // session/prompt response is written. A no-op when a caller-supplied
@@ -163,8 +173,9 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   if (models.length > 0) {
     registerConfigOptions(app, { models, defaultModel, sessions })
   }
-  // QUA-247: lifecycle over the SAME store the runners use.
-  const lifecycle = registerLifecycle(app, sessions, { store, log: options.log })
+  // QUA-247: lifecycle over the SAME store the runners use. QUA-265: replay
+  // shares the connection's tool-call-id registry so replayed ids are unique.
+  const lifecycle = registerLifecycle(app, sessions, { store, log: options.log, toolCallIds })
   Object.assign(capabilities, lifecycle.capabilities)
   registerCancellation(app, sessions)
   return { app, sessions, lifecycle }

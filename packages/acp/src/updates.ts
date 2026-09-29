@@ -37,6 +37,7 @@ import type {
 } from "@agentclientprotocol/sdk"
 import type { BusEvents, SessionStore } from "@quark/runner"
 import type { SessionTurn } from "./sessions"
+import { createToolCallIds, type ToolCallIds, type ToolCallIdScope } from "./tool-call-ids"
 
 // Persisted row shapes, derived from the store contract rather than importing
 // the runner's `session/message` subpath: the declaration build resolves
@@ -90,7 +91,11 @@ export interface UpdateBridgeOptions {
  * from the sessions bridge's `finally` (idempotent with the internal wrapper).
  */
 export interface UpdateBridge {
-  onTurnStart(turn: SessionTurn): void
+  /**
+   * `callIds` (QUA-265) remaps raw provider tool-call ids to unique ACP ids for
+   * this turn. Omitted (direct callers/tests), the bridge mints its own scope.
+   */
+  onTurnStart(turn: SessionTurn, callIds?: ToolCallIdScope): void
   onTurnEnd(turn: SessionTurn): Promise<void>
 }
 
@@ -163,7 +168,11 @@ function toolTextContent(text: string): ToolCallContent {
  * Subscribe to one turn's runner bus and build its serialized notification
  * queue. Cleanup (unsubscribe + flush) is driven by the parent's `onTurnEnd`.
  */
-function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
+function startTurn(
+  turn: SessionTurn,
+  options: UpdateBridgeOptions,
+  callIds: ToolCallIdScope,
+): TurnState {
   // Event filter: learn the runner session id from `session-created` on the
   // first turn, then only forward matching events. Instance runners already use
   // an isolated bus, but this keeps a shared bus from leaking sibling sessions
@@ -229,7 +238,7 @@ function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
     on("tool-start", (data) => {
       const update: ToolCall & { sessionUpdate: "tool_call" } = {
         sessionUpdate: "tool_call",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         title: toolTitle(data.tool),
         name: data.tool,
         kind: toolKind(data.tool),
@@ -241,7 +250,7 @@ function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
     on("tool-input", (data) => {
       enqueue({
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         title: toolTitle(data.tool, data.input),
         rawInput: data.input,
       })
@@ -250,7 +259,7 @@ function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
     on("tool-running", (data) => {
       enqueue({
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         status: "in_progress",
       })
     }),
@@ -258,7 +267,7 @@ function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
     on("tool-end", (data) => {
       const update: ToolCallUpdate & { sessionUpdate: "tool_call_update" } = {
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         status: data.status === "completed" ? "completed" : "failed",
       }
       const text = data.status === "completed" ? data.output : data.error
@@ -295,12 +304,15 @@ function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
  */
 export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBridge {
   const turns = new Map<string, TurnState>()
+  // Fallback for direct callers/tests that don't pass a connection-scoped
+  // scope. Still a fresh raw-id map per turn.
+  const fallbackCallIds = createToolCallIds()
 
   const bridge: UpdateBridge = {
-    onTurnStart(turn) {
+    onTurnStart(turn, callIds) {
       // One active turn per session (enforced upstream); ignore a double call.
       if (turns.has(turn.acpSessionId)) return
-      turns.set(turn.acpSessionId, startTurn(turn, options))
+      turns.set(turn.acpSessionId, startTurn(turn, options, callIds ?? fallbackCallIds.startTurn()))
     },
 
     async onTurnEnd(turn) {
@@ -334,8 +346,16 @@ export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBri
  *     `promptCapabilities.image`, which Quark does not.
  *   * `providerId === "compaction"` messages — synthesized context anchors
  *     (`toModelMessages` injects them), not something the user said.
+ *
+ * Tool-call ids (QUA-265): each stored tool row gets a FRESH ACP id — two rows
+ * that both persisted `call_0` are two distinct cards. They are not mapped by
+ * raw id here; the connection passes its registry so replay ids cannot collide
+ * with a later live-turn id. The persisted `callId` is never rewritten.
  */
-export function historyToUpdates(input: { messages: StoredMessage[]; parts: StoredPart[] }): SessionUpdate[] {
+export function historyToUpdates(
+  input: { messages: StoredMessage[]; parts: StoredPart[] },
+  callIds: ToolCallIds = createToolCallIds(),
+): SessionUpdate[] {
   const partsByMessage = new Map<string, StoredPart[]>()
   for (const part of input.parts) {
     const list = partsByMessage.get(part.messageId)
@@ -348,7 +368,7 @@ export function historyToUpdates(input: { messages: StoredMessage[]; parts: Stor
     if (message.providerId === "compaction") continue
     const chunk = message.role === "user" ? "user_message_chunk" : "agent_message_chunk"
     for (const part of partsByMessage.get(message.id) ?? []) {
-      const update = partToUpdate(part, chunk, message.id)
+      const update = partToUpdate(part, chunk, message.id, callIds)
       if (update) updates.push(update)
     }
   }
@@ -367,6 +387,7 @@ function partToUpdate(
   part: StoredPart,
   chunk: "user_message_chunk" | "agent_message_chunk",
   messageId: string,
+  callIds: ToolCallIds,
 ): SessionUpdate | null {
   switch (part.type) {
     case "text": {
@@ -380,17 +401,18 @@ function partToUpdate(
       return { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: data.text }, messageId }
     }
     case "tool":
-      return toolCallFromHistory(parsePart<StoredToolPart>(part))
+      return toolCallFromHistory(parsePart<StoredToolPart>(part), callIds)
     default:
       return null
   }
 }
 
-function toolCallFromHistory(data: StoredToolPart | null): SessionUpdate | null {
+function toolCallFromHistory(data: StoredToolPart | null, callIds: ToolCallIds): SessionUpdate | null {
   if (!data?.callId || !data.tool) return null
   const update: ToolCall & { sessionUpdate: "tool_call" } = {
     sessionUpdate: "tool_call",
-    toolCallId: data.callId,
+    // Fresh per stored row: replay is not a turn, so raw ids may repeat.
+    toolCallId: callIds.fresh(),
     title: toolTitle(data.tool, data.input),
     name: data.tool,
     kind: toolKind(data.tool),

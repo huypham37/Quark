@@ -222,7 +222,10 @@ test("permission gate: a denied tool throws before it can execute", async () => 
     request: async (method: string, params: any) => {
       expect(method).toBe(acp.methods.client.session.requestPermission)
       expect(params.sessionId).toBe("s-1")
-      expect(params.toolCall).toMatchObject({ toolCallId: "call-1", status: "pending", rawInput: { filePath: "/x" } })
+      expect(params.toolCall).toMatchObject({ status: "pending", rawInput: { filePath: "/x" } })
+      // QUA-265: the permission card carries the remapped ACP id, not "call-1".
+      expect(params.toolCall.toolCallId).toBeTruthy()
+      expect(params.toolCall.toolCallId).not.toBe("call-1")
       expect(params.options.map((option: any) => option.kind)).toEqual([
         "allow_once",
         "allow_always",

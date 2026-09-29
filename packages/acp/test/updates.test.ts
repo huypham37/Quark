@@ -114,10 +114,14 @@ test("translates the tool lifecycle with names, ids, status and raw input", asyn
   bus.emit("tool-end", { sessionId: "runner-1", messageId: "m1", partId: "t1", tool: "read", callId: "call-1", status: "completed", output: "contents" })
   await bridge.onTurnEnd(t)
 
+  // QUA-265: the bridge remaps the raw provider id; one call keeps one ACP id.
+  const toolCallId = updatesOf(c)[0].toolCallId
+  expect(toolCallId).toBeTruthy()
+  expect(toolCallId).not.toBe("call-1")
   expect(updatesOf(c)).toEqual([
     {
       sessionUpdate: "tool_call",
-      toolCallId: "call-1",
+      toolCallId: toolCallId,
       title: "Read",
       name: "read",
       kind: "read",
@@ -125,14 +129,14 @@ test("translates the tool lifecycle with names, ids, status and raw input", asyn
     },
     {
       sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
+      toolCallId: toolCallId,
       title: "Read /tmp/a.ts",
       rawInput: { filePath: "/tmp/a.ts" },
     },
-    { sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "in_progress" },
+    { sessionUpdate: "tool_call_update", toolCallId: toolCallId, status: "in_progress" },
     {
       sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
+      toolCallId: toolCallId,
       status: "completed",
       content: [{ type: "content", content: { type: "text", text: "contents" } }],
       rawOutput: "contents",
@@ -151,10 +155,14 @@ test("maps a failed tool to status failed with the error text", async () => {
   bus.emit("tool-end", { sessionId: "runner-1", messageId: "m1", partId: "t1", tool: "bash", callId: "c1", status: "error", error: "boom" })
   await bridge.onTurnEnd(t)
 
+  // QUA-265: the raw id never reaches the wire; the failure keeps its ACP id.
+  const toolCallId = updatesOf(c)[0].toolCallId
+  expect(toolCallId).toBeTruthy()
+  expect(toolCallId).not.toBe("c1")
   expect(updatesOf(c)).toEqual([
     {
       sessionUpdate: "tool_call_update",
-      toolCallId: "c1",
+      toolCallId: toolCallId,
       status: "failed",
       content: [{ type: "content", content: { type: "text", text: "boom" } }],
       rawOutput: "boom",
