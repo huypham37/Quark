@@ -101,8 +101,6 @@ function toAITool(
       }
       const validatedArgs = parseResult.data as Record<string, unknown>
 
-      eventBus.emit("tool-running", { sessionId, messageId, callId })
-
       const ctx = {
         sessionId,
         messageId,
@@ -123,6 +121,11 @@ function toAITool(
         const fp = extractFilePath(def.id, beforeArgs.args as Record<string, unknown>)
         if (fp) await toolPreExecute(sessionId, fp)
       }
+      // QUA-266: only now is the tool authorized (hook resolved) and prepared
+      // (undo snapshot taken) — execution is about to begin. Emitting earlier
+      // would render the tool as running before permission/undo, and a denied
+      // tool would flash "running" on the client.
+      eventBus.emit("tool-running", { sessionId, messageId, callId })
       const toolResult = await Promise.race([
         def.execute(beforeArgs.args as any, ctx),
         abortSignalToPromise(abortSig),

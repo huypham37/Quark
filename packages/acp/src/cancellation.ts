@@ -14,10 +14,11 @@
 // (processor / runTurn `finally`). A bridge (QUA-244) that maps those events to
 // `client.notify(...)` therefore enqueues them ahead of the response.
 //
-// Permissions — QUA-249's permission bridge is not implemented yet, so no
-// `session/request_permission` can be pending; there is nothing to resolve with
-// the `cancelled` outcome today. When that bridge lands, cancel must reject any
-// pending permission request for the turn as well as aborting the runner.
+// Permissions — QUA-249's permission bridge is wired (see permissions.ts), so a
+// `session/request_permission` can be pending when a cancel arrives. cancel
+// aborts the turn's shared AbortController (QUA-264), which the permission
+// bridge races its request against, so the pending dialog is rejected with an
+// AbortError and the turn ends as `cancelled` instead of hanging.
 
 import { methods } from "@agentclientprotocol/sdk"
 import type { AgentApp } from "@agentclientprotocol/sdk"

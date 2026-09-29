@@ -80,6 +80,17 @@ function chunkText(update: acp.SessionUpdate): string | undefined {
   }
 }
 
+/** ACP tool-call id of a tool update, or undefined for other updates. */
+function toolCallIdOf(update: acp.SessionUpdate): string | undefined {
+  switch (update.sessionUpdate) {
+    case "tool_call":
+    case "tool_call_update":
+      return update.toolCallId
+    default:
+      return undefined
+  }
+}
+
 const asServer = (server: unknown) => server as acp.McpServer
 
 test("streams text and a full tool lifecycle over the official client", async () => {
@@ -121,26 +132,30 @@ test("streams text and a full tool lifecycle over the official client", async ()
     expect(chunkText(updates[0]!)).toMatch(/^echo\[[^\]]+\]:TOOL hello$/)
     expect(updates[1]).toMatchObject({
       sessionUpdate: "tool_call",
-      toolCallId: "call-1",
       name: "read",
       kind: "read",
       status: "pending",
       title: "Read",
     })
+    // QUA-265: ACP ids are remapped at the boundary, never the raw provider id,
+    // and one call keeps a single id across its whole lifecycle.
+    const toolCallId = toolCallIdOf(updates[1]!)
+    expect(toolCallId).toBeTruthy()
+    expect(toolCallId).not.toBe("call-1")
     expect(updates[2]).toMatchObject({
       sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
+      toolCallId,
       title: "Read /tmp/a.ts",
       rawInput: { filePath: "/tmp/a.ts" },
     })
     expect(updates[3]).toMatchObject({
       sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
+      toolCallId,
       status: "in_progress",
     })
     expect(updates[4]).toMatchObject({
       sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
+      toolCallId,
       status: "completed",
       rawOutput: "contents",
     })

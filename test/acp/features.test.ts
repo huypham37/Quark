@@ -17,7 +17,7 @@
 import { expect, test } from "bun:test"
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process"
 import * as acp from "@agentclientprotocol/sdk"
-import { createHookRegistry, type Runner, type ToolDef } from "@quark/runner"
+import { createHookRegistry, MemorySessionStore, type Runner, type SessionStore, type ToolDef } from "@quark/runner"
 import { connectMcpServer, connectStdioServers, requireStdio } from "../../packages/acp/src/mcp"
 import { createSessionHandlers } from "../../packages/acp/src/sessions"
 import { createPermissionBridge } from "../../packages/acp/src/permissions"
@@ -34,7 +34,7 @@ const ctx = () => ({ abort: new AbortController().signal }) as never
 
 type Listener = (data: any) => void
 
-function makeRecordingRunner() {
+function makeRecordingRunner(store?: SessionStore) {
   const prompts: any[] = []
   const listeners = new Map<string, Set<Listener>>()
   const emit = (name: string, data: unknown) => {
@@ -53,11 +53,13 @@ function makeRecordingRunner() {
       emit,
     },
     hooks: createHookRegistry(),
-    store: {},
-    async prompt(input: unknown) {
+    store,
+    async prompt(input: { sessionId?: string }) {
       prompts.push(input)
-      emit("session-created", { sessionId: "runner-1" })
-      return { sessionId: "runner-1" }
+      // Honor a supplied persisted id rather than minting a competing one.
+      const sessionId = input.sessionId ?? "runner-1"
+      emit("session-created", { sessionId })
+      return { sessionId }
     },
     cancel() {},
     isActive: () => false,
@@ -136,8 +138,10 @@ test("requireStdio refuses non-stdio transports and relative commands", () => {
 
 test("session/new connects stdio MCP servers and injects their tools into the runner", async () => {
   let captured: ToolDef[] = []
-  const { runner } = makeRecordingRunner()
+  const store = new MemorySessionStore()
+  const { runner } = makeRecordingRunner(store)
   const bridge = createSessionHandlers({
+    store,
     createRunner: (_cwd, tools) => {
       captured = tools
       return runner
@@ -161,7 +165,7 @@ test("session/new connects stdio MCP servers and injects their tools into the ru
 
 test("re-adopting a session disposes redundant MCP connections", async () => {
   const { runner } = makeRecordingRunner()
-  const bridge = createSessionHandlers({ createRunner: () => runner })
+  const bridge = createSessionHandlers({ store: new MemorySessionStore(), createRunner: () => runner })
   const disposed: string[] = []
   const connection = (name: string) => ({
     name,
@@ -176,7 +180,7 @@ test("re-adopting a session disposes redundant MCP connections", async () => {
 })
 
 test("session/new fails closed when an MCP server cannot be reached", async () => {
-  const bridge = createSessionHandlers({ createRunner: () => makeRecordingRunner().runner })
+  const bridge = createSessionHandlers({ store: new MemorySessionStore(), createRunner: () => makeRecordingRunner().runner })
   await expect(
     bridge.newSession({
       cwd: "/workspace",
@@ -186,7 +190,7 @@ test("session/new fails closed when an MCP server cannot be reached", async () =
 })
 
 test("session/new refuses HTTP MCP transports instead of dropping them", () => {
-  const bridge = createSessionHandlers({ createRunner: () => makeRecordingRunner().runner })
+  const bridge = createSessionHandlers({ store: new MemorySessionStore(), createRunner: () => makeRecordingRunner().runner })
   expect(() =>
     bridge.newSession({
       cwd: "/workspace",
@@ -218,7 +222,10 @@ test("permission gate: a denied tool throws before it can execute", async () => 
     request: async (method: string, params: any) => {
       expect(method).toBe(acp.methods.client.session.requestPermission)
       expect(params.sessionId).toBe("s-1")
-      expect(params.toolCall).toMatchObject({ toolCallId: "call-1", status: "pending", rawInput: { filePath: "/x" } })
+      expect(params.toolCall).toMatchObject({ status: "pending", rawInput: { filePath: "/x" } })
+      // QUA-265: the permission card carries the remapped ACP id, not "call-1".
+      expect(params.toolCall.toolCallId).toBeTruthy()
+      expect(params.toolCall.toolCallId).not.toBe("call-1")
       expect(params.options.map((option: any) => option.kind)).toEqual([
         "allow_once",
         "allow_always",
@@ -329,8 +336,9 @@ test("permission gate: two sessions keep independent clients and decisions", asy
 // ---------------------------------------------------------------------------
 
 test("images: capability advertisement and block mapping move together", async () => {
-  const { runner, prompts } = makeRecordingRunner()
-  const agent = createAcpAgent({ createRunner: () => runner, images: true, log: () => {} })
+  const store = new MemorySessionStore()
+  const { runner, prompts } = makeRecordingRunner(store)
+  const agent = createAcpAgent({ store, createRunner: () => runner, images: true, log: () => {} })
 
   await acp.client({ name: "img" }).connectWith(agent.app, async (client) => {
     const init = await client.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION })
@@ -354,8 +362,9 @@ test("images: capability advertisement and block mapping move together", async (
 })
 
 test("images option B: known non-vision model rejects image prompt, text remains usable", async () => {
-  const { runner, prompts } = makeRecordingRunner()
-  const agent = createAcpAgent({ createRunner: () => runner, images: true, imageSupport: false, log: () => {} })
+  const store = new MemorySessionStore()
+  const { runner, prompts } = makeRecordingRunner(store)
+  const agent = createAcpAgent({ store, createRunner: () => runner, images: true, imageSupport: false, log: () => {} })
 
   await acp.client({ name: "blind-model" }).connectWith(agent.app, async (client) => {
     const init = await client.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION })
@@ -376,8 +385,9 @@ test("images option B: known non-vision model rejects image prompt, text remains
 })
 
 test("images option B: an unknown model passes images through to the provider", async () => {
-  const { runner, prompts } = makeRecordingRunner()
-  const agent = createAcpAgent({ createRunner: () => runner, images: true, log: () => {} })
+  const store = new MemorySessionStore()
+  const { runner, prompts } = makeRecordingRunner(store)
+  const agent = createAcpAgent({ store, createRunner: () => runner, images: true, log: () => {} })
   await acp.client({ name: "unknown-model" }).connectWith(agent.app, async (client) => {
     const { sessionId } = await client.request(acp.methods.agent.session.new, {
       cwd: process.cwd(), mcpServers: [],
@@ -390,8 +400,9 @@ test("images option B: an unknown model passes images through to the provider", 
 })
 
 test("images: without the opt-in the capability is absent and the block refused", async () => {
-  const { runner } = makeRecordingRunner()
-  const agent = createAcpAgent({ createRunner: () => runner, log: () => {} })
+  const store = new MemorySessionStore()
+  const { runner } = makeRecordingRunner(store)
+  const agent = createAcpAgent({ store, createRunner: () => runner, log: () => {} })
 
   await acp.client({ name: "no-img" }).connectWith(agent.app, async (client) => {
     const init = await client.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION })

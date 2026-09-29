@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import * as acp from "@agentclientprotocol/sdk"
 import { createAcpAgent } from "../../packages/acp/src/index"
 import { buildConfigOptions, MODEL_CONFIG_ID, type ModelOption } from "../../packages/acp/src/config-options"
-import type { Runner } from "@quark/runner"
+import { MemorySessionStore, type Runner } from "@quark/runner"
 
 const sampleModels: ModelOption[] = [
   { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna", providerId: "openai", providerName: "OpenAI" },
@@ -55,18 +55,21 @@ describe("session config options integration", () => {
   test("session/new includes configOptions and session/set_config_option updates model override", async () => {
     let lastPromptModel: string | undefined
 
+    const store = new MemorySessionStore()
     const stubRunner: Partial<Runner> = {
       bus: {
         on: () => {},
         off: () => {},
       } as any,
+      store,
       prompt: async (input) => {
         lastPromptModel = input.model
-        return { sessionId: "runner-session-1" } as any
+        return { sessionId: input.sessionId ?? "runner-session-1" } as any
       },
     }
 
     const agent = createAcpAgent({
+      store,
       createRunner: () => stubRunner as Runner,
       models: sampleModels,
       defaultModel: "openai/gpt-5.6-luna",

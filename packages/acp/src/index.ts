@@ -32,6 +32,7 @@ import { registerLifecycle, type SessionLifecycle } from "./lifecycle"
 import { registerCancellation } from "./cancellation"
 import { createUpdateBridge } from "./updates"
 import { createPermissionBridge } from "./permissions"
+import { createToolCallIds } from "./tool-call-ids"
 import { buildConfigOptions, registerConfigOptions, type ModelOption } from "./config-options"
 
 export { AGENT_NAME, AGENT_VERSION } from "./initialization"
@@ -43,6 +44,8 @@ export { createPermissionBridge } from "./permissions"
 export type { PermissionBridge, PermissionBridgeOptions } from "./permissions"
 export { connectMcpServer, connectStdioServers, requireStdio } from "./mcp"
 export type { McpConnection, McpConnectOptions } from "./mcp"
+export { createToolCallIds } from "./tool-call-ids"
+export type { ToolCallIds, ToolCallIdScope } from "./tool-call-ids"
 export { buildConfigOptions, registerConfigOptions } from "./config-options"
 export type { ModelOption, ConfigOptionsContext } from "./config-options"
 
@@ -51,7 +54,9 @@ export interface AcpAgentOptions {
    * Shared persistence for this connection: every session runner is created
    * with it, and `session/list|resume|load|delete` read/write it. Defaults to
    * the process-global JSONL store, so ACP sessions survive a restart and are
-   * the same ones the CLI/TUI list. Pass an in-memory store in tests.
+   * the same ones the CLI/TUI list. A `session/new` id becomes the persisted
+   * session id on the first prompt, so the client's thread id is resumable.
+   * Pass an in-memory store in tests.
    */
   store?: SessionStore
   /**
@@ -139,16 +144,28 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // per-session override threaded into `runner.prompt({ model })`.
   const models = options.models ?? []
   const defaultModel = options.defaultModel ?? ""
+  // QUA-265: one registry per connection. Live turns map raw provider ids to
+  // unique ACP ids; replay mints fresh ones, so a replay id can never collide
+  // with a later live id.
+  const toolCallIds = createToolCallIds()
   const sessions = registerSessions(app, {
+    store,
     createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
     images: options.images === true,
     imageSupport: options.imageSupport,
     log: options.log,
     onTurnStart: (turn) => {
+      // The SAME per-turn scope feeds the update bridge and the permission
+      // bridge, so a permission card attaches to the tool card already created.
+      const scope = toolCallIds.startTurn()
       if (options.onTurnStart) options.onTurnStart(turn)
-      else updates.onTurnStart(turn)
-      permissions.onTurnStart(turn)
+      else updates.onTurnStart(turn, scope)
+      permissions.onTurnStart(turn, scope)
     },
+    // QUA-267: flush the update bridge's queued notifications before the
+    // session/prompt response is written. A no-op when a caller-supplied
+    // onTurnStart replaced the default bridge (no turn was registered).
+    onTurnEnd: (turn) => updates.onTurnEnd(turn),
     buildConfigOptions:
       models.length > 0 ? () => buildConfigOptions(models, defaultModel) : undefined,
   })
@@ -156,8 +173,9 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   if (models.length > 0) {
     registerConfigOptions(app, { models, defaultModel, sessions })
   }
-  // QUA-247: lifecycle over the SAME store the runners use.
-  const lifecycle = registerLifecycle(app, sessions, { store, log: options.log })
+  // QUA-247: lifecycle over the SAME store the runners use. QUA-265: replay
+  // shares the connection's tool-call-id registry so replayed ids are unique.
+  const lifecycle = registerLifecycle(app, sessions, { store, log: options.log, toolCallIds })
   Object.assign(capabilities, lifecycle.capabilities)
   registerCancellation(app, sessions)
   return { app, sessions, lifecycle }
@@ -184,7 +202,9 @@ export async function runAcpStdio(options: AcpAgentOptions): Promise<void> {
     await connection.closed
   } finally {
     // EOF/transport close must cancel active runners, not orphan their turns.
-    sessions.dispose()
+    // Await teardown: every in-flight turn runs its onTurnEnd (flushing queued
+    // notifications) and every MCP child is reaped before we resolve.
+    await sessions.dispose()
     log("connection closed")
   }
 }

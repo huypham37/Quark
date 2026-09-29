@@ -49,6 +49,7 @@ import type { Session, SessionStore } from "@quark/runner"
 import type { SessionBridge } from "./sessions"
 import { connectStdioServers, requireStdio, type McpConnection } from "./mcp"
 import { historyToUpdates } from "./updates"
+import type { ToolCallIds } from "./tool-call-ids"
 
 export interface LifecycleOptions {
   /**
@@ -59,6 +60,12 @@ export interface LifecycleOptions {
   store: SessionStore
   /** Diagnostics sink for MCP connect/teardown. Defaults to no-op (stderr in prod). */
   log?(message: string): void
+  /**
+   * QUA-265: the connection's tool-call-id registry, so a replayed tool row's
+   * ACP id can never collide with a later live-turn id. Omitted (direct
+   * callers/tests), replay mints local unique ids.
+   */
+  toolCallIds?: ToolCallIds
 }
 
 /**
@@ -207,7 +214,7 @@ export function createSessionLifecycle(
       if (pending) await pending
       const { messages, parts } = store.replay(params.sessionId)
       // Replay must reach the client before the load response, in order.
-      for (const update of historyToUpdates({ messages, parts })) {
+      for (const update of historyToUpdates({ messages, parts }, options.toolCallIds)) {
         await client.notify(methods.client.session.update, { sessionId: params.sessionId, update })
       }
       return {}

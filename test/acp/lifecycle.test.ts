@@ -171,15 +171,18 @@ test("session/load adopts and replays persisted history as ordered session/updat
   })
   // The model-only context part is filtered, not leaked.
   expect(JSON.stringify(notifications)).not.toContain("SECRET CONTEXT")
-  expect(notifications[2]!.params.update).toMatchObject({
+  const replayedTool = notifications[2]!.params.update
+  expect(replayedTool).toMatchObject({
     sessionUpdate: "tool_call",
-    toolCallId: "c1",
     name: "read",
     kind: "read",
     status: "completed",
     rawInput: { filePath: "/a.ts" },
     rawOutput: "contents",
   })
+  // QUA-265: replay mints a fresh ACP id; the persisted "c1" is never forwarded.
+  expect(replayedTool.toolCallId).toBeTruthy()
+  expect(replayedTool.toolCallId).not.toBe("c1")
 })
 
 test("session/delete evicts an idle session then removes it; active and non-listed are refused", () => {

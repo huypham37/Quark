@@ -236,7 +236,8 @@ export async function connectMcpServer(
           // Already gone.
         }
       }, KILL_GRACE_MS)
-      ;(killTimer as { unref?: () => void }).unref?.()
+      // Deliberately referenced (no `unref`): teardown awaits this timer, so a
+      // SIGTERM-ignoring child must be SIGKILLed before the process can exit.
     })
     return disposal
   }

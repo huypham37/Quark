@@ -8,8 +8,11 @@
 //                    tools discovered above), translate blocks, run one turn,
 //                    remember the runner-created session ID
 //
-// ACP IDs and runner IDs are distinct: ACP owns the former, the runner mints
-// its own on the first prompt (see SessionState.runnerSessionId).
+// ACP IDs and persisted IDs converge: `session/new` mints an ACP id that
+// becomes the persisted session id on the first prompt (see
+// SessionState.runnerSessionId), so the id the client stores as its thread id
+// is the one `session/load`/`session/resume` finds after a restart. Adopted
+// sessions arrive with the two already equal.
 //
 // MCP (QUA-245): ACP v1 requires stdio MCP servers to be accepted. Nonempty
 // `mcpServers` is validated (stdio only, absolute command) and the servers are
@@ -27,8 +30,9 @@
 // `adopt` seeds the ACP→runner mapping with a store session ID so the next
 // prompt resumes that history (no replay), `close` cancels and forgets an
 // attachment, and `isActive` lets `session/delete` refuse to remove history a
-// live turn is still writing. The store itself is owned by the composition
-// root and passed to every runner; this module never reads it.
+// live turn is still writing. The store supports every runner; it is owned by
+// the composition root and threaded here, where this module reads it to
+// resolve/create the persisted record behind a new ACP session.
 
 import { methods, RequestError } from "@agentclientprotocol/sdk"
 import type {
@@ -45,7 +49,7 @@ import type {
   SessionConfigOption,
 } from "@agentclientprotocol/sdk"
 import { isAbsolute } from "node:path"
-import type { Runner, ToolDef } from "@quark/runner"
+import { createSession, type Runner, type SessionStore, type ToolDef } from "@quark/runner"
 import { connectStdioServers, requireStdio, type McpConnection } from "./mcp"
 
 /** One ACP session's registry entry. */
@@ -55,12 +59,22 @@ interface SessionState {
   cwd: string
   /** Created lazily on first prompt — a session/new must stay cheap. */
   runner: Runner | null
-  /** Runner-generated ID; null until the first turn creates it. */
+  /**
+   * Persisted session id. Null until the first prompt, which persists
+   * `acpSessionId` and adopts it here (the two then stay equal). Adopted
+   * sessions enter with the store id already set.
+   */
   runnerSessionId: string | null
   /** One active turn per session. */
   active: boolean
   /** Set when `cancel()` hit an active turn, so prompt() reports "cancelled". */
   cancelled: boolean
+  /**
+   * The active turn's abort controller, owned by `prompt()`. `cancel()`,
+   * `close()` and `dispose()` abort it so provider streaming, tool execution,
+   * a pending permission dialog, and MCP calls all stop together.
+   */
+  turnController: AbortController | null
   /** Removes the runner bus listener created with the runner. */
   unsubscribe: (() => void) | null
   /** Live stdio MCP servers for this session; killed on close/dispose. */
@@ -74,17 +88,29 @@ interface SessionState {
 /** Context handed to `onTurnStart`, once per turn, before the runner runs. */
 export interface SessionTurn {
   acpSessionId: string
-  /** Runner session ID; null only if this is the very first turn. */
+  /** Persisted session ID; persisted before the turn runs, so never null here. */
   runnerSessionId: string | null
   /** The session's isolated runner, for QUA-244 to subscribe to `runner.bus`. */
   runner: Runner
-  /** Per-request signal; aborts when the ACP connection closes. */
+  /**
+   * The turn's abort signal. Aborted by `session/cancel`, `close`, `dispose`,
+   * or when the ACP connection closes — the same signal the runner and its
+   * tools (including MCP) observe, so a cancel stops all of them together.
+   */
   signal: AbortSignal
   /** ACP client context, for `notify(methods.client.session.update, ...)`. */
   client: AgentContext
 }
 
 export interface SessionBridgeOptions {
+  /**
+   * Persistence shared with every session runner. The ACP id minted by
+   * `session/new` becomes the persisted session id on the first prompt, so the
+   * client's stored thread id round-trips through `session/load`/`resume`.
+   * Must be the SAME store each runner is created with: a mismatch would
+   * orphan the history the client is naming, so it is refused on first prompt.
+   */
+  store: SessionStore
   /**
    * Create the runner for a session. Called once per ACP session, lazily on
    * first prompt, so a session/new cannot fail on provider/agent setup.
@@ -98,6 +124,16 @@ export interface SessionBridgeOptions {
    * `client.notify(methods.client.session.update, ...)`.
    */
   onTurnStart?(turn: SessionTurn): void
+  /**
+   * Turn-cleanup seam (QUA-267): awaited in `prompt()`'s `finally`, before the
+   * `session/prompt` response is written. It must flush any queued
+   * notifications so a client is never left with a truncated turn, and it runs
+   * for every turn — including one detached by `session/close` and one aborted
+   * by `dispose()`, because `dispose()` awaits the turn's promise. A throw here
+   * is logged and swallowed: a teardown flush failure must not turn a settled
+   * turn into an error response.
+   */
+  onTurnEnd?(turn: SessionTurn): void | Promise<void>
   /**
    * Accept ACP `image` prompt blocks and map them to `RunnerPromptInput.images`.
    * Off by default: the baseline bridge only claims the mandatory `text` and
@@ -164,8 +200,13 @@ export interface SessionBridge {
   close(params: { sessionId: string }): void
   /** Whether an active turn is running for this ACP or runner session ID. */
   isActive(sessionId: string): boolean
-  /** Cancel active turns and forget all sessions (connection teardown). */
-  dispose(): void
+  /**
+   * Cancel active turns and forget all sessions (connection teardown). Awaits
+   * every in-flight turn (which runs its `onTurnEnd`, flushing queued
+   * notifications) and every MCP disposal before resolving; memoized, so a
+   * second call returns the same promise.
+   */
+  dispose(): Promise<void>
   /** Runner session ID for an ACP session; for diagnostics and tests. */
   runnerSessionId(acpSessionId: string): string | null
   /** Set the model override for a session (used by `session/set_config_option`). */
@@ -179,13 +220,21 @@ export interface SessionBridge {
  *
  * @example
  * ```ts
- * const sessions = createSessionHandlers({ createRunner: (cwd) => createRunner({ agent }) })
+ * const store = new MemorySessionStore()
+ * const sessions = createSessionHandlers({ store, createRunner: (cwd) => createRunner({ agent, store }) })
  * const { sessionId } = sessions.newSession({ cwd, mcpServers: [] })
  * ```
  */
 export function createSessionHandlers(options: SessionBridgeOptions): SessionBridge {
   const sessions = new Map<string, SessionState>()
   const log = options.log ?? (() => {})
+  /**
+   * Every in-flight turn promise, tracked at bridge scope (not on SessionState)
+   * so a turn detached by `session/close` is still awaited by `dispose()`.
+   */
+  const inFlight = new Set<Promise<unknown>>()
+  /** Memoized teardown so `dispose()` is idempotent and multiple awaits share it. */
+  let disposal: Promise<void> | null = null
 
   function requireSession(acpSessionId: string): SessionState {
     const state = sessions.get(acpSessionId)
@@ -197,7 +246,12 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
   /** Register a new session with its (already connected) MCP servers. */
   function registerSession(cwd: string, mcp: McpConnection[]): NewSessionResponse {
-    const acpSessionId = crypto.randomUUID()
+    // The ACP id becomes the persisted id on the first prompt, so it must not
+    // shadow an existing session: re-mint until it is free.
+    let acpSessionId: string
+    do {
+      acpSessionId = crypto.randomUUID()
+    } while (options.store.get(acpSessionId))
     sessions.set(acpSessionId, {
       acpSessionId,
       cwd,
@@ -205,6 +259,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       runnerSessionId: null,
       active: false,
       cancelled: false,
+      turnController: null,
       unsubscribe: null,
       mcp,
       mcpTools: mcp.flatMap((connection) => connection.tools),
@@ -217,11 +272,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     }
   }
 
-  /** Kill a state's MCP children without awaiting (teardown is best-effort). */
-  function disposeMcp(state: SessionState): void {
-    for (const connection of state.mcp) void connection.dispose()
+  /**
+   * Kill a state's MCP children and return their disposal promises so callers
+   * that must await teardown (`dispose`) can; `close` fire-and-forgets them.
+   */
+  function disposeMcp(state: SessionState): Promise<void>[] {
+    const disposals = state.mcp.map((connection) => connection.dispose())
     state.mcp = []
     state.mcpTools = []
+    return disposals
   }
 
   function runnerFor(state: SessionState): Runner {
@@ -239,7 +298,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     return runner
   }
 
-  return {
+  const bridge: SessionBridge = {
     newSession(params) {
       if (!isAbsolute(params.cwd)) {
         throw RequestError.invalidParams({ cwd: params.cwd }, "cwd must be an absolute path")
@@ -286,17 +345,52 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       }
       state.active = true
       state.cancelled = false
+      // QUA-264: one controller per turn, shared by the permission/update
+      // bridges, the runner, its tools, and MCP. `session/cancel` is a
+      // notification, so it never touches `ctx.signal`; aborting this
+      // controller is what actually stops the turn.
+      const controller = new AbortController()
+      state.turnController = controller
+      const abortFromRequest = () => controller.abort()
+      if (ctx.signal.aborted) controller.abort()
+      else ctx.signal.addEventListener("abort", abortFromRequest, { once: true })
+      let createdForTurn = false
+      let turnStarted = false
+      let turn: SessionTurn | undefined
       try {
         const runner = runnerFor(state)
-        options.onTurnStart?.({
+        // The persisted record must live in the same store the runner reads;
+        // otherwise this writes a session the runner can never resume.
+        if (runner.store !== options.store) {
+          throw new Error(
+            "session bridge store mismatch: the runner must be created with the bridge's store",
+          )
+        }
+        // First prompt: persist the ACP id so the client's thread id names a
+        // real session. Done before onTurnStart/runner.prompt so a failure
+        // cannot strand a turn against a nonexistent record.
+        if (state.runnerSessionId === null) {
+          const existing = options.store.get(state.acpSessionId)
+          if (!existing) {
+            createSession({ id: state.acpSessionId, directory: state.cwd }, options.store)
+            createdForTurn = true
+          } else if (existing.kind !== "main" || existing.directory !== state.cwd) {
+            throw new Error(`ACP session id collision: ${state.acpSessionId}`)
+          }
+          state.runnerSessionId = state.acpSessionId
+        }
+        turn = {
           acpSessionId: state.acpSessionId,
           runnerSessionId: state.runnerSessionId,
           runner,
-          signal: ctx.signal,
+          signal: controller.signal,
           client: ctx.client,
-        })
+        }
+        turnStarted = true
+        options.onTurnStart?.(turn)
         const result = await runner.prompt({
-          ...(state.runnerSessionId ? { sessionId: state.runnerSessionId } : {}),
+          sessionId: state.runnerSessionId,
+          controller,
           parts,
           ...(images.length > 0 ? { images } : {}),
           ...(state.modelOverride ? { model: state.modelOverride } : {}),
@@ -305,13 +399,40 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         state.runnerSessionId = result.sessionId
         return { stopReason: state.cancelled ? "cancelled" : "end_turn" }
       } catch (error) {
+        // A turn that failed before writing its user message leaves an empty
+        // envelope behind. Remove it so the id can be retried cleanly; never
+        // swallow the failure.
+        if (
+          createdForTurn &&
+          state.runnerSessionId === state.acpSessionId &&
+          options.store.replay(state.acpSessionId).messages.length === 0
+        ) {
+          options.store.delete(state.acpSessionId)
+          state.runnerSessionId = null
+        }
         // ACP: an aborted operation must not surface as an error response.
         // runner.cancel() aborts the run, so prompt() rejects with an
         // AbortError; report `cancelled` instead (also for teardown cancels,
-        // which call runner.cancel without setting `cancelled`).
-        if (state.cancelled || isAbortError(error)) return { stopReason: "cancelled" }
+        // which call runner.cancel without setting `cancelled`). The controller
+        // check covers a turn that stopped by observing the shared signal.
+        if (state.cancelled || controller.signal.aborted || isAbortError(error)) {
+          return { stopReason: "cancelled" }
+        }
         throw error
       } finally {
+        ctx.signal.removeEventListener("abort", abortFromRequest)
+        // Flush queued notifications (and any other turn cleanup) before the
+        // session/prompt response is written: a client must never receive a
+        // truncated turn. Runs here, not in a wrapped runner.prompt, so it also
+        // fires for a turn detached by close() or aborted by dispose().
+        if (turnStarted && turn) {
+          try {
+            await options.onTurnEnd?.(turn)
+          } catch (error) {
+            log(`onTurnEnd failed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+        if (state.turnController === controller) state.turnController = null
         state.active = false
         state.cancelled = false
       }
@@ -323,12 +444,14 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       // next turn cancelled.
       if (!state?.active) return
       state.cancelled = true
+      // Abort the turn-level controller first: it reaches the permission
+      // bridge, provider streaming, tools and MCP even before the runner has
+      // announced a session ID. runner.cancel() stays for the runner's own
+      // active-run bookkeeping.
+      state.turnController?.abort()
       if (state.runner && state.runnerSessionId) {
         state.runner.cancel(state.runnerSessionId)
       }
-      // ponytail: a cancel landing before the runner announces its first
-      // session ID cannot abort that turn (no ID to target). The window is
-      // synchronous, so it is unreachable once the prompt request is underway.
     },
 
     adopt({ acpSessionId, cwd, runnerSessionId, mcp = [] }) {
@@ -358,6 +481,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         runnerSessionId,
         active: false,
         cancelled: false,
+        turnController: null,
         unsubscribe: null,
         mcp,
         mcpTools: mcp.flatMap((connection) => connection.tools),
@@ -371,9 +495,10 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       // running against the now-detached state and resolves through its abort.
       for (const [key, state] of sessions) {
         if (state.acpSessionId !== sessionId && state.runnerSessionId !== sessionId) continue
-        if (state.active && state.runner && state.runnerSessionId) {
+        if (state.active) {
           state.cancelled = true
-          state.runner.cancel(state.runnerSessionId)
+          state.turnController?.abort()
+          if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
         }
         state.unsubscribe?.()
         disposeMcp(state)
@@ -391,14 +516,26 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     },
 
     dispose() {
-      for (const state of sessions.values()) {
-        if (state.active && state.runner && state.runnerSessionId) {
-          state.runner.cancel(state.runnerSessionId)
+      if (disposal) return disposal
+      disposal = (async () => {
+        const mcpDisposals: Promise<void>[] = []
+        for (const state of sessions.values()) {
+          if (state.active) {
+            state.turnController?.abort()
+            if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
+          }
+          state.unsubscribe?.()
+          mcpDisposals.push(...disposeMcp(state))
         }
-        state.unsubscribe?.()
-        disposeMcp(state)
-      }
-      sessions.clear()
+        // Snapshot before clearing: a turn detached by close() is not in the
+        // map, but its promise is in `inFlight`. Awaiting it runs its onTurnEnd,
+        // which flushes the queued notify chain.
+        const turns = [...inFlight]
+        sessions.clear()
+        await Promise.allSettled(turns)
+        await Promise.allSettled(mcpDisposals)
+      })()
+      return disposal
     },
 
     runnerSessionId(acpSessionId) {
@@ -414,6 +551,19 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       return sessions.get(acpSessionId)?.modelOverride ?? null
     },
   }
+
+  // Track every turn promise so `dispose()` can await turns detached by
+  // `session/close` (whose state is no longer in the map). The wrapper is a
+  // plain function: it adds no behavior to the turn itself.
+  const runTurn = bridge.prompt.bind(bridge)
+  bridge.prompt = (params, ctx) => {
+    const turnPromise = runTurn(params, ctx)
+    inFlight.add(turnPromise)
+    const forget = () => inFlight.delete(turnPromise)
+    turnPromise.then(forget, forget)
+    return turnPromise
+  }
+  return bridge
 }
 
 /**

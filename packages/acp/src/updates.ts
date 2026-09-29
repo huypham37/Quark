@@ -7,12 +7,10 @@
 // Ordering: bus events fire synchronously while `runner.prompt()` runs, but
 // `client.notify()` is async. Every translation goes through one serialized
 // promise chain so notifications hit the wire in event order, and the chain is
-// flushed before `session/prompt` responds. sessions.ts has no `onTurnEnd`
-// seam yet, so `onTurnStart` wraps the turn's `prompt` and flushes in its
-// `finally` — this also covers the error path (a rejected prompt must still
-// flush queued updates before its JSON-RPC error is written). If a parent later
-// wires `onTurnEnd` into `SessionBridgeOptions`, point it at `bridge.onTurnEnd`;
-// the wrap becomes a redundant, idempotent belt-and-braces.
+// flushed before `session/prompt` responds. The parent (sessions.ts) awaits
+// `SessionBridgeOptions.onTurnEnd` in `prompt()`'s `finally` — wired here to
+// `onTurnEnd` — which also covers the error path (a rejected prompt must still
+// flush queued updates before its JSON-RPC error is written).
 //
 // Deliberately NOT translated:
 //   * `step-finish` — ACP `usage_update` requires the context-window size,
@@ -39,6 +37,7 @@ import type {
 } from "@agentclientprotocol/sdk"
 import type { BusEvents, SessionStore } from "@quark/runner"
 import type { SessionTurn } from "./sessions"
+import { createToolCallIds, type ToolCallIds, type ToolCallIdScope } from "./tool-call-ids"
 
 // Persisted row shapes, derived from the store contract rather than importing
 // the runner's `session/message` subpath: the declaration build resolves
@@ -77,8 +76,6 @@ type BridgedEvent =
 interface TurnState {
   /** Drop every bus listener registered for the turn. */
   unsubscribe(): void
-  /** Restore the runner's original `prompt` (undo the flush wrapper). */
-  restore(): void
   /** Resolves when every queued notification has been written. */
   flush(): Promise<void>
 }
@@ -94,7 +91,11 @@ export interface UpdateBridgeOptions {
  * from the sessions bridge's `finally` (idempotent with the internal wrapper).
  */
 export interface UpdateBridge {
-  onTurnStart(turn: SessionTurn): void
+  /**
+   * `callIds` (QUA-265) remaps raw provider tool-call ids to unique ACP ids for
+   * this turn. Omitted (direct callers/tests), the bridge mints its own scope.
+   */
+  onTurnStart(turn: SessionTurn, callIds?: ToolCallIdScope): void
   onTurnEnd(turn: SessionTurn): Promise<void>
 }
 
@@ -165,12 +166,12 @@ function toolTextContent(text: string): ToolCallContent {
 
 /**
  * Subscribe to one turn's runner bus and build its serialized notification
- * queue. `onEnd` is invoked after the turn's `prompt` settles to tear down.
+ * queue. Cleanup (unsubscribe + flush) is driven by the parent's `onTurnEnd`.
  */
 function startTurn(
   turn: SessionTurn,
   options: UpdateBridgeOptions,
-  onEnd: () => Promise<void>,
+  callIds: ToolCallIdScope,
 ): TurnState {
   // Event filter: learn the runner session id from `session-created` on the
   // first turn, then only forward matching events. Instance runners already use
@@ -237,7 +238,7 @@ function startTurn(
     on("tool-start", (data) => {
       const update: ToolCall & { sessionUpdate: "tool_call" } = {
         sessionUpdate: "tool_call",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         title: toolTitle(data.tool),
         name: data.tool,
         kind: toolKind(data.tool),
@@ -249,7 +250,7 @@ function startTurn(
     on("tool-input", (data) => {
       enqueue({
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         title: toolTitle(data.tool, data.input),
         rawInput: data.input,
       })
@@ -258,7 +259,7 @@ function startTurn(
     on("tool-running", (data) => {
       enqueue({
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         status: "in_progress",
       })
     }),
@@ -266,7 +267,7 @@ function startTurn(
     on("tool-end", (data) => {
       const update: ToolCallUpdate & { sessionUpdate: "tool_call_update" } = {
         sessionUpdate: "tool_call_update",
-        toolCallId: data.callId,
+        toolCallId: callIds.forRaw(data.callId),
         status: data.status === "completed" ? "completed" : "failed",
       }
       const text = data.status === "completed" ? data.output : data.error
@@ -284,23 +285,13 @@ function startTurn(
     }),
   ]
 
-  // Wrap this turn's `prompt` so cleanup (unsubscribe + flush) runs after it
-  // settles, before sessions.ts writes the session/prompt response.
-  const originalPrompt = turn.runner.prompt
-  turn.runner.prompt = async (input) => {
-    try {
-      return await originalPrompt.call(turn.runner, input)
-    } finally {
-      await onEnd()
-    }
-  }
+  // NOTE: this bridge no longer wraps the runner's `prompt`. The parent
+  // (sessions.ts) awaits `onTurnEnd` in `prompt()`'s `finally`, which flushes
+  // the queue before the session/prompt response is written.
 
   return {
     unsubscribe: () => {
       for (const off of offs) off()
-    },
-    restore: () => {
-      if (turn.runner.prompt !== originalPrompt) turn.runner.prompt = originalPrompt
     },
     flush: () => chain,
   }
@@ -313,14 +304,15 @@ function startTurn(
  */
 export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBridge {
   const turns = new Map<string, TurnState>()
+  // Fallback for direct callers/tests that don't pass a connection-scoped
+  // scope. Still a fresh raw-id map per turn.
+  const fallbackCallIds = createToolCallIds()
 
   const bridge: UpdateBridge = {
-    onTurnStart(turn) {
+    onTurnStart(turn, callIds) {
       // One active turn per session (enforced upstream); ignore a double call.
       if (turns.has(turn.acpSessionId)) return
-      // `onEnd` reads `bridge` lazily; it fires only after this turn's prompt
-      // settles, long after `bridge` is assigned.
-      turns.set(turn.acpSessionId, startTurn(turn, options, () => bridge.onTurnEnd(turn)))
+      turns.set(turn.acpSessionId, startTurn(turn, options, callIds ?? fallbackCallIds.startTurn()))
     },
 
     async onTurnEnd(turn) {
@@ -328,7 +320,6 @@ export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBri
       if (!state) return
       turns.delete(turn.acpSessionId)
       state.unsubscribe()
-      state.restore()
       await state.flush()
     },
   }
@@ -355,8 +346,16 @@ export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBri
  *     `promptCapabilities.image`, which Quark does not.
  *   * `providerId === "compaction"` messages — synthesized context anchors
  *     (`toModelMessages` injects them), not something the user said.
+ *
+ * Tool-call ids (QUA-265): each stored tool row gets a FRESH ACP id — two rows
+ * that both persisted `call_0` are two distinct cards. They are not mapped by
+ * raw id here; the connection passes its registry so replay ids cannot collide
+ * with a later live-turn id. The persisted `callId` is never rewritten.
  */
-export function historyToUpdates(input: { messages: StoredMessage[]; parts: StoredPart[] }): SessionUpdate[] {
+export function historyToUpdates(
+  input: { messages: StoredMessage[]; parts: StoredPart[] },
+  callIds: ToolCallIds = createToolCallIds(),
+): SessionUpdate[] {
   const partsByMessage = new Map<string, StoredPart[]>()
   for (const part of input.parts) {
     const list = partsByMessage.get(part.messageId)
@@ -369,7 +368,7 @@ export function historyToUpdates(input: { messages: StoredMessage[]; parts: Stor
     if (message.providerId === "compaction") continue
     const chunk = message.role === "user" ? "user_message_chunk" : "agent_message_chunk"
     for (const part of partsByMessage.get(message.id) ?? []) {
-      const update = partToUpdate(part, chunk, message.id)
+      const update = partToUpdate(part, chunk, message.id, callIds)
       if (update) updates.push(update)
     }
   }
@@ -388,6 +387,7 @@ function partToUpdate(
   part: StoredPart,
   chunk: "user_message_chunk" | "agent_message_chunk",
   messageId: string,
+  callIds: ToolCallIds,
 ): SessionUpdate | null {
   switch (part.type) {
     case "text": {
@@ -401,17 +401,18 @@ function partToUpdate(
       return { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: data.text }, messageId }
     }
     case "tool":
-      return toolCallFromHistory(parsePart<StoredToolPart>(part))
+      return toolCallFromHistory(parsePart<StoredToolPart>(part), callIds)
     default:
       return null
   }
 }
 
-function toolCallFromHistory(data: StoredToolPart | null): SessionUpdate | null {
+function toolCallFromHistory(data: StoredToolPart | null, callIds: ToolCallIds): SessionUpdate | null {
   if (!data?.callId || !data.tool) return null
   const update: ToolCall & { sessionUpdate: "tool_call" } = {
     sessionUpdate: "tool_call",
-    toolCallId: data.callId,
+    // Fresh per stored row: replay is not a turn, so raw ids may repeat.
+    toolCallId: callIds.fresh(),
     title: toolTitle(data.tool, data.input),
     name: data.tool,
     kind: toolKind(data.tool),
