@@ -213,7 +213,7 @@ describe("cancellation", () => {
     await runner.entered
     // dispose() aborts without setting the "cancelled" flag: the AbortError
     // normalization alone must produce the cancelled stop reason.
-    bridge.dispose()
+    await bridge.dispose()
     await expect(running).resolves.toEqual({ stopReason: "cancelled" })
   })
 })

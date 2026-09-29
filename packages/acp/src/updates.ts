@@ -7,12 +7,10 @@
 // Ordering: bus events fire synchronously while `runner.prompt()` runs, but
 // `client.notify()` is async. Every translation goes through one serialized
 // promise chain so notifications hit the wire in event order, and the chain is
-// flushed before `session/prompt` responds. sessions.ts has no `onTurnEnd`
-// seam yet, so `onTurnStart` wraps the turn's `prompt` and flushes in its
-// `finally` — this also covers the error path (a rejected prompt must still
-// flush queued updates before its JSON-RPC error is written). If a parent later
-// wires `onTurnEnd` into `SessionBridgeOptions`, point it at `bridge.onTurnEnd`;
-// the wrap becomes a redundant, idempotent belt-and-braces.
+// flushed before `session/prompt` responds. The parent (sessions.ts) awaits
+// `SessionBridgeOptions.onTurnEnd` in `prompt()`'s `finally` — wired here to
+// `onTurnEnd` — which also covers the error path (a rejected prompt must still
+// flush queued updates before its JSON-RPC error is written).
 //
 // Deliberately NOT translated:
 //   * `step-finish` — ACP `usage_update` requires the context-window size,
@@ -77,8 +75,6 @@ type BridgedEvent =
 interface TurnState {
   /** Drop every bus listener registered for the turn. */
   unsubscribe(): void
-  /** Restore the runner's original `prompt` (undo the flush wrapper). */
-  restore(): void
   /** Resolves when every queued notification has been written. */
   flush(): Promise<void>
 }
@@ -165,13 +161,9 @@ function toolTextContent(text: string): ToolCallContent {
 
 /**
  * Subscribe to one turn's runner bus and build its serialized notification
- * queue. `onEnd` is invoked after the turn's `prompt` settles to tear down.
+ * queue. Cleanup (unsubscribe + flush) is driven by the parent's `onTurnEnd`.
  */
-function startTurn(
-  turn: SessionTurn,
-  options: UpdateBridgeOptions,
-  onEnd: () => Promise<void>,
-): TurnState {
+function startTurn(turn: SessionTurn, options: UpdateBridgeOptions): TurnState {
   // Event filter: learn the runner session id from `session-created` on the
   // first turn, then only forward matching events. Instance runners already use
   // an isolated bus, but this keeps a shared bus from leaking sibling sessions
@@ -284,23 +276,13 @@ function startTurn(
     }),
   ]
 
-  // Wrap this turn's `prompt` so cleanup (unsubscribe + flush) runs after it
-  // settles, before sessions.ts writes the session/prompt response.
-  const originalPrompt = turn.runner.prompt
-  turn.runner.prompt = async (input) => {
-    try {
-      return await originalPrompt.call(turn.runner, input)
-    } finally {
-      await onEnd()
-    }
-  }
+  // NOTE: this bridge no longer wraps the runner's `prompt`. The parent
+  // (sessions.ts) awaits `onTurnEnd` in `prompt()`'s `finally`, which flushes
+  // the queue before the session/prompt response is written.
 
   return {
     unsubscribe: () => {
       for (const off of offs) off()
-    },
-    restore: () => {
-      if (turn.runner.prompt !== originalPrompt) turn.runner.prompt = originalPrompt
     },
     flush: () => chain,
   }
@@ -318,9 +300,7 @@ export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBri
     onTurnStart(turn) {
       // One active turn per session (enforced upstream); ignore a double call.
       if (turns.has(turn.acpSessionId)) return
-      // `onEnd` reads `bridge` lazily; it fires only after this turn's prompt
-      // settles, long after `bridge` is assigned.
-      turns.set(turn.acpSessionId, startTurn(turn, options, () => bridge.onTurnEnd(turn)))
+      turns.set(turn.acpSessionId, startTurn(turn, options))
     },
 
     async onTurnEnd(turn) {
@@ -328,7 +308,6 @@ export function createUpdateBridge(options: UpdateBridgeOptions = {}): UpdateBri
       if (!state) return
       turns.delete(turn.acpSessionId)
       state.unsubscribe()
-      state.restore()
       await state.flush()
     },
   }

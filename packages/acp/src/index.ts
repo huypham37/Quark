@@ -152,6 +152,10 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
       else updates.onTurnStart(turn)
       permissions.onTurnStart(turn)
     },
+    // QUA-267: flush the update bridge's queued notifications before the
+    // session/prompt response is written. A no-op when a caller-supplied
+    // onTurnStart replaced the default bridge (no turn was registered).
+    onTurnEnd: (turn) => updates.onTurnEnd(turn),
     buildConfigOptions:
       models.length > 0 ? () => buildConfigOptions(models, defaultModel) : undefined,
   })
@@ -187,7 +191,9 @@ export async function runAcpStdio(options: AcpAgentOptions): Promise<void> {
     await connection.closed
   } finally {
     // EOF/transport close must cancel active runners, not orphan their turns.
-    sessions.dispose()
+    // Await teardown: every in-flight turn runs its onTurnEnd (flushing queued
+    // notifications) and every MCP child is reaped before we resolve.
+    await sessions.dispose()
     log("connection closed")
   }
 }

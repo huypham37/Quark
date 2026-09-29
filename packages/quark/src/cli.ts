@@ -128,11 +128,13 @@ async function main() {
   if (process.argv[2] === "acp") {
     try {
       const { runAcpCommand } = await import("./acp-host")
-      process.exit(await runAcpCommand(process.argv.slice(3)))
+      // QUA-267: let teardown finish before exiting instead of force-exiting.
+      process.exitCode = await runAcpCommand(process.argv.slice(3))
     } catch (error) {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-      process.exit(1)
+      process.exitCode = 1
     }
+    return
   }
 
   const args = parseArguments()
@@ -216,11 +218,14 @@ async function main() {
       })
       dlog(`session: ${result.sessionId}`)
       cleanupEventWriter()
-      process.exit(0)
+      // QUA-267: return with an exit code so pending teardown can settle.
+      process.exitCode = 0
+      return
     } catch (err: any) {
       console.error("Error:", err.message)
       cleanupEventWriter()
-      process.exit(1)
+      process.exitCode = 1
+      return
     }
   }
 
@@ -240,10 +245,13 @@ async function main() {
     if (!args.noStore) {
       process.stdout.write(`Resume the session with quark --session ${result.sessionId}\n`)
     }
-    process.exit(0)
+    // QUA-267: return with an exit code so pending teardown can settle.
+    process.exitCode = 0
+    return
   } catch (err: any) {
     console.error("Error:", err.message)
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 }
 

@@ -100,7 +100,7 @@ test("a session survives a restart and resume/load continue the same persisted i
     expect(listed.sessions[0]!.cwd).toBe("/workspace")
     expect(store.replay(returnedId).messages).toHaveLength(1)
   })
-  first.sessions.dispose()
+  await first.sessions.dispose()
   expect(store.get(returnedId)).not.toBeNull()
 
   // A fresh connection over the SAME store is the restart.

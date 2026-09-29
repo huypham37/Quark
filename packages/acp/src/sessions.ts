@@ -125,6 +125,16 @@ export interface SessionBridgeOptions {
    */
   onTurnStart?(turn: SessionTurn): void
   /**
+   * Turn-cleanup seam (QUA-267): awaited in `prompt()`'s `finally`, before the
+   * `session/prompt` response is written. It must flush any queued
+   * notifications so a client is never left with a truncated turn, and it runs
+   * for every turn — including one detached by `session/close` and one aborted
+   * by `dispose()`, because `dispose()` awaits the turn's promise. A throw here
+   * is logged and swallowed: a teardown flush failure must not turn a settled
+   * turn into an error response.
+   */
+  onTurnEnd?(turn: SessionTurn): void | Promise<void>
+  /**
    * Accept ACP `image` prompt blocks and map them to `RunnerPromptInput.images`.
    * Off by default: the baseline bridge only claims the mandatory `text` and
    * `resource_link` blocks. The composition root turns this on only when it
@@ -190,8 +200,13 @@ export interface SessionBridge {
   close(params: { sessionId: string }): void
   /** Whether an active turn is running for this ACP or runner session ID. */
   isActive(sessionId: string): boolean
-  /** Cancel active turns and forget all sessions (connection teardown). */
-  dispose(): void
+  /**
+   * Cancel active turns and forget all sessions (connection teardown). Awaits
+   * every in-flight turn (which runs its `onTurnEnd`, flushing queued
+   * notifications) and every MCP disposal before resolving; memoized, so a
+   * second call returns the same promise.
+   */
+  dispose(): Promise<void>
   /** Runner session ID for an ACP session; for diagnostics and tests. */
   runnerSessionId(acpSessionId: string): string | null
   /** Set the model override for a session (used by `session/set_config_option`). */
@@ -213,6 +228,13 @@ export interface SessionBridge {
 export function createSessionHandlers(options: SessionBridgeOptions): SessionBridge {
   const sessions = new Map<string, SessionState>()
   const log = options.log ?? (() => {})
+  /**
+   * Every in-flight turn promise, tracked at bridge scope (not on SessionState)
+   * so a turn detached by `session/close` is still awaited by `dispose()`.
+   */
+  const inFlight = new Set<Promise<unknown>>()
+  /** Memoized teardown so `dispose()` is idempotent and multiple awaits share it. */
+  let disposal: Promise<void> | null = null
 
   function requireSession(acpSessionId: string): SessionState {
     const state = sessions.get(acpSessionId)
@@ -250,11 +272,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     }
   }
 
-  /** Kill a state's MCP children without awaiting (teardown is best-effort). */
-  function disposeMcp(state: SessionState): void {
-    for (const connection of state.mcp) void connection.dispose()
+  /**
+   * Kill a state's MCP children and return their disposal promises so callers
+   * that must await teardown (`dispose`) can; `close` fire-and-forgets them.
+   */
+  function disposeMcp(state: SessionState): Promise<void>[] {
+    const disposals = state.mcp.map((connection) => connection.dispose())
     state.mcp = []
     state.mcpTools = []
+    return disposals
   }
 
   function runnerFor(state: SessionState): Runner {
@@ -272,7 +298,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     return runner
   }
 
-  return {
+  const bridge: SessionBridge = {
     newSession(params) {
       if (!isAbsolute(params.cwd)) {
         throw RequestError.invalidParams({ cwd: params.cwd }, "cwd must be an absolute path")
@@ -329,6 +355,8 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       if (ctx.signal.aborted) controller.abort()
       else ctx.signal.addEventListener("abort", abortFromRequest, { once: true })
       let createdForTurn = false
+      let turnStarted = false
+      let turn: SessionTurn | undefined
       try {
         const runner = runnerFor(state)
         // The persisted record must live in the same store the runner reads;
@@ -351,13 +379,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
           }
           state.runnerSessionId = state.acpSessionId
         }
-        options.onTurnStart?.({
+        turn = {
           acpSessionId: state.acpSessionId,
           runnerSessionId: state.runnerSessionId,
           runner,
           signal: controller.signal,
           client: ctx.client,
-        })
+        }
+        turnStarted = true
+        options.onTurnStart?.(turn)
         const result = await runner.prompt({
           sessionId: state.runnerSessionId,
           controller,
@@ -391,6 +421,17 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         throw error
       } finally {
         ctx.signal.removeEventListener("abort", abortFromRequest)
+        // Flush queued notifications (and any other turn cleanup) before the
+        // session/prompt response is written: a client must never receive a
+        // truncated turn. Runs here, not in a wrapped runner.prompt, so it also
+        // fires for a turn detached by close() or aborted by dispose().
+        if (turnStarted && turn) {
+          try {
+            await options.onTurnEnd?.(turn)
+          } catch (error) {
+            log(`onTurnEnd failed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
         if (state.turnController === controller) state.turnController = null
         state.active = false
         state.cancelled = false
@@ -475,15 +516,26 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
     },
 
     dispose() {
-      for (const state of sessions.values()) {
-        if (state.active) {
-          state.turnController?.abort()
-          if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
+      if (disposal) return disposal
+      disposal = (async () => {
+        const mcpDisposals: Promise<void>[] = []
+        for (const state of sessions.values()) {
+          if (state.active) {
+            state.turnController?.abort()
+            if (state.runner && state.runnerSessionId) state.runner.cancel(state.runnerSessionId)
+          }
+          state.unsubscribe?.()
+          mcpDisposals.push(...disposeMcp(state))
         }
-        state.unsubscribe?.()
-        disposeMcp(state)
-      }
-      sessions.clear()
+        // Snapshot before clearing: a turn detached by close() is not in the
+        // map, but its promise is in `inFlight`. Awaiting it runs its onTurnEnd,
+        // which flushes the queued notify chain.
+        const turns = [...inFlight]
+        sessions.clear()
+        await Promise.allSettled(turns)
+        await Promise.allSettled(mcpDisposals)
+      })()
+      return disposal
     },
 
     runnerSessionId(acpSessionId) {
@@ -499,6 +551,19 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       return sessions.get(acpSessionId)?.modelOverride ?? null
     },
   }
+
+  // Track every turn promise so `dispose()` can await turns detached by
+  // `session/close` (whose state is no longer in the map). The wrapper is a
+  // plain function: it adds no behavior to the turn itself.
+  const runTurn = bridge.prompt.bind(bridge)
+  bridge.prompt = (params, ctx) => {
+    const turnPromise = runTurn(params, ctx)
+    inFlight.add(turnPromise)
+    const forget = () => inFlight.delete(turnPromise)
+    turnPromise.then(forget, forget)
+    return turnPromise
+  }
+  return bridge
 }
 
 /**

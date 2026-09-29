@@ -275,19 +275,26 @@ test("onTurnStart receives the runner and ACP client context", async () => {
   expect(turns[0]!.runnerSessionId).toBe(sessionId)
 })
 
-test("dispose cancels active turns and is idempotent", async () => {
+test("dispose cancels active turns, awaits them, and is idempotent", async () => {
   const store = new MemorySessionStore()
   const { runner, cancelled, release } = makeRunner({ sessionId: "runner-9", store, manual: true })
   const bridge = createSessionHandlers({ store, createRunner: () => runner as any })
   const { sessionId } = bridge.newSession(newSessionParams())
   const running = bridge.prompt({ sessionId, prompt: [{ type: "text", text: "x" }] } as any, callCtx())
 
-  bridge.dispose()
+  // The abort is synchronous, but teardown waits for the in-flight turn.
+  const disposing = bridge.dispose()
   expect(cancelled).toEqual([sessionId])
-  expect(bridge.runnerSessionId(sessionId)).toBeNull()
+  let resolved = false
+  void disposing.then(() => (resolved = true))
+  await Promise.resolve()
+  expect(resolved).toBe(false)
+
   release()
   await running
-  bridge.dispose()
+  await disposing
+  expect(bridge.runnerSessionId(sessionId)).toBeNull()
+  await bridge.dispose() // idempotent
 })
 
 test("registerSessions installs session/new and session/prompt on the app", async () => {
