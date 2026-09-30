@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import * as acp from "@agentclientprotocol/sdk"
 import { createAcpAgent } from "../../packages/acp/src/index"
-import { buildConfigOptions, MODEL_CONFIG_ID, type ModelOption } from "../../packages/acp/src/config-options"
+import { buildConfigOptions, EFFORT_CONFIG_ID, MODEL_CONFIG_ID, type ModelOption } from "../../packages/acp/src/config-options"
 import { MemorySessionStore, type Runner } from "@quark/runner"
 
 const sampleModels: ModelOption[] = [
@@ -48,6 +48,178 @@ describe("buildConfigOptions", () => {
       expect(flat[0].value).toBe("openai/gpt-5.6-luna")
       expect(flat[1].value).toBe("openai/gpt-5.6-sol")
     }
+  })
+})
+
+describe("thinking-effort config option", () => {
+  const effortModels: ModelOption[] = [
+    {
+      id: "openai/gpt-5.6-luna",
+      name: "GPT-5.6 Luna",
+      providerId: "openai",
+      providerName: "OpenAI",
+      thinkingLevels: ["none", "low", "medium", "high"],
+    },
+    {
+      id: "openai/gpt-plain",
+      name: "GPT Plain",
+      providerId: "openai",
+      providerName: "OpenAI",
+    },
+  ]
+
+  test("advertises an effort select only when the model exposes multiple levels", () => {
+    const withEffort = buildConfigOptions(effortModels, "openai/gpt-5.6-luna")
+    const effort = withEffort.find((option) => option.id === EFFORT_CONFIG_ID)
+    expect(effort?.category).toBe("thought_level")
+    if (effort?.type === "select") {
+      expect(effort.currentValue).toBe("none")
+      expect(effort.options.map((option) => option.value)).toEqual([
+        "none",
+        "low",
+        "medium",
+        "high",
+      ])
+    } else {
+      expect().fail("expected an effort select")
+    }
+
+    // A model with no verified levels advertises no effort option.
+    const withoutEffort = buildConfigOptions(effortModels, "openai/gpt-plain")
+    expect(withoutEffort.some((option) => option.id === EFFORT_CONFIG_ID)).toBe(false)
+  })
+
+  test("session/set_config_option effort is threaded into the next prompt", async () => {
+    let lastPrompt: { model?: string; thinkingEffort?: string } = {}
+
+    const store = new MemorySessionStore()
+    const stubRunner: Partial<Runner> = {
+      bus: { on: () => {}, off: () => {} } as any,
+      store,
+      prompt: async (input) => {
+        lastPrompt = { model: input.model, thinkingEffort: input.thinkingEffort }
+        return { sessionId: input.sessionId ?? "runner-session-1" } as any
+      },
+    }
+
+    const agent = createAcpAgent({
+      store,
+      createRunner: () => stubRunner as Runner,
+      models: effortModels,
+      defaultModel: "openai/gpt-5.6-luna",
+      defaultEffort: "medium",
+    })
+
+    await acp.client({ name: "test-client" }).connectWith(agent.app, async (ctx) => {
+      await ctx.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+      })
+      const newSession = await ctx.request(acp.methods.agent.session.new, {
+        cwd: process.cwd(),
+        mcpServers: [],
+      })
+      const sessionId = newSession.sessionId
+
+      // The agent's configured default effort is the initial currentValue.
+      const initialEffort = newSession.configOptions?.find((o) => o.id === EFFORT_CONFIG_ID)
+      expect(initialEffort?.type === "select" && initialEffort.currentValue).toBe("medium")
+
+      const setRes = await ctx.request(acp.methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: EFFORT_CONFIG_ID,
+        value: "high",
+      })
+      const updated = setRes.configOptions.find((o) => o.id === EFFORT_CONFIG_ID)
+      expect(updated?.type === "select" && updated.currentValue).toBe("high")
+
+      await ctx.request(acp.methods.agent.session.prompt, {
+        sessionId,
+        prompt: [{ type: "text", text: "hello" }],
+      })
+      expect(lastPrompt.thinkingEffort).toBe("high")
+    })
+  })
+
+  test("switching to a model that cannot honor the effort clears the override", async () => {
+    const store = new MemorySessionStore()
+    const stubRunner: Partial<Runner> = {
+      bus: { on: () => {}, off: () => {} } as any,
+      store,
+      prompt: async (input) => ({ sessionId: input.sessionId ?? "runner-session-1" }) as any,
+    }
+    const agent = createAcpAgent({
+      store,
+      createRunner: () => stubRunner as Runner,
+      models: effortModels,
+      defaultModel: "openai/gpt-5.6-luna",
+      defaultEffort: "high",
+    })
+
+    await acp.client({ name: "test-client" }).connectWith(agent.app, async (ctx) => {
+      await ctx.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+      })
+      const { sessionId } = await ctx.request(acp.methods.agent.session.new, {
+        cwd: process.cwd(),
+        mcpServers: [],
+      })
+
+      const setRes = await ctx.request(acp.methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: MODEL_CONFIG_ID,
+        value: "openai/gpt-plain",
+      })
+      // The new model has no effort option, and no stale override leaks through.
+      expect(setRes.configOptions.some((o) => o.id === EFFORT_CONFIG_ID)).toBe(false)
+    })
+  })
+
+  test("rejects effort for a model without thinking levels and unknown levels", async () => {
+    const store = new MemorySessionStore()
+    const stubRunner: Partial<Runner> = {
+      bus: { on: () => {}, off: () => {} } as any,
+      store,
+      prompt: async (input) => ({ sessionId: input.sessionId ?? "runner-session-1" }) as any,
+    }
+    const agent = createAcpAgent({
+      store,
+      createRunner: () => stubRunner as Runner,
+      models: effortModels,
+      defaultModel: "openai/gpt-plain",
+    })
+
+    await acp.client({ name: "test-client" }).connectWith(agent.app, async (ctx) => {
+      await ctx.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+      })
+      const { sessionId } = await ctx.request(acp.methods.agent.session.new, {
+        cwd: process.cwd(),
+        mcpServers: [],
+      })
+
+      // The default model has no effort option at all.
+      await expect(
+        ctx.request(acp.methods.agent.session.setConfigOption, {
+          sessionId,
+          configId: EFFORT_CONFIG_ID,
+          value: "high",
+        }),
+      ).rejects.toBeDefined()
+
+      // A level the model does not list is refused.
+      await ctx.request(acp.methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: MODEL_CONFIG_ID,
+        value: "openai/gpt-5.6-luna",
+      })
+      await expect(
+        ctx.request(acp.methods.agent.session.setConfigOption, {
+          sessionId,
+          configId: EFFORT_CONFIG_ID,
+          value: "ultra",
+        }),
+      ).rejects.toBeDefined()
+    })
   })
 })
 

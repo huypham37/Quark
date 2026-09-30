@@ -35,6 +35,13 @@ export interface RunnerPromptInput {
   images?: { mime: string; data: string }[]
   modelOnlyText?: string
   model?: string
+  /**
+   * Thinking-effort override for this turn (from `session/set_config_option`).
+   * Wins over the agent's configured effort; the provider adapter validates it
+   * against the resolved model's catalog reasoning options and throws on an
+   * unsupported value, so never pass one the caller did not verify.
+   */
+  thinkingEffort?: string
   catalog?: CatalogRegistry
   /**
    * Absolute workspace root this turn runs in: tools, system prompt, ambient

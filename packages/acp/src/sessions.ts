@@ -83,6 +83,8 @@ interface SessionState {
   mcpTools: ToolDef[]
   /** Per-session model override; null means use the agent's default. */
   modelOverride: string | null
+  /** Per-session thinking-effort override; null means use the agent's default. */
+  effortOverride: string | null
 }
 
 /** Context handed to `onTurnStart`, once per turn, before the runner runs. */
@@ -150,12 +152,13 @@ export interface SessionBridgeOptions {
    */
   imageSupport?: boolean
   /**
-   * Build the initial `configOptions` for a new session (e.g. model picker).
+   * Build the initial `configOptions` for a session (e.g. model picker).
    * Called once per `session/new`; the returned array is included in the
    * response so the client can render config UI immediately. Omit or return
-   * an empty array to suppress config options.
+   * an empty array to suppress config options. `acpSessionId` lets the host
+   * resolve that session's current model/effort overrides.
    */
-  buildConfigOptions?(): SessionConfigOption[]
+  buildConfigOptions?(acpSessionId: string): SessionConfigOption[]
   /** Diagnostics sink for MCP connect/teardown. Defaults to no-op (stderr in prod). */
   log?(message: string): void
 }
@@ -213,6 +216,10 @@ export interface SessionBridge {
   setModelOverride(acpSessionId: string, model: string): void
   /** Get the model override for a session; null means the agent default. */
   getModelOverride(acpSessionId: string): string | null
+  /** Set the thinking-effort override for a session; null clears it. */
+  setEffortOverride(acpSessionId: string, effort: string | null): void
+  /** Get the thinking-effort override for a session; null means the agent default. */
+  getEffortOverride(acpSessionId: string): string | null
 }
 
 /**
@@ -264,8 +271,9 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       mcp,
       mcpTools: mcp.flatMap((connection) => connection.tools),
       modelOverride: null,
+      effortOverride: null,
     })
-    const configOptions = options.buildConfigOptions?.()
+    const configOptions = options.buildConfigOptions?.(acpSessionId)
     return {
       sessionId: acpSessionId,
       ...(configOptions?.length ? { configOptions } : {}),
@@ -394,6 +402,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
           parts,
           ...(images.length > 0 ? { images } : {}),
           ...(state.modelOverride ? { model: state.modelOverride } : {}),
+          ...(state.effortOverride ? { thinkingEffort: state.effortOverride } : {}),
           targetWorkspace: state.cwd,
         })
         state.runnerSessionId = result.sessionId
@@ -486,6 +495,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         mcp,
         mcpTools: mcp.flatMap((connection) => connection.tools),
         modelOverride: null,
+        effortOverride: null,
       })
     },
 
@@ -549,6 +559,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
     getModelOverride(acpSessionId) {
       return sessions.get(acpSessionId)?.modelOverride ?? null
+    },
+
+    setEffortOverride(acpSessionId, effort) {
+      const state = requireSession(acpSessionId)
+      state.effortOverride = effort
+    },
+
+    getEffortOverride(acpSessionId) {
+      return sessions.get(acpSessionId)?.effortOverride ?? null
     },
   }
 

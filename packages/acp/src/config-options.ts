@@ -1,14 +1,19 @@
-// ACP session config options: model selector (Zed model-picker integration).
+// ACP session config options: model + thinking-effort selectors (Zed Agent
+// Panel integration).
 //
 // Advertises the configured models as a `select` config option with
-// `category: "model"`, which Zed renders as a model-picker dropdown in the
-// Agent Panel. `session/set_config_option` updates the per-session model
-// override stored in the session bridge; the bridge threads it into
-// `runner.prompt({ model })` so each turn uses the selected model.
+// `category: "model"` and, for models the runner actually supports reasoning
+// on, a thinking-effort `select` with `category: "thought_level"`. Both are
+// rendered by Zed as dropdowns. `session/set_config_option` updates the
+// per-session override stored in the session bridge; the bridge threads the
+// model into `runner.prompt({ model })` and the effort into
+// `runner.prompt({ thinkingEffort })` so each turn uses the selection.
 //
-// The host passes the available models and the agent's default model spec at
+// The host passes the available models and the agent's default model/effort at
 // startup. This module never reads config or the catalog; it only builds
-// protocol objects from what it is given.
+// protocol objects from what it is given. Effort levels come from the model's
+// `thinkingLevels` (its verified catalog reasoning options), so an unsupported
+// model advertises no effort option rather than a fabricated one.
 
 import { methods, RequestError } from "@agentclientprotocol/sdk"
 import type {
@@ -22,6 +27,7 @@ import type {
 import type { SessionBridge } from "./sessions"
 
 export const MODEL_CONFIG_ID = "model"
+export const EFFORT_CONFIG_ID = "effort"
 
 /** A model the host makes available for selection. */
 export interface ModelOption {
@@ -35,25 +41,52 @@ export interface ModelOption {
   providerId?: string
   /** Short description. */
   description?: string
+  /**
+   * Thinking-effort levels this model actually accepts, from the runner's
+   * catalog facts. Omitted or a single level means no effort selector is
+   * advertised — never invent a level the runner would reject.
+   */
+  thinkingLevels?: readonly string[]
 }
 
 export interface ConfigOptionsContext {
-  /** Available models. Empty means no model config option is advertised. */
+  /** Available models. Empty means no config option is advertised. */
   models: readonly ModelOption[]
   /** The agent's default model spec (used as initial `currentValue`). */
   defaultModel: string
-  /** Session bridge for get/set model overrides. */
+  /** The agent's default thinking effort, when it has one. */
+  defaultEffort?: string
+  /** Session bridge for get/set model + effort overrides. */
   sessions: SessionBridge
+}
+
+/** Display labels for the well-known effort levels; unknown levels fall back to capitalized. */
+const EFFORT_LABELS: Record<string, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  thinking: "Thinking",
+}
+
+function effortLabel(level: string): string {
+  return EFFORT_LABELS[level] ?? level.charAt(0).toUpperCase() + level.slice(1)
+}
+
+function levelsForModel(models: readonly ModelOption[], modelId: string): readonly string[] {
+  return models.find((model) => model.id === modelId)?.thinkingLevels ?? []
 }
 
 /**
  * Build the `SessionConfigOption[]` for a session, reflecting its current
- * model selection.  Returns an empty array when no models are configured
- * (the composition root must not advertise config options in that case).
+ * model and effort selection. Returns an empty array when no models are
+ * configured (the composition root must not advertise config options then).
  */
 export function buildConfigOptions(
   models: readonly ModelOption[],
   currentModel: string,
+  currentEffort?: string,
 ): SessionConfigOption[] {
   if (models.length === 0) return []
 
@@ -92,7 +125,7 @@ export function buildConfigOptions(
           }),
         )
 
-  return [
+  const options: SessionConfigOption[] = [
     {
       type: "select" as const,
       id: MODEL_CONFIG_ID,
@@ -102,11 +135,33 @@ export function buildConfigOptions(
       options: selectOptions,
     },
   ]
+
+  // Effort: only when the current model exposes more than one verified level
+  // ("none" alone is not a meaningful choice).
+  const levels = levelsForModel(models, currentModel)
+  if (levels.length > 1) {
+    const current: string =
+      currentEffort && levels.includes(currentEffort)
+        ? currentEffort
+        : levels.includes("none")
+          ? "none"
+          : (levels[0] ?? "none")
+    options.push({
+      type: "select" as const,
+      id: EFFORT_CONFIG_ID,
+      name: "Effort",
+      category: "thought_level" as const,
+      currentValue: current,
+      options: levels.map((level) => ({ value: level, name: effortLabel(level) })),
+    })
+  }
+
+  return options
 }
 
 /**
  * Register the `session/set_config_option` handler on the ACP app.
- * Currently supports only the `"model"` config option.
+ * Supports the `"model"` and `"effort"` config options.
  */
 export function registerConfigOptions(app: AgentApp, context: ConfigOptionsContext): void {
   app.onRequest(methods.agent.session.setConfigOption, ({ params }) =>
@@ -114,23 +169,62 @@ export function registerConfigOptions(app: AgentApp, context: ConfigOptionsConte
   )
 }
 
+/** The options to report back for a session, resolved from its overrides. */
+function optionsFor(context: ConfigOptionsContext, sessionId: string): SessionConfigOption[] {
+  const model = context.sessions.getModelOverride(sessionId) ?? context.defaultModel
+  const effort = context.sessions.getEffortOverride(sessionId) ?? context.defaultEffort
+  return buildConfigOptions(context.models, model, effort)
+}
+
 function handleSetConfigOption(
   params: SetSessionConfigOptionRequest,
   context: ConfigOptionsContext,
 ): SetSessionConfigOptionResponse {
-  if (params.configId !== MODEL_CONFIG_ID) {
-    throw RequestError.invalidParams(
-      { configId: params.configId },
-      `unknown config option "${params.configId}"; supported: "${MODEL_CONFIG_ID}"`,
-    )
+  const { sessionId } = params
+  if (params.configId === MODEL_CONFIG_ID) {
+    if (typeof params.value !== "string") {
+      throw RequestError.invalidParams({ value: params.value }, "model value must be a model id")
+    }
+    const modelId = params.value
+    // Validate that the requested model is in the available list.
+    if (!context.models.some((m) => m.id === modelId)) {
+      throw RequestError.invalidParams({ value: modelId }, `unknown model "${modelId}"`)
+    }
+
+    context.sessions.setModelOverride(sessionId, modelId)
+    // A model switch can invalidate the current effort: drop an override the
+    // new model cannot accept rather than letting the next turn throw.
+    const effort = context.sessions.getEffortOverride(sessionId)
+    if (effort && !levelsForModel(context.models, modelId).includes(effort)) {
+      context.sessions.setEffortOverride(sessionId, null)
+    }
+    return { configOptions: optionsFor(context, sessionId) }
   }
 
-  const modelId = params.value as string
-  // Validate that the requested model is in the available list.
-  if (!context.models.some((m) => m.id === modelId)) {
-    throw RequestError.invalidParams({ value: modelId }, `unknown model "${modelId}"`)
+  if (params.configId === EFFORT_CONFIG_ID) {
+    if (typeof params.value !== "string") {
+      throw RequestError.invalidParams({ value: params.value }, "effort value must be a level id")
+    }
+    const modelId = context.sessions.getModelOverride(sessionId) ?? context.defaultModel
+    const levels = levelsForModel(context.models, modelId)
+    if (levels.length <= 1) {
+      throw RequestError.invalidParams(
+        { configId: params.configId },
+        `model "${modelId}" does not support thinking effort`,
+      )
+    }
+    if (!levels.includes(params.value)) {
+      throw RequestError.invalidParams(
+        { value: params.value },
+        `unknown effort "${params.value}" for model "${modelId}"`,
+      )
+    }
+    context.sessions.setEffortOverride(sessionId, params.value)
+    return { configOptions: optionsFor(context, sessionId) }
   }
 
-  context.sessions.setModelOverride(params.sessionId, modelId)
-  return { configOptions: buildConfigOptions(context.models, modelId) }
+  throw RequestError.invalidParams(
+    { configId: params.configId },
+    `unknown config option "${params.configId}"; supported: "${MODEL_CONFIG_ID}", "${EFFORT_CONFIG_ID}"`,
+  )
 }

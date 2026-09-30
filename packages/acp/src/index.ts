@@ -101,6 +101,11 @@ export interface AcpAgentOptions {
    * is empty.
    */
   defaultModel?: string
+  /**
+   * The agent's configured thinking effort, used as the initial effort value
+   * when the current model supports it. Omit when the agent has none.
+   */
+  defaultEffort?: string
   /** Diagnostics sink. Defaults to stderr — stdout is reserved for NDJSON. */
   log?: (message: string) => void
 }
@@ -144,10 +149,15 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // per-session override threaded into `runner.prompt({ model })`.
   const models = options.models ?? []
   const defaultModel = options.defaultModel ?? ""
+  const defaultEffort = options.defaultEffort
   // QUA-265: one registry per connection. Live turns map raw provider ids to
   // unique ACP ids; replay mints fresh ones, so a replay id can never collide
   // with a later live id.
   const toolCallIds = createToolCallIds()
+  // The session bridge is assigned right after registration; config-option
+  // building only runs later (on `session/new`), so the closure can resolve a
+  // session's current model/effort overrides from it.
+  let sessionsBridge: SessionBridge | undefined
   const sessions = registerSessions(app, {
     store,
     createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
@@ -167,11 +177,19 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
     // onTurnStart replaced the default bridge (no turn was registered).
     onTurnEnd: (turn) => updates.onTurnEnd(turn),
     buildConfigOptions:
-      models.length > 0 ? () => buildConfigOptions(models, defaultModel) : undefined,
+      models.length > 0
+        ? (sessionId) =>
+            buildConfigOptions(
+              models,
+              sessionsBridge?.getModelOverride(sessionId) ?? defaultModel,
+              sessionsBridge?.getEffortOverride(sessionId) ?? defaultEffort,
+            )
+        : undefined,
   })
+  sessionsBridge = sessions
   // Register session/set_config_option when models are advertised.
   if (models.length > 0) {
-    registerConfigOptions(app, { models, defaultModel, sessions })
+    registerConfigOptions(app, { models, defaultModel, defaultEffort, sessions })
   }
   // QUA-247: lifecycle over the SAME store the runners use. QUA-265: replay
   // shares the connection's tool-call-id registry so replayed ids are unique.

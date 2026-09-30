@@ -129,6 +129,12 @@ export async function prompt(input: {
   /** Hidden model context prepended to this user message. */
   modelOnlyText?: string;
   model?: string;
+  /**
+   * Thinking-effort override for this turn (from `session/set_config_option`).
+   * Applied on top of the resolved model instead of the agent's configured
+   * effort, so a client can change reasoning per session.
+   */
+  thinkingEffort?: string;
   agent: AgentDefinition;
   catalog?: CatalogRegistry;
   /**
@@ -224,6 +230,7 @@ export async function prompt(input: {
     userMessageId: userMsg.id,
     userText: text,
     model: input.model,
+    thinkingEffort: input.thinkingEffort,
     agent,
     initiator: input.parentSessionId ? "agent" : undefined,
     policies,
@@ -286,6 +293,7 @@ async function runTurn(input: {
   userMessageId: string
   userText: string
   model?: string
+  thinkingEffort?: string
   agent: AgentDefinition
   initiator?: "user" | "agent"
   policies: RunPolicies
@@ -297,6 +305,7 @@ async function runTurn(input: {
   stream?: StreamFn
 }, runtime: PromptRuntime) {
   const { sessionId, userMessageId, userText, model, agent, policies } = input
+  const thinkingEffort = input.thinkingEffort
   const store = runtime.store
   // Route model resolution through this runtime's hooks, so provider.request.*
   // hooks are instance-scoped for runners (and global for the legacy runtime).
@@ -360,6 +369,7 @@ async function runTurn(input: {
       input.ambient,
       input.workspace,
       undoEnabled,
+      thinkingEffort,
     )
   } catch (err) {
     // Central `session.error` for an unhandled turn failure. Provider failures
@@ -454,6 +464,8 @@ async function loop(
   workspace?: string,
   /** Whether file snapshots are tracked for this turn (ephemeral/policy off). */
   undoEnabled = true,
+  /** Per-turn thinking-effort override (see `prompt()`); wins over the agent's. */
+  thinkingEffort?: string,
 ): Promise<string> {
   const maxSteps = policies.maxSteps;
   const branching = policies.branching;
@@ -594,7 +606,7 @@ async function loop(
     const thinkingProviderOptions = resolvedModel.provider.adapter.encodeReasoning?.({
       model: resolvedModel.catalogModel,
       config: {
-        effort: usingAgentModel ? agent.thinkingEffort ?? "none" : "none",
+        effort: thinkingEffort ?? (usingAgentModel ? agent.thinkingEffort ?? "none" : "none"),
         mode: usingAgentModel ? agent.thinkingMode ?? "standard" : "standard",
         modeExplicit: usingAgentModel && agent.thinkingMode !== undefined,
       },

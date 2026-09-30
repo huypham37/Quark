@@ -13,6 +13,8 @@ import { DefaultCredentialResolver } from "@quark/runner/provider/credentials"
 import { createDefaultCredentialStore } from "@quark/runner/provider/credential-store"
 import { loadOAuthTokenFile } from "@quark/runner/provider/oauth-token-files"
 import { createRuntimeProviderRegistry } from "@quark/runner/provider/resolver"
+import { thinkingCapabilityFromCatalog } from "@quark/runner/provider/catalog-runtime"
+import type { CatalogModel } from "@quark/runner/provider/catalog-snapshot"
 import { runAcpStdio, type ModelOption } from "@quark/acp"
 import { materializeAgent, resolveAgent } from "./agent/agent"
 import { loadConfig } from "./config/config"
@@ -34,6 +36,15 @@ function modelAcceptsImages(modelSpec: string | undefined): boolean | undefined 
   const model = new CatalogRegistry(snapshot).getModel(providerId, modelId)
   if (!model) return undefined
   return model.modalities.input.includes("image")
+}
+
+/**
+ * `thinkingLevels` for a `ModelOption`, or nothing when the model has no
+ * verified reasoning levels — never advertise an effort the runner rejects.
+ */
+function thinkingLevelsField(model: CatalogModel): { thinkingLevels?: string[] } {
+  const levels = thinkingCapabilityFromCatalog(model)?.levels
+  return levels ? { thinkingLevels: levels } : {}
 }
 
 /**
@@ -75,6 +86,7 @@ async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[
       providerId: catalogProviderId,
       providerName: provider?.name ?? catalogProviderId,
       description: model.description?.replace(/\s+/g, " ").trim().slice(0, 160),
+      ...thinkingLevelsField(model),
     })
   }
 
@@ -90,6 +102,7 @@ async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[
       providerId: pId,
       providerName: provider?.name ?? pId,
       description: model?.description?.replace(/\s+/g, " ").trim().slice(0, 160),
+      ...(model ? thinkingLevelsField(model) : {}),
     })
   }
 
@@ -152,6 +165,7 @@ export async function runAcpCommand(argv: string[]): Promise<number> {
     // client (Zed) renders a model selector in the Agent Panel.
     models,
     defaultModel: agent.model,
+    defaultEffort: agent.thinkingEffort,
     log: (message) => process.stderr.write(`[quark acp] ${message}\n`),
   })
   return 0
