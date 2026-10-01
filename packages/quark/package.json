@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && bun build-tui.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts"

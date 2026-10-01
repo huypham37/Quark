@@ -14,6 +14,8 @@ const subpaths = [
   "src/debug.ts",
   "src/debug/format-tool-args.ts",
   "src/notification/notification.ts",
+  "src/plugin/registry.ts",
+  "src/tool/registry.ts",
   "src/provider/active-providers.ts",
   "src/provider/catalog-registry.ts",
   "src/provider/catalog-runtime.ts",

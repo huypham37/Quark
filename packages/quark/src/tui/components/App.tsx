@@ -11,6 +11,7 @@ import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
+import { bindCatalogContext } from "../catalog-context"
 import { wireEvents } from "../events"
 import type { TypedBus } from "@quark/runner/session/events"
 import type { CatalogModel } from "@quark/runner/provider/catalog-snapshot"
@@ -242,11 +243,7 @@ export const App: Component<AppProps> = (props) => {
     },
   })
 
-  createEffect(() => {
-    const model = props.getCatalogModel?.(state.store.status.modelName)
-    const limit = model?.limit.context ?? model?.limit.input
-    if (limit) state.setStore("status", "tokenLimit", limit)
-  })
+  bindCatalogContext(state, props.bus, props.getCatalogModel)
 
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined

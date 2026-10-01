@@ -15,6 +15,7 @@ import { setVerbose, debug } from "@quark/runner/debug"
 import { formatArgs } from "@quark/runner/debug/format-tool-args"
 import { createQuarkRuntime } from "./runtime"
 import { useRunnerSessionRoot } from "./session-root"
+import { tuiLaunchArgs } from "./tui-launch"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -166,14 +167,7 @@ async function main() {
       : dirname(fileURLToPath(import.meta.url))
     const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
     try {
-      execFileSync("bun", [
-        "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
-        // Forward the launch flags the TUI understands instead of silently
-        // dropping them (`--model` maps to the TUI's runtime model override).
-        ...(args.agent ? ["--agent", args.agent] : []),
-        ...(args.sessionId ? ["--session", args.sessionId] : []),
-        ...(args.model ? ["--model", args.model] : []),
-      ], {
+      execFileSync("bun", tuiLaunchArgs(quarkDir, args), {
         stdio: "inherit",
         env: { ...process.env, QUARK_DIR: quarkDir },
       })

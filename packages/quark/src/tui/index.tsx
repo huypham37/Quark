@@ -14,6 +14,7 @@ import { buildSystem } from "@quark/runner/session/system"
 import { ensureStorageRoot } from "@quark/runner/storage/session-jsonl"
 import { buildModelPickerOptions } from "./model-picker"
 import { CatalogModelRuntime } from "./catalog-model-runtime"
+import { afterFirstFrame } from "./after-first-frame"
 import { estimateTokens, getLastInputTokens } from "@quark/runner/session/context"
 import { compactBranch, createSteerBranch, type BranchResult } from "@quark/runner/session/branch"
 import { bus } from "@quark/runner/session/events"
@@ -140,10 +141,9 @@ const modelName = modelArg ?? activeAgent.model
 const startupAuthMessage = firstRunAuthMessage(modelName, await authStatus())
 if (startupAuthMessage) setImmediate(() => notifyInfo("Provider authentication", startupAuthMessage, 8000))
 
-// Catalog/activity state is owned by the TUI entrypoint. Cache loading is local;
-// network refresh is explicitly backgrounded and never happens at import time.
+// Empty catalog state is cheap. Local cache processing and network refresh
+// start only after the first app frame has reached the terminal (see below).
 const catalogModels = await CatalogModelRuntime.create(runtime.bus)
-void catalogModels.refresh()
 
 // Runtime-only model override — set by /model picker or `--model`, NOT persisted to config
 let modelOverride: string | null = modelArg ?? null
@@ -918,6 +918,13 @@ syncSettingsFromConfig()
 if (sessionArg) {
   setImmediate(() => followSession(sessionArg, runtime.bus, (busy) => { externalBusy = busy }, () => runtime.isBusy(), runtime.store))
 }
+
+afterFirstFrame(renderer, () => {
+  catalogModels.loadCachedCatalog()
+  void catalogModels.refresh().catch((error) => {
+    notifyInfo("Model catalog", `Refresh failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
+})
 
 render(() => (
   <App

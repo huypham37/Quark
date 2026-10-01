@@ -16,6 +16,11 @@ import { bus as defaultBus, TypedBus } from "@quark/runner/session/events"
 
 const EMPTY_CATALOG = createCatalogSnapshot({}, { fetchedAt: 0 })
 
+export interface CatalogModelRuntimeOptions {
+  snapshotStore?: CatalogSnapshotStore
+  credentialStore?: CredentialStore
+}
+
 function createAuthResolver(store: CredentialStore): ProviderAuthResolver {
   const resolver = new DefaultCredentialResolver(
     store,
@@ -37,6 +42,7 @@ export class CatalogModelRuntime {
   private readonly credentialStore: CredentialStore
   private providers: ProviderRegistry
   private activeProviders: ActiveProviderSet
+  private cachedCatalogLoaded = false
   /** Bus `catalog-refreshed` is published on (the app's stable bus). */
   private readonly bus: TypedBus
 
@@ -56,14 +62,30 @@ export class CatalogModelRuntime {
     this.bus = bus
   }
 
-  static async create(bus: TypedBus = defaultBus): Promise<CatalogModelRuntime> {
-    const snapshotStore = new CatalogSnapshotStore()
-    const snapshot = snapshotStore.loadCache()
-    const catalog = new CatalogRegistry(snapshot ?? EMPTY_CATALOG)
-    const credentialStore = await createDefaultCredentialStore()
+  /** Creates empty catalog state without reading or indexing the disk cache. */
+  static async create(
+    bus: TypedBus = defaultBus,
+    options: CatalogModelRuntimeOptions = {},
+  ): Promise<CatalogModelRuntime> {
+    const snapshotStore = options.snapshotStore ?? new CatalogSnapshotStore()
+    const catalog = new CatalogRegistry(EMPTY_CATALOG)
+    const credentialStore = options.credentialStore ?? await createDefaultCredentialStore()
     const providers = createRuntimeProviderRegistry()
     const activeProviders = new ActiveProviderSet(providers, createAuthResolver(credentialStore))
     return new CatalogModelRuntime(snapshotStore, catalog, credentialStore, providers, activeProviders, bus)
+  }
+
+  /**
+   * Loads and publishes the local cache once, without fetching or refreshing auth.
+   * Call after the first app frame, before refresh(). Missing/invalid cache data
+   * is handled by the snapshot store and leaves the current catalog unchanged.
+   */
+  loadCachedCatalog(): void {
+    if (this.cachedCatalogLoaded) return
+    const snapshot = this.snapshotStore.loadCache()
+    if (snapshot) this.catalog.replaceSnapshot(snapshot)
+    this.cachedCatalogLoaded = true
+    this.bus.emit("catalog-refreshed", {})
   }
 
   get active(): ActiveProviderSet {

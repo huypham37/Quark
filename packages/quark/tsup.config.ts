@@ -8,7 +8,7 @@ export default defineConfig({
   external: [
     // Bun-specific module (interactive TUI is spawned with Bun)
     "bun",
-    // UI deps (the TUI is loaded from source at runtime, not bundled here)
+    // UI deps (build-tui.ts compiles the separate Bun entrypoint)
     "@opentui/core",
     "@opentui/solid",
     "solid-js",

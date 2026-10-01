@@ -391,6 +391,8 @@ export class WebBackend {
     ensureStorageRoot()
     await loadPlugins()
     const catalog = await CatalogModelRuntime.create()
+    // The web API has no terminal first-frame gate; preserve its cached model list.
+    catalog.loadCachedCatalog()
     void catalog.refresh()
     return new WebBackend(agentDef, agent, catalog)
   }

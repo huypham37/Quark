@@ -20,16 +20,28 @@ cd Quark
 bun install
 ```
 
-Run the interactive TUI:
+Build and launch the interactive TUI:
+
+```bash
+bun run build
+bin/quark
+```
+
+Normal CLI launches use `packages/quark/dist/tui.js`, with Solid TSX compiled at
+build time rather than on each launch. The cached model catalog is loaded after
+the first app frame and then refreshed in the background. Theme detection is
+unchanged. Rebuild after changing source; a missing compiled TUI reports build
+instructions instead of silently falling back to runtime compilation.
+
+For source development (including runtime TSX transformation):
 
 ```bash
 bun run dev
 ```
 
-Or build and use the CLI directly:
+One-off CLI help:
 
 ```bash
-bun run build
 node packages/quark/dist/cli.js --help
 ```
 

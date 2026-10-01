@@ -62,6 +62,18 @@
       "import": "./dist/notification/notification.js",
       "default": "./dist/notification/notification.js"
     },
+    "./plugin/registry": {
+      "types": "./dist/plugin/registry.d.ts",
+      "bun": "./src/plugin/registry.ts",
+      "import": "./dist/plugin/registry.js",
+      "default": "./dist/plugin/registry.js"
+    },
+    "./tool/registry": {
+      "types": "./dist/tool/registry.d.ts",
+      "bun": "./src/tool/registry.ts",
+      "import": "./dist/tool/registry.js",
+      "default": "./dist/tool/registry.js"
+    },
     "./provider/active-providers": {
       "types": "./dist/provider/active-providers.d.ts",
       "bun": "./src/provider/active-providers.ts",
