@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Packed-install smoke test.
 #
-# Packs @quark/runner + quark, installs the tarballs into a throwaway project
+# Packs @quark/runner + @quark/acp + quark into a throwaway project
 # with a strict (isolated) linker, then proves:
 #   1. the installed `quark` binary boots (all runtime deps resolve),
 #   2. Node can import @quark/runner root and a supported subpath,
@@ -21,6 +21,7 @@ app="$tmp/app"
 mkdir -p "$app"
 runner_tar=$(cd "$root/packages/runner" && npm pack --silent --pack-destination "$app")
 quark_tar=$(cd "$root/packages/quark" && npm pack --silent --pack-destination "$app")
+acp_tar=$(cd "$root/packages/acp" && npm pack --silent --pack-destination "$app")
 
 # The tarballs satisfy quark's "@quark/runner": "0.1.0" dependency via an
 # explicit override, because that version is not (yet) on the registry.
@@ -30,10 +31,11 @@ cat > "$app/package.json" <<EOF
   "private": true,
   "dependencies": {
     "@quark/runner": "file:./$runner_tar",
+    "@quark/acp": "file:./$acp_tar",
     "quark": "file:./$quark_tar"
   },
-  "overrides": { "@quark/runner": "file:./$runner_tar" },
-  "pnpm": { "overrides": { "@quark/runner": "file:./$runner_tar" } }
+  "overrides": { "@quark/runner": "file:./$runner_tar", "@quark/acp": "file:./$acp_tar" },
+  "pnpm": { "overrides": { "@quark/runner": "file:./$runner_tar", "@quark/acp": "file:./$acp_tar" } }
 }
 EOF
 
@@ -44,9 +46,9 @@ cd "$app"
 echo "quark --help: OK"
 
 node --input-type=module -e '
-import { bus as rootBus, createRunner } from "@quark/runner";
-import { bus as subBus } from "@quark/runner/session/events";
-if (typeof createRunner !== "function" || rootBus !== subBus) {
+import { TypedBus as RootBus, createRunner } from "@quark/runner";
+import { TypedBus as SubBus } from "@quark/runner/session/events";
+if (typeof createRunner !== "function" || RootBus !== SubBus) {
   throw new Error("@quark/runner root/subpath exports broken or duplicated");
 }
 console.log("@quark/runner root + subpath import (one instance): OK");
