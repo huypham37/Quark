@@ -1,0 +1,7 @@
+# Fixture profile for the `quark acp --profile` tests: one extra manifest next to
+# the built-in `coder`, so the advertised mode list has two entries.
+name: Finder
+description: Locates code and answers questions about it
+model:
+  id: openai/gpt-5.6-luna
+  thinking_effort: high

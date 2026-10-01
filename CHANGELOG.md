@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- ACP profile selector: `quark acp` advertises every agent manifest as a `category: "mode"` session config option, so an editor (Zed) renders them as its mode picker. Switching profile rebinds that session's runner to the new profile's agent — tools, system prompt, skills, and model — on the same persisted session, and drops the session's explicit model/effort picks so the profile's own settings apply. The model and effort pickers follow the selected profile's own settings rather than the launch-time agent's.
+- `quark acp --profile <id>` (also `-p`) selects the profile sessions start on. `--agent`/`-a` is an alias for it; an id no manifest backs is refused at launch, naming the available profiles.
 - HTTP runner API for external orchestrators. `POST /api/runners` mints an isolated execution instance (own event bus, cancellation state, and hooks) bound to a configured agent; `POST /api/runners/:id/session/prompt`, `GET /api/runners/:id/sessions/:sessionId`, `GET …/events`, `POST …/cancel`, and `DELETE /api/runners/:id` drive it.
 - Image attachments on prompts: `POST /api/sessions/:id/messages` and the runner prompt route accept `images: [{ mime, data }]` (PNG / JPEG / GIF / WebP), capped at 8 images, 5 MiB decoded each, 10 MiB body.
 - Session-discovery API for external processes: with `QUARK_API_PORT` set, the app serves a read-only localhost `GET /api/session/current` reporting the current session id, so an orchestrator can link its tasks to a Quark session.
@@ -33,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- ACP image prompts: the up-front "model cannot see" rejection follows the session's selected profile and model instead of the launch-time agent, so a profile or model switch can no longer leave the gate stale (it refused images a vision model accepts, and waved through a blind one's). The catalog lookup is memoized per model spec.
 - Canceled turns now finish when the provider stream stalls instead of leaving the session marked running.
 
 ### Removed

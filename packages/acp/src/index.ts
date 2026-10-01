@@ -21,24 +21,36 @@
 //   * permissions: the permission bridge gates every non-read-only tool BEFORE
 //     it executes, via the engine's pre-execution hook; denials throw.
 //   * images: `RunnerPromptInput.images` is wired and `promptCapabilities.image`
-//     is advertised in lockstep (never one without the other).
+//     is advertised in lockstep (never one without the other); the host's gate
+//     follows the session's profile/model so a switch cannot leave it stale.
 
 import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
 import { defaultSessionStore, type Runner, type SessionStore, type ToolDef } from "@quark/runner"
 import { registerInitialization } from "./initialization"
-import { registerSessions, type SessionBridge, type SessionBridgeOptions } from "./sessions"
+import {
+  registerSessions,
+  type SessionBridge,
+  type SessionBridgeOptions,
+  type SessionSelection,
+} from "./sessions"
 import { registerLifecycle, type SessionLifecycle } from "./lifecycle"
 import { registerCancellation } from "./cancellation"
 import { createUpdateBridge } from "./updates"
 import { createPermissionBridge } from "./permissions"
 import { createToolCallIds } from "./tool-call-ids"
-import { buildConfigOptions, registerConfigOptions, type ModelOption } from "./config-options"
+import {
+  buildConfigOptions,
+  registerConfigOptions,
+  type ConfigOptionDefaults,
+  type ModelOption,
+  type ProfileOption,
+} from "./config-options"
 
 export { AGENT_NAME, AGENT_VERSION } from "./initialization"
 export { createUpdateBridge } from "./updates"
 export type { UpdateBridge, UpdateBridgeOptions } from "./updates"
-export type { SessionBridge, SessionBridgeOptions, SessionTurn } from "./sessions"
+export type { SessionBridge, SessionBridgeOptions, SessionSelection, SessionTurn } from "./sessions"
 export type { SessionLifecycle, LifecycleOptions } from "./lifecycle"
 export { createPermissionBridge } from "./permissions"
 export type { PermissionBridge, PermissionBridgeOptions } from "./permissions"
@@ -46,8 +58,8 @@ export { connectMcpServer, connectStdioServers, requireStdio } from "./mcp"
 export type { McpConnection, McpConnectOptions } from "./mcp"
 export { createToolCallIds } from "./tool-call-ids"
 export type { ToolCallIds, ToolCallIdScope } from "./tool-call-ids"
-export { buildConfigOptions, registerConfigOptions } from "./config-options"
-export type { ModelOption, ConfigOptionsContext } from "./config-options"
+export { buildConfigOptions, registerConfigOptions, effectiveModel } from "./config-options"
+export type { ModelOption, ProfileOption, ConfigOptionsContext } from "./config-options"
 
 export interface AcpAgentOptions {
   /**
@@ -60,15 +72,19 @@ export interface AcpAgentOptions {
    */
   store?: SessionStore
   /**
-   * Create the runner for one ACP session. Called lazily on that session's
-   * first prompt, so `session/new` stays cheap. The host owns agent/config
-   * resolution; `cwd` is the session's requested workspace, `store` is the
-   * connection's shared persistence — pass it through to `createRunner` so a
-   * resumed session reads the same history the lifecycle lists — and `mcpTools`
-   * are the tools discovered from the session's stdio MCP servers, which the
-   * host merges into the agent's tool set (empty when the session declared none).
+   * Create the runner for one ACP session. Called lazily on that session's first
+   * prompt — and again after the client switches its profile — so `session/new`
+   * stays cheap. The host owns agent/config resolution; `cwd` is the session's
+   * requested workspace, `store` is the connection's shared persistence — pass it
+   * through to `createRunner` so a resumed session reads the same history the
+   * lifecycle lists — `mcpTools` are the tools discovered from the session's
+   * stdio MCP servers, which the host merges into the agent's tool set (empty
+   * when the session declared none), and `profile` is the session's selected
+   * profile id (null for the connection default). Must be synchronous: the bridge
+   * captures the runner before the turn awaits, so `cancel` can reach a first
+   * turn.
    */
-  createRunner(cwd: string, store: SessionStore, mcpTools: ToolDef[]): Runner
+  createRunner(cwd: string, store: SessionStore, mcpTools: ToolDef[], profile: string | null): Runner
   /** QUA-244 seam: bridge runner bus events to `session/update` notifications. */
   onTurnStart?: SessionBridgeOptions["onTurnStart"]
   /**
@@ -79,13 +95,15 @@ export interface AcpAgentOptions {
    */
   images?: boolean
   /**
-   * Whether the session's model accepts image input, when the host knows
-   * (option B): `images: true` advertises the capability, `imageSupport: false`
-   * rejects image-bearing prompts with a clear error instead of silently
-   * degrading or failing mid-turn. `undefined` (model unknown) passes images
-   * through and lets the provider surface its own error.
+   * Whether the model a session will run accepts image input, when the host
+   * knows (option B): `images: true` advertises the capability, and returning
+   * `false` here rejects image-bearing prompts with a clear error instead of
+   * silently degrading or failing mid-turn. Called with the session's profile
+   * and model selections, so a host that lets the client switch either keeps the
+   * gate on the model that will actually answer. `undefined` (model unknown)
+   * passes images through and lets the provider surface its own error.
    */
-  imageSupport?: boolean
+  imageSupport?(selection: SessionSelection): boolean | undefined
   /**
    * Available models for the ACP `configOptions` model-picker. When provided,
    * `session/new` responses include a `configOptions` array with
@@ -94,6 +112,23 @@ export interface AcpAgentOptions {
    * Omit or pass `[]` to suppress the model config option.
    */
   models?: ModelOption[]
+  /**
+   * Available profiles for the ACP `configOptions` profile selector — the
+   * protocol's mode selector, `category: "mode"`. When provided, `session/new`
+   * advertises them and `session/set_config_option` switches the session's
+   * profile: the bridge drops its runner and the next prompt creates one for the
+   * new profile (its agent, tools, system prompt, skills, and model) on the same
+   * persisted session. Omit or pass `[]` to suppress the profile selector. A
+   * session that is resumed or loaded starts on `defaultProfile` again: the
+   * selection is connection/session state, not something ACP persists per thread.
+   */
+  profiles?: readonly ProfileOption[]
+  /**
+   * Profile new sessions start on: the one `createRunner` resolves for a null
+   * profile. Pass it whenever `profiles` is advertised — it is the selector's
+   * initial value, and the host should refuse a value it cannot bind.
+   */
+  defaultProfile?: string
   /**
    * The agent's default model spec (e.g. `"openai/gpt-5.6-luna"`). Used as
    * the initial `currentValue` in the model config option. Must match one of
@@ -143,13 +178,20 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // QUA-245: gate every non-read-only tool before it executes. Denied tools
   // throw out of the engine's pre-execution hook, so they never run.
   const permissions = createPermissionBridge({ log: options.log })
-  // Model config options: when the host provides available models, the session
-  // bridge returns `configOptions` in `session/new` so the client renders a
-  // model picker, and the `session/set_config_option` handler updates the
-  // per-session override threaded into `runner.prompt({ model })`.
+  // Session config options: when the host provides profiles and/or models,
+  // the session bridge returns `configOptions` in `session/new` so the client
+  // renders the profile (ACP's mode selector), model, and effort pickers, and
+  // the `session/set_config_option` handler updates the per-session selections:
+  // the profile rebinds the session's runner, while the model and effort are
+  // threaded into `runner.prompt({ model, thinkingEffort })`.
   const models = options.models ?? []
-  const defaultModel = options.defaultModel ?? ""
-  const defaultEffort = options.defaultEffort
+  const profiles = options.profiles ?? []
+  const hasConfigOptions = models.length > 0 || profiles.length > 0
+  const defaults: ConfigOptionDefaults = {
+    ...(options.defaultProfile ? { profile: options.defaultProfile } : {}),
+    model: options.defaultModel ?? "",
+    ...(options.defaultEffort ? { effort: options.defaultEffort } : {}),
+  }
   // QUA-265: one registry per connection. Live turns map raw provider ids to
   // unique ACP ids; replay mints fresh ones, so a replay id can never collide
   // with a later live id.
@@ -160,7 +202,7 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   let sessionsBridge: SessionBridge | undefined
   const sessions = registerSessions(app, {
     store,
-    createRunner: (cwd, mcpTools) => options.createRunner(cwd, store, mcpTools),
+    createRunner: (cwd, mcpTools, profile) => options.createRunner(cwd, store, mcpTools, profile),
     images: options.images === true,
     imageSupport: options.imageSupport,
     log: options.log,
@@ -176,20 +218,24 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
     // session/prompt response is written. A no-op when a caller-supplied
     // onTurnStart replaced the default bridge (no turn was registered).
     onTurnEnd: (turn) => updates.onTurnEnd(turn),
-    buildConfigOptions:
-      models.length > 0
-        ? (sessionId) =>
-            buildConfigOptions(
-              models,
-              sessionsBridge?.getModelOverride(sessionId) ?? defaultModel,
-              sessionsBridge?.getEffortOverride(sessionId) ?? defaultEffort,
-            )
-        : undefined,
+    buildConfigOptions: hasConfigOptions
+      ? (sessionId) =>
+          buildConfigOptions({
+            models,
+            profiles,
+            defaults,
+            overrides: {
+              profile: sessionsBridge?.getProfileOverride(sessionId) ?? null,
+              model: sessionsBridge?.getModelOverride(sessionId) ?? null,
+              effort: sessionsBridge?.getEffortOverride(sessionId) ?? null,
+            },
+          })
+      : undefined,
   })
   sessionsBridge = sessions
-  // Register session/set_config_option when models are advertised.
-  if (models.length > 0) {
-    registerConfigOptions(app, { models, defaultModel, defaultEffort, sessions })
+  // Register session/set_config_option when anything is advertised.
+  if (hasConfigOptions) {
+    registerConfigOptions(app, { models, profiles, defaults, sessions })
   }
   // QUA-247: lifecycle over the SAME store the runners use. QUA-265: replay
   // shares the connection's tool-call-id registry so replayed ids are unique.

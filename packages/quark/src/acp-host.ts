@@ -5,7 +5,7 @@
 // to stderr.
 
 import { parseArgs } from "util"
-import { createRunner, defaultSessionStore } from "@quark/runner"
+import { createRunner, defaultSessionStore, type AgentDefinition } from "@quark/runner"
 import { CatalogRegistry } from "@quark/runner/provider/catalog-registry"
 import { DEFAULT_CATALOG_SNAPSHOT_PATH, readCatalogSnapshot } from "@quark/runner/provider/catalog-snapshot"
 import { ActiveProviderSet, type CatalogModelPair } from "@quark/runner/provider/active-providers"
@@ -15,8 +15,8 @@ import { loadOAuthTokenFile } from "@quark/runner/provider/oauth-token-files"
 import { createRuntimeProviderRegistry } from "@quark/runner/provider/resolver"
 import { thinkingCapabilityFromCatalog } from "@quark/runner/provider/catalog-runtime"
 import type { CatalogModel } from "@quark/runner/provider/catalog-snapshot"
-import { runAcpStdio, type ModelOption } from "@quark/acp"
-import { materializeAgent, resolveAgent } from "./agent/agent"
+import { effectiveModel, runAcpStdio, type ModelOption, type ProfileOption } from "@quark/acp"
+import { loadAgents, materializeAgent, resolveAgent } from "./agent/agent"
 import { loadConfig } from "./config/config"
 import { loadAmbientInstructions } from "./ambient"
 
@@ -25,9 +25,19 @@ import { loadAmbientInstructions } from "./ambient"
  * from the local models.dev catalog snapshot. `undefined` when unknown —
  * the catalog is missing, stale, or the model is not listed — so images pass
  * through and the provider surfaces its own error instead of us guessing.
+ * Memoized per spec: the gate runs on every prompt and reading the snapshot is
+ * a synchronous file read.
  */
+const imageSupportCache = new Map<string, boolean | undefined>()
 function modelAcceptsImages(modelSpec: string | undefined): boolean | undefined {
   if (!modelSpec) return undefined
+  if (imageSupportCache.has(modelSpec)) return imageSupportCache.get(modelSpec)
+  const accepts = readAcceptsImages(modelSpec)
+  imageSupportCache.set(modelSpec, accepts)
+  return accepts
+}
+
+function readAcceptsImages(modelSpec: string): boolean | undefined {
   const snapshot = readCatalogSnapshot(DEFAULT_CATALOG_SNAPSHOT_PATH)
   if (!snapshot) return undefined
   const [providerId, ...rest] = modelSpec.split("/")
@@ -36,6 +46,42 @@ function modelAcceptsImages(modelSpec: string | undefined): boolean | undefined 
   const model = new CatalogRegistry(snapshot).getModel(providerId, modelId)
   if (!model) return undefined
   return model.modalities.input.includes("image")
+}
+
+/**
+ * Profiles offered to the ACP client as its mode selector, in a stable order.
+ * Every entry is a manifest the host can bind, so a client can only select one
+ * of these. Each carries the profile's own model/effort: the client shows those
+ * as the current model/effort while the profile is selected.
+ */
+function loadProfileOptions(): ProfileOption[] {
+  const agents = loadAgents()
+  return Object.values(agents)
+    .map(
+      (agent): ProfileOption => ({
+        id: agent.id,
+        name: agent.name,
+        ...(agent.description ? { description: agent.description } : {}),
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.thinkingEffort ? { thinkingEffort: agent.thinkingEffort } : {}),
+      }),
+    )
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * The profile the connection starts on: an explicit `--profile`/`--agent`, or
+ * the config default. An explicit id that no manifest backs is refused rather
+ * than silently resolved to a different agent.
+ */
+function resolveStartProfile(explicit: string | undefined, profiles: readonly ProfileOption[]): string {
+  if (!explicit) return resolveAgent().id
+  if (!profiles.some((profile) => profile.id === explicit)) {
+    throw new Error(
+      `unknown profile "${explicit}"; available: ${profiles.map((profile) => profile.id).join(", ")}`,
+    )
+  }
+  return explicit
 }
 
 /**
@@ -51,10 +97,15 @@ function thinkingLevelsField(model: CatalogModel): { thinkingLevels?: string[] }
  * Build the list of available models for the client model picker.
  *
  * Uses `ActiveProviderSet` to filter to providers the user actually has
- * credentials for (API keys in env or credential store), and ensures the
- * agent's default model is always included.
+ * credentials for (API keys in env or credential store). Every model a session
+ * can actually run stays in the list even without credentials — the start
+ * profile's model and each advertised profile's own model — so the picker can
+ * never show a current value it does not offer.
  */
-async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[]> {
+async function buildAvailableModels(
+  defaultModel: string | undefined,
+  profiles: readonly ProfileOption[],
+): Promise<ModelOption[]> {
   const snapshot = readCatalogSnapshot(DEFAULT_CATALOG_SNAPSHOT_PATH)
   if (!snapshot) return []
   const catalog = new CatalogRegistry(snapshot)
@@ -90,23 +141,79 @@ async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[
     })
   }
 
-  // Ensure the agent's default model is always present in the options
-  if (defaultModel && !seen.has(defaultModel)) {
-    const [pId, ...rest] = defaultModel.split("/")
+  // Ensure every model a session can run is present in the options, the start
+  // profile's first.
+  const required = [...new Set([defaultModel, ...profiles.map((profile) => profile.model)])].filter(
+    (modelSpec): modelSpec is string => Boolean(modelSpec),
+  )
+  const head: ModelOption[] = []
+  for (const modelSpec of required) {
+    if (seen.has(modelSpec)) continue
+    seen.add(modelSpec)
+    const [pId, ...rest] = modelSpec.split("/")
     const mId = rest.join("/")
     const model = pId && mId ? catalog.getModel(pId, mId) : null
     const provider = pId ? catalog.getProvider(pId) : null
-    models.unshift({
-      id: defaultModel,
-      name: model?.name ?? defaultModel,
+    head.push({
+      id: modelSpec,
+      name: model?.name ?? modelSpec,
       providerId: pId,
       providerName: provider?.name ?? pId,
       description: model?.description?.replace(/\s+/g, " ").trim().slice(0, 160),
       ...(model ? thinkingLevelsField(model) : {}),
     })
   }
+  models.unshift(...head)
 
   return models
+}
+
+/**
+ * The profile named by the client's argv, if any. `--profile`/`-p` and
+ * `--agent`/`-a` are aliases: the app renamed profiles to agents, and editors
+ * were configured with either name. Unknown flags are ignored — the ACP client,
+ * not the user, owns this argv — but a named profile flag must be usable: a
+ * value-less or unparsable one is refused instead of silently starting on the
+ * config default.
+ */
+function parseProfileFlag(argv: string[]): string | undefined {
+  let profile: unknown
+  let agent: unknown
+  try {
+    const { values } = parseArgs({
+      args: argv,
+      options: {
+        profile: { type: "string", short: "p" },
+        agent: { type: "string", short: "a" },
+      },
+      allowPositionals: true,
+      strict: false,
+    })
+    profile = values.profile
+    agent = values.agent
+  } catch {
+    if (namesProfile(argv)) throw new Error(`could not parse a profile from: ${argv.join(" ")}`)
+    return undefined
+  }
+  // `strict: false` reports a value-less `--profile` as `true` rather than
+  // throwing, so type-check it here.
+  for (const [flag, value] of [
+    ["--profile", profile],
+    ["--agent", agent],
+  ] as const) {
+    if (value !== undefined && typeof value !== "string") {
+      throw new Error(`${flag} needs a profile id`)
+    }
+  }
+  if (profile && agent && profile !== agent) {
+    throw new Error(`--profile "${profile}" and --agent "${agent}" are aliases; pass one`)
+  }
+  return (profile ?? agent) as string | undefined
+}
+
+/** Whether argv names the profile flag at all, so a parse failure is not ignored. */
+function namesProfile(argv: string[]): boolean {
+  return argv.some((arg) => arg === "-p" || arg === "--profile" || arg.startsWith("--profile="))
 }
 
 /**
@@ -114,35 +221,34 @@ async function buildAvailableModels(defaultModel?: string): Promise<ModelOption[
  * exit code; the caller exits with it.
  */
 export async function runAcpCommand(argv: string[]): Promise<number> {
-  if (argv.some((arg) => arg === "--profile" || arg.startsWith("--profile=") || arg === "-p")) {
-    throw new Error("ACP --profile/-p is removed; use --agent/-a")
-  }
-  let agentId: string | undefined
-  try {
-    const { values } = parseArgs({
-      args: argv,
-      options: {
-        agent: { type: "string", short: "a" },
-      },
-      allowPositionals: true,
-      strict: false,
-    })
-    agentId = values.agent as string | undefined
-  } catch {
-    // Unknown flags are ignored: the ACP client, not the user, owns this argv.
-  }
+  const explicitProfile = parseProfileFlag(argv)
+  const profiles = loadProfileOptions()
+  const defaultProfile = resolveStartProfile(explicitProfile, profiles)
 
-  const agent = await materializeAgent(resolveAgent(agentId))
+  // Materialize every advertised profile before serving: the bridge needs a
+  // runner synchronously on a session's first prompt (so `cancel` can reach that
+  // turn), and the profile selector must only offer manifests that can bind.
+  // Cheap in practice — tool definitions are static module imports and skill
+  // discovery is cached.
+  const materialized = new Map<string, AgentDefinition>()
+  for (const profile of profiles) {
+    materialized.set(profile.id, await materializeAgent(resolveAgent(profile.id)))
+  }
+  const startAgent = materialized.get(defaultProfile)
+  if (!startAgent) throw new Error(`profile "${defaultProfile}" was not materialized`)
+
   const config = loadConfig()
-  const models = await buildAvailableModels(agent.model)
+  const models = await buildAvailableModels(startAgent.model, profiles)
 
   await runAcpStdio({
-    // Session-scoped runner: @quark/acp calls this once per ACP session, lazily
-    // on first prompt, handing back the connection's shared store and any MCP
-    // tools discovered from the client's stdio servers. Merging them here (the
-    // app owns agent resolution) is what makes those tools callable.
-    createRunner: (_cwd, store, mcpTools) =>
-      createRunner({
+    // Session-scoped runner: @quark/acp calls this lazily on a session's first
+    // prompt and again after the client switches its profile, each time binding
+    // the runner to that profile's agent. It hands back the connection's shared
+    // store and any MCP tools discovered from the client's stdio servers;
+    // merging them here (the app owns agent resolution) makes them callable.
+    createRunner: (_cwd, store, mcpTools, profile) => {
+      const agent = materialized.get(profile ?? defaultProfile) ?? startAgent
+      return createRunner({
         agent: mcpTools.length > 0 ? { ...agent, tools: [...agent.tools, ...mcpTools] } : agent,
         store,
         ambientInstructions: loadAmbientInstructions,
@@ -152,20 +258,33 @@ export async function runAcpCommand(argv: string[]): Promise<number> {
           smallModel: config.models.small,
         },
         resolve: { providers: config.providers },
-      }),
+      })
+    },
     // Same persistent store the CLI/TUI use, so ACP sessions survive a restart
     // and are the ones `session/list` reports.
     store: defaultSessionStore,
     // Option B: always advertise image prompts (the plumbing maps them to
-    // RunnerPromptInput.images), and reject up front with a clear error only
-    // when the catalog says the model cannot see.
+    // RunnerPromptInput.images), and reject up front with a clear error only when
+    // the catalog says the model the session will actually run cannot see.
     images: true,
-    imageSupport: modelAcceptsImages(agent.model),
+    imageSupport: ({ profile, model }) =>
+      modelAcceptsImages(
+        effectiveModel({
+          profiles,
+          defaults: { profile: defaultProfile, model: startAgent.model ?? "" },
+          overrides: { profile, model },
+        }),
+      ),
+    // Profile picker: advertise every manifest as the client's mode selector, so
+    // a thread can switch profile — and with it the agent's tools, system prompt,
+    // skills, and model — without relaunching. `--profile` picks the start.
+    profiles,
+    defaultProfile,
     // Model picker: advertise all tool-calling models from the catalog so the
     // client (Zed) renders a model selector in the Agent Panel.
     models,
-    defaultModel: agent.model,
-    defaultEffort: agent.thinkingEffort,
+    defaultModel: startAgent.model,
+    defaultEffort: startAgent.thinkingEffort,
     log: (message) => process.stderr.write(`[quark acp] ${message}\n`),
   })
   return 0

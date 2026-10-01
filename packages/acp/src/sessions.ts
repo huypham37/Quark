@@ -85,6 +85,12 @@ interface SessionState {
   modelOverride: string | null
   /** Per-session thinking-effort override; null means use the agent's default. */
   effortOverride: string | null
+  /**
+   * Per-session profile (agent manifest) override; null means the connection
+   * default. Changing it drops the cached runner, so the next prompt builds one
+   * for the new profile on the same persisted history.
+   */
+  profileOverride: string | null
 }
 
 /** Context handed to `onTurnStart`, once per turn, before the runner runs. */
@@ -104,6 +110,17 @@ export interface SessionTurn {
   client: AgentContext
 }
 
+/**
+ * A session's explicit selections, as `session/set_config_option` left them.
+ * Both null means the connection defaults apply.
+ */
+export interface SessionSelection {
+  /** Profile id, or null for the connection default. */
+  profile: string | null
+  /** Model id, or null for the selected profile's own model. */
+  model: string | null
+}
+
 export interface SessionBridgeOptions {
   /**
    * Persistence shared with every session runner. The ACP id minted by
@@ -114,12 +131,17 @@ export interface SessionBridgeOptions {
    */
   store: SessionStore
   /**
-   * Create the runner for a session. Called once per ACP session, lazily on
-   * first prompt, so a session/new cannot fail on provider/agent setup.
-   * `mcpTools` are the tools discovered from the session's stdio MCP servers
-   * (empty when none); the host merges them into the agent's tool set.
+   * Create the runner for a session. Called lazily on the first prompt of a
+   * session, and again after its profile changes, so a `session/new` cannot fail
+   * on provider/agent setup. `mcpTools` are the tools discovered from the
+   * session's stdio MCP servers (empty when none); the host merges them into the
+   * agent's tool set. `profile` is the session's selected profile id, or null for
+   * the connection default — the host resolves it to the agent the runner binds
+   * (its tools, system prompt, skills, and model). Must be synchronous: the
+   * bridge captures the runner before the turn awaits, so `cancel` can reach a
+   * session's first turn.
    */
-  createRunner(cwd: string, mcpTools: ToolDef[]): Runner
+  createRunner(cwd: string, mcpTools: ToolDef[], profile: string | null): Runner
   /**
    * QUA-244 seam: called at the start of every turn with the runner and client
    * context, so the integrator can bridge `runner.bus` events to
@@ -144,19 +166,21 @@ export interface SessionBridgeOptions {
    */
   images?: boolean
   /**
-   * Whether the session's model accepts image input, when the host knows.
-   * `false` + an image-bearing prompt rejects up front with a clear
-   * `invalidParams` error (option B: accept the capability, fail the prompt
-   * loudly instead of silently degrading). `true`/`undefined` (unknown model)
-   * pass images through and let the provider surface its own error.
+   * Whether the model a session will actually run accepts image input, when the
+   * host knows — a function of that session's selections, because switching
+   * profile or model changes which model answers. `false` + an image-bearing
+   * prompt rejects up front with a clear `invalidParams` error (option B: accept
+   * the capability, fail the prompt loudly instead of silently degrading).
+   * `true`/`undefined` (unknown model) pass images through and let the provider
+   * surface its own error.
    */
-  imageSupport?: boolean
+  imageSupport?(selection: SessionSelection): boolean | undefined
   /**
-   * Build the initial `configOptions` for a session (e.g. model picker).
+   * Build the initial `configOptions` for a session (profile, model, effort).
    * Called once per `session/new`; the returned array is included in the
    * response so the client can render config UI immediately. Omit or return
    * an empty array to suppress config options. `acpSessionId` lets the host
-   * resolve that session's current model/effort overrides.
+   * resolve that session's current profile/model/effort selections.
    */
   buildConfigOptions?(acpSessionId: string): SessionConfigOption[]
   /** Diagnostics sink for MCP connect/teardown. Defaults to no-op (stderr in prod). */
@@ -212,14 +236,23 @@ export interface SessionBridge {
   dispose(): Promise<void>
   /** Runner session ID for an ACP session; for diagnostics and tests. */
   runnerSessionId(acpSessionId: string): string | null
-  /** Set the model override for a session (used by `session/set_config_option`). */
-  setModelOverride(acpSessionId: string, model: string): void
+  /** Set the model override for a session (used by `session/set_config_option`); null clears it. */
+  setModelOverride(acpSessionId: string, model: string | null): void
   /** Get the model override for a session; null means the agent default. */
   getModelOverride(acpSessionId: string): string | null
   /** Set the thinking-effort override for a session; null clears it. */
   setEffortOverride(acpSessionId: string, effort: string | null): void
   /** Get the thinking-effort override for a session; null means the agent default. */
   getEffortOverride(acpSessionId: string): string | null
+  /**
+   * Switch the session's profile (used by `session/set_config_option`). Drops the
+   * cached runner so the next prompt builds one for the new profile, keeping the
+   * same persisted session. Throws while a turn is in progress: replacing the
+   * runner mid-turn would orphan that turn's abort path.
+   */
+  setProfileOverride(acpSessionId: string, profile: string | null): void
+  /** Get the profile override for a session; null means the connection default. */
+  getProfileOverride(acpSessionId: string): string | null
 }
 
 /**
@@ -272,6 +305,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       mcpTools: mcp.flatMap((connection) => connection.tools),
       modelOverride: null,
       effortOverride: null,
+      profileOverride: null,
     })
     const configOptions = options.buildConfigOptions?.(acpSessionId)
     return {
@@ -293,7 +327,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
   function runnerFor(state: SessionState): Runner {
     if (state.runner) return state.runner
-    const runner = options.createRunner(state.cwd, state.mcpTools)
+    const runner = options.createRunner(state.cwd, state.mcpTools, state.profileOverride)
     // The runner mints its own session ID on the first prompt and announces it
     // synchronously on this bus, before the turn awaits. Capturing it here lets
     // cancel() reach a first turn and lets later turns resume the same session.
@@ -344,8 +378,15 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
       const { parts, images } = toRunnerInput(params.prompt, options.images === true)
       // Option B: the capability is advertised, but a model known to lack
       // vision rejects up front — a clear error beats a silent degradation or
-      // a mid-turn provider failure after the user already sent the prompt.
-      if (images.length > 0 && options.imageSupport === false) {
+      // a mid-turn provider failure after the user already sent the prompt. The
+      // verdict follows this session's selections: switching profile or model
+      // changes which model answers, so a stale answer would refuse images a
+      // vision model could take (or wave through a blind one's).
+      const selection: SessionSelection = {
+        profile: state.profileOverride,
+        model: state.modelOverride,
+      }
+      if (images.length > 0 && options.imageSupport?.(selection) === false) {
         throw RequestError.invalidParams(
           { images: images.length },
           "this session's model does not accept image input; resend the prompt without image blocks",
@@ -496,6 +537,7 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
         mcpTools: mcp.flatMap((connection) => connection.tools),
         modelOverride: null,
         effortOverride: null,
+        profileOverride: null,
       })
     },
 
@@ -568,6 +610,31 @@ export function createSessionHandlers(options: SessionBridgeOptions): SessionBri
 
     getEffortOverride(acpSessionId) {
       return sessions.get(acpSessionId)?.effortOverride ?? null
+    },
+
+    setProfileOverride(acpSessionId, profile) {
+      const state = requireSession(acpSessionId)
+      if (state.profileOverride === profile) return
+      // The profile is part of the runner's identity (agent tools, system
+      // prompt, skills, model), so it cannot be swapped under a live turn: the
+      // running generation owns that turn's abort path.
+      if (state.active) {
+        throw RequestError.invalidParams(
+          { sessionId: acpSessionId },
+          "cannot switch profile while a turn is in progress; cancel it first",
+        )
+      }
+      // Drop the cached runner; the next prompt builds one for the new profile.
+      // `runnerSessionId` stays, so the new runner resumes the same persisted
+      // session and the conversation carries over.
+      state.unsubscribe?.()
+      state.unsubscribe = null
+      state.runner = null
+      state.profileOverride = profile
+    },
+
+    getProfileOverride(acpSessionId) {
+      return sessions.get(acpSessionId)?.profileOverride ?? null
     },
   }
 

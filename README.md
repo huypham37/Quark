@@ -80,14 +80,17 @@ quark --session <id>
 | `-l, --list-agents` | List available agents |
 | `-h, --help` | Show help |
 
-Breaking changes: `--profile`, `-p`, `--list-profiles`, and ACP's
-`--profile`/`-p` are removed; use `--agent`, `-a`, or `--list-agents`.
-In the TUI, use `/agent` instead of `/profile`. `QUARK_VERBOSE` no longer
-activates debug output; use `QUARK_DEBUG=*` for engine logs or `--verbose`
-for tool calls. Filesystem-defined `write` and `edit` tools use `filePath`;
-custom tools with those IDs may use `path`, but must provide one unambiguous
-target when undo tracking is enabled. Missing/conflicting targets or failed
-snapshots now stop the tool before it modifies a file.
+Breaking changes: `--profile`, `-p`, and `--list-profiles` are removed from
+the CLI; use `--agent`, `-a`, or `--list-agents`. In the TUI, use `/agent`
+instead of `/profile`. (`quark acp` is the exception: it accepts `--profile`/
+`-p` as aliases of `--agent`/`-a`, and advertises the available profiles as
+its ACP mode selector, so an editor can switch them per thread.)
+`QUARK_VERBOSE` no longer activates debug output; use `QUARK_DEBUG=*` for
+engine logs or `--verbose` for tool calls. Filesystem-defined `write` and
+`edit` tools use `filePath`; custom tools with those IDs may use `path`, but
+must provide one unambiguous target when undo tracking is enabled.
+Missing/conflicting targets or failed snapshots now stop the tool before it
+modifies a file.
 
 ---
 

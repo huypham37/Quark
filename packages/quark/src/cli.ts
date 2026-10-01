@@ -32,7 +32,8 @@ function printHelp() {
   console.log(`
 Usage: quark [options] [message]
        quark auth <login|status|logout> [provider]
-       quark acp [--agent <name>]     Serve ACP (Agent Client Protocol) over stdio
+       quark acp [--profile <name>]   Serve ACP (Agent Client Protocol) over stdio
+                                     --agent/-a is an alias; -p for --profile
 
 Options:
   -a, --agent <name>            Agent to use (default: from config)

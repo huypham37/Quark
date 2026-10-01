@@ -1,15 +1,25 @@
-// ACP session config options: model + thinking-effort selectors (Zed Agent
-// Panel integration).
+// ACP session config options: profile + model + thinking-effort selectors (Zed
+// Agent Panel integration).
 //
-// Advertises the configured models as a `select` config option with
-// `category: "model"` and, for models the runner actually supports reasoning
-// on, a thinking-effort `select` with `category: "thought_level"`. Both are
-// rendered by Zed as dropdowns. `session/set_config_option` updates the
-// per-session override stored in the session bridge; the bridge threads the
-// model into `runner.prompt({ model })` and the effort into
-// `runner.prompt({ thinkingEffort })` so each turn uses the selection.
+// Three `select` options, each one per-session setting the client may change at
+// any time through `session/set_config_option`:
 //
-// The host passes the available models and the agent's default model/effort at
+//   * `profile` (category "mode") — which profile (agent manifest) the session
+//     runs. This is ACP's mode selector, so an editor renders it as a dropdown
+//     and switching it rebinds the session's runner: new tools, system prompt,
+//     skills, and the profile's own model/effort, on the same persisted
+//     history. `quark acp --profile <id>` picks the one sessions start on.
+//   * `model` (category "model")
+//   * `effort` (category "thought_level")
+//
+// A session's effective selection resolves in one order — explicit pick, then
+// the selected profile's own setting, then the connection default — so a
+// profile switch is visible in the model and effort rows instead of leaving
+// them stale. Switching profile drops the session's explicit model/effort
+// picks: "switch to this profile" means "run it as configured". The bridge
+// threads the picks into `runner.prompt({ model, thinkingEffort })`.
+//
+// The host passes the available profiles/models and the connection defaults at
 // startup. This module never reads config or the catalog; it only builds
 // protocol objects from what it is given. Effort levels come from the model's
 // `thinkingLevels` (its verified catalog reasoning options), so an unsupported
@@ -26,8 +36,27 @@ import type {
 } from "@agentclientprotocol/sdk"
 import type { SessionBridge } from "./sessions"
 
+export const PROFILE_CONFIG_ID = "profile"
 export const MODEL_CONFIG_ID = "model"
 export const EFFORT_CONFIG_ID = "effort"
+
+/** A profile (agent manifest) the host makes available for selection. */
+export interface ProfileOption {
+  /** Profile id (manifest file stem), e.g. `"coder"`. */
+  id: string
+  /** Human-readable display name, e.g. `"Coder"`. */
+  name: string
+  /** Short description. */
+  description?: string
+  /**
+   * The profile's own model spec. While this profile is selected and the
+   * session has no explicit model pick, this is the `model` option's value —
+   * the picker never shows a model the next turn will not use.
+   */
+  model?: string
+  /** The profile's own thinking effort, resolved the same way as `model`. */
+  thinkingEffort?: string
+}
 
 /** A model the host makes available for selection. */
 export interface ModelOption {
@@ -49,14 +78,42 @@ export interface ModelOption {
   thinkingLevels?: readonly string[]
 }
 
-export interface ConfigOptionsContext {
-  /** Available models. Empty means no config option is advertised. */
+/** The connection defaults, from the launch-time profile and its agent. */
+export interface ConfigOptionDefaults {
+  /**
+   * Profile new sessions start on. Must be one of the advertised `profiles`
+   * when any are advertised: it is the profile option's initial value.
+   */
+  profile?: string
+  /** Model used when the selected profile names none. */
+  model: string
+  /** Thinking effort used when the selected profile names none. */
+  effort?: string
+}
+
+/** Explicit per-session selections; absent or null means "not chosen". */
+export interface ConfigOptionOverrides {
+  profile?: string | null
+  model?: string | null
+  effort?: string | null
+}
+
+/** Everything needed to build one session's config options. */
+export interface ConfigOptionsInput {
   models: readonly ModelOption[]
-  /** The agent's default model spec (used as initial `currentValue`). */
-  defaultModel: string
-  /** The agent's default thinking effort, when it has one. */
-  defaultEffort?: string
-  /** Session bridge for get/set model + effort overrides. */
+  profiles: readonly ProfileOption[]
+  /** The session's explicit picks, if it has any. */
+  overrides?: ConfigOptionOverrides
+  defaults: ConfigOptionDefaults
+}
+
+export interface ConfigOptionsContext {
+  /** Available models. Empty means no model/effort option is advertised. */
+  models: readonly ModelOption[]
+  /** Available profiles. Empty means no profile option is advertised. */
+  profiles: readonly ProfileOption[]
+  defaults: ConfigOptionDefaults
+  /** Session bridge for get/set profile + model + effort overrides. */
   sessions: SessionBridge
 }
 
@@ -79,16 +136,67 @@ function levelsForModel(models: readonly ModelOption[], modelId: string): readon
 }
 
 /**
- * Build the `SessionConfigOption[]` for a session, reflecting its current
- * model and effort selection. Returns an empty array when no models are
- * configured (the composition root must not advertise config options then).
+ * The model a session actually runs, resolved in one order: the session's
+ * explicit pick, the selected profile's own model, the connection default.
+ * Exported so a host can gate host-side behavior (accepting image prompts) on
+ * the same model the next turn will use.
  */
-export function buildConfigOptions(
-  models: readonly ModelOption[],
-  currentModel: string,
-  currentEffort?: string,
-): SessionConfigOption[] {
-  if (models.length === 0) return []
+export function effectiveModel(input: {
+  profiles: readonly ProfileOption[]
+  defaults: ConfigOptionDefaults
+  overrides?: ConfigOptionOverrides
+}): string {
+  return input.overrides?.model ?? selectedProfile(input)?.model ?? input.defaults.model
+}
+
+/**
+ * The profile a session runs: its explicit pick, else the connection default.
+ * A selection no advertised profile backs falls back to the first one — the host
+ * advertises the same set it can bind, and the pickers must not show a value
+ * they do not offer.
+ */
+function selectedProfile(input: {
+  profiles: readonly ProfileOption[]
+  defaults: ConfigOptionDefaults
+  overrides?: ConfigOptionOverrides
+}): ProfileOption | undefined {
+  const id = input.overrides?.profile ?? input.defaults.profile
+  return input.profiles.find((profile) => profile.id === id) ?? input.profiles[0]
+}
+
+/**
+ * Build the `SessionConfigOption[]` for one session from its live selections:
+ * the profile (ACP's mode selector), the model, and — for models the runner
+ * actually supports reasoning on — the thinking effort. Returns an empty array
+ * when the host offers neither profiles nor models, so the composition root
+ * must not advertise config options then.
+ */
+export function buildConfigOptions(input: ConfigOptionsInput): SessionConfigOption[] {
+  const { models, profiles } = input
+  const options: SessionConfigOption[] = []
+
+  // Profile first: the base selection the model and effort resolve against.
+  const profile = selectedProfile(input)
+  if (profile) {
+    options.push({
+      type: "select" as const,
+      id: PROFILE_CONFIG_ID,
+      name: "Profile",
+      category: "mode" as const,
+      currentValue: profile.id,
+      options: profiles.map(
+        (option): SessionConfigSelectOption => ({
+          value: option.id,
+          name: option.name,
+          ...(option.description ? { description: option.description } : {}),
+        }),
+      ),
+    })
+  }
+
+  if (models.length === 0) return options
+
+  const currentModel = effectiveModel(input)
 
   // Group models by provider for a cleaner picker UX.
   const groups = new Map<string, { name: string; options: SessionConfigSelectOption[] }>()
@@ -125,24 +233,23 @@ export function buildConfigOptions(
           }),
         )
 
-  const options: SessionConfigOption[] = [
-    {
-      type: "select" as const,
-      id: MODEL_CONFIG_ID,
-      name: "Model",
-      category: "model" as const,
-      currentValue: currentModel,
-      options: selectOptions,
-    },
-  ]
+  options.push({
+    type: "select" as const,
+    id: MODEL_CONFIG_ID,
+    name: "Model",
+    category: "model" as const,
+    currentValue: currentModel,
+    options: selectOptions,
+  })
 
   // Effort: only when the current model exposes more than one verified level
   // ("none" alone is not a meaningful choice).
   const levels = levelsForModel(models, currentModel)
   if (levels.length > 1) {
+    const picked = input.overrides?.effort ?? profile?.thinkingEffort ?? input.defaults.effort
     const current: string =
-      currentEffort && levels.includes(currentEffort)
-        ? currentEffort
+      picked && levels.includes(picked)
+        ? picked
         : levels.includes("none")
           ? "none"
           : (levels[0] ?? "none")
@@ -161,7 +268,7 @@ export function buildConfigOptions(
 
 /**
  * Register the `session/set_config_option` handler on the ACP app.
- * Supports the `"model"` and `"effort"` config options.
+ * Supports the `"profile"`, `"model"` and `"effort"` config options.
  */
 export function registerConfigOptions(app: AgentApp, context: ConfigOptionsContext): void {
   app.onRequest(methods.agent.session.setConfigOption, ({ params }) =>
@@ -169,11 +276,31 @@ export function registerConfigOptions(app: AgentApp, context: ConfigOptionsConte
   )
 }
 
-/** The options to report back for a session, resolved from its overrides. */
+/** A session's explicit picks, straight from the bridge. */
+function overridesOf(context: ConfigOptionsContext, sessionId: string): ConfigOptionOverrides {
+  return {
+    profile: context.sessions.getProfileOverride(sessionId),
+    model: context.sessions.getModelOverride(sessionId),
+    effort: context.sessions.getEffortOverride(sessionId),
+  }
+}
+
+/** The options to report back for a session, resolved from its live picks. */
 function optionsFor(context: ConfigOptionsContext, sessionId: string): SessionConfigOption[] {
-  const model = context.sessions.getModelOverride(sessionId) ?? context.defaultModel
-  const effort = context.sessions.getEffortOverride(sessionId) ?? context.defaultEffort
-  return buildConfigOptions(context.models, model, effort)
+  return buildConfigOptions({
+    models: context.models,
+    profiles: context.profiles,
+    defaults: context.defaults,
+    overrides: overridesOf(context, sessionId),
+  })
+}
+
+/** The config ids this context can advertise, for error messages. */
+function supportedConfigIds(context: ConfigOptionsContext): string[] {
+  return [
+    ...(context.profiles.length > 0 ? [PROFILE_CONFIG_ID] : []),
+    ...(context.models.length > 0 ? [MODEL_CONFIG_ID, EFFORT_CONFIG_ID] : []),
+  ]
 }
 
 function handleSetConfigOption(
@@ -181,6 +308,29 @@ function handleSetConfigOption(
   context: ConfigOptionsContext,
 ): SetSessionConfigOptionResponse {
   const { sessionId } = params
+
+  if (params.configId === PROFILE_CONFIG_ID) {
+    if (typeof params.value !== "string") {
+      throw RequestError.invalidParams({ value: params.value }, "profile value must be a profile id")
+    }
+    const profileId = params.value
+    // Validate that the requested profile is in the available list.
+    if (!context.profiles.some((profile) => profile.id === profileId)) {
+      throw RequestError.invalidParams({ value: profileId }, `unknown profile "${profileId}"`)
+    }
+
+    // The profile decides the runner's agent (tools, system prompt, skills, its
+    // own model), so the bridge drops the cached runner and refuses this while a
+    // turn is in progress.
+    context.sessions.setProfileOverride(sessionId, profileId)
+    // "Switch to this profile" means "run it as configured": drop the session's
+    // explicit model/effort picks so the new profile's own settings apply
+    // instead of the previous profile's selections shadowing them.
+    context.sessions.setModelOverride(sessionId, null)
+    context.sessions.setEffortOverride(sessionId, null)
+    return { configOptions: optionsFor(context, sessionId) }
+  }
+
   if (params.configId === MODEL_CONFIG_ID) {
     if (typeof params.value !== "string") {
       throw RequestError.invalidParams({ value: params.value }, "model value must be a model id")
@@ -205,7 +355,14 @@ function handleSetConfigOption(
     if (typeof params.value !== "string") {
       throw RequestError.invalidParams({ value: params.value }, "effort value must be a level id")
     }
-    const modelId = context.sessions.getModelOverride(sessionId) ?? context.defaultModel
+    // Resolve the model this session will actually run: the effort has to be one
+    // that model accepts, whatever selected it (the model picker, the profile's
+    // own model, or the connection default).
+    const modelId = effectiveModel({
+      profiles: context.profiles,
+      defaults: context.defaults,
+      overrides: overridesOf(context, sessionId),
+    })
     const levels = levelsForModel(context.models, modelId)
     if (levels.length <= 1) {
       throw RequestError.invalidParams(
@@ -223,8 +380,9 @@ function handleSetConfigOption(
     return { configOptions: optionsFor(context, sessionId) }
   }
 
+  const supported = supportedConfigIds(context).map((id) => `"${id}"`).join(", ")
   throw RequestError.invalidParams(
     { configId: params.configId },
-    `unknown config option "${params.configId}"; supported: "${MODEL_CONFIG_ID}", "${EFFORT_CONFIG_ID}"`,
+    `unknown config option "${params.configId}"; supported: ${supported}`,
   )
 }

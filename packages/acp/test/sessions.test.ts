@@ -154,6 +154,64 @@ test("prompt resumes the persisted id on later turns", async () => {
   expect(store.list().map((s) => s.id)).toEqual([sessionId])
 })
 
+test("switching profile rebuilds the runner for it on the same persisted session", async () => {
+  const store = new MemorySessionStore()
+  const profiles: (string | null)[] = []
+  const first = makeRunner({ store })
+  const second = makeRunner({ store })
+  const bridge = createSessionHandlers({
+    store,
+    createRunner: (_cwd, _mcp, profile) => {
+      profiles.push(profile)
+      return (profile === "finder" ? second.runner : first.runner) as any
+    },
+  })
+  const { sessionId } = bridge.newSession(newSessionParams())
+  const ctx = callCtx()
+
+  await bridge.prompt({ sessionId, prompt: [{ type: "text", text: "one" }] } as any, ctx)
+  expect(profiles).toEqual([null])
+  expect(bridge.getProfileOverride(sessionId)).toBeNull()
+
+  bridge.setProfileOverride(sessionId, "finder")
+  await bridge.prompt({ sessionId, prompt: [{ type: "text", text: "two" }] } as any, ctx)
+
+  // The new profile's runner took the second turn, on the same persisted session.
+  expect(profiles).toEqual([null, "finder"])
+  expect(first.calls).toHaveLength(1)
+  expect(second.calls).toHaveLength(1)
+  expect(second.calls[0]!.sessionId).toBe(sessionId)
+  expect(store.list().map((session) => session.id)).toEqual([sessionId])
+})
+
+test("switching profile mid-turn is refused, leaving the running generation in place", async () => {
+  const store = new MemorySessionStore()
+  const profiles: (string | null)[] = []
+  const { runner, release } = makeRunner({ store, manual: true })
+  const bridge = createSessionHandlers({
+    store,
+    createRunner: (_cwd, _mcp, profile) => {
+      profiles.push(profile)
+      return runner as any
+    },
+  })
+  const { sessionId } = bridge.newSession(newSessionParams())
+  const running = bridge.prompt({ sessionId, prompt: [{ type: "text", text: "one" }] } as any, callCtx())
+
+  expect(() => bridge.setProfileOverride(sessionId, "finder")).toThrow(/in progress/)
+  expect(bridge.getProfileOverride(sessionId)).toBeNull()
+
+  release()
+  await running
+  // Idle again: the switch is accepted and applies to the next turn.
+  bridge.setProfileOverride(sessionId, "finder")
+  expect(bridge.getProfileOverride(sessionId)).toBe("finder")
+  const next = bridge.prompt({ sessionId, prompt: [{ type: "text", text: "two" }] } as any, callCtx())
+  release()
+  await next
+  expect(profiles).toEqual([null, "finder"])
+})
+
 test("a failed first prompt leaves no empty session and the id can be retried", async () => {
   const store = new MemorySessionStore()
   const { runner } = makeRunner({ store, failFirst: true })

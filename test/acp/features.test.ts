@@ -22,6 +22,7 @@ import { connectMcpServer, connectStdioServers, requireStdio } from "../../packa
 import { createSessionHandlers } from "../../packages/acp/src/sessions"
 import { createPermissionBridge } from "../../packages/acp/src/permissions"
 import { createAcpAgent } from "../../packages/acp/src/index"
+import { effectiveModel, type ModelOption, type ProfileOption } from "../../packages/acp/src/config-options"
 
 const FIXTURE = new URL("./fixtures/mcp-echo-server.mjs", import.meta.url).pathname
 const ECHO_SERVER = { name: "echo", command: process.execPath, args: [FIXTURE], env: [] }
@@ -364,7 +365,7 @@ test("images: capability advertisement and block mapping move together", async (
 test("images option B: known non-vision model rejects image prompt, text remains usable", async () => {
   const store = new MemorySessionStore()
   const { runner, prompts } = makeRecordingRunner(store)
-  const agent = createAcpAgent({ store, createRunner: () => runner, images: true, imageSupport: false, log: () => {} })
+  const agent = createAcpAgent({ store, createRunner: () => runner, images: true, imageSupport: () => false, log: () => {} })
 
   await acp.client({ name: "blind-model" }).connectWith(agent.app, async (client) => {
     const init = await client.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION })
@@ -396,6 +397,69 @@ test("images option B: an unknown model passes images through to the provider", 
       sessionId, prompt: [{ type: "image", mimeType: "image/png", data: "AAAA" }],
     })
     expect(prompts[0]!.images).toEqual([{ mime: "image/png", data: "AAAA" }])
+  })
+})
+
+test("images option B: the gate follows the session's profile and model picks", async () => {
+  const store = new MemorySessionStore()
+  const { runner, prompts } = makeRecordingRunner(store)
+  const profiles: ProfileOption[] = [
+    { id: "coder", name: "Coder", model: "openai/gpt-5.6-luna" },
+    { id: "blind", name: "Blind", model: "local/text-only" },
+  ]
+  const models: ModelOption[] = [
+    { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna" },
+    { id: "local/text-only", name: "Text Only" },
+  ]
+  const defaults = { profile: "coder", model: "openai/gpt-5.6-luna" }
+  // What a host does: resolve the model the session will actually run, then ask
+  // the catalog whether it can see.
+  const agent = createAcpAgent({
+    store,
+    createRunner: () => runner,
+    images: true,
+    profiles,
+    models,
+    defaultProfile: "coder",
+    defaultModel: "openai/gpt-5.6-luna",
+    imageSupport: ({ profile, model }) =>
+      effectiveModel({ profiles, defaults, overrides: { profile, model } }) !== "local/text-only",
+    log: () => {},
+  })
+
+  await acp.client({ name: "vision-gate" }).connectWith(agent.app, async (client) => {
+    const { sessionId } = await client.request(acp.methods.agent.session.new, {
+      cwd: process.cwd(),
+      mcpServers: [],
+    })
+    const imagePrompt = {
+      sessionId,
+      prompt: [{ type: "image", mimeType: "image/png", data: "AAAA" }],
+    }
+
+    // The start profile's model can see, so the image passes through.
+    await client.request(acp.methods.agent.session.prompt, imagePrompt)
+    expect(prompts).toHaveLength(1)
+
+    // Switching to the blind profile refuses the same prompt up front.
+    await client.request(acp.methods.agent.session.setConfigOption, {
+      sessionId,
+      configId: "profile",
+      value: "blind",
+    })
+    await expect(client.request(acp.methods.agent.session.prompt, imagePrompt)).rejects.toMatchObject({
+      code: -32602,
+      message: expect.stringContaining("does not accept image input"),
+    })
+
+    // Switching back restores it: the verdict tracks the selection, not the launch.
+    await client.request(acp.methods.agent.session.setConfigOption, {
+      sessionId,
+      configId: "profile",
+      value: "coder",
+    })
+    await client.request(acp.methods.agent.session.prompt, imagePrompt)
+    expect(prompts).toHaveLength(2)
   })
 })
 
