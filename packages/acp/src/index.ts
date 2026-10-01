@@ -8,7 +8,6 @@
 //   ./lifecycle      (QUA-247)  registerLifecycle(app, sessions, opts) -> caps
 //   ./bridge         (QUA-244)  plugs into SessionBridgeOptions.onTurnStart
 //   ./cancellation   (QUA-250)  registers the session/cancel notification
-//   ./permissions    (QUA-245)  plugs into SessionBridgeOptions.onTurnStart
 //   ./mcp            (QUA-245)  stdio MCP connect/discover/invoke/cleanup
 //
 // The host (`quark acp`) resolves config/profile and hands us a `createRunner`
@@ -18,8 +17,6 @@
 //   * stdio MCP: `session/new` (and resume/load) connect the client's servers;
 //     the discovered tools are merged into the runner by the host via the third
 //     `createRunner` argument (`createRunner(cwd, store, mcpTools)`).
-//   * permissions: the permission bridge gates every non-read-only tool BEFORE
-//     it executes, via the engine's pre-execution hook; denials throw.
 //   * images: `RunnerPromptInput.images` is wired and `promptCapabilities.image`
 //     is advertised in lockstep (never one without the other); the host's gate
 //     follows the session's profile/model so a switch cannot leave it stale.
@@ -37,7 +34,6 @@ import {
 import { registerLifecycle, type SessionLifecycle } from "./lifecycle"
 import { registerCancellation } from "./cancellation"
 import { createUpdateBridge } from "./updates"
-import { createPermissionBridge } from "./permissions"
 import { createToolCallIds } from "./tool-call-ids"
 import {
   buildConfigOptions,
@@ -52,8 +48,6 @@ export { createUpdateBridge } from "./updates"
 export type { UpdateBridge, UpdateBridgeOptions } from "./updates"
 export type { SessionBridge, SessionBridgeOptions, SessionSelection, SessionTurn } from "./sessions"
 export type { SessionLifecycle, LifecycleOptions } from "./lifecycle"
-export { createPermissionBridge } from "./permissions"
-export type { PermissionBridge, PermissionBridgeOptions } from "./permissions"
 export { connectMcpServer, connectStdioServers, requireStdio } from "./mcp"
 export type { McpConnection, McpConnectOptions } from "./mcp"
 export { createToolCallIds } from "./tool-call-ids"
@@ -172,12 +166,8 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // same breath enable the mapping below — the two must never drift.
   if (options.images) capabilities.promptCapabilities = { image: true }
   // QUA-244: bridge runner bus events to session/update notifications by
-  // default. A caller-supplied onTurnStart replaces it (unchanged contract);
-  // the QUA-245 permission gate is always installed.
+  // default. A caller-supplied onTurnStart replaces it (unchanged contract).
   const updates = createUpdateBridge({ log: options.log })
-  // QUA-245: gate every non-read-only tool before it executes. Denied tools
-  // throw out of the engine's pre-execution hook, so they never run.
-  const permissions = createPermissionBridge({ log: options.log })
   // Session config options: when the host provides profiles and/or models,
   // the session bridge returns `configOptions` in `session/new` so the client
   // renders the profile (ACP's mode selector), model, and effort pickers, and
@@ -223,12 +213,10 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
     imageSupport: options.imageSupport,
     log: options.log,
     onTurnStart: (turn) => {
-      // The SAME per-turn scope feeds the update bridge and the permission
-      // bridge, so a permission card attaches to the tool card already created.
+      // One per-turn scope keeps tool call IDs unique across this connection.
       const scope = toolCallIds.startTurn()
       if (options.onTurnStart) options.onTurnStart(turn)
       else updates.onTurnStart(turn, scope)
-      permissions.onTurnStart(turn, scope)
     },
     // QUA-267: flush the update bridge's queued notifications before the
     // session/prompt response is written. A no-op when a caller-supplied
