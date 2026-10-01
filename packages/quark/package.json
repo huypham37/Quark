@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup && bun build-tui.ts",
+    "build": "bun build.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts"
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.5.0",
-    "tsup": "^8.5.1"
+    "@types/node": "^25.5.0"
   }
 }

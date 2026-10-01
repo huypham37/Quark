@@ -396,7 +396,7 @@ interface) only behind auth or a reverse proxy.
 bun run dev          # run the TUI from source
 bun run cli          # run the CLI from source
 bun run typecheck    # type-check the project
-bun run build        # bundle to dist/ (tsup + declarations)
+bun run build        # bundle to dist/ (Bun + TypeScript declarations)
 bun run docs         # generate API docs with TypeDoc
 bun test             # run the test suite
 ```
