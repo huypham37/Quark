@@ -197,9 +197,25 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   // with a later live id.
   const toolCallIds = createToolCallIds()
   // The session bridge is assigned right after registration; config-option
-  // building only runs later (on `session/new`), so the closure can resolve a
-  // session's current model/effort overrides from it.
+  // building only runs later (on `session/new`, `session/resume`,
+  // `session/load`), so the closure can resolve a session's current
+  // model/effort overrides from it.
   let sessionsBridge: SessionBridge | undefined
+  // Shared callback: session/new, session/resume, and session/load all return
+  // the same `configOptions` so the client can render config UI immediately.
+  const buildSessionConfigOptions = hasConfigOptions
+    ? (sessionId: string) =>
+        buildConfigOptions({
+          models,
+          profiles,
+          defaults,
+          overrides: {
+            profile: sessionsBridge?.getProfileOverride(sessionId) ?? null,
+            model: sessionsBridge?.getModelOverride(sessionId) ?? null,
+            effort: sessionsBridge?.getEffortOverride(sessionId) ?? null,
+          },
+        })
+    : undefined
   const sessions = registerSessions(app, {
     store,
     createRunner: (cwd, mcpTools, profile) => options.createRunner(cwd, store, mcpTools, profile),
@@ -218,19 +234,7 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
     // session/prompt response is written. A no-op when a caller-supplied
     // onTurnStart replaced the default bridge (no turn was registered).
     onTurnEnd: (turn) => updates.onTurnEnd(turn),
-    buildConfigOptions: hasConfigOptions
-      ? (sessionId) =>
-          buildConfigOptions({
-            models,
-            profiles,
-            defaults,
-            overrides: {
-              profile: sessionsBridge?.getProfileOverride(sessionId) ?? null,
-              model: sessionsBridge?.getModelOverride(sessionId) ?? null,
-              effort: sessionsBridge?.getEffortOverride(sessionId) ?? null,
-            },
-          })
-      : undefined,
+    buildConfigOptions: buildSessionConfigOptions,
   })
   sessionsBridge = sessions
   // Register session/set_config_option when anything is advertised.
@@ -239,7 +243,14 @@ export function createAcpAgent(options: AcpAgentOptions): AcpAgent {
   }
   // QUA-247: lifecycle over the SAME store the runners use. QUA-265: replay
   // shares the connection's tool-call-id registry so replayed ids are unique.
-  const lifecycle = registerLifecycle(app, sessions, { store, log: options.log, toolCallIds })
+  // Thread the same `buildConfigOptions` so `session/resume` and `session/load`
+  // return config options too, matching `session/new`.
+  const lifecycle = registerLifecycle(app, sessions, {
+    store,
+    log: options.log,
+    toolCallIds,
+    buildConfigOptions: buildSessionConfigOptions,
+  })
   Object.assign(capabilities, lifecycle.capabilities)
   registerCancellation(app, sessions)
   return { app, sessions, lifecycle }

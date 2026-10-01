@@ -42,6 +42,7 @@ import type {
   McpServerStdio,
   ResumeSessionRequest,
   ResumeSessionResponse,
+  SessionConfigOption,
   SessionInfo,
 } from "@agentclientprotocol/sdk"
 import { isAbsolute } from "node:path"
@@ -66,6 +67,12 @@ export interface LifecycleOptions {
    * callers/tests), replay mints local unique ids.
    */
   toolCallIds?: ToolCallIds
+  /**
+   * Build the `configOptions` for a session so `session/resume` and
+   * `session/load` can include them in the response, the same way
+   * `session/new` does. Omit to suppress config options in resume/load.
+   */
+  buildConfigOptions?(acpSessionId: string): SessionConfigOption[]
 }
 
 /**
@@ -173,6 +180,16 @@ export function createSessionLifecycle(
     return connectStdioServers(stdio, { log: options.log }).then(({ connections }) => attach(connections))
   }
 
+  /**
+   * Build the response fragment with `configOptions` for a session that was
+   * just adopted (resume/load). Mirrors the pattern `session/new` uses in
+   * `registerSession`: include the array only when non-empty, omit it otherwise.
+   */
+  function configOptionsResponse(sessionId: string): { configOptions?: SessionConfigOption[] } {
+    const configOptions = options.buildConfigOptions?.(sessionId)
+    return configOptions?.length ? { configOptions } : {}
+  }
+
   return {
     // Keep this in lockstep with the handlers below: one entry per method that
     // is actually installed.
@@ -205,8 +222,9 @@ export function createSessionLifecycle(
       const pending = adopt(params)
       // Nothing is replayed: the next prompt hands the runner the stored session
       // ID, and the engine loads the persisted messages into the model context.
-      if (pending) return pending.then(() => ({}))
-      return {}
+      const respond = (): ResumeSessionResponse => configOptionsResponse(params.sessionId)
+      if (pending) return pending.then(respond)
+      return respond()
     },
 
     async loadSession(params, client) {
@@ -217,7 +235,7 @@ export function createSessionLifecycle(
       for (const update of historyToUpdates({ messages, parts }, options.toolCallIds)) {
         await client.notify(methods.client.session.update, { sessionId: params.sessionId, update })
       }
-      return {}
+      return configOptionsResponse(params.sessionId)
     },
 
     deleteSession({ sessionId }) {
