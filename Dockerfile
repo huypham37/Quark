@@ -1,27 +1,35 @@
-# Build stage
+# Build the runner and Quark CLI/TUI. No web assets or web server are included.
 FROM oven/bun:1 AS build
 WORKDIR /app
+
 COPY package.json bun.lock ./
 COPY packages/runner/package.json packages/runner/
 COPY packages/quark/package.json packages/quark/
-RUN bun install
-COPY . .
+COPY packages/acp/package.json packages/acp/
+RUN bun install --frozen-lockfile
 
-RUN bun run web:build
+COPY packages/runner ./packages/runner
+COPY packages/quark ./packages/quark
+COPY packages/acp ./packages/acp
 
-# Runtime stage
+RUN bun run --cwd packages/runner build \
+    && bun run --cwd packages/quark build-tui.ts
+
+# Runtime includes only built runner and CLI/TUI packages.
 FROM oven/bun:1 AS runtime
 WORKDIR /app
+
 COPY package.json bun.lock ./
 COPY packages/runner/package.json packages/runner/
 COPY packages/quark/package.json packages/quark/
-
+COPY packages/acp/package.json packages/acp/
 RUN bun install --production --frozen-lockfile
 
-COPY --from=build /app/web/dist ./web/dist
+COPY --from=build /app/packages/runner/dist ./packages/runner/dist
+COPY --from=build /app/packages/quark/dist ./packages/quark/dist
+COPY packages/runner/package.json ./packages/runner/
+COPY packages/quark/package.json ./packages/quark/
+COPY packages/acp/package.json ./packages/acp/
+COPY packages/quark/preload.ts ./packages/quark/preload.ts
 
-COPY ./web/backend.ts ./web/server.ts ./web/
-
-COPY ./packages ./packages
-
-CMD ["bun", "run", "web:serve"]
+CMD ["bun", "--preload", "./packages/quark/preload.ts", "./packages/quark/dist/tui.js"]
