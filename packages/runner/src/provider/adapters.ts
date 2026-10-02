@@ -18,6 +18,7 @@ export interface ProviderAdapterOptions {
   credentialStore?: CredentialStore
   /** Run/session ID threaded to adapters that send a per-run session header. */
   sessionId?: string
+  initiator?: "user" | "agent"
   onCodexRefresh?: (token: {
     access: string
     refresh: string
@@ -153,7 +154,7 @@ export function createProviderAdapter(
 
       if (definition.auth.type === "oauth-device") {
         const oauth = requireOAuth(definition, credential)
-        const fetch = getCustomFetch(definition.id, { getToken: async () => oauth.access })
+        const fetch = getCustomFetch(definition.id, { getToken: async () => oauth.access, initiator: options.initiator })
         const enterpriseDomain = definition.id === "copilot" && typeof oauth.metadata?.domain === "string"
           ? oauth.metadata.domain
           : undefined

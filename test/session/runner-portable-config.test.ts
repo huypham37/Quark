@@ -26,7 +26,7 @@ const originalConfigDir = process.env.QUARK_CONFIG_DIR
 
 beforeAll(() => {
   configDir = mkdtempSync(join(tmpdir(), "quark-poison-config-"))
-  // Version 1 always fails parseConfigV2, so reading this file cannot be silent.
+  // Version 1 always fails parseConfig, so reading this file cannot be silent.
   writeFileSync(join(configDir, "config.yaml"), [
     "version: 1",
     "models:",

@@ -64,13 +64,12 @@ describe("CLI interactive launch forwards flags to the TUI", () => {
     expect(forwarded).toContain("abc")
   })
 
-  test("--profile is accepted as an alias and forwarded as --agent", () => {
-    const result = runCli(["--profile", "researcher"])
-
-    const forwarded = result.stdout.toString().split("\n")
-    expect(forwarded).toContain("--agent")
-    expect(forwarded).toContain("researcher")
-    expect(forwarded).not.toContain("--profile")
+  test("removed profile flags fail clearly instead of launching the TUI", () => {
+    for (const args of [["--profile", "researcher"], ["-p", "researcher"], ["--list-profiles"]]) {
+      const result = runCli(args)
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr.toString()).toContain("Unknown option")
+    }
   })
 
   test("a bare interactive launch forwards none of the flags", () => {

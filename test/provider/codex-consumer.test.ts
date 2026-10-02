@@ -963,20 +963,4 @@ describe("doStream — error handling", () => {
     ).rejects.toThrow("fetch failed")
   })
 
-  test("uses globalThis.fetch when no custom fetch is injected", async () => {
-    const model = createCodexConsumer({
-      modelId: "gpt-4o",
-      jwt: "jwt",
-      accountId: "acct",
-    })
-
-    // The model should be callable with doStream
-    expect(typeof model.doStream).toBe("function")
-
-    // doStream returns a Promise
-    const result = model.doStream({
-      prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
-    })
-    expect(result).toBeInstanceOf(Promise)
-  })
 })

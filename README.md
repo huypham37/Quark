@@ -1,136 +1,124 @@
 # Quark
 
-**An ergonomic, tool-first AI agent for coding _and_ research workflows.**
+**The agent runtime written in TypeScript — built for the cloud, for research, and for embedding into larger agentic systems.**
 
-Quark is a harness — it owns everything around the model: tool execution,
-memory, context management, state persistence, and guardrails. The model is a
-pluggable component; the harness is the product. The differentiator is a small
-set of premade, well-designed, well-tested tools and subagents that give the
-best experience for both writing code and doing research.
+Quark owns the boring parts of an agent: sessions, streaming, tools, providers, cancellation, credentials.
+You own the agent.
 
-> **Agent = Model + Harness.** The model provides intelligence. The harness
-> makes that intelligence useful.
-
-**Docs:** <http://quark-doc.home.arpa> — HTTP API reference, plus CLI and SDK
-sections. Homelab-only; the site is a separate Docusaurus repo deployed to k3s,
-not built from this one.
+> Status: `0.1.x` — moving fast, APIs may break. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Highlights
+## Two things are called Quark
 
-- **The agent loop** — the model reasons, calls a tool, observes the result, and
-  repeats until the task is done, with configurable `minSteps` / `maxSteps`
-  guardrails.
-- **Multi-provider** — Anthropic (Claude), OpenAI (GPT / o-series), GitHub
-  Copilot, and any OpenAI-compatible endpoint (Ollama, local models, etc.).
-- **Streaming TUI** — a full terminal UI with real-time token streaming, live
-  tool progress, model switching, and inline sub-agent observability.
-- **Deterministic, named subagents** — subagents are invoked through
-  purpose-built tools, each with its own typed contract. No generic `task` /
-  `delegate` verb.
-- **Progressive-disclosure skills** — three-level loading (metadata →
-  instructions → resources) keeps the context window lean.
-- **Session persistence** — per-session JSONL storage with resume, ephemeral
-  (`--no-store`) runs, and parent–child session linking for subagents.
+The **runtime** is the product. The **coding agent** is one opinionated assembly of it.
+
+```diagram
+Quark coding agent  =  Quark runtime
+                     + TUI
+                     + Conversation history
+                     + External tooling   (custom tools · MCP)
+                     + Working spaces     (directories · git worktrees)
+```
+
+| | What it is | Package |
+|---|---|---|
+| **Quark runtime** | Agent loop, providers, tools, sessions, events, ACP. Headless, config-free, no process globals. | `@quark/runner` · `@quark/acp` |
+| **Quark coding agent** | TUI + CLI assembled from the runtime. Batteries included, optional. | `quark` |
+
+## Runtime anatomy
+
+```diagram
+        ╭────────────────╮         ╭────────────────────╮         ╭───────────────────╮
+        │ Working spaces │         │  Session history   │         │   Agent config    │
+        │ cwd · worktrees│────────▶│ append-only JSONL  │◀────────│ profile/<id>.yaml │
+        ╰────────────────╯         ╰────────────────────╯         ╰───────────────────╯
+                   ▲                         ▲                            ▲
+                   │                         │                            │
+           ╭───────┴─────────────────────────┴────────────────────────────┴────────╮
+           │                             Quark runtime                             │
+           │                       ╭────────────────────────╮                      │
+           │                       │      Agent runner      │                      │
+           │                       │  loop · streaming ·    │                      │
+           │                       │  tools · subagents     │                      │
+           │                       ╰────────────────────────╯                      │
+           ╰────────┬─────────────────────────┬────────────────────────┬───────────╯
+                    ▼                         ▼                        ▼
+        ╭────────────────────╮    ╭────────────────────╮    ╭────────────────────╮
+        │   Authentication   │    │  External tooling  │    │     Providers      │
+        │ credential store · │    │ custom TS tools ·  │    │ anthropic · openai │
+        │ OAuth device flow  │    │ stdio MCP servers  │    │ copilot · ollama … │
+        ╰────────────────────╯    ╰────────────────────╯    ╰────────────────────╯
+```
+
+## Design principles
+
+- **Cloud-first.** One process can host many runners. Each runner owns its event bus, cancellation state, hooks, and store. Turns take an explicit `targetWorkspace`, so one server can work on many repos without `chdir`.
+- **Research-friendly.** Every session is an append-only JSONL log — inspect it, replay it, branch it. No hidden state in a database.
+- **Integration-first.** Embed the runtime in your own system, or drive it over ACP from an editor. No UI code required.
+- **Boring at the edges.** The engine never reads config files or env vars; hosts pass providers, policies, and stores explicitly.
 
 ---
 
-## Requirements
+## Quickstart
 
-- [Bun](https://bun.sh) (runtime + package manager)
-- An API key for at least one provider (see [Configuration](#configuration))
-
-## Install
+Requirements: [Bun](https://bun.sh) (build + TUI), Node 20+ (built CLI), and an API key for at least one provider.
 
 ```bash
 git clone https://github.com/huypham37/Quark.git
 cd Quark
 bun install
-```
-
-Run the interactive TUI:
-
-```bash
-bun run dev
-```
-
-Or build and use the CLI directly:
-
-```bash
 bun run build
-node packages/quark/dist/cli.js --help
+
+bin/quark                      # interactive TUI
+bin/quark "explain this repo"  # one-off message
 ```
 
-To install `quark` globally from this checkout:
+Authenticate once (or set a standard env var such as `ANTHROPIC_API_KEY`):
 
 ```bash
-npm link
+bin/quark auth login anthropic
+bin/quark auth status
 ```
 
-The interactive TUI requires [Bun](https://bun.sh). One-off messages and CLI
-commands run with Node from the built distribution.
-
-For a local convenience launcher, [`bin/quark`](bin/quark) runs the built CLI
-relative to the repository root. Add `bin/` to your `PATH` after building.
-
----
-
-## Usage
+Docker:
 
 ```bash
-# Interactive TUI
-quark
-
-# One-off message with a profile
-quark --profile coder --message "fix the bug in main.ts"
-
-# Pick a specific model for a single run
-quark --model copilot/claude-sonnet-4.5 "use this model for this run"
-
-# Quick question that should never be saved to disk
-quark --no-store "what does this regex do?"
-
-# Resume an existing session
-quark --session <id>
-
+docker build -t quark .
+docker run -it --rm -v ~/.config/quark:/root/.config/quark quark
 ```
 
-### CLI flags
+Install globally from the checkout: `npm link` (then use `quark` anywhere).
 
-| Flag | Description |
-|------|-------------|
-| `-p, --profile <name>` | Profile to use (default: from config) |
-| `-m, --message <text>` | Message text (alternative to a positional arg) |
-| `-s, --session <id>` | Resume an existing session |
-| `--model <id>` | Model for this run, e.g. `copilot/claude-sonnet-4.5` |
-| `--no-store` | Run an ephemeral session — never written to disk |
-| `--verbose` | Print every tool call + result to stderr |
-| `-l, --list-profiles` | List available profiles |
-| `-h, --help` | Show help |
+## CLI
 
----
+| Command | What it does |
+|---|---|
+| `quark` | Interactive TUI |
+| `quark "message"` | One-off run (`-m` also works) |
+| `quark -a <agent>` | Pick an agent (default: `default_agent` in config) |
+| `quark --model <provider/model>` | Override model for this run |
+| `quark -s <session-id>` | Resume a session |
+| `quark --no-store` | Ephemeral run — never written to disk |
+| `quark -l` | List available agents |
+| `quark --verbose` | Print every tool call and result to stderr |
+| `quark auth login\|status\|logout <provider>` | Manage credentials |
+| `quark acp [--agent <id>]` | Serve ACP over stdio (editor integration) |
+
+TUI essentials: `/new` fresh session · `/agent` switch agent · `/settings` edit config · `/undo` revert last file changes.
 
 ## Configuration
 
-Config lives at `~/.config/quark/config.yaml`. Missing files and fields fall
-back to sensible defaults. Models are always written as `provider/model`. Changes
-made through `/settings` apply automatically when the editor closes successfully.
+Config lives at `~/.config/quark/config.yaml` (`QUARK_CONFIG_DIR` overrides the whole config root).
 
 ```yaml
-version: 2
+version: 3
 
 models:
-  main: openrouter/anthropic/claude-sonnet-4.6
-  small: openai/gpt-5-mini
-  favorites:
-    - openrouter/anthropic/claude-sonnet-4.6
-    - openai/gpt-5
-    - copilot/claude-sonnet-4.6
+  small: openai/gpt-5-mini        # titles, compaction
 
+default_agent: coder
 max_steps: 100
-
-# Used for /settings and clickable file links. Defaults to $EDITOR, $VISUAL, then nvim.
 editor: nvim
 
 branching:
@@ -139,236 +127,111 @@ branching:
 
 # Only endpoints Quark does not bundle belong here.
 providers:
-  quark-go:
-    protocol: openai-compatible
-    endpoint: https://api.quark-go.example/v1
-    credential:
-      source: environment
-      variable: QUARK_GO_API_KEY
-    billing: subscription
+  my-endpoint:
+    base_url: https://api.example.com/v1
+    api_key: env:MY_ENDPOINT_KEY
 ```
 
-Standard providers require no `providers:` entry. Authenticate interactively with
-`quark auth login openrouter`, or set a user-managed environment variable for
-headless use. API-key values are never accepted in V2 configuration.
+Agents are single YAML files at `~/.config/quark/profile/<id>.yaml`:
 
-OpenCode Go is bundled as `opencode-go`. After subscribing and copying your key,
-run `quark auth login opencode-go` (or set `OPENCODE_API_KEY`) and select a model
-such as `opencode-go/kimi-k3`. Quark routes each catalog model to its documented
-Chat Completions, Responses, or Anthropic Messages endpoint and sends a stable
-`x-opencode-session` header.
-
-Some models support an additional reasoning mode. For those models—currently
-the GPT-5.6 family—set `thinking_mode: pro` alongside `thinking_effort`. Quark
-warns and ignores the setting when the selected model does not support modes.
-
-Older profile configs using `model: { id, thinking: { effort, mode } }` are
-still accepted for migration. New and updated profile settings are written in
-the flat form shown above.
-
-Per-project overrides go in `.quark/config.yaml` at the repo root.
-
-Set provider API keys through `quark auth login`, or use provider-standard
-environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-`OPENROUTER_API_KEY`, and `OPENCODE_API_KEY`. Quark reads environment variables
-but never edits shell startup files.
-
----
-
-## Profiles
-
-A profile is a baked-in agent identity declared in YAML — `prompt_file`,
-`tools[]`, `skills[]`, and an optional `model`. Activate one deterministically
-with `--profile <name>`:
-
-```bash
-quark --list-profiles
-quark --profile researcher --message "..."
+```yaml
+name: Researcher
+description: Investigates code and reports evidence
+model:
+  id: anthropic/claude-opus-4-6
+  thinking_effort: high
+tools: [read, skill, write, bash]
+skills: [focus]
+subagents: [coder]
+prompt: |
+  Investigate the question and report evidence.
 ```
 
----
+**Bundled providers:** Anthropic, OpenAI, OpenRouter, DeepSeek, OpenCode Go, GitHub Copilot, OpenAI Codex (ChatGPT plan), Ollama, LM Studio — plus any OpenAI-compatible endpoint.
 
-## Tools & Subagents
+## Tools, skills, subagents
 
-Tools are the product — research-backed and test-backed.
+- **Engine built-ins:** `read`, `look` (images), `skill`, `question` (ask the user mid-run).
+- **External tools:** TypeScript modules at `<config>/tools/<id>.ts`, referenced by id from an agent's `tools[]`. Typical set: `write`, `edit`, `bash`, `glob`, `grep`, `websearch`, `webfetch`, `todo`.
+- **Skills:** progressive-disclosure instructions at `.quark/skills/*/SKILL.md` (project) and `<config>/skills/*/SKILL.md` (global).
+- **Subagents:** a subagent is an agent exposed as a tool. It runs in an isolated child session, so its reasoning never pollutes the parent transcript.
+- **MCP:** when driven over ACP, stdio MCP servers handed over by the client are connected per session, and their tools are namespaced `mcp__<server>__<tool>`.
 
-**Built-in tools** are registered by the harness at bootstrap: `read`, `skill`,
-and `read_session`.
-
-**Profile-declared tools** are loaded by ID from `~/.config/quark/tools/{id}.ts`
-when a profile lists them in its `tools[]` array. Copy a tool implementation into
-that directory to enable it.
-
-A **subagent** is an agent (prompt + tools + model) exposed through
-a thin, named tool. It runs in its own isolated session (`kind: "subagent"`,
-`parentSessionId` set) so its intermediate reasoning never pollutes the parent's
-context — the parent transcript stores only the tool call and the final result.
-
----
-
-## Architecture
+## Sessions
 
 ```diagram
-╭─────────────────────────────────────────────────╮
-│                  TUI / SDK / CLI                  │
-├─────────────────────────────────────────────────┤
-│        Baked-in Agents (identities, in code)      │
-│             prompt + tools[] + skills[]            │
-├──────────┬──────────┬───────────┤
-│  Agent   │  Tool    │  Skill    │
-│  Loop    │  System  │  System   │
-├──────────┴──────────┴───────────┤
-│              Persistence (JSONL)                   │
-│   Session (main | subagent | ephemeral)           │
-│        → Message → Part   (parentSessionId)        │
-╰─────────────────────────────────────────────────╯
+~/.config/quark/session/runners/<session-id>/
+├── session.jsonl   # append-only: messages, tool calls, usage
+└── meta.json       # listing cache: title, timestamps, pin
 ```
 
-See [`docs/data-model.md`](docs/data-model.md) for the persistence schema and
-[`specs/`](specs/) for design records.
+- Resume with `quark -s <session-id>` — any interface (CLI, TUI, ACP) can pick up the same session.
+- Subagent sessions link back to their parent (`parentSessionId`).
+- `--no-store` skips disk entirely.
 
 ---
 
-## Using Quark as an SDK
-
-Quark also ships as the `@quark/runner` package, exposing its session, tool, and
-agent primitives:
+## Embedding the runtime
 
 ```ts
-import { createSession, prompt } from "@quark/runner"
+import { createRunner, defineAgent, createJsonlSessionStore } from "@quark/runner"
+
+const agent = defineAgent({
+  id: "reviewer",
+  instructions: "Review diffs and report issues.",
+  tools: [],
+  model: "anthropic/claude-opus-4-6",
+})
+
+const runner = createRunner({ agent, store: createJsonlSessionStore(root) })
+
+runner.bus.on("text-delta", ({ delta }) => process.stdout.write(delta))
+
+await runner.prompt({
+  parts: [{ type: "text", text: "Review the staged changes." }],
+  targetWorkspace: "/srv/checkout",   // absolute; drives tools + system prompt
+})
 ```
 
----
+Rules of thumb:
 
-## Session discovery API
+- Two runners with the same session id never share history — state is instance-scoped by default.
+- `targetWorkspace` pins a turn (and its subagents) to one directory; the process never `chdir`s.
+- Pass an explicit store to persist; the default is in-memory so nothing touches `~/.config`.
 
-An external process — an orchestrator, a dashboard — can learn which session a
-running TUI is on. Start the TUI with a port, then read the single endpoint:
+## Editor integration (ACP)
 
-```bash
-QUARK_API_PORT=47831 quark
-curl http://127.0.0.1:47831/api/session/current
+`quark acp` speaks the Agent Client Protocol over stdio (works with Zed's Agent Panel):
+
+- Every agent manifest appears as a **mode** in the editor's picker.
+- Model and thinking-effort pickers follow the active agent's settings and your credentials.
+- Switching modes rebinds the session — tools, prompt, skills, and model — without relaunching.
+- Stdio MCP servers from the editor are connected per session.
+
+## Repository layout
+
+```diagram
+Quark/
+├── packages/runner/   # engine + SDK          → @quark/runner
+├── packages/acp/      # ACP server            → @quark/acp
+└── packages/quark/    # CLI + TUI             → quark
 ```
-
-```json
-{ "sessionId": "PRCglgkAzWjgDWhK", "pid": 46695 }
-```
-
-It answers `204 No Content` until the first message creates a session, and
-follows `/new`, session switches, and branches. Read-only, bound to `127.0.0.1`
-only, off unless `QUARK_API_PORT` is set. `@quark/runner` is deliberately not
-involved: it holds many sessions and cannot know which one the user is on.
-
----
-
-## Web API
-
-The full reference lives at <http://quark-doc.home.arpa> (`docs/api`).
-
-`bun run web:serve` starts the web backend (`web/server.ts`, Bun, default port
-`4173`, override with `PORT`) and serves both the UI and a JSON API under
-`/api/`. External processes can send a message — including image attachments —
-with a single POST:
-
-```bash
-curl -X POST http://127.0.0.1:4173/api/sessions/$SESSION_ID/messages \
-  -H 'content-type: application/json' \
-  -d '{
-    "text": "what is wrong here?",
-    "images": [{ "mime": "image/png", "data": "<base64>" }]
-  }'
-```
-
-`text` is required; `images` is optional and omitted or empty behaves exactly as
-before. Images are base64-encoded (a ~33% wire tax) and validated before the
-engine sees them:
-
-| Limit | Value |
-| -- | -- |
-| Request body | 10 MiB |
-| Images per message | 8 |
-| Decoded size per image | 5 MiB |
-| Supported `mime` | `image/png`, `image/jpeg`, `image/gif`, `image/webp` |
-
-Responses: `202` accepted (turn runs asynchronously — subscribe to
-`GET /api/sessions/:id/events`), `400` malformed body/text/image (the message
-names the offending `images[index]`), `409` session already running, `413` body
-over the ceiling.
-
-### Runner API
-
-The routes above run the server's *own* agent against the shared session store.
-For an isolated execution instance — its own event bus, cancellation state, and
-hooks — mint a runner first:
-
-```bash
-RUNNER_ID=$(curl -s -X POST http://127.0.0.1:4173/api/runners \
-  -H 'content-type: application/json' -d '{"agentId":"coder"}' | jq -r .runnerId)
-
-curl -X POST http://127.0.0.1:4173/api/runners/$RUNNER_ID/session/prompt \
-  -H 'content-type: application/json' \
-  -d '{"text":"what is wrong here?","images":[{"mime":"image/png","data":"<base64>"}]}'
-# → 202 {"runnerId":"...","sessionId":"..."}
-```
-
-Echo `runnerId` on every later call, and `sessionId` to continue that
-conversation (omit it to start a new one). Sessions are shared, persistent state:
-any runner can resume a session by `sessionId`, including one minted after a
-server restart.
-
-| Route | Behavior |
-| -- | -- |
-| `POST /api/runners` | `{agentId?}` (default agent when omitted) → `201 {runnerId}`. `404` unknown agent, `503` at the 100-runner cap. |
-| `POST /api/runners/:id/session/prompt` | `{sessionId?,text,images?}` → `202 {runnerId,sessionId}`; same limits and validation as the message route above. `409` session already running (across all runners). |
-| `GET /api/runners/:id/sessions/:sessionId` | `{session,messages,tokensUsed}`; `404` unknown runner or session. |
-| `GET /api/runners/:id/sessions/:sessionId/events` | SSE stream from the runner that owns the active turn (same event shapes as `/api/sessions/:id/events`). |
-| `POST /api/runners/:id/sessions/:sessionId/cancel` | Aborts the in-flight turn → `{cancelled:true}`. |
-| `DELETE /api/runners/:id` | Drops the runner; sessions stay on disk. `409` while a turn is in flight. |
-
-Sessions are persisted on disk in one namespace shared by REST runners and
-the CLI/TUI, `~/.config/quark/session/runners/<sessionId>/`. New CLI/TUI
-sessions use this location too, so `quark --session <sessionId>` can resume a
-REST runner session. Older sessions under `~/.config/quark/session/<sessionId>/`
-are not found by the CLI/TUI. Session IDs are restricted to `[A-Za-z0-9_-]+` (the ID alphabet the
-engine generates) so a caller cannot escape that namespace.
-
-The runner *registry* is process-local: runner IDs are minted per process, so a
-server restart ends every runner. Sessions survive — mint a new runner and
-resume a `sessionId` to continue its history. Deleting a runner (or evicting the
-oldest idle runner at the 100-runner cap) only drops the execution handle; it
-never deletes session files. Because all runners share one namespace, two
-concurrent turns on the same `sessionId` are refused with `409` rather than
-interleaving writes. Tool definitions are materialized from disk; only `agentId`
-is accepted over HTTP.
-
-The server binds `127.0.0.1` by default. This API has no authentication and can
-run tools on this machine, so set `QUARK_WEB_HOST=0.0.0.0` (or a specific
-interface) only behind auth or a reverse proxy.
-
----
 
 ## Development
 
 ```bash
-bun run dev          # run the TUI from source
-bun run cli          # run the CLI from source
-bun run typecheck    # type-check the project
-bun run build        # bundle to dist/ (tsup + declarations)
-bun run docs         # generate API docs with TypeDoc
-bun test             # run the test suite
+bun run dev        # TUI from source
+bun run cli        # CLI from source
+bun test           # test suite
+bun run typecheck  # type-check everything
+bun run build      # bundle dist/ (Bun + .d.ts)
+bun run docs       # generate TypeDoc
 ```
 
-> Always run the tests after changing core functionality. Quark's moat is
-> test-backed tools — keep it that way.
+## Documentation
 
----
-
-## Status
-
-Quark is early and under active development — some tools listed in the
-[CHANGELOG](CHANGELOG.md) are still being implemented or ship as examples. Expect
-the surface area to change.
+- Full docs (CLI, SDK, design notes): <http://quark-doc.home.arpa> — internal homelab deployment, separate repo.
 
 ## License
 
-[MIT](LICENSE).
+MIT — see [LICENSE](LICENSE).

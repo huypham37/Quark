@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- ACP profile selector: `quark acp` advertises every agent manifest as a `category: "mode"` session config option, so an editor (Zed) renders them as its mode picker. Switching profile rebinds that session's runner to the new profile's agent — tools, system prompt, skills, and model — on the same persisted session, and drops the session's explicit model/effort picks so the profile's own settings apply. The model and effort pickers follow the selected profile's own settings rather than the launch-time agent's.
+- `quark acp --profile <id>` (also `-p`) selects the profile sessions start on. `--agent`/`-a` is an alias for it; an id no manifest backs is refused at launch, naming the available profiles.
 - HTTP runner API for external orchestrators. `POST /api/runners` mints an isolated execution instance (own event bus, cancellation state, and hooks) bound to a configured agent; `POST /api/runners/:id/session/prompt`, `GET /api/runners/:id/sessions/:sessionId`, `GET …/events`, `POST …/cancel`, and `DELETE /api/runners/:id` drive it.
 - Image attachments on prompts: `POST /api/sessions/:id/messages` and the runner prompt route accept `images: [{ mime, data }]` (PNG / JPEG / GIF / WebP), capped at 8 images, 5 MiB decoded each, 10 MiB body.
 - Session-discovery API for external processes: with `QUARK_API_PORT` set, the app serves a read-only localhost `GET /api/session/current` reporting the current session id, so an orchestrator can link its tasks to a Quark session.
@@ -19,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- CLI/TUI session actions now use the active runtime's store for resume, listing, rename, pin, branching, replay, and export. Existing JSONL session paths and format are unchanged by this refactor.
+- `/undo` is supported only with the app's default JSONL store. Custom stores fail before restoring files or rewriting session history; their runs do not write global undo snapshots.
+- **Breaking (SDK):** `@quark/runner` no longer exports the singleton `prompt`, `cancel`, `isActive`, `bus`, `globalHooks`, `register`, or `listTools`. Use `createRunner({ agent, store?, plugins?, hooks? })`, then `runner.prompt()`, `runner.cancel()`, `runner.bus`, and `runner.store`. The internal singleton subpaths still exist for the web backend's local routes; they are not removed by this change.
+- **Breaking (direct source imports):** `packages/quark/src/bootstrap.ts` and `resetBootstrap` were removed. Set up the agent, runner, store, and plugins explicitly instead.
 - **Breaking:** the runner prompt route moved from `POST /api/runners/:id/messages` to `POST /api/runners/:id/session/prompt`. The old path now falls through to `404`.
 - **Breaking:** runner sessions are no longer in-memory. Every runner shares one disk-backed namespace, `~/.config/quark/session/runners/<sessionId>/`, so history outlives the runner: a new runner (including one minted after a server restart) resumes any session by id. `DELETE /api/runners/:id` and eviction at the 100-runner cap drop only the execution handle — never session files.
 - **Breaking:** the CLI/TUI now store sessions in that same shared namespace, so `quark --session <sessionId>` resumes a session created over REST. Sessions created under the old `~/.config/quark/session/<sessionId>/` path are no longer found by the CLI/TUI.
@@ -29,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- ACP image prompts: the up-front "model cannot see" rejection follows the session's selected profile and model instead of the launch-time agent, so a profile or model switch can no longer leave the gate stale (it refused images a vision model accepts, and waved through a blind one's). The catalog lookup is memoized per model spec.
 - Canceled turns now finish when the provider stream stalls instead of leaving the session marked running.
 
 ### Removed

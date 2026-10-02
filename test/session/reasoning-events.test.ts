@@ -13,7 +13,6 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
 import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
-import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
 import { createSession } from "../../packages/runner/src/session/session"
 import {
   createAssistantMessage,
@@ -34,8 +33,6 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "quark-test-reasoning-"))
   setSessionStorageRoot(tmpDir)
   ensureStorageRoot()
-  resetBootstrap()
-  await bootstrap()
 })
 
 afterAll(() => {

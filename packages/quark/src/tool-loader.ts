@@ -1,16 +1,16 @@
-// Tool loader — load profile-declared tools from <config>/tools/
+// Tool loader — load agent-declared tools from <config>/tools/
 //
 // App-side filesystem adapter: discovery/import lives here, while the ToolDef
 // contract and registry live in `@quark/runner` (tool/tool, tool/registry).
 //
-// Tools are loaded by ID from the profile's tools[] array.
+// Tools are loaded by ID from an agent's tools[] array.
 // Each tool lives at <config>/tools/{id}.ts
 // Notifications surface any load failures.
 
 import * as fs from "fs"
 import * as path from "path"
 import { pathToFileURL } from "url"
-import { register, validateTool } from "@quark/runner"
+import { register, validateTool } from "@quark/runner/tool/registry"
 import { configDir } from "./config/config"
 import { error as notifyError, warn as notifyWarn } from "@quark/runner/notification/notification"
 import type { ToolDef } from "@quark/runner/tool/tool"
@@ -36,16 +36,16 @@ export interface LoadResult {
 }
 
 /**
- * Load tools declared in a profile's tools[] array.
+ * Load tools declared in an agent's tools[] array.
  * Each tool is loaded from <config>/tools/{id}.ts
  * Engine-owned tools (read, look, skill, question) are skipped — they come
- * from `@quark/runner` and are materialized by `agent-compat.ts`.
+ * from `@quark/runner` and are materialized by `agent/agent.ts`.
  *
  * @param opts.register - When `false`, return concrete definitions in
  *   {@link LoadResult.defs} without registering them globally. Used by the
  *   portable AgentDefinition path.
  */
-export async function loadProfileTools(
+export async function loadTools(
   toolIds: string[],
   opts: { register?: boolean } = {},
 ): Promise<LoadResult> {
@@ -149,9 +149,3 @@ export async function loadProfileTools(
 export function getToolsDir(): string {
   return toolsDir()
 }
-
-/**
- * Canonical name. `loadProfileTools` is the legacy alias kept for existing
- * callers (profile path); both refer to the same function.
- */
-export const loadTools = loadProfileTools

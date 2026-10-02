@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "bun"],
+    // Typecheck-only: resolve @quark/runner back to source so a clean checkout
+    // type-checks without building the engine first (its `exports` point at
+    // dist, which only exists after a build).
+    "paths": {
+      "@quark/runner": ["../runner/src/index.ts"],
+      "@quark/runner/*": ["../runner/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

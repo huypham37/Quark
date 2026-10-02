@@ -20,8 +20,13 @@ import {
   defaultSessionStore,
   getSession,
   setSessionTitle,
+  setSessionPinned,
+  listProjectSessions,
 } from "../../packages/runner/src/session/session"
-import { saveUserMessage } from "../../packages/runner/src/session/message"
+import { saveUserMessage, loadMessages } from "../../packages/runner/src/session/message"
+import { createSteerBranch } from "../../packages/runner/src/session/branch"
+import { exportSessionToMarkdown } from "../../packages/runner/src/commands/export"
+import { existsSync, readFileSync } from "node:fs"
 import { TypedBus } from "../../packages/runner/src/session/events"
 import { CatalogRegistry } from "../../packages/runner/src/provider/catalog-registry"
 import { createCatalogSnapshot } from "../../packages/runner/src/provider/catalog-snapshot"
@@ -48,7 +53,7 @@ beforeAll(() => {
 
   // max_steps: 1 keeps the config-adaptation test to a single model call.
   writeFileSync(join(configDir, "config.yaml"), [
-    "version: 2",
+    "version: 3",
     "models:",
     `  small: ${MODEL}`,
     "max_steps: 1",
@@ -143,6 +148,31 @@ function memoryRuntime(runnerOptions: { stream: StreamFn }, bus = new TypedBus()
 const text = [{ type: "text" as const, text: "hello" }]
 
 describe("createQuarkRuntime — legacy adaptation and persistence", () => {
+  test("session actions use the runtime store and never touch the global store", async () => {
+    const store = new MemorySessionStore()
+    const runtime = await memoryRuntime({ stream: captureStream().stream }, new TypedBus(), store)
+    expect(runtime.store).toBe(store)
+    const session = createSession(undefined, runtime.store)
+    saveUserMessage({ sessionId: session.id, text: "private history", store: runtime.store })
+    setSessionTitle(session.id, "private title", runtime.store, runtime.bus)
+    setSessionPinned(session.id, true, runtime.store)
+    expect(listProjectSessions(undefined, runtime.store).map((item) => item.id)).toContain(session.id)
+    const { messages, parts } = loadMessages(session.id, runtime.store)
+    const child = createSteerBranch({
+      sessionId: session.id, profile: "test", messages, parts, store: runtime.store,
+    })
+    expect(loadMessages(child.sessionId, runtime.store).messages).toHaveLength(1)
+    const exported = exportSessionToMarkdown(session.id, { cwd: projectDir, store: runtime.store })
+    expect(existsSync(exported.filePath)).toBe(true)
+    expect(readFileSync(exported.filePath, "utf8")).toContain("private history")
+    expect(defaultSessionStore.get(session.id)).toBeNull()
+    expect(defaultSessionStore.get(child.sessionId)).toBeNull()
+    expect(existsSync(join(storageRoot, session.id, "undo"))).toBe(false)
+    await runtime.rebind(agent("runtime-b"))
+    expect(runtime.store).toBe(store)
+    expect(runtime.runner.store).toBe(store)
+  })
+
   test("prompt runs on its shared bus, reads ambient AGENTS.md, and persists to the explicit store", async () => {
     const cap = captureStream()
     const bus = new TypedBus()

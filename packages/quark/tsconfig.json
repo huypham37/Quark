@@ -7,11 +7,12 @@
     // Typecheck-only: resolve the engine's subpath exports back to source so a
     // clean checkout type-checks without building @quark/runner first (its
     // `exports` point at dist, which only exists after a build). Keep this in
-    // sync with the list in ./tsup.config.ts (runner stays external there, so
-    // these paths never affect the bundle).
+    // sync with the runner exports map. scripts/build-package.ts keeps these
+    // packages external so the aliases never affect the bundle.
     "paths": {
       "@quark/runner": ["../runner/src/index.ts"],
-      "@quark/runner/*": ["../runner/src/*.ts"]
+      "@quark/runner/*": ["../runner/src/*.ts"],
+      "@quark/acp": ["../acp/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],

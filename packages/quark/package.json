@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "bun build.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "dev": "bun --preload ./preload.ts src/tui/index.tsx",
     "cli": "bun --preload ./preload.ts src/cli.ts"
@@ -23,6 +23,7 @@
   "dependencies": {
     "@opentui/core": "0.1.86",
     "@opentui/solid": "0.1.86",
+    "@quark/acp": "0.1.0",
     "@quark/runner": "0.1.0",
     "ai": "^6.0.116",
     "marked": "^17.0.6",
@@ -31,7 +32,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.5.0",
-    "tsup": "^8.5.1"
+    "@types/node": "^25.5.0"
   }
 }

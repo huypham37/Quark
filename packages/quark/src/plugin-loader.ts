@@ -11,15 +11,15 @@
 //   5. Report loaded/errors
 //
 // Two consumers:
-//   - loadPlugins() registers into the process-global registry (legacy CLI
-//     bootstrap / sub-agent path).
+//   - loadPlugins() registers into the process-global registry (legacy callers).
 //   - loadPluginFns() returns the imported PluginFns (error-tolerant) so an
 //     instance runner can register them into its own isolated hook registry.
 
 import * as fs from "fs"
 import * as path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
-import { globalHooks, type PluginContext, type PluginFn } from "@quark/runner"
+import { globalHooks } from "@quark/runner/plugin/registry"
+import type { PluginContext, PluginFn } from "@quark/runner/plugin/plugin"
 import { configDir } from "./config/config"
 import { error as notifyError } from "@quark/runner/notification/notification"
 import { isVerbose } from "@quark/runner/debug"

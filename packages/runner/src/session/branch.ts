@@ -4,7 +4,8 @@ import { generateId, generateText, type LanguageModel, type ModelMessage } from 
 import { getContextWindow, getLastInputTokens, estimateTokens, isOverContextThreshold } from "./context"
 import { createSession, getSession, listAllSessions, updateSession, type Session } from "./session"
 import { saveUserMessage, type MessageRow, type MessageVisibility, type PartRow } from "./message"
-import { appendEvents } from "../storage/session-jsonl"
+import { defaultSessionStore } from "./session"
+import type { SessionStore } from "./store"
 import type { MessageEvent, PartEvent, MessageEndEvent } from "../storage/session-format"
 import { warn } from "../notification/notification"
 import { buildCompactionPrompt } from "../prompts/compaction"
@@ -24,6 +25,7 @@ export interface SummarizeForBranchInput {
   parts: PartRow[]
   model: LanguageModel
   abort?: AbortSignal
+  store?: SessionStore
 }
 
 export interface AutoBranchInput extends SummarizeForBranchInput {
@@ -43,9 +45,11 @@ export interface CreateBranchInput {
   filesModified?: string[] | null
   recentMessages?: MessageRow[]
   recentParts?: PartRow[]
+  store?: SessionStore
 }
 
 export interface CreateSteerBranchInput {
+  store?: SessionStore
   sessionId: string
   /** Optional follow-up goal. Omit to fork the conversation without a provider request. */
   prompt?: string
@@ -115,22 +119,22 @@ export function findSessionByPrefix(prefix: string): Session | null {
   return matches[0] ?? null
 }
 
-export function getSessionLineage(sessionId: string): Session[] {
+export function getSessionLineage(sessionId: string, store: SessionStore = defaultSessionStore): Session[] {
   const lineage: Session[] = []
   const seen = new Set<string>()
-  let current: Session | null = getSession(sessionId)
+  let current: Session | null = getSession(sessionId, store)
 
   while (current && !seen.has(current.id)) {
     seen.add(current.id)
     lineage.unshift(current)
-    current = current.parentSessionId ? getSession(current.parentSessionId) : null
+    current = current.parentSessionId ? getSession(current.parentSessionId, store) : null
   }
 
   return lineage
 }
 
-export function buildLineageContext(sessionId: string): string {
-  const lineage = getSessionLineage(sessionId)
+export function buildLineageContext(sessionId: string, store: SessionStore = defaultSessionStore): string {
+  const lineage = getSessionLineage(sessionId, store)
   const lines: string[] = []
 
   for (let i = 0; i < lineage.length; i++) {
@@ -237,7 +241,7 @@ export async function summarizeForBranch(input: SummarizeForBranchInput): Promis
  * ```
  */
 export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> {
-  const parent = getSession(input.sessionId)
+  const parent = getSession(input.sessionId, input.store)
   const existing = parent.summary?.trim()
   const summary = existing && existing.length > 0 ? existing : await summarizeForBranch(input)
   const { recentMessages, recentParts } = splitMessages(input.messages, input.parts)
@@ -247,6 +251,7 @@ export async function autoBranch(input: AutoBranchInput): Promise<BranchResult> 
     profile: input.profile,
     recentMessages,
     recentParts,
+    store: input.store,
   })
 }
 
@@ -260,6 +265,7 @@ export async function compactBranch(input: CompactBranchInput): Promise<BranchRe
     profile: input.profile,
     recentMessages,
     recentParts,
+    store: input.store,
   })
 }
 
@@ -277,7 +283,7 @@ export async function compactBranch(input: CompactBranchInput): Promise<BranchRe
  * ```
  */
 export function createBranch(input: CreateBranchInput): BranchResult {
-  const parent = getSession(input.sessionId)
+  const parent = getSession(input.sessionId, input.store)
   const ephemeral = parent.kind === "ephemeral"
   const filesModified = input.filesModified ?? parent.filesModified
   // Frozen-snapshot semantics: once the parent's summary is set, reuse it for
@@ -293,7 +299,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
   }
   // Only persist summary on the parent the first time it's frozen.
   if (!existingParentSummary && summary) parentPatch.summary = summary
-  updateSession(parent.id, parentPatch)
+  updateSession(parent.id, parentPatch, input.store)
 
   const child = createSession({
     directory: parent.directory ?? undefined,
@@ -301,13 +307,13 @@ export function createBranch(input: CreateBranchInput): BranchResult {
     ...(ephemeral ? { ephemeral: true } : { kind: "main" as const }),
     parentSummary: summary || null,
     filesModified,
-  })
+  }, input.store)
 
-  const lineageContext = buildLineageContext(child.id)
+  const lineageContext = buildLineageContext(child.id, input.store)
   // 1. Save summary/lineage as the first user message.
   const seedText = lineageContext || summary
   if (seedText) {
-    saveUserMessage({ sessionId: child.id, text: seedText, visibility: "model-only" })
+    saveUserMessage({ sessionId: child.id, text: seedText, visibility: "model-only", store: input.store })
   }
 
   // 2. Replay stripped recent messages into the child session.
@@ -319,13 +325,14 @@ export function createBranch(input: CreateBranchInput): BranchResult {
       strippedRecent.messages,
       strippedRecent.parts,
       true,
+      input.store,
     )
   }
 
   // 3. Append the steer goal as the final user message
   const prompt = input.prompt?.trim()
   const promptMessageId = prompt
-    ? saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer" }).id
+    ? saveUserMessage({ sessionId: child.id, text: prompt, variant: "steer", store: input.store }).id
     : undefined
 
   return {
@@ -338,7 +345,7 @@ export function createBranch(input: CreateBranchInput): BranchResult {
 }
 
 export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
-  const parent = getSession(input.sessionId)
+  const parent = getSession(input.sessionId, input.store)
   const prompt = input.prompt?.trim()
   const ephemeral = parent.kind === "ephemeral"
 
@@ -347,18 +354,19 @@ export function createSteerBranch(input: CreateSteerBranchInput): BranchResult {
     parentSessionId: parent.id,
     ...(ephemeral ? { ephemeral: true } : { kind: "main" as const }),
     filesModified: parent.filesModified,
-  })
+  }, input.store)
   const abortedIds = new Set(
     input.messages.filter((message) => message.finish === "aborted").map((message) => message.id),
   )
   const messages = input.messages.filter((message) => !abortedIds.has(message.id))
   const parts = input.parts.filter((part) => !abortedIds.has(part.messageId))
-  const replayedMessageIds = replayMessages(child.id, messages, parts, false)
+  const replayedMessageIds = replayMessages(child.id, messages, parts, false, input.store)
   const promptMessageId = prompt
     ? saveUserMessage({
         sessionId: child.id,
         text: prompt,
         variant: "steer",
+        store: input.store,
       }).id
     : undefined
 
@@ -376,6 +384,7 @@ function replayMessages(
   messages: MessageRow[],
   parts: PartRow[],
   modelOnly: boolean,
+  store: SessionStore = defaultSessionStore,
 ): Record<string, string> {
   const partsByMessage = new Map<string, PartRow[]>()
   for (const part of parts) {
@@ -437,7 +446,7 @@ function replayMessages(
         timeCompleted: message.timeCompleted ?? now,
       })
     }
-    appendEvents(sessionId, events)
+    store.append(sessionId, events)
   }
   return replayedMessageIds
 }

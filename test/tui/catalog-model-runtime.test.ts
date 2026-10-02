@@ -13,7 +13,7 @@ import {
 import type { CredentialStore } from "../../packages/runner/src/provider/credential-store"
 import { BUNDLED_PROVIDER_DEFINITIONS, type ProviderDefinition } from "../../packages/runner/src/provider/definitions"
 import { ProviderRegistry, type ProviderAdapter } from "../../packages/runner/src/provider/registry"
-import { bus } from "../../packages/runner/src/session/events"
+import { bus, TypedBus } from "../../packages/runner/src/session/events"
 import { CatalogModelRuntime } from "../../packages/quark/src/tui/catalog-model-runtime"
 import { buildModelPickerOptions } from "../../packages/quark/src/tui/model-picker"
 import { retainPaletteSelectionIndex } from "../../packages/quark/src/tui/palette-index"
@@ -106,6 +106,146 @@ function createRuntime(
     active,
   )
 }
+
+class CountingCatalogSnapshotStore extends CatalogSnapshotStore {
+  loadCacheCalls = 0
+
+  override loadCache() {
+    this.loadCacheCalls++
+    return super.loadCache()
+  }
+}
+
+async function createEmptyRuntime(store: CatalogSnapshotStore, eventBus: TypedBus) {
+  return CatalogModelRuntime.create(eventBus, {
+    snapshotStore: store,
+    credentialStore: new EmptyCredentialStore(),
+  })
+}
+
+describe("CatalogModelRuntime deferred cache initialization", () => {
+  test("creates empty state without loading an existing disk catalog", async () => {
+    const cachePath = temporaryPath()
+    writeCatalogSnapshotAtomic(cachePath, snapshot({ "alpha/cached": model("alpha/cached") }, 1))
+    let fetchCalls = 0
+    const store = new CountingCatalogSnapshotStore({
+      cachePath,
+      fetch: async () => { fetchCalls++; throw new Error("offline") },
+    })
+    const eventBus = new TypedBus()
+    let publications = 0
+    eventBus.on("catalog-refreshed", () => { publications++ })
+
+    const runtime = await createEmptyRuntime(store, eventBus)
+
+    expect(runtime.snapshotStore).toBe(store)
+    expect(store.loadCacheCalls).toBe(0)
+    expect(store.snapshot).toBeNull()
+    expect(runtime.catalog.listProviders()).toEqual([])
+    expect(runtime.catalog.listModels("alpha")).toEqual([])
+    expect(runtime.active.listProviderIds()).toEqual([])
+    expect(fetchCalls).toBe(0)
+    expect(publications).toBe(0)
+  })
+
+  test("synchronously publishes an isolated immutable cache before an offline refresh", async () => {
+    const cachePath = temporaryPath()
+    writeCatalogSnapshotAtomic(cachePath, snapshot({ "alpha/cached": model("alpha/cached") }, 1))
+    let fetchCalls = 0
+    const store = new CountingCatalogSnapshotStore({
+      cachePath,
+      fetch: async () => { fetchCalls++; throw new Error("offline") },
+    })
+    const eventBus = new TypedBus()
+    const runtime = await createEmptyRuntime(store, eventBus)
+    const catalog = runtime.catalog
+    const emptyProviders = catalog.listProviders()
+    const published: string[][] = []
+    eventBus.on("catalog-refreshed", () => {
+      published.push(catalog.listModels("alpha").map((entry) => entry.id))
+    })
+
+    expect(runtime.loadCachedCatalog()).toBeUndefined()
+
+    expect(store.loadCacheCalls).toBe(1)
+    expect(fetchCalls).toBe(0)
+    expect(published).toEqual([["alpha/cached"]])
+    expect(runtime.catalog).toBe(catalog)
+    expect(emptyProviders).toEqual([])
+    expect(runtime.active.listProviderIds()).toEqual([])
+    const cachedModel = store.snapshot!.catalog.alpha!.models["alpha/cached"]!
+    const publishedModel = catalog.getModel("alpha", "alpha/cached")!
+    expect(publishedModel).toEqual(cachedModel)
+    expect(publishedModel).not.toBe(cachedModel)
+    expect(publishedModel.limit).not.toBe(cachedModel.limit)
+    expect(Object.isFrozen(catalog.listProviders())).toBe(true)
+    expect(Object.isFrozen(catalog.listModels("alpha"))).toBe(true)
+    expect(Object.isFrozen(publishedModel)).toBe(true)
+    expect(Object.isFrozen(publishedModel.limit)).toBe(true)
+
+    await runtime.refresh()
+
+    expect(fetchCalls).toBe(1)
+    expect(store.loadCacheCalls).toBe(1)
+    expect(published).toEqual([["alpha/cached"], ["alpha/cached"]])
+    expect(catalog.getModel("alpha", "alpha/cached")).toEqual(cachedModel)
+  })
+
+  test("initializes once, including reentrant calls, without republishing or replacing later state", async () => {
+    const cachePath = temporaryPath()
+    writeCatalogSnapshotAtomic(cachePath, snapshot({ "alpha/old": model("alpha/old") }, 1))
+    const store = new CountingCatalogSnapshotStore({ cachePath })
+    const eventBus = new TypedBus()
+    const runtime = await createEmptyRuntime(store, eventBus)
+    let publications = 0
+    eventBus.on("catalog-refreshed", () => {
+      publications++
+      runtime.loadCachedCatalog()
+    })
+
+    runtime.loadCachedCatalog()
+    const initializedModels = runtime.catalog.listModels("alpha")
+    runtime.loadCachedCatalog()
+    expect(runtime.catalog.listModels("alpha")).toBe(initializedModels)
+
+    writeCatalogSnapshotAtomic(cachePath, snapshot({ "alpha/disk": model("alpha/disk") }, 2))
+    runtime.catalog.replaceSnapshot(snapshot({ "alpha/new": model("alpha/new") }, 3))
+    const updatedModels = runtime.catalog.listModels("alpha")
+    runtime.loadCachedCatalog()
+
+    expect(store.loadCacheCalls).toBe(1)
+    expect(publications).toBe(1)
+    expect(runtime.catalog.listModels("alpha")).toBe(updatedModels)
+    expect(updatedModels.map((entry) => entry.id)).toEqual(["alpha/new"])
+    expect(initializedModels.map((entry) => entry.id)).toEqual(["alpha/old"])
+  })
+
+  for (const cache of ["missing", "invalid JSON", "invalid snapshot"] as const) {
+    test(`handles ${cache} cache without throwing or retrying initialization`, async () => {
+      const cachePath = temporaryPath()
+      if (cache !== "missing") fs.writeFileSync(cachePath, cache === "invalid JSON" ? "not json" : "{}")
+      let fetchCalls = 0
+      const store = new CountingCatalogSnapshotStore({
+        cachePath,
+        fetch: async () => { fetchCalls++; throw new Error("offline") },
+      })
+      const eventBus = new TypedBus()
+      const runtime = await createEmptyRuntime(store, eventBus)
+      let publications = 0
+      eventBus.on("catalog-refreshed", () => { publications++ })
+
+      expect(() => runtime.loadCachedCatalog()).not.toThrow()
+      writeCatalogSnapshotAtomic(cachePath, snapshot({ "alpha/late": model("alpha/late") }, 1))
+      runtime.loadCachedCatalog()
+
+      expect(store.loadCacheCalls).toBe(1)
+      expect(store.snapshot).toBeNull()
+      expect(runtime.catalog.listProviders()).toEqual([])
+      expect(fetchCalls).toBe(0)
+      expect(publications).toBe(1)
+    })
+  }
+})
 
 describe("CatalogModelRuntime refresh lifecycle", () => {
   test("publishes models immediately after credentials are stored", async () => {

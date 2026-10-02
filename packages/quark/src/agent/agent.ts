@@ -1,15 +1,5 @@
-// Agent system — app-owned agent manifests, resolved into portable definitions.
-//
-// An agent is a directory:
-//   agents/<id>/agent.yaml     identity: name, model, tools, skills, sub_agents
-//   agents/<id>/instructions.md  system prompt (optional YAML frontmatter)
-//
-// Agents are app-owned: the loader scans
-//   1. <config>/agents/            (global, ~/.config/quark/agents)
-//   2. <cwd>/.quark/agents/        (project, overrides global)
-// and always keeps the built-in `coder` fallback. This is deliberately NOT part
-// of @quark/runner: the engine receives a portable AgentDefinition and never
-// reads agent YAML.
+// App-owned single-file profiles resolved into portable agent definitions.
+// Profiles live only in <config>/profile/<id>.yaml.
 
 import * as fs from "node:fs"
 import * as path from "node:path"
@@ -30,27 +20,20 @@ import type { ToolDef } from "@quark/runner/tool/tool"
 // Types
 // ---------------------------------------------------------------------------
 
-/** A resolved agent manifest with its instructions already read from disk. */
+/** A resolved single-file profile ready to become a portable agent definition. */
 export interface AgentDef {
-  /** Unique agent id (directory name) */
+  /** Unique profile id (file stem) */
   id: string
-  /** Human-readable display name */
   name: string
-  /** Short description from the manifest or instructions frontmatter */
   description?: string
-  /** Resolved system-prompt text (never a file path) */
+  /** Resolved system prompt, never a file path. */
   instructions: string
-  /** Tool IDs this agent can use */
   tools: string[]
-  /** Skill names bound to this agent */
   skills: string[]
-  /** Agent IDs this agent can delegate to */
   subAgents?: string[]
-  /** Model spec in `provider/model` form */
+  /** Model spec in `provider/model` form. */
   model?: string
-  /** Thinking effort for this agent's effective model */
   thinkingEffort?: string
-  /** Optional reasoning mode for models that support it */
   thinkingMode?: string
 }
 
@@ -71,155 +54,92 @@ const BUILTIN_CODER: AgentDef = {
 // Locations
 // ---------------------------------------------------------------------------
 
-/** Global agents directory, resolved per call so QUARK_CONFIG_DIR stays authoritative. */
-export function agentsDir(): string {
-  return path.join(configDir(), "agents")
+/** Global profile directory, resolved per call for QUARK_CONFIG_DIR. */
+export function profilesDir(): string {
+  return path.join(configDir(), "profile")
 }
 
-/** Project-level agents directory (overrides the global one per id). */
-export function projectAgentsDir(): string {
-  return path.resolve(process.cwd(), ".quark", "agents")
-}
-
-// ---------------------------------------------------------------------------
-// instructions.md
-// ---------------------------------------------------------------------------
-
-/**
- * Split `instructions.md` into YAML frontmatter and body.
- *
- * The frontmatter block is parsed as real YAML (not line-wise `key: value`),
- * so block scalars like `description: |` keep their full text instead of
- * collapsing to a literal "|".
- */
-function parseFrontmatter(raw: string): { data: Record<string, string>; content: string } {
-  const data: Record<string, string> = {}
-  if (!raw.startsWith("---")) return { data, content: raw }
-
-  const end = raw.indexOf("\n---", 3)
-  if (end === -1) return { data, content: raw }
-
-  const front = raw.substring(4, end)
-  const content = raw.substring(end + 4).trim()
-
-  let parsed: unknown
-  try {
-    parsed = parseYAML(front)
-  } catch {
-    return { data, content }
+/** Read a string array, using a copy of the default when the field is absent. */
+function stringArray(value: unknown, field: string, fallback: string[]): string[] {
+  if (value === undefined) return [...fallback]
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    throw new Error(`${field} must be an array of strings.`)
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { data, content }
-
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value === "string") data[key] = value.trim()
-    else if (typeof value === "number" || typeof value === "boolean") data[key] = String(value)
-  }
-
-  return { data, content }
+  return value as string[]
 }
 
-interface Instructions {
-  content: string
-  name?: string
-  description?: string
+/** Validate and trim an optional non-empty YAML string. */
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`)
+  return value.trim()
 }
 
-function readInstructions(file: string): Instructions {
-  try {
-    const { data, content } = parseFrontmatter(fs.readFileSync(file, "utf-8"))
-    return {
-      content: content || BUILTIN_INSTRUCTIONS,
-      ...(data.name ? { name: data.name } : {}),
-      ...(data.description ? { description: data.description } : {}),
-    }
-  } catch {
-    return { content: BUILTIN_INSTRUCTIONS }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Manifest parsing
-// ---------------------------------------------------------------------------
-
-function stringArray(value: unknown): string[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? (value as string[])
-    : undefined
-}
-
-function nonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
-}
-
-/** Parse one `agent.yaml`; throws only when the manifest is unusable. */
-export function parseAgentManifest(raw: unknown, id: string, dir: string): AgentDef {
+/** Parse one self-contained profile; invalid files are rejected rather than partially applied. */
+export function parseProfile(raw: unknown, id: string): AgentDef {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`agents/${id}/agent.yaml must be a mapping.`)
+    throw new Error(`profile/${id}.yaml must be a mapping.`)
   }
-  const manifest = raw as Record<string, unknown>
-  const instructions = readInstructions(path.join(dir, "instructions.md"))
-
+  const profile = raw as Record<string, unknown>
+  const model = profile.model
+  if (model !== undefined && (!model || typeof model !== "object" || Array.isArray(model))) {
+    throw new Error("model must be a mapping with id and thinking_effort.")
+  }
+  const modelFields = model as Record<string, unknown> | undefined
+  const modelId = optionalString(modelFields?.id, "model.id")
+  if (modelId && !/^[^/\s]+\/[^\s]+$/.test(modelId)) {
+    throw new Error("model.id must use provider/model format.")
+  }
+  const effort = optionalString(modelFields?.thinking_effort, "model.thinking_effort")
+  const mode = optionalString(modelFields?.thinking_mode, "model.thinking_mode")
+  if ((effort || mode) && !modelId) throw new Error("model.id is required when thinking is configured.")
+  if (profile.prompt !== undefined && typeof profile.prompt !== "string") {
+    throw new Error("prompt must be a string.")
+  }
   return {
     id,
-    name: nonEmptyString(manifest.name) ?? instructions.name ?? id,
-    ...(nonEmptyString(manifest.description) ?? instructions.description
-      ? { description: nonEmptyString(manifest.description) ?? instructions.description }
-      : {}),
-    instructions: instructions.content,
-    tools: stringArray(manifest.tools) ?? [...BUILTIN_TOOLS],
-    skills: stringArray(manifest.skills) ?? [],
-    ...(stringArray(manifest.sub_agents) ? { subAgents: stringArray(manifest.sub_agents) } : {}),
-    ...(nonEmptyString(manifest.model) ? { model: nonEmptyString(manifest.model) } : {}),
-    ...(nonEmptyString(manifest.thinking_effort) ? { thinkingEffort: nonEmptyString(manifest.thinking_effort) } : {}),
-    ...(nonEmptyString(manifest.thinking_mode) ? { thinkingMode: nonEmptyString(manifest.thinking_mode) } : {}),
+    name: optionalString(profile.name, "name") ?? id,
+    ...(optionalString(profile.description, "description") ? { description: optionalString(profile.description, "description") } : {}),
+    instructions: (profile.prompt as string | undefined) || BUILTIN_INSTRUCTIONS,
+    tools: stringArray(profile.tools, "tools", BUILTIN_TOOLS),
+    skills: stringArray(profile.skills, "skills", []),
+    ...(profile.subagents !== undefined ? { subAgents: stringArray(profile.subagents, "subagents", []) } : {}),
+    ...(modelId ? { model: modelId } : {}),
+    ...(effort ? { thinkingEffort: effort } : {}),
+    ...(mode ? { thinkingMode: mode } : {}),
   }
 }
 
-/** Scan one agents directory. Unreadable manifests are reported and skipped. */
-export function loadAgentDir(dir: string): Record<string, AgentDef> {
-  const agents: Record<string, AgentDef> = {}
-  if (!fs.existsSync(dir)) return agents
-
+/** Scan YAML files in one directory. Invalid profiles are warned about and skipped. */
+export function loadProfileDir(dir: string): Record<string, AgentDef> {
+  const profiles: Record<string, AgentDef> = Object.create(null)
+  if (!fs.existsSync(dir)) return profiles
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const manifestPath = path.join(dir, entry.name, "agent.yaml")
-    if (!fs.existsSync(manifestPath)) continue
+    if (!entry.isFile() || !entry.name.endsWith(".yaml")) continue
+    const id = entry.name.slice(0, -5)
     try {
-      const raw = parseYAML(fs.readFileSync(manifestPath, "utf-8"))
-      agents[entry.name] = parseAgentManifest(raw, entry.name, path.join(dir, entry.name))
+      profiles[id] = parseProfile(parseYAML(fs.readFileSync(path.join(dir, entry.name), "utf-8")), id)
     } catch (error) {
-      notifyWarn(
-        "Agent",
-        `Skipping agents/${entry.name}/agent.yaml: ${error instanceof Error ? error.message : String(error)}`,
-        8000,
-      )
+      notifyWarn("Agent", `Skipping profile/${entry.name}: ${error instanceof Error ? error.message : String(error)}`, 8000)
     }
   }
-
-  return agents
+  return profiles
 }
 
-/** All agents: built-in coder, then global, then project (later wins). */
+/** Load global profiles, allowing an explicit coder.yaml to override the built-in fallback. */
 export function loadAgents(): Record<string, AgentDef> {
-  const agents: Record<string, AgentDef> = { [BUILTIN_CODER.id]: { ...BUILTIN_CODER } }
-  const dirs = [agentsDir(), projectAgentsDir()]
-  for (const dir of new Set(dirs)) {
-    for (const [id, def] of Object.entries(loadAgentDir(dir))) agents[id] = def
-  }
+  const agents: Record<string, AgentDef> = Object.create(null)
+  agents[BUILTIN_CODER.id] = { ...BUILTIN_CODER }
+  Object.assign(agents, loadProfileDir(profilesDir()))
   return agents
 }
 
-/** List every available agent id, including the built-in fallback. */
+/** List available profile IDs, including the built-in coder. */
 export function listAgents(): string[] {
   return Object.keys(loadAgents())
 }
 
-/**
- * Resolve an agent by id.
- *
- * Order: explicit id → config `default_agent` → built-in `coder`.
- * Unknown `sub_agents` ids are warned about and stripped.
- */
+/** Resolve explicit id, config default, or built-in coder. Unknown subagents are stripped. */
 export function resolveAgent(id?: string): AgentDef {
   const agents = loadAgents()
   const defaultId = loadConfig().defaultAgent ?? BUILTIN_CODER.id
@@ -228,18 +148,13 @@ export function resolveAgent(id?: string): AgentDef {
 
   if (agent.subAgents && agent.subAgents.length > 0) {
     const known = Object.keys(agents)
-    const valid = agent.subAgents.filter((sub) => known.includes(sub))
-    const invalid = agent.subAgents.filter((sub) => !known.includes(sub))
+    const valid = agent.subAgents.filter((sub) => Object.hasOwn(agents, sub))
+    const invalid = agent.subAgents.filter((sub) => !Object.hasOwn(agents, sub))
     if (invalid.length > 0) {
-      notifyWarn(
-        "Agent",
-        `Unknown sub-agent${invalid.length > 1 ? "s" : ""}: ${invalid.join(", ")}. Available agents: ${known.join(", ")}`,
-        8000,
-      )
+      notifyWarn("Agent", `Unknown sub-agent${invalid.length > 1 ? "s" : ""}: ${invalid.join(", ")}. Available agents: ${known.join(", ")}`, 8000)
       agent = { ...agent, subAgents: valid }
     }
   }
-
   return agent
 }
 
@@ -290,7 +205,7 @@ export async function materializeAgent(
     }
   }
 
-  // Sub-agent delegation is an app concern: `sub_agents` becomes a concrete
+  // Sub-agent delegation is an app concern: `subagents` becomes a concrete
   // tool carrying the allowed ids, so the engine never reads agent YAML and
   // the child process resolves its own agent.
   if (agent.subAgents && agent.subAgents.length > 0) {
@@ -308,6 +223,3 @@ export async function materializeAgent(
     ...(agent.thinkingMode ? { thinkingMode: agent.thinkingMode } : {}),
   }
 }
-
-/** Exported for testing only. */
-export const _internal = { BUILTIN_CODER, parseFrontmatter, readInstructions }

@@ -156,10 +156,12 @@ export interface BusEvents {
     modelName?: string
   }
 
-  // Streaming text from the sub-agent
+  // Streaming text from the sub-agent. `text` is the full accumulated text so
+  // SET-style consumers (TUI/web) can render it directly; `delta` is the new
+  // chunk, which is what gets persisted to the live log (O(content)).
   "subagent-text-delta": {
     sessionId: string; messageId: string; parentCallId: string
-    profile: string; text: string
+    profile: string; text: string; delta: string
   }
 
   // Sub-agent loop finished

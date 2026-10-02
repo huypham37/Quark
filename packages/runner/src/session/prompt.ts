@@ -26,7 +26,6 @@ import { createAutoBranch, shouldAutoBranch } from "./branch-controller";
 import { emitSessionSwitch } from "./session-switch";
 import { generateSessionTitle } from "./title";
 import { resolveToolSet } from "../tool/ai-adapter";
-import { setForceAgent } from "../provider/custom-fetch";
 import { resolveModel, resolveModelRuntime, type ResolveModelOptions } from "../provider/resolver";
 import type { CatalogRegistry } from "../provider/catalog-registry";
 import type { AgentDefinition } from "../agent";
@@ -67,9 +66,7 @@ export interface PromptRuntime {
   store: SessionStore;
   /**
    * When true this runtime owns all of its turn state and must not touch
-   * process-global state: `QUARK_SESSION_ID`, the custom-fetch force-agent
-   * flag, or auto-branching (which persists through the global JSONL store and
-   * flips that same flag). Instance runners created by `createRunner()` set
+   * process-global state such as `QUARK_SESSION_ID`. Instance runners created by `createRunner()` set
    * this; the legacy singleton runtime leaves it `false` so CLI/TUI behavior
    * is unchanged.
    */
@@ -132,8 +129,21 @@ export async function prompt(input: {
   /** Hidden model context prepended to this user message. */
   modelOnlyText?: string;
   model?: string;
+  /**
+   * Thinking-effort override for this turn (from `session/set_config_option`).
+   * Applied on top of the resolved model instead of the agent's configured
+   * effort, so a client can change reasoning per session.
+   */
+  thinkingEffort?: string;
   agent: AgentDefinition;
   catalog?: CatalogRegistry;
+  /**
+   * Absolute workspace root this turn runs in (tools, system prompt, ambient
+   * reads, subagents). Stored as the session's `directory` when a session is
+   * created; on resume the stored directory wins, so a session never silently
+   * moves. Defaults to `process.cwd()`.
+   */
+  targetWorkspace?: string;
   /** Explicit execution policies. Defaults to PORTABLE_POLICIES. */
   policies?: Partial<RunPolicies>;
   /** Model-resolution dependencies (registry/catalog/providers). */
@@ -158,18 +168,25 @@ export async function prompt(input: {
   // Resolve or create session (lazy — only created on first message)
   const store = runtime.store;
   let sessionId: string;
+  let workspace: string;
   let created = false;
   if (input.sessionId) {
     const existing = store.get(input.sessionId);
     if (existing) {
       sessionId = input.sessionId;
+      // A session is permanently bound to its workspace: the stored directory
+      // is authoritative on resume, so two callers cannot disagree about where
+      // the same conversation runs.
+      workspace = existing.directory ?? input.targetWorkspace ?? process.cwd();
     } else if (store.createOnMissing) {
       // Portable stores treat an unknown ID as a new namespace. Two runners
       // can reuse the same ID and never see each other's history. A supplied
       // ID that creates a session is announced exactly like a generated one.
+      workspace = input.targetWorkspace ?? process.cwd();
       sessionId = createSession(
         {
           id: input.sessionId,
+          directory: workspace,
           ...(input.ephemeral ? { ephemeral: true } : {}),
           ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
         },
@@ -180,12 +197,13 @@ export async function prompt(input: {
       throw new Error(`Session not found: ${input.sessionId}`);
     }
   } else {
+    workspace = input.targetWorkspace ?? process.cwd();
     const sess = createSession(
       input.ephemeral
-        ? { ephemeral: true, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
+        ? { ephemeral: true, directory: workspace, ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}) }
         : input.parentSessionId
-          ? { parentSessionId: input.parentSessionId, kind: "subagent" }
-          : undefined,
+          ? { parentSessionId: input.parentSessionId, kind: "subagent", directory: workspace }
+          : { directory: workspace },
       store,
     );
     sessionId = sess.id;
@@ -212,11 +230,13 @@ export async function prompt(input: {
     userMessageId: userMsg.id,
     userText: text,
     model: input.model,
+    thinkingEffort: input.thinkingEffort,
     agent,
-    forceAgent: !!input.parentSessionId,
+    initiator: input.parentSessionId ? "agent" : undefined,
     policies,
     resolveOptions,
     ambient: input.ambientInstructions,
+    workspace,
     controller: input.controller,
     stream: input.stream,
   }, runtime);
@@ -239,12 +259,14 @@ export async function runSeededSession(input: {
   resolve?: ResolveModelOptions
   /** Ambient/project instruction context; see {@link prompt}. */
   ambientInstructions?: AmbientInstructions | null
+  /** Fallback workspace when the session has no stored directory. */
+  targetWorkspace?: string
   /** @internal Pre-created abort controller, supplied by instance runners. */
   controller?: AbortController
   /** @internal Streaming primitive override, supplied by instance runners/tests. */
   stream?: StreamFn
 }, runtime: PromptRuntime = defaultRuntime) {
-  getSession(input.sessionId, runtime.store)
+  const session = getSession(input.sessionId, runtime.store)
   const agent = input.agent
   return runTurn({
     sessionId: input.sessionId,
@@ -254,6 +276,9 @@ export async function runSeededSession(input: {
     agent,
     policies: resolveRunPolicies(input.policies),
     ambient: input.ambientInstructions,
+    // A seeded turn belongs to an existing session, so its bound directory is
+    // authoritative; the caller's fallback only covers pre-directory sessions.
+    workspace: session.directory ?? input.targetWorkspace ?? process.cwd(),
     resolveOptions: {
       ...input.resolve,
       ...(input.catalog ? { catalog: input.catalog } : {}),
@@ -268,20 +293,25 @@ async function runTurn(input: {
   userMessageId: string
   userText: string
   model?: string
+  thinkingEffort?: string
   agent: AgentDefinition
-  forceAgent?: boolean
+  initiator?: "user" | "agent"
   policies: RunPolicies
   resolveOptions?: ResolveModelOptions
   ambient?: AmbientInstructions | null
+  /** Absolute workspace root for this turn; drives system prompt + tools. */
+  workspace: string
   controller?: AbortController
   stream?: StreamFn
 }, runtime: PromptRuntime) {
   const { sessionId, userMessageId, userText, model, agent, policies } = input
+  const thinkingEffort = input.thinkingEffort
   const store = runtime.store
   // Route model resolution through this runtime's hooks, so provider.request.*
   // hooks are instance-scoped for runners (and global for the legacy runtime).
   const resolveOptions: ResolveModelOptions = {
     ...(input.resolveOptions ?? {}),
+    ...(input.initiator ? { initiator: input.initiator } : {}),
     hooks: runtime.hooks,
     // Instance runners thread their own session ID so concurrent runs never
     // share a provider-side conversation (OpenCode Go `x-opencode-session`).
@@ -296,18 +326,16 @@ async function runTurn(input: {
   touchSession(sessionId, store)
 
   const session = getSession(sessionId, store)
+  if (session.kind === "subagent") resolveOptions.initiator = "agent"
   // Undo writes file snapshots + a .touched.json tracker under the session
-  // storage root. Portable policies disable that path entirely, and ephemeral
-  // sessions must never touch disk — skip both for them.
-  const undoEnabled = policies.undo !== false && session.kind !== "ephemeral"
+  // storage root. Only the global JSONL store supports that tracker; custom
+  // stores and ephemeral sessions must never touch its files.
+  const undoEnabled = policies.undo !== false && store === defaultSessionStore && session.kind !== "ephemeral"
   if (undoEnabled) {
     setCurrentTurn(sessionId, userMessageId)
     preTurnSnapshot(sessionId, userMessageId).catch(() => {})
   }
 
-  // Process-global custom-fetch force-agent is only for the legacy path
-  // (sub-agent/compaction). Instance runners never flip it.
-  if (input.forceAgent && !runtime.isolated) setForceAgent(true)
   const controller = input.controller ?? new AbortController()
   runtime.active.set(sessionId, controller)
   runtime.bus.emit("loop-start", { sessionId })
@@ -339,7 +367,9 @@ async function runTurn(input: {
       policies,
       input.stream,
       input.ambient,
+      input.workspace,
       undoEnabled,
+      thinkingEffort,
     )
   } catch (err) {
     // Central `session.error` for an unhandled turn failure. Provider failures
@@ -368,7 +398,6 @@ async function runTurn(input: {
         status: "aborted",
       })
     }
-    if (input.forceAgent && !runtime.isolated) setForceAgent(false)
     for (const [id, activeController] of runtime.active) {
       if (activeController === controller) runtime.active.delete(id)
     }
@@ -431,16 +460,16 @@ async function loop(
   policies: RunPolicies = PORTABLE_POLICIES,
   stream?: StreamFn,
   ambient?: AmbientInstructions | null,
+  /** Absolute workspace root for this run; defaults to the process cwd. */
+  workspace?: string,
   /** Whether file snapshots are tracked for this turn (ephemeral/policy off). */
   undoEnabled = true,
+  /** Per-turn thinking-effort override (see `prompt()`); wins over the agent's. */
+  thinkingEffort?: string,
 ): Promise<string> {
   const maxSteps = policies.maxSteps;
   const branching = policies.branching;
-  // Instance runners disable auto-branching: it persists through the global
-  // JSONL store and flips the process-global custom-fetch force-agent. The
-  // app passes its config-derived branching in, but instance runs stay off
-  // global state. Advanced branching is out of scope for the instance API.
-  const autoBranching = runtime.isolated ? { ...branching, auto: false } : branching;
+  const runWorkspace = workspace ?? process.cwd();
 
   // Build the AI SDK model
   // Priority: explicit modelOpt > agent model
@@ -448,9 +477,22 @@ async function loop(
   const agentModelSpec = agent.model;
   const modelSpec = modelOpt ?? agentModelSpec;
   const usingAgentModel = modelOpt === undefined || modelOpt === agentModelSpec;
-  const resolvedModel = await resolveModelRuntime(modelSpec, "main", resolveOptions);
-  const model = resolvedModel.languageModel;
-  const modelLimit = resolvedModel.catalogModel.limit;
+  let resolvedModel = await resolveModelRuntime(modelSpec, "main", resolveOptions);
+  // Summary requests are separate model resolutions so their fetch closure has
+  // an agent initiator without changing the active turn's provider state.
+  const summaryModel = async (sessionId: string) => (await resolveModelRuntime(modelSpec, "main", {
+    ...resolveOptions, ...(runtime.isolated ? { sessionId } : {}), initiator: "agent",
+  })).languageModel;
+  let model = resolvedModel.languageModel;
+  let modelLimit = resolvedModel.catalogModel.limit;
+  const moveToBranch = async (nextSessionId: string) => {
+    if (runtime.isolated) {
+      // OpenCode Go binds its conversation header at model creation.
+      resolvedModel = await resolveModelRuntime(modelSpec, "main", { ...resolveOptions, sessionId: nextSessionId });
+      model = resolvedModel.languageModel;
+      modelLimit = resolvedModel.catalogModel.limit;
+    }
+  };
 
   // mutable — may change when branching steers to a different session
   let currentSessionId = sessionId;
@@ -493,7 +535,7 @@ async function loop(
     }
 
     // 2. Build system prompt
-    const system = buildSystem(agent, ambient);
+    const system = buildSystem(agent, ambient, runWorkspace);
 
     // 3. Check if branching is needed BEFORE the model call
     if (
@@ -502,26 +544,26 @@ async function loop(
         modelMessages,
         modelLimit,
         parts,
-      }, autoBranching)
+      }, branching)
     ) {
       try {
         const branchResult = await createAutoBranch({
           sessionId: currentSessionId,
           messages,
           parts,
-          model,
+          model: await summaryModel(currentSessionId),
           profile: agent.id,
           abort,
+          store: runtime.store,
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
-        if (replayedUserMessageId) {
-          currentUserMessageId = replayedUserMessageId
-          turnMessageIds.set(currentSessionId, currentUserMessageId)
-        }
+        if (replayedUserMessageId) currentUserMessageId = replayedUserMessageId
+        turnMessageIds.set(currentSessionId, currentUserMessageId)
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient);
+        await moveToBranch(currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "continue" }, runtime.bus, ambient, runWorkspace, runtime.store);
 
         // Re-load after branching so the model sees the task lineage context.
         continue;
@@ -557,14 +599,14 @@ async function loop(
       abort,
       runtime.bus,
       runtime.hooks,
-      { undo: undoEnabled },
+      { undo: undoEnabled, workspace: runWorkspace },
     );
 
     // 6. Stream + process
     const thinkingProviderOptions = resolvedModel.provider.adapter.encodeReasoning?.({
       model: resolvedModel.catalogModel,
       config: {
-        effort: usingAgentModel ? agent.thinkingEffort ?? "none" : "none",
+        effort: thinkingEffort ?? (usingAgentModel ? agent.thinkingEffort ?? "none" : "none"),
         mode: usingAgentModel ? agent.thinkingMode ?? "standard" : "standard",
         modeExplicit: usingAgentModel && agent.thinkingMode !== undefined,
       },
@@ -582,7 +624,7 @@ async function loop(
       providerId: resolvedModel.ref.providerId,
       modelId: resolvedModel.ref.modelId,
       bus: runtime.bus,
-      branching: autoBranching,
+      branching,
       hooks: runtime.hooks,
       store: runtime.store,
       ...(stream ? { stream } : {}),
@@ -613,9 +655,6 @@ async function loop(
     // 7. Decide next action
     if (result === "continue") continue;
     if (result === "branch") {
-      // Instance runners never auto-branch (see autoBranching above); the
-      // context-too-long path would otherwise flip the global force-agent.
-      if (runtime.isolated) break;
       // Provider returned context-too-long or mid-stream pressure exceeded.
       try {
         const { messages: curMsgs, parts: curParts } =
@@ -624,19 +663,19 @@ async function loop(
           sessionId: currentSessionId,
           messages: curMsgs,
           parts: curParts,
-          model,
+          model: await summaryModel(currentSessionId),
           profile: agent.id,
           abort,
+          store: runtime.store,
         });
         const previousSessionId = currentSessionId;
         currentSessionId = branchResult.sessionId;
         const replayedUserMessageId = branchResult.replayedMessageIds?.[currentUserMessageId]
-        if (replayedUserMessageId) {
-          currentUserMessageId = replayedUserMessageId
-          turnMessageIds.set(currentSessionId, currentUserMessageId)
-        }
+        if (replayedUserMessageId) currentUserMessageId = replayedUserMessageId
+        turnMessageIds.set(currentSessionId, currentUserMessageId)
         moveActiveSession(previousSessionId, currentSessionId, runtime);
-        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient);
+        await moveToBranch(currentSessionId);
+        await emitSessionSwitch(currentSessionId, agent, { kind: "branch", goal: "Auto-branched (context full)" }, runtime.bus, ambient, runWorkspace, runtime.store);
 
         continue;
       } catch (err) {

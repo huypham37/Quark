@@ -11,6 +11,7 @@ import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/solid"
 import { MacOSScrollAccel } from "@opentui/core"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppState, dispatch, type AppState } from "../state"
+import { bindCatalogContext } from "../catalog-context"
 import { wireEvents } from "../events"
 import type { TypedBus } from "@quark/runner/session/events"
 import type { CatalogModel } from "@quark/runner/provider/catalog-snapshot"
@@ -67,7 +68,7 @@ interface AppProps {
   /** Runner-owned event bus. Shared across runner generations (rebinds). */
   bus: TypedBus
   onSubmit: (text: string, sessionId: string | null, images?: { mime: string; data: string }[], context?: string) => void
-  onCancel: (sessionId: string) => void
+  onCancel: (sessionId: string) => boolean | void
   onThinkingEffortChange?: (effort: string) => void
   onCommand?: (command: string, args: string, sessionId: string | null) => Promise<CommandResult> | CommandResult | void
   onOpenFile?: (target: FileTarget) => void
@@ -201,9 +202,13 @@ export const App: Component<AppProps> = (props) => {
     state.store.messages,
     state.store.running,
   ))
+  let externalCancelRequested = false
 
   // Wire event bus to state store
   wireEvents(state, props.bus)
+  createEffect(() => {
+    if (!state.store.running) externalCancelRequested = false
+  })
   if (props.initialExternalBusy) dispatch(state, { type: "set-running", running: true })
 
   // Question prompt key handler
@@ -238,11 +243,7 @@ export const App: Component<AppProps> = (props) => {
     },
   })
 
-  createEffect(() => {
-    const model = props.getCatalogModel?.(state.store.status.modelName)
-    const limit = model?.limit.context ?? model?.limit.input
-    if (limit) state.setStore("status", "tokenLimit", limit)
-  })
+  bindCatalogContext(state, props.bus, props.getCatalogModel)
 
   // --- Refs ---
   let scroll: ScrollBoxRenderable | undefined
@@ -1124,7 +1125,7 @@ export const App: Component<AppProps> = (props) => {
         if (s.items.length > 0) {
           const selected = s.items[s.selectedIndex]
           if (selected) {
-            // /model and /profile → transition to picker (Tab or Enter)
+            // /agent → transition to picker (Tab or Enter)
             const pickerMode = pickerModeForCommand(selected.id)
             if (pickerMode && (isReturn || isTab) && openChoicePicker(pickerMode)) {
               return true
@@ -1907,14 +1908,21 @@ export const App: Component<AppProps> = (props) => {
       return
     }
 
-    // Ctrl+C — cancel agent or exit
+    // Ctrl+C — cancel agent or exit. An external runner cannot be stopped by
+    // this process, so the second press must remain an escape hatch while its
+    // cancellation request is in flight.
     if (evt.ctrl && evt.name === "c") {
       if (renderer.getSelection()) {
         renderer.clearSelection()
         return
       }
       if (state.store.running && state.store.sessionId) {
-        props.onCancel(state.store.sessionId)
+        if (externalCancelRequested) {
+          exitApp()
+          return
+        }
+        const localCancel = props.onCancel(state.store.sessionId)
+        if (localCancel === false) externalCancelRequested = true
       } else {
         exitApp()
       }

@@ -11,11 +11,10 @@ import { stringify } from "yaml"
 import {
   resolveAgent,
   listAgents,
-  parseAgentManifest,
+  parseProfile,
   materializeAgent,
   BUILTIN_INSTRUCTIONS,
   BUILTIN_TOOLS,
-  projectAgentsDir,
 } from "../../packages/quark/src/agent/agent"
 import { resetConfigCache } from "../../packages/quark/src/config/config"
 import { getActive, dismiss } from "../../packages/runner/src/notification/notification"
@@ -32,12 +31,12 @@ beforeEach(() => {
   process.env.QUARK_CONFIG_DIR = configDir
   resetConfigCache()
   for (const n of getActive()) dismiss(n.id)
-  fs.rmSync(path.join(configDir, "agents"), { recursive: true, force: true })
+  fs.rmSync(path.join(configDir, "profile"), { recursive: true, force: true })
   fs.rmSync(path.join(configDir, "config.yaml"), { force: true })
 })
 
 afterEach(() => {
-  fs.rmSync(path.join(configDir, "agents"), { recursive: true, force: true })
+  fs.rmSync(path.join(configDir, "profile"), { recursive: true, force: true })
   for (const n of getActive()) dismiss(n.id)
 })
 
@@ -48,12 +47,12 @@ afterAll(() => {
   fs.rmSync(configDir, { recursive: true, force: true })
 })
 
-function writeAgent(id: string, manifest: Record<string, unknown>, instructions?: string): string {
-  const dir = path.join(configDir, "agents", id)
+function writeAgent(id: string, manifest: Record<string, unknown>): string {
+  const dir = path.join(configDir, "profile")
   fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(path.join(dir, "agent.yaml"), stringify(manifest), "utf-8")
-  if (instructions !== undefined) fs.writeFileSync(path.join(dir, "instructions.md"), instructions, "utf-8")
-  return dir
+  const file = path.join(dir, `${id}.yaml`)
+  fs.writeFileSync(file, stringify(manifest), "utf-8")
+  return file
 }
 
 function writeConfig(manifest: Record<string, unknown>): void {
@@ -90,16 +89,14 @@ describe("resolveAgent", () => {
     expect(resolveAgent("nonexistent").id).toBe("coder")
   })
 
-  test("reads a manifest and its instructions.md", () => {
-    writeAgent(
-      "researcher",
-      { name: "Researcher", model: "openai/gpt-5", tools: ["read", "skill"], skills: ["focus"], thinking_effort: "high", thinking_mode: "pro" },
-      "# Research\n\nDig deep.",
-    )
-
+  test("reads one self-contained profile including nested model and prompt", () => {
+    writeAgent("researcher", {
+      name: "Researcher", description: "Research", model: { id: "openai/gpt-5", thinking_effort: "high", thinking_mode: "pro" },
+      tools: ["read", "skill"], skills: ["focus"], prompt: "# Research\n\nDig deep.",
+    })
     const def = resolveAgent("researcher")
-    expect(def.id).toBe("researcher")
     expect(def.name).toBe("Researcher")
+    expect(def.description).toBe("Research")
     expect(def.instructions).toContain("Dig deep.")
     expect(def.tools).toEqual(["read", "skill"])
     expect(def.skills).toEqual(["focus"])
@@ -108,16 +105,7 @@ describe("resolveAgent", () => {
     expect(def.thinkingMode).toBe("pro")
   })
 
-  test("uses instructions.md frontmatter when the manifest omits name/description", () => {
-    writeAgent("finder", {}, "---\nname: Finder\ndescription: Finds things\n---\n\nFind them.")
-
-    const def = resolveAgent("finder")
-    expect(def.name).toBe("Finder")
-    expect(def.description).toBe("Finds things")
-    expect(def.instructions).toBe("Find them.")
-  })
-
-  test("falls back to the built-in prompt when instructions.md is missing", () => {
+  test("falls back to the built-in prompt when prompt is missing", () => {
     writeAgent("bare", {})
     expect(resolveAgent("bare").instructions).toBe(BUILTIN_INSTRUCTIONS)
   })
@@ -137,10 +125,10 @@ describe("resolveAgent", () => {
     expect(resolveAgent().name).toBe("Researcher")
   })
 
-  test("skips a malformed manifest with a warning and falls back", () => {
-    const dir = path.join(configDir, "agents", "broken")
+  test("skips malformed profile YAML with a warning and falls back", () => {
+    const dir = path.join(configDir, "profile")
     fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, "agent.yaml"), ": : : not yaml {{{", "utf-8")
+    fs.writeFileSync(path.join(dir, "broken.yaml"), ": : : not yaml {{{", "utf-8")
 
     expect(resolveAgent("broken").id).toBe("coder")
     expect(getActive()).toContainEqual(expect.objectContaining({
@@ -150,8 +138,8 @@ describe("resolveAgent", () => {
     }))
   })
 
-  test("strips unknown sub_agents and keeps valid ones", () => {
-    writeAgent("orchestrator", { sub_agents: ["worker", "ghost"] })
+  test("strips unknown subagents and keeps valid ones", () => {
+    writeAgent("orchestrator", { subagents: ["worker", "ghost"] })
     writeAgent("worker", {})
 
     const def = resolveAgent("orchestrator")
@@ -163,17 +151,18 @@ describe("resolveAgent", () => {
     }))
   })
 
-  test("project agents override global agents with the same id", () => {
+  test("ignores project-local profiles even when they share a global ID", () => {
     writeAgent("shared", { name: "Global" })
     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "quark-agent-project-"))
     try {
-      const dir = path.join(projectDir, ".quark", "agents", "shared")
+      const dir = path.join(projectDir, ".quark", "profile")
       fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(path.join(dir, "agent.yaml"), stringify({ name: "Project" }), "utf-8")
+      fs.writeFileSync(path.join(dir, "shared.yaml"), stringify({ name: "Project" }), "utf-8")
+      fs.writeFileSync(path.join(dir, "local.yaml"), stringify({ name: "Local" }), "utf-8")
       process.chdir(projectDir)
 
-      expect(projectAgentsDir()).toBe(path.join(fs.realpathSync(projectDir), ".quark", "agents"))
-      expect(resolveAgent("shared").name).toBe("Project")
+      expect(resolveAgent("shared").name).toBe("Global")
+      expect(listAgents()).not.toContain("local")
     } finally {
       process.chdir(originalCwd)
       fs.rmSync(projectDir, { recursive: true, force: true })
@@ -186,8 +175,22 @@ describe("resolveAgent", () => {
     expect(listAgents()).toContain("researcher")
   })
 
-  test("parseAgentManifest rejects non-mapping manifests", () => {
-    expect(() => parseAgentManifest("nope", "bad", "/tmp")).toThrow(/must be a mapping/)
+  test("rejects malformed fields without replacing the built-in agent", () => {
+    writeAgent("coder", { model: "openai/gpt-5", prompt: 12 })
+    expect(resolveAgent("coder").instructions).toBe(BUILTIN_INSTRUCTIONS)
+    expect(getActive()).toContainEqual(expect.objectContaining({ type: "warn", message: expect.stringContaining("coder.yaml") }))
+  })
+
+  test("does not load old two-file agent directories", () => {
+    const dir = path.join(configDir, "agents", "old")
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, "agent.yaml"), stringify({ name: "Old" }))
+    expect(listAgents()).not.toContain("old")
+    fs.rmSync(path.join(configDir, "agents"), { recursive: true, force: true })
+  })
+
+  test("parseProfile rejects non-mapping profiles", () => {
+    expect(() => parseProfile("nope", "bad")).toThrow(/must be a mapping/)
   })
 })
 

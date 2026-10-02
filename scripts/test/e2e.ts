@@ -4,11 +4,13 @@
 // Usage: bun scripts/test/e2e.ts "your prompt here" [--model gpt-5-mini]
 // Requires: a valid Copilot token (run `bun scripts/auth/copilot-login.ts` first)
 
-import { bootstrap } from "../packages/quark/src/bootstrap"
-import { prompt } from "../packages/runner/src/session/prompt"
-import { loadMessages } from "../packages/runner/src/session/message"
-import { defineAgent } from "../packages/runner/src/agent"
-import { readTool } from "../packages/runner/src/tool/read"
+import { createRunner } from "../../packages/runner/src/runner"
+import { createJsonlSessionStore } from "../../packages/runner/src/session/session"
+import { getSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { loadPluginFns, createPluginContext } from "../../packages/quark/src/plugin-loader"
+import { loadMessages } from "../../packages/runner/src/session/message"
+import { defineAgent } from "../../packages/runner/src/agent"
+import { readTool } from "../../packages/runner/src/tool/read"
 
 // Minimal agent — only built-in tools, no profile tools needed
 const testAgent = defineAgent({
@@ -34,16 +36,19 @@ async function main() {
   if (modelId) console.log(`Model: ${modelId}`)
   console.log()
 
-  // Bootstrap tools + DB
-  await bootstrap()
+  const runner = createRunner({
+    agent: testAgent,
+    store: createJsonlSessionStore(getSessionStorageRoot()),
+    plugins: (await loadPluginFns()).fns,
+    pluginContext: createPluginContext(),
+  })
 
   // Run the agent loop
   console.log("Starting agent loop...")
   const start = Date.now()
 
-  const result = await prompt({
+  const result = await runner.prompt({
     parts: [{ type: "text", text: input }],
-    agent: testAgent,
     model: modelId,
   })
 
@@ -52,7 +57,7 @@ async function main() {
   console.log(`Session ID: ${result.sessionId}`)
 
   // Load and display the conversation
-  const { messages, parts } = loadMessages(result.sessionId)
+  const { messages, parts } = loadMessages(result.sessionId, runner.store)
   console.log(`\nMessages: ${messages.length}`)
   console.log(`Parts: ${parts.length}`)
   console.log()

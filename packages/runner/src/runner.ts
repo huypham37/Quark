@@ -35,11 +35,32 @@ export interface RunnerPromptInput {
   images?: { mime: string; data: string }[]
   modelOnlyText?: string
   model?: string
+  /**
+   * Thinking-effort override for this turn (from `session/set_config_option`).
+   * Wins over the agent's configured effort; the provider adapter validates it
+   * against the resolved model's catalog reasoning options and throws on an
+   * unsupported value, so never pass one the caller did not verify.
+   */
+  thinkingEffort?: string
   catalog?: CatalogRegistry
+  /**
+   * Absolute workspace root this turn runs in: tools, system prompt, ambient
+   * reads, and subagents. Stored as the session's `directory` on creation; on
+   * resume the session's stored directory is authoritative. Defaults to
+   * `process.cwd()` (the process' own directory), which is only correct for a
+   * runner that owns the whole process — a remote runner must pass this.
+   */
+  targetWorkspace?: string
   /** Per-call execution policy overrides. */
   policies?: Partial<RunPolicies>
   /** Model-resolution dependencies for this call (wins over runner options). */
   resolve?: ResolveModelOptions
+  /**
+   * Caller-owned abort controller for this turn. When supplied, the runner uses
+   * it as the turn signal instead of minting its own, so the caller can abort
+   * provider streaming, tools, and MCP with a single controller.
+   */
+  controller?: AbortController
 }
 
 /** Context handed to a runner's execution function. */
@@ -67,6 +88,8 @@ export interface RunnerSeedInput {
   userText: string
   model?: string
   catalog?: CatalogRegistry
+  /** Fallback workspace when the session carries no stored directory. */
+  targetWorkspace?: string
   /** Per-call execution policy overrides. */
   policies?: Partial<RunPolicies>
   /** Model-resolution dependencies for this call (wins over runner options). */
@@ -272,6 +295,7 @@ export function createRunner(options: RunnerOptions): Runner {
           agent: ctx.agent,
           controller: ctx.controller,
           ...(input.catalog ? { catalog: input.catalog } : {}),
+          ...(input.targetWorkspace ? { targetWorkspace: input.targetWorkspace } : {}),
           ambientInstructions: ambient,
           policies,
           resolve,
@@ -282,7 +306,7 @@ export function createRunner(options: RunnerOptions): Runner {
     })
 
   async function prompt(input: RunnerPromptInput): Promise<{ sessionId: string }> {
-    const controller = new AbortController()
+    const controller = input.controller ?? new AbortController()
     // Key the run immediately when the caller already knows the session, so
     // isActive()/cancel() work before the execute function registers it.
     // Must stay synchronous (before the first await) for that guarantee.

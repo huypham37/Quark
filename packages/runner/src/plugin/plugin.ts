@@ -66,7 +66,7 @@ export interface PluginHooks {
 
   // --- Tool hooks ---
   "tool.execute.before": {
-    input:  { tool: string; args: Record<string, unknown> }
+    input:  { tool: string; args: Record<string, unknown>; sessionId?: string; callId?: string }
     output: { args: Record<string, unknown> }
   }
   "tool.execute.after": {

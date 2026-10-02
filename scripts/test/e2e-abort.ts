@@ -4,10 +4,12 @@
 // Usage: bun scripts/test/e2e-abort.ts
 // Requires: a valid Copilot token (run `bun scripts/auth/copilot-login.ts` first)
 
-import { bootstrap } from "../../packages/quark/src/bootstrap"
-import { prompt, cancel } from "../../packages/runner/src/session/prompt"
+import { createRunner } from "../../packages/runner/src/runner"
+import { defineAgent } from "../../packages/runner/src/agent"
+import { createJsonlSessionStore } from "../../packages/runner/src/session/session"
+import { getSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
+import { loadPluginFns, createPluginContext } from "../../packages/quark/src/plugin-loader"
 import { loadMessages, toModelMessages } from "../../packages/runner/src/session/message"
-import { bus } from "../../packages/runner/src/session/events"
 
 const MODEL = "opencode/deepseek-v4-flash"
 const ABORT_AFTER_MS = 3000
@@ -18,7 +20,12 @@ async function main() {
   console.log(`Abort after: ${ABORT_AFTER_MS}ms`)
   console.log()
 
-  await bootstrap()
+  const runner = createRunner({
+    agent: defineAgent({ id: "abort-e2e", instructions: "You are a helpful assistant.", tools: [], model: MODEL }),
+    store: createJsonlSessionStore(getSessionStorageRoot()),
+    plugins: (await loadPluginFns()).fns,
+    pluginContext: createPluginContext(),
+  })
 
   // 1. Start a prompt that will produce a long streamed response
   const firstPrompt = "Write a 1000 word essay about the history of the bicycle. Do not stop early."
@@ -28,9 +35,9 @@ async function main() {
   const onAssistantStart = (data: { sessionId: string; messageId: string }) => {
     sessionIdToCancel = data.sessionId
   }
-  bus.on("assistant-message-start", onAssistantStart)
+  runner.bus.on("assistant-message-start", onAssistantStart)
 
-  const firstPromise = prompt({
+  const firstPromise = runner.prompt({
     parts: [{ type: "text", text: firstPrompt }],
     model: MODEL,
   })
@@ -39,10 +46,10 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, ABORT_AFTER_MS))
   console.log("[test] aborting mid-generation...")
 
-  bus.off("assistant-message-start", onAssistantStart)
+  runner.bus.off("assistant-message-start", onAssistantStart)
 
   if (sessionIdToCancel) {
-    cancel(sessionIdToCancel)
+    runner.cancel(sessionIdToCancel)
   } else {
     console.error("[FAIL] assistant-message-start never fired — cannot cancel")
     process.exit(1)
@@ -59,7 +66,7 @@ async function main() {
   }
 
   // 3. Verify the aborted message is persisted with finish="aborted"
-  const { messages: afterAbort, parts: afterAbortParts } = loadMessages(firstSessionId)
+  const { messages: afterAbort, parts: afterAbortParts } = loadMessages(firstSessionId, runner.store)
   const assistantMessages = afterAbort.filter((m) => m.role === "assistant")
   const abortedMessage = assistantMessages.find((m) => m.finish === "aborted")
 
@@ -84,7 +91,7 @@ async function main() {
   const followUp = "What was the exact wording of my first message to you? Reply verbatim."
   console.log(`\nUser: ${followUp}`)
 
-  const secondResult = await prompt({
+  const secondResult = await runner.prompt({
     sessionId: firstSessionId,
     parts: [{ type: "text", text: followUp }],
     model: MODEL,
@@ -93,7 +100,7 @@ async function main() {
   console.log(`[test] second prompt completed, sessionId=${secondResult.sessionId.slice(0, 8)}`)
 
   // 5. Verify toModelMessages does not include the aborted turn
-  const { messages: finalMessages, parts: finalParts } = loadMessages(secondResult.sessionId)
+  const { messages: finalMessages, parts: finalParts } = loadMessages(secondResult.sessionId, runner.store)
   const modelMessages = toModelMessages(finalMessages, finalParts)
 
   const serialized = JSON.stringify(modelMessages)

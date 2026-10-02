@@ -44,7 +44,7 @@ export async function runSubagent(
   const runtime = resolveSubagentCommand()
   const childArgs = [
     ...runtime.args,
-    "--profile", input.profile,
+    "--agent", input.profile,
     "--message", input.prompt,
     "--no-store",
   ]
@@ -53,7 +53,7 @@ export async function runSubagent(
     let proc: ChildProcessWithoutNullStreams
     try {
       proc = spawn(runtime.command, childArgs, {
-        cwd: process.cwd(),
+        cwd: ctx.workspace ?? process.cwd(),
         env: {
           ...process.env,
           QUARK_PARENT_SESSION_ID: ctx.sessionId,
@@ -78,6 +78,10 @@ export async function runSubagent(
     let childSessionId: string | undefined
     let modelName: string | undefined
     let tokenLimit: number | undefined
+    // The child now streams honest deltas. Keep the running text for in-process
+    // consumers (TUI/web read `text` as a SET), while also forwarding the raw
+    // chunk as `delta` so the live log can coalesce it and stay O(content).
+    let textBuffer = ""
     let structuredError: SubagentExecutionError | undefined
     let sawLoopEnd = false
     let settled = false
@@ -132,7 +136,8 @@ export async function runSubagent(
           })
           break
         case "text-delta":
-          eventBus.emit("subagent-text-delta", { ...base, text: event.d })
+          textBuffer += event.d
+          eventBus.emit("subagent-text-delta", { ...base, text: textBuffer, delta: event.d })
           break
         case "error":
           failStructured(event.kind, event.message)

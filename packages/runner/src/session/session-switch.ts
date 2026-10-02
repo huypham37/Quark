@@ -3,6 +3,7 @@ import { dbToConversationMessages } from "../shared/conversation-view"
 import { bus, TypedBus } from "./events"
 import { estimateTokens } from "./context"
 import { loadMessages, toModelMessages } from "./message"
+import type { SessionStore } from "./store"
 import { buildSystem, type AmbientInstructions } from "./system"
 
 export function emitSessionSwitch(
@@ -14,9 +15,12 @@ export function emitSessionSwitch(
   eventBus: TypedBus = bus,
   /** Same ambient contract as buildSystem: omit / `null` for none. */
   ambient?: AmbientInstructions | null,
+  /** Absolute workspace root for the same environment block buildSystem emits. */
+  workspace?: string,
+  store?: SessionStore,
 ): void {
-  const { messages, parts } = loadMessages(sessionId)
-  const system = buildSystem(agent, ambient)
+  const { messages, parts } = loadMessages(sessionId, store)
+  const system = buildSystem(agent, ambient, workspace)
   const modelMessages = toModelMessages(messages, parts)
   const systemStr = Array.isArray(system) ? system.join("\n") : system
   const conversationMessages = dbToConversationMessages(messages, parts)

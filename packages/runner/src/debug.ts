@@ -6,7 +6,7 @@
 //   QUARK_DEBUG=-loop           (exclude a namespace; combine with *)
 //
 // Or use the --verbose CLI flag (enables tool-call + tool-result only).
-// For all engine internals use QUARK_DEBUG=* (or QUARK_VERBOSE=1).
+// For all engine internals use QUARK_DEBUG=*.
 //
 // Known namespaces (grep `debug("` to find every call site):
 //   processor   — fullStream events, finish reasons, return values
@@ -36,8 +36,6 @@ function reload(): void {
     if (tok.startsWith("-")) excludes.add(tok.slice(1));
     else includes.add(tok);
   }
-  // Back-compat: QUARK_VERBOSE=1 turns on everything
-  if (process.env.QUARK_VERBOSE) includes.add("*");
 }
 reload();
 
@@ -87,7 +85,6 @@ export function debug(ns: string): Debugger {
 // engine internals like `processor`, `loop`, `cli`, `models`, `compaction`.
 //
 // To enable every namespace (engine debugging), set `QUARK_DEBUG=*` directly.
-// QUARK_VERBOSE=1 keeps the legacy meaning (everything on).
 // ---------------------------------------------------------------------------
 
 const VERBOSE_NAMESPACES = "tool-call,tool-result";

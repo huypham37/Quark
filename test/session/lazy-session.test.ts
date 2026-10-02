@@ -15,19 +15,22 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { setSessionStorageRoot } from "../../packages/runner/src/storage/session-path"
 import { ensureStorageRoot } from "../../packages/runner/src/storage/session-jsonl"
-import { prompt } from "../../packages/runner/src/session/prompt"
+import { createJsonlSessionStore } from "../../packages/runner/src/session/session"
+import { createRunner, type Runner } from "../../packages/runner/src/runner"
+import { defineAgent } from "../../packages/runner/src/agent"
 import { createSession, listSessions } from "../../packages/runner/src/session/session"
-import { bus } from "../../packages/runner/src/session/events"
-import { bootstrap, resetBootstrap } from "../../packages/quark/src/bootstrap"
 
 let tmpDir: string
+let runner: Runner
 
 beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "quark-test-lazy-"))
   setSessionStorageRoot(tmpDir)
   ensureStorageRoot()
-  resetBootstrap()
-  await bootstrap()
+  runner = createRunner({
+    agent: defineAgent({ id: "test", instructions: "test", tools: [], model: "invalid/nonexistent" }),
+    store: createJsonlSessionStore(tmpDir),
+  })
 })
 
 afterAll(() => {
@@ -36,18 +39,18 @@ afterAll(() => {
 })
 
 afterEach(() => {
-  bus.removeAllListeners()
+  runner.bus.removeAllListeners()
 })
 
 describe("lazy session creation: prompt()", () => {
   test("emits session-created with a new sessionId when no sessionId provided", async () => {
     let capturedId: string | null = null
-    bus.on("session-created", ({ sessionId }) => {
+    runner.bus.on("session-created", ({ sessionId }) => {
       capturedId = sessionId
     })
 
     // prompt() throws at resolveModel (no auth token) — that is expected
-    await prompt({ parts: [{ type: "text", text: "hello" }] }).catch(() => {})
+    await runner.prompt({ parts: [{ type: "text", text: "hello" }] }).catch(() => {})
 
     expect(capturedId).not.toBeNull()
     expect(typeof capturedId).toBe("string")
@@ -55,23 +58,23 @@ describe("lazy session creation: prompt()", () => {
   })
 
   test("creates exactly one session row in DB per call without sessionId", async () => {
-    const before = listSessions().length
+    const before = listSessions(runner.store).length
 
-    await prompt({ parts: [{ type: "text", text: "hello" }] }).catch(() => {})
+    await runner.prompt({ parts: [{ type: "text", text: "hello" }] }).catch(() => {})
 
-    const after = listSessions().length
+    const after = listSessions(runner.store).length
     expect(after).toBe(before + 1)
   })
 
   test("does NOT emit session-created when an existing sessionId is provided", async () => {
-    const existing = createSession()
+    const existing = createSession(undefined, runner.store)
 
     let fired = false
-    bus.on("session-created", () => {
+    runner.bus.on("session-created", () => {
       fired = true
     })
 
-    await prompt({
+    await runner.prompt({
       sessionId: existing.id,
       parts: [{ type: "text", text: "resume" }],
     }).catch(() => {})
@@ -80,15 +83,15 @@ describe("lazy session creation: prompt()", () => {
   })
 
   test("does NOT create an extra session row when resuming an existing session", async () => {
-    const existing = createSession()
-    const before = listSessions().length
+    const existing = createSession(undefined, runner.store)
+    const before = listSessions(runner.store).length
 
-    await prompt({
+    await runner.prompt({
       sessionId: existing.id,
       parts: [{ type: "text", text: "resume" }],
     }).catch(() => {})
 
-    const after = listSessions().length
+    const after = listSessions(runner.store).length
     expect(after).toBe(before) // no new row
   })
 })

@@ -11,13 +11,8 @@ import { debug } from "../debug"
 
 const sseLog = debug("copilot-sse")
 
-// ---------------------------------------------------------------------------
-// CopilotFetchFn — FetchFn with a runtime force-agent setter
-// ---------------------------------------------------------------------------
-export interface CopilotFetchFn extends FetchFn {
-  /** Force x-initiator to "agent" for all requests (compaction, sub-agents). */
-  setForceAgent(force: boolean): void
-}
+// Each model resolution owns its fetch closure; no provider-wide mutable state.
+export type CopilotInitiator = "user" | "agent"
 
 // ---------------------------------------------------------------------------
 // inferInitiator — decides "user" vs "agent" from the request body
@@ -181,9 +176,10 @@ function rewriteCopilotResponsesStream(
 export function createCopilotFetch(options: {
   getToken: () => Promise<string>
   fetch?: FetchFn
-}): CopilotFetchFn {
+  /** Explicit initiator for this model resolution (e.g. child agent or summary). */
+  initiator?: CopilotInitiator
+}): FetchFn {
   const baseFetch = options.fetch ?? globalThis.fetch
-  let forceAgent = false
 
   const fetchFn = async (
     input: string | URL | Request,
@@ -210,12 +206,12 @@ export function createCopilotFetch(options: {
     // Set Copilot-specific headers
     headers.set("Authorization", `Bearer ${token}`)
     headers.set("Openai-Intent", "conversation-edits")
-    const initiator = forceAgent ? "agent" : inferInitiator(parsedBody)
+    const initiator = options.initiator ?? inferInitiator(parsedBody)
     if (process.env.DEBUG_INITIATOR) {
       const b = parsedBody as Record<string, unknown> | undefined
       const msgs = Array.isArray(b?.messages) ? b!.messages : []
       const last = msgs[msgs.length - 1] as Record<string, unknown> | undefined
-      console.error(`[x-initiator] ${initiator} | forceAgent=${forceAgent} | lastRole=${last?.role} | contentTypes=${Array.isArray(last?.content) ? (last!.content as any[]).map((p: any) => p?.type).join(",") : typeof last?.content}`)
+      console.error(`[x-initiator] ${initiator} | explicit=${options.initiator ?? "none"} | lastRole=${last?.role} | contentTypes=${Array.isArray(last?.content) ? (last!.content as any[]).map((p: any) => p?.type).join(",") : typeof last?.content}`)
     }
     headers.set("x-initiator", initiator)
 
@@ -289,10 +285,5 @@ export function createCopilotFetch(options: {
     return response
   }
 
-  // Attach runtime setter
-  fetchFn.setForceAgent = (force: boolean) => {
-    forceAgent = force
-  }
-
-  return fetchFn as CopilotFetchFn
+  return fetchFn
 }

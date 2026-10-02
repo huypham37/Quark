@@ -7,9 +7,7 @@
 //   quark --model claude-sonnet-4.5 "one-off with a specific model"
 
 import { parseArgs } from "util"
-import { prompt as legacyPrompt } from "@quark/runner/session/prompt"
 import { ensureStorageRoot } from "@quark/runner/storage/session-jsonl"
-import { loadPlugins } from "./plugin-loader"
 import { materializeAgent, resolveAgent, listAgents } from "./agent/agent"
 import { bus, type TypedBus } from "@quark/runner/session/events"
 import { startEventWriter } from "@quark/runner/session/event-writer"
@@ -17,8 +15,7 @@ import { setVerbose, debug } from "@quark/runner/debug"
 import { formatArgs } from "@quark/runner/debug/format-tool-args"
 import { createQuarkRuntime } from "./runtime"
 import { useRunnerSessionRoot } from "./session-root"
-import { loadConfig } from "./config/config"
-import { loadAmbientInstructions } from "./ambient"
+import { tuiLaunchArgs } from "./tui-launch"
 
 const dlog = debug("cli")
 // Tool-call logging uses explicit uppercase prefixes (`[TOOL-CALL]`,
@@ -36,22 +33,23 @@ function printHelp() {
   console.log(`
 Usage: quark [options] [message]
        quark auth <login|status|logout> [provider]
+       quark acp [--profile <name>]   Serve ACP (Agent Client Protocol) over stdio
+                                     --agent/-a is an alias; -p for --profile
 
 Options:
   -a, --agent <name>            Agent to use (default: from config)
-  -p, --profile <name>          Alias for --agent
   -m, --message <text>          Message text (alternative to positional)
   -s, --session <id>            Resume an existing session
       --model <id>              Model to use for this run (e.g. copilot/claude-sonnet-4.5)
       --no-store                Run an ephemeral session — never written to disk
       --verbose                 Print every tool call + result to stderr.
                                 For engine internals use QUARK_DEBUG=* (see README).
-  -l, --list-agents             List available agents (alias: --list-profiles)
+  -l, --list-agents             List available agents
   -h, --help                    Show this help message
 
 Examples:
-  quark --profile coder --message "fix the bug in main.ts"
-  quark -p coder "fix the bug in main.ts"
+  quark --agent coder --message "fix the bug in main.ts"
+  quark -a coder "fix the bug in main.ts"
   quark "quick question"
   quark --model copilot/claude-sonnet-4.5 "use a specific model for this run"
   quark --no-store "quick one-off question that should not be saved"
@@ -74,15 +72,12 @@ function parseArguments(): ParsedArgs {
     const { values, positionals } = parseArgs({
       options: {
         agent: { type: "string", short: "a" },
-        // Compatibility alias for the pre-agent flag name.
-        profile: { type: "string", short: "p" },
         message: { type: "string", short: "m" },
         session: { type: "string", short: "s" },
         model: { type: "string" },
         "no-store": { type: "boolean" },
         verbose: { type: "boolean" },
         "list-agents": { type: "boolean", short: "l" },
-        "list-profiles": { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -99,13 +94,13 @@ function parseArguments(): ParsedArgs {
     }
 
     return {
-      agent: values.agent ?? values.profile,
+      agent: values.agent,
       message,
       sessionId: values.session,
       model: values.model,
       noStore: values["no-store"],
       verbose: values.verbose,
-      listAgents: values["list-agents"] || values["list-profiles"],
+      listAgents: values["list-agents"],
       help: values.help,
     }
   } catch (err: any) {
@@ -127,6 +122,21 @@ async function main() {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
       process.exit(1)
     }
+  }
+
+  // `quark acp` — long-lived NDJSON agent over stdio. Dispatched before argument
+  // parsing so "acp" is never treated as a positional message. stdout is the
+  // protocol channel; this branch must never write diagnostics there.
+  if (process.argv[2] === "acp") {
+    try {
+      const { runAcpCommand } = await import("./acp-host")
+      // QUA-267: let teardown finish before exiting instead of force-exiting.
+      process.exitCode = await runAcpCommand(process.argv.slice(3))
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      process.exitCode = 1
+    }
+    return
   }
 
   const args = parseArguments()
@@ -157,14 +167,7 @@ async function main() {
       : dirname(fileURLToPath(import.meta.url))
     const quarkDir = process.env.QUARK_DIR ?? resolve(thisDir, "..")
     try {
-      execFileSync("bun", [
-        "--preload", `${quarkDir}/preload.ts`, `${quarkDir}/src/tui/index.tsx`,
-        // Forward the launch flags the TUI understands instead of silently
-        // dropping them (`--model` maps to the TUI's runtime model override).
-        ...(args.agent ? ["--agent", args.agent] : []),
-        ...(args.sessionId ? ["--session", args.sessionId] : []),
-        ...(args.model ? ["--model", args.model] : []),
-      ], {
+      execFileSync("bun", tuiLaunchArgs(quarkDir, args), {
         stdio: "inherit",
         env: { ...process.env, QUARK_DIR: quarkDir },
       })
@@ -192,40 +195,32 @@ async function main() {
   const parentSessionId = process.env.QUARK_PARENT_SESSION_ID
   const modelOverride = args.model ?? undefined
 
-  // Sub-agent child: keep the legacy singleton path. Instance runners are
-  // intentionally isolated from process-global turn state, so they never flip
-  // the custom-fetch force-agent flag a sub-agent session needs.
   if (parentSessionId) {
-    await loadPlugins()
+    const runtime = await createQuarkRuntime({ agent, bus })
     const cleanupEventWriter = startEventWriter({
       resolvedModel: args.model ?? agentDef.model,
       profile: agentDef.id,
+      eventBus: runtime.bus,
     })
-    wireCliBus(bus)
+    wireCliBus(runtime.bus)
     try {
-      const config = loadConfig()
-      const result = await legacyPrompt({
+      const result = await runtime.prompt({
         sessionId: args.sessionId,
         parentSessionId,
         ephemeral: args.noStore,
         parts: [{ type: "text", text: args.message }],
         model: modelOverride,
-        agent,
-        ambientInstructions: loadAmbientInstructions,
-        policies: {
-          maxSteps: config.maxSteps,
-          branching: config.branching,
-          smallModel: modelOverride ?? config.models.small,
-          undo: true,
-        },
       })
       dlog(`session: ${result.sessionId}`)
       cleanupEventWriter()
-      process.exit(0)
+      // QUA-267: return with an exit code so pending teardown can settle.
+      process.exitCode = 0
+      return
     } catch (err: any) {
       console.error("Error:", err.message)
       cleanupEventWriter()
-      process.exit(1)
+      process.exitCode = 1
+      return
     }
   }
 
@@ -245,10 +240,13 @@ async function main() {
     if (!args.noStore) {
       process.stdout.write(`Resume the session with quark --session ${result.sessionId}\n`)
     }
-    process.exit(0)
+    // QUA-267: return with an exit code so pending teardown can settle.
+    process.exitCode = 0
+    return
   } catch (err: any) {
     console.error("Error:", err.message)
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 }
 

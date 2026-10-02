@@ -28,8 +28,12 @@ export function resolveToolSet(
   abort: AbortSignal,
   eventBus: TypedBus = bus,
   hooks: HookRegistry = globalHooks,
-  /** Run policy — portable runs disable undo snapshots (`undo: false`). */
-  policy?: { undo?: boolean },
+  /**
+   * Run policy — portable runs disable undo snapshots (`undo: false`), and the
+   * `workspace` is threaded into every tool's context so relative paths resolve
+   * against the session's directory, not the server process cwd.
+   */
+  policy?: { undo?: boolean; workspace?: string },
 ): ToolSet {
   const defs: ToolDef[] = [...(input.tools ?? [])]
   if (input.skills && input.skills.length > 0 && !defs.some((d) => d.id === "skill")) {
@@ -39,7 +43,7 @@ export function resolveToolSet(
   const undo = policy?.undo !== false
 
   for (const def of defs) {
-    result[def.id] = toAITool(def, sessionId, messageId, abort, eventBus, hooks, undo)
+    result[def.id] = toAITool(def, sessionId, messageId, abort, eventBus, hooks, undo, policy?.workspace)
   }
 
   return result
@@ -72,6 +76,7 @@ function toAITool(
   eventBus: TypedBus,
   hooks: HookRegistry,
   undo: boolean,
+  workspace?: string,
 ) {
   const schema = z.toJSONSchema(def.parameters)
 
@@ -96,30 +101,31 @@ function toAITool(
       }
       const validatedArgs = parseResult.data as Record<string, unknown>
 
-      try {
-        if (undo) {
-          const fp = extractFilePath(def.id, validatedArgs)
-          if (fp) await toolPreExecute(sessionId, fp)
-        }
-      } catch {
-        // Snapshot failure is best-effort.
-      }
-
-      eventBus.emit("tool-running", { sessionId, messageId, callId })
-
       const ctx = {
         sessionId,
         messageId,
         callId,
         abort: abortSig,
         bus: eventBus,
+        workspace,
       }
 
       const beforeArgs = await hooks.fire(
         "tool.execute.before",
-        { tool: def.id, args: validatedArgs },
+        { tool: def.id, args: validatedArgs, sessionId, callId },
         { args: validatedArgs },
       )
+      // Hooks can change arguments; snapshot the actual target before executing.
+      // If tracking fails, do not allow an untracked filesystem mutation.
+      if (undo) {
+        const fp = extractFilePath(def.id, beforeArgs.args as Record<string, unknown>)
+        if (fp) await toolPreExecute(sessionId, fp)
+      }
+      // QUA-266: only now is the tool authorized (hook resolved) and prepared
+      // (undo snapshot taken) — execution is about to begin. Emitting earlier
+      // would render the tool as running before permission/undo, and a denied
+      // tool would flash "running" on the client.
+      eventBus.emit("tool-running", { sessionId, messageId, callId })
       const toolResult = await Promise.race([
         def.execute(beforeArgs.args as any, ctx),
         abortSignalToPromise(abortSig),

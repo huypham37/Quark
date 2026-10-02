@@ -123,6 +123,30 @@ function hangingDiskRunner(): Runner {
   })
 }
 
+/** A disk runner whose real prompt path captures the system prompt it built. */
+function captureSystemRunner(captured: string[]): Runner {
+  const stream: StreamFn = (options) => {
+    captured.push(
+      (options.messages as any[])
+        .filter((m) => m.role === "system")
+        .map((m) => m.content)
+        .join("\n"),
+    )
+    return {
+      fullStream: (async function* () {
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }
+  return createRunner({
+    agent: testAgent(),
+    stream,
+    store: createJsonlSessionStore(runnerSessionsRoot()),
+    resolve: { providers: {}, catalog: catalog() },
+  })
+}
+
 /** Prototype-only backend: just the fields the runner routes touch. */
 function backend(): any {
   const instance: any = Object.create(WebBackend.prototype)
@@ -466,6 +490,95 @@ describe("persistent runner sessions", () => {
 
     const texts = loadMessages("kept", second.store).parts.filter((p) => p.type === "text").map((p) => JSON.parse(p.data).text)
     expect(texts).toEqual(["one", "two"])
+  })
+})
+
+describe("targetWorkspace", () => {
+  function workspace(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), "quark-ws-"))
+  }
+
+  test("binds a new session to an absolute existing directory and runs in it", async () => {
+    const api = backend()
+    const captured: string[] = []
+    const runner = captureSystemRunner(captured)
+    api.runners.set("ws", runner)
+    const ws = workspace()
+
+    try {
+      const res = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { text: "hi", targetWorkspace: ws }))
+      expect(res.status).toBe(202)
+      const { sessionId } = await res.json()
+      await waitFor(() => !runner.isActive(sessionId))
+
+      expect(runner.store.get(sessionId)!.directory).toBe(path.resolve(ws))
+      expect(captured[0]).toContain(`Working directory: ${path.resolve(ws)}`)
+
+      const view = await (await api.fetch(request("GET", `/api/runners/ws/sessions/${sessionId}`))).json()
+      expect(view.session.directory).toBe(path.resolve(ws))
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects a relative path with 400", async () => {
+    const api = backend()
+    api.runners.set("ws", streamRunner())
+    const res = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { text: "x", targetWorkspace: "relative/dir" }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("absolute")
+  })
+
+  test("rejects a missing directory with 400", async () => {
+    const api = backend()
+    api.runners.set("ws", streamRunner())
+    const missing = path.join(os.tmpdir(), `quark-ws-missing-${Date.now()}`)
+    const res = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { text: "x", targetWorkspace: missing }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("does not exist")
+  })
+
+  test("rejects a file with 400", async () => {
+    const ws = workspace()
+    try {
+      const file = path.join(ws, "not-a-dir.txt")
+      fs.writeFileSync(file, "x")
+      const api = backend()
+      api.runners.set("ws", streamRunner())
+      const res = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { text: "x", targetWorkspace: file }))
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain("not a directory")
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
+  test("resume keeps the stored workspace and refuses a different one with 409", async () => {
+    const api = backend()
+    const runner = diskRunner()
+    api.runners.set("ws", runner)
+    const a = workspace()
+    const b = workspace()
+
+    try {
+      const first = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { sessionId: "ws-bound", text: "one", targetWorkspace: a }))
+      expect(first.status).toBe(202)
+      await waitFor(() => !runner.isActive("ws-bound"))
+
+      const conflict = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { sessionId: "ws-bound", text: "two", targetWorkspace: b }))
+      expect(conflict.status).toBe(409)
+      expect((await conflict.json()).error).toContain("already bound")
+
+      // Resuming with no workspace named continues in the stored one.
+      const resumed = await api.fetch(request("POST", "/api/runners/ws/session/prompt", { sessionId: "ws-bound", text: "three" }))
+      expect(resumed.status).toBe(202)
+      await waitFor(() => !runner.isActive("ws-bound"))
+
+      expect(runner.store.get("ws-bound")!.directory).toBe(path.resolve(a))
+    } finally {
+      fs.rmSync(a, { recursive: true, force: true })
+      fs.rmSync(b, { recursive: true, force: true })
+    }
   })
 })
 

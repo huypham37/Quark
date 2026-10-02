@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
+    "types": ["node", "bun"],
+    "lib": ["ESNext"],
+    "skipLibCheck": true,
+    // Emit against the built engine, not its source (tsconfig.json maps it back
+    // to src only for typecheck).
+    "paths": {}
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
