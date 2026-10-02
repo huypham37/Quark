@@ -16,16 +16,11 @@
     "cli": "bun --preload ./packages/quark/preload.ts packages/quark/src/cli.ts",
     "docs": "typedoc"
   },
-  "dependencies": {
-    "highlight.js": "^11.12.0"
-  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^25.5.0",
     "typedoc": "^0.28.18",
     "typedoc-plugin-markdown": "^4.11.0",
-    "typescript": "^6.0.2",
-    "vite": "^7.1.5",
-    "vite-plugin-solid": "^2.11.8"
+    "typescript": "^6.0.2"
   }
 }
