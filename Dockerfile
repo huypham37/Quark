@@ -3,7 +3,7 @@
 FROM oven/bun:1 AS build
 WORKDIR /app
 
-COPY package.json bun.lock ./
+COPY package.json bun.lock bunfig.toml ./
 COPY packages/runner/package.json packages/runner/
 COPY packages/quark/package.json packages/quark/
 COPY packages/acp/package.json packages/acp/
@@ -26,7 +26,7 @@ RUN bun run --cwd packages/runner build \
 FROM oven/bun:1 AS runtime
 WORKDIR /app
 
-COPY package.json bun.lock ./
+COPY package.json bun.lock bunfig.toml ./
 COPY packages/runner/package.json packages/runner/
 COPY packages/quark/package.json packages/quark/
 COPY packages/acp/package.json packages/acp/
